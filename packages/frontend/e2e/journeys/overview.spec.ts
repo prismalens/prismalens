@@ -806,8 +806,7 @@ test.describe("Incident Overview (#811, PR #815)", {
 		await expect(rows).toHaveCount(6);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('why-evidence-row').first()`, which no longer renders
-	test.fixme("why card: evidence deep link, lasting fix toggle, live and failed runs", async ({
+	test("an incident thread's report: a citation opens its step, Impact opens the Incident tab, live and failed runs", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -824,7 +823,8 @@ test.describe("Incident Overview (#811, PR #815)", {
 			name: unique("WhyFailed"),
 			service: LIVE,
 			severity: "high",
-			session: "failure",
+			// `failure`'s rejected key is a provider stop, Blocked, with no Retry (#1101).
+			session: "not-signed-in",
 		});
 		const liveInc = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("WhyLive"),
@@ -850,31 +850,42 @@ test.describe("Incident Overview (#811, PR #815)", {
 		await rewrite(page, run.id, { impact: "chart" });
 		await page.setViewportSize({ width: 1440, height: 900 });
 
-		// 1. Evidence row deep link
+		// A run moves the incident to its thread, where the report reads in the transcript (#1101).
 		await visit(page, `/incidents/${inc.id}`);
-		const evidenceRow = page.getByTestId("why-evidence-row").first();
-		await expect(evidenceRow).toBeVisible();
-		await evidenceRow.click();
 		await expect(page).toHaveURL(
 			new RegExp(
-				`/incidents/${inc.id}/conversation\\?.*investigation=${run.id}.*call=toolu_01`,
+				`/incidents/${inc.id}/conversation\\?.*investigation=${run.id}`,
 			),
 		);
+		const report = page.getByTestId("transcript-report");
+		await expect(report.getByTestId("report-stop")).toBeVisible();
+		await expect(report.getByTestId("report-lasting")).not.toContainText(
+			"None named yet",
+		);
 
-		// 2. why-lasting-toggle expands why-lasting
-		await visit(page, `/incidents/${inc.id}`);
-		await expect(page.getByTestId("why-lasting")).toHaveCount(0);
-		await page.getByTestId("why-lasting-toggle").click();
-		await expect(page.getByTestId("why-lasting")).toBeVisible();
+		// 1. A citation in the hypotheses opens its step in the transcript.
+		await page.getByTestId("hypotheses-cite").first().click();
+		const step = page.locator('[data-testid="step"][data-step="1"]');
+		await expect(step).toBeInViewport();
+		await expect(step.getByTestId("step-toggle")).toBeFocused();
 
-		// 3. Live run shows why-live
+		// 2. Impact, evidence and changes open in the Incident tab beside it.
+		await report.getByTestId("transcript-report-overview").click();
+		await expect(page).toHaveURL(/panel=incident/);
+		await expect(page.getByTestId("run-details-incident")).toBeVisible();
+		await expect(page.getByTestId("run-details-summary")).toBeVisible();
+
+		// 3. A live run reads as working in the strip and has no report yet.
 		await visit(page, `/incidents/${liveInc.id}`);
-		await expect(page.getByTestId("why-live")).toBeVisible();
+		await expect(page.getByTestId("run-strip-label")).toContainText(
+			"investigating",
+		);
+		await expect(page.getByTestId("transcript-report")).toHaveCount(0);
 
-		// 4. Failed run shows why-failed and next-retry
+		// 4. A failed run offers Retry in the strip.
 		await visit(page, `/incidents/${failedInc.id}`);
-		await expect(page.getByTestId("why-failed")).toBeVisible();
-		await expect(page.getByTestId("next-retry")).toBeVisible();
+		await expect(page.getByTestId("run-strip-retry")).toBeVisible();
+		await expect(page.getByTestId("transcript-report")).toHaveCount(0);
 	});
 
 	test("composer actions: Ask fills you-asked, Investigate starts run, Note adds timeline row, and live actions", async ({
@@ -983,8 +994,7 @@ test.describe("Incident Overview (#811, PR #815)", {
 		await expect(page.getByTestId("situation-depends")).toHaveCount(0);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('header-resolve')`, which no longer renders
-	test.fixme("resolve with a live run cancels the run before close, ending in stopped and resolved", async ({
+	test("resolve with a live run cancels the run before close, ending in stopped and resolved", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -1002,16 +1012,14 @@ test.describe("Incident Overview (#811, PR #815)", {
 		await page.setViewportSize({ width: 1440, height: 900 });
 		await visit(page, `/incidents/${inc.id}`);
 
-		// Resolve from header
-		const resolveBtn = page.getByTestId("header-resolve");
-		await expect(resolveBtn).toBeVisible();
-		await resolveBtn.click();
+		// While a run works, Resolve is in the header's ⋯, not a button (#1101).
+		await expect(page.getByTestId("run-strip")).toBeVisible();
+		await expect(page.getByTestId("header-resolve")).toHaveCount(0);
+		await page.getByTestId("header-more").click();
+		await page.getByTestId("menu-resolve").click();
 
-		// If alert is firing, confirm dialog prompts
-		const confirmAnyway = page.getByTestId("resolve-anyway");
-		if (await confirmAnyway.isVisible({ timeout: 2000 }).catch(() => false)) {
-			await confirmAnyway.click();
-		}
+		// The alert still fires, so Resolve asks first; isVisible() never waited for it (#1154).
+		await page.getByTestId("resolve-anyway").click();
 
 		const resolveDialog = page.getByTestId("resolve-dialog");
 		await expect(resolveDialog).toBeVisible();
@@ -1028,8 +1036,7 @@ test.describe("Incident Overview (#811, PR #815)", {
 		expect(d.status).toBe("closed");
 	});
 
-	// #1154: UI moved: waits for `getByTestId('header-status-update')`, which no longer renders
-	test.fixme("header actions: status update timeline entry and severity change log", async ({
+	test("header actions: status update timeline entry and severity change log", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
@@ -1049,7 +1056,7 @@ test.describe("Incident Overview (#811, PR #815)", {
 
 		// 1. Status update dialog and copy logs entry
 		await page.getByTestId("header-more").click();
-		await page.getByTestId("header-status-update").click();
+		await page.getByTestId("menu-statusUpdate").click();
 		await expect(page.getByTestId("status-update-dialog")).toBeVisible();
 		await page.getByTestId("status-update-copy").click();
 		await expect(page.getByTestId("status-update-dialog")).toHaveCount(0);
@@ -1061,9 +1068,9 @@ test.describe("Incident Overview (#811, PR #815)", {
 		await expect(statusRow).toBeVisible({ timeout: 15_000 });
 
 		// 2. Change severity to Low logs "Severity changed to Low"
+		// One checked row per severity in the ⋯ menu: the kit menu has no submenus.
 		await page.getByTestId("header-more").click();
-		await page.getByTestId("header-severity-menu").hover();
-		await page.getByTestId("header-severity-low").click();
+		await page.getByTestId("menu-severityLow").click();
 
 		await expect(page.getByTestId("header-severity")).toHaveText("Low");
 		const sevRow = page
@@ -1156,8 +1163,7 @@ test.describe("Incident Overview (#811, PR #815)", {
 			isMobile: true,
 		});
 
-		// #1154: UI moved: waits for `getByTestId('details-toggle')`, which no longer renders
-		test.fixme("the incident header and the area strip keep every 48 px target on screen at 320, 360 and 390 px", async ({
+		test("the incident header and the area strip keep every 48 px target on screen at 320, 360 and 390 px", async ({
 			page,
 			alertmanager,
 			deliverWebhook,
@@ -1176,7 +1182,7 @@ test.describe("Incident Overview (#811, PR #815)", {
 				await page.setViewportSize({ width, height: 844 });
 				for (const [path, required] of [
 					[`/incidents/${inc.id}`, header],
-					[`/incidents/${inc.id}/conversation`, [...header, "details-toggle"]],
+					[`/incidents/${inc.id}/conversation`, [...header, "panel-toggle"]],
 				] as const) {
 					await visit(page, path);
 					for (const id of required)
@@ -1196,8 +1202,7 @@ test.describe("Incident Overview (#811, PR #815)", {
 			}
 		});
 
-		// #1154: UI moved: waits for `getByTestId('details-toggle')`, which no longer renders
-		test.fixme("no incident page is wider than the screen at 320, 360 and 390 px (0.5.3 walk W11)", async ({
+		test("no incident page is wider than the screen at 320, 360 and 390 px (0.5.3 walk W11)", async ({
 			page,
 			alertmanager,
 			deliverWebhook,
@@ -1229,7 +1234,7 @@ test.describe("Incident Overview (#811, PR #815)", {
 				expect
 					.soft(await sidewaysFaults(page), `conversation at ${width}`)
 					.toEqual([]);
-				await page.getByTestId("details-toggle").click();
+				await page.getByTestId("panel-toggle").click();
 				// One panel (#1024): Incident holds Summary and Context, Changes holds Files and the diff.
 				for (const [tab, toggle, shown] of [
 					["kind", null, "run-details-summary"],
@@ -1248,8 +1253,7 @@ test.describe("Incident Overview (#811, PR #815)", {
 			}
 		});
 
-		// #1154: UI moved: waits for `getByTestId('details-toggle')`, which no longer renders
-		test.fixme("a warning the phone strip hides marks the details toggle (0.5.3 walk W11)", async ({
+		test("a warning the phone strip hides marks the header's ⋯ (0.5.3 walk W11)", async ({
 			page,
 			alertmanager,
 			deliverWebhook,
@@ -1265,10 +1269,11 @@ test.describe("Incident Overview (#811, PR #815)", {
 			});
 			await waitForRun(page, inc.id, (r) => r.status === "completed", "ready");
 			await visit(page, `/incidents/${inc.id}/conversation`);
-			const toggle = page.getByTestId("details-toggle");
+			// The details' warnings ride on the header's ⋯ while the panel is shut (#1176 F1).
+			const more = page.getByTestId("header-more");
 			await expect(page.getByTestId("run-strip-tools")).toBeHidden();
 			await expect(page.getByTestId("details-warn")).toBeVisible();
-			await expect(toggle).toHaveAttribute(
+			await expect(more).toHaveAttribute(
 				"aria-label",
 				/Could not read alerts or metrics/,
 			);
@@ -1277,8 +1282,7 @@ test.describe("Incident Overview (#811, PR #815)", {
 			await expect(page.getByTestId("details-warn")).toHaveCount(0);
 		});
 
-		// #1154: UI moved: waits for `getByTestId('details-toggle')`, which no longer renders
-		test.fixme("the run details sheet's tabs sit above the run strip at 320, 360 and 390 px (0.5.3 walk W11)", async ({
+		test("the run details sheet's tabs sit above the run strip at 320, 360 and 390 px (0.5.3 walk W11)", async ({
 			page,
 			alertmanager,
 			deliverWebhook,
@@ -1295,7 +1299,7 @@ test.describe("Incident Overview (#811, PR #815)", {
 			for (const width of [320, 360, 390]) {
 				await page.setViewportSize({ width, height: 844 });
 				await visit(page, `/incidents/${inc.id}/conversation`);
-				await page.getByTestId("details-toggle").click();
+				await page.getByTestId("panel-toggle").click();
 				await page.getByTestId("panel-tab-kind").click();
 				await expect(page.getByTestId("run-details-summary")).toBeVisible();
 				const covered = await page.evaluate(() => {

@@ -3,7 +3,13 @@
 
 import { expect, type Page } from "@playwright/test";
 import { test } from "../steps/fixtures";
-import { fireIncident, LIVE, visit, waitForRun } from "../steps/product";
+import {
+	fireIncident,
+	LIVE,
+	readableTitle,
+	visit,
+	waitForRun,
+} from "../steps/product";
 
 /**
  * Resume on a run a restart cut off takes up that same run, from the inbox and
@@ -36,8 +42,7 @@ async function readAsInterrupted(page: Page, runId: string) {
 	);
 }
 
-// #1154: UI moved: waits for `locator('[data-testid="inbox-row"][data-incident="8afbacff-3145-4775-aaf1-f014c9ac85b6...
-test.fixme("Resume on an interrupted run keeps its id, from the inbox and the overview", async ({
+test("Resume on an interrupted run keeps its id, from the inbox and the overview", async ({
 	page,
 	alertmanager,
 	deliverWebhook,
@@ -71,28 +76,26 @@ test.fixme("Resume on an interrupted run keeps its id, from the inbox and the ov
 	});
 
 	await visit(page, "/incidents");
-	const row = page.locator(
-		`[data-testid="inbox-row"][data-incident="${made.id}"]`,
+	await page.getByTestId("incidents-filter").fill(made.title);
+	const group = page.locator(
+		'[data-testid="needs-group"][data-need="interrupted"]',
 	);
+	await expect(group).toContainText("Run interrupted");
+	const row = group
+		.getByTestId("inbox-row")
+		.filter({ hasText: readableTitle(made.title) });
 	await expect(row.getByTestId("inbox-row-action")).toHaveText("Resume");
-	await expect(
-		page.locator('[data-testid="needs-group"][data-need="interrupted"]'),
-	).toContainText("Run interrupted");
 	await row.getByTestId("inbox-row-action").click();
 	await expect
 		.poll(() => resumed)
 		.toEqual([`/api/investigations/${run.id}/resume`]);
 
 	await visit(page, `/incidents/${made.id}`);
-	await expect(page.getByTestId("run-strip-label")).toHaveText(/interrupted$/, {
-		timeout: 15_000,
-	});
-	await expect(page.getByTestId("situation-brief")).toContainText(
-		"was interrupted when PrismaLens restarted",
+	await expect(page.getByTestId("run-strip-label")).toHaveText(
+		/interrupted, PrismaLens restarted, not resumed$/,
+		{ timeout: 15_000 },
 	);
-	await page.getByTestId("details-toggle").click();
-	await page.getByTestId("panel-tab-kind").click();
-	await expect(page.getByTestId("why-failed")).toContainText(
+	await expect(page.getByTestId("situation-brief")).toContainText(
 		"was interrupted when PrismaLens restarted",
 	);
 	await page.getByTestId("run-strip-resume").click();

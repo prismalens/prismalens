@@ -10,8 +10,6 @@ Feature: The incident record and its report
       Given a paired browser at 1440 px
       And incident INC-1 "BooklogrApiLatencyP99High" on service "Booklogr API" with one alert
 
-    # #1154: UI moved or app changed: expected \d\d\.?$/, received 30.Connection lost, retrying."
-    @fixme
     Scenario: Connection lost is visible, and nothing pretends to be live
       Given the API stops answering while I am on INC-1's Conversation
       Then within 10 seconds a line at the top of the page reads "Connection lost, retrying. What you see is as of <time>"
@@ -31,53 +29,42 @@ Feature: The incident record and its report
       Then the summary says a run is working and its current step, and the Report section reads "Run #1 working"
 
   Rule: Report
-    Four slots above the fold, four variants.
+    The run's conclusion ends its conversation under the summary; the evidence behind it is
+    the details panel's Incident tab (#1101 moved it off the overview's why card).
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: A report with a cause
       Given INC-1's run finished naming "Checkout calls the payment provider with no timeout"
       When I open the Report tab
-      Then the first thing I read is a confidence word ("Likely") and the cause as a headline, with inline code rendered
-      And "Why we think so" lists up to three evidence lines, each marked For or Against and seen or inferred, each with a link that opens the command or file in the Conversation
-      And "What we could not check" lists each gap as a sentence
-      And "Do now" is a checklist with one sentence saying PrismaLens did not run the steps
-      And below the fold: "Ruled out" and "Grounded in" as a list of paths one per line, and no "Event log"
-      And "Export" is at the top right of the report's header
+      Then the conversation ends on "Run 1 concluded: likely cause" under the report's summary
+      And "Likely cause" heads the cause with its evidence, and an evidence step shows that step in the conversation
+      And "Not checked" lists each gap with a way to connect a source
+      And "Stop the impact" and the agent's suggested next steps say what to do now
+      And "Ruled out" lists what the run excluded, and no "Event log"
+      And "Export" is in the header's menu
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: A report with no cause
       Given the run finished with no root cause and one supported finding
-      Then the first thing I read is "No cause found" and a headline saying what stopped it
-      And the supported finding appears under "What it did find", never as the answer
-      And a refused query appears under "What we could not check" with its plain reason
+      Then the conversation ends on "Run 1 concluded: no cause named" and the panel heads the leading idea "No cause named"
+      And the supported finding leads under it as an idea, never as the cause
+      And a refused query appears under "Not checked"
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: A failed run
       Given the run failed with "Not logged in. Run claude /login"
       When I open the Report tab
-      Then I read "No report", the agent's own error verbatim, a line saying whether the alert still fires, and a link to the conversation
-      And the band's menu offers "New run"
+      Then I read "No report", the agent's own error verbatim, that the alert still fires, and the conversation ends on the failure
+      And the run strip offers "Retry"
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: A late failure keeps what the conversation holds
       Given the run failed after 9 minutes with findings in the conversation
       When I open the Report tab
-      Then I read "No report. The run failed after 9m." and how many commands and files it got through, with a link to the Conversation
+      Then I read "No report" and "The run failed before it reported.", and the conversation keeps what the run did
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: The first screen on a phone
       Given a phone at 390 px and INC-1's report names a cause
       When I open the Report tab
-      Then without scrolling I see the confidence word, the cause, and the summary of the cause, the first "Do now" step and the alert
-      And "Export" sits in the report's header, beside the run
+      Then without scrolling I see the summary of the cause, the alert, and the conclusion with its first step
+      And "Export" sits in the header's menu, beside the run
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: A stopped run
       Given the run was stopped
       When I open the Report tab
@@ -86,8 +73,6 @@ Feature: The incident record and its report
 
   Rule: Agent not signed in
 
-    # #1154: UI moved: waits for `getByTestId('why-card').or(getByTestId('why-failed')).first()`, which no longer renders
-    @fixme
     Scenario: The harness's own words
       Given Claude Code is installed and not signed in
       When a run starts on it
