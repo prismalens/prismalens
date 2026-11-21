@@ -436,11 +436,15 @@ Then("the band shows the kind, tier and team", async ({ page }) => {
 When(
 	"I add {string} as an upstream dependency",
 	async ({ page }, other: string) => {
-		await ensureService(page, {
+		const dbId = await ensureService(page, {
 			name: other,
 			type: "database",
 			tier: "tier_1",
 		});
+		// A retry on the same stack finds the edge an earlier attempt saved, and the picker leaves it out (#892).
+		const apiId = await ensureService(page, { name: "booklogr-api" });
+		await page.request.delete(`/api/services/${apiId}/dependencies/${dbId}`);
+		await page.request.delete(`/api/services/${dbId}/dependencies/${apiId}`);
 		await page.reload();
 		await page.getByTestId("add-dependency").click();
 		await page.getByTestId("dependency-service").click();
