@@ -95,8 +95,9 @@ const hydrated = (page: Page) =>
 test.describe("#1020 — thread list journeys (more)", () => {
 	test.beforeEach(({ page }) => hideQueryDevtools(page));
 
-	// #1154: UI moved: waits for `getByTestId('thread-list').getByTestId('thread-section-waiting')`, which no longer ren...
-	test.fixme("1. Waiting for you holds the thread on an approval; Recents lists the rest by last activity, one line each, up to 12, then View all", async ({
+	// The sidebar is #1101's list (pattern sheet §1): Needs you, Threads with Show more, Settled
+	// folded at the foot; Waiting for you, Recents and the Threads page it replaced are gone.
+	test("1. Needs you holds the thread on an approval; Threads lists the rest by last activity, 15 then Show more; Settled folds at the foot", async ({
 		page,
 	}) => {
 		const asks = threadRow({
@@ -119,7 +120,6 @@ test.describe("#1020 — thread list journeys (more)", () => {
 			id: id(102),
 			title: "Failed thread",
 			status: "failed",
-			unseen: true,
 			lastActivityAt: ago(2 * MIN),
 		});
 		const settled = threadRow({
@@ -129,7 +129,7 @@ test.describe("#1020 — thread list journeys (more)", () => {
 			settledAt: ago(60 * MIN),
 			lastActivityAt: ago(3 * MIN),
 		});
-		const older = Array.from({ length: 12 }, (_, i) =>
+		const older = Array.from({ length: 15 }, (_, i) =>
 			threadRow({
 				id: id(i),
 				title: `Older thread ${i}`,
@@ -142,66 +142,53 @@ test.describe("#1020 — thread list journeys (more)", () => {
 
 		await page.goto("/incidents");
 		const list = page.getByTestId("thread-list");
-		const waiting = list.getByTestId("thread-section-waiting");
-		await expect(waiting).toContainText("Waiting for you");
-		await expect(waiting.getByTestId("thread-row")).toHaveCount(1);
-		await expect(waiting.getByTestId("thread-row")).toHaveAttribute(
+		const needs = list.getByTestId("thread-section-needs");
+		await expect(needs).toContainText("Needs you");
+		await expect(needs.getByTestId("thread-row")).toHaveCount(1);
+		await expect(needs.getByTestId("thread-row")).toHaveAttribute(
 			"data-state",
-			"asks",
+			"approval",
 		);
-		await expect(waiting.getByTestId("thread-row")).toContainText(
+		await expect(needs.getByTestId("thread-row")).toContainText(
 			"Thread with pending approval",
 		);
 
-		const recents = list.getByTestId("thread-section-recents");
-		const rows = recents.getByTestId("thread-row");
-		// A waiting thread shows once, above; Recents stops at 12.
-		await expect(rows).toHaveCount(12);
+		const threads = list.getByTestId("thread-section-threads");
+		const rows = threads.getByTestId("thread-row");
+		// A thread that needs you shows once, above; Threads draws 15, then Show 2 more.
+		await expect(rows).toHaveCount(15);
 		await expect(rows.nth(0)).toHaveAttribute("data-id", id(101));
 		await expect(rows.nth(0)).toHaveAttribute("data-state", "working");
 		await expect(rows.nth(1)).toHaveAttribute("data-state", "failed");
-		// A settled thread leaves Recents; the Threads page still lists it.
-		await expect(recents.locator(`[data-id="${id(103)}"]`)).toHaveCount(0);
 		await expect(rows.nth(2)).toHaveAttribute("data-id", id(0));
-		await expect(rows.nth(2)).toHaveAttribute("data-state", "quiet");
-		await expect(
-			recents.getByTestId("thread-row").filter({ hasText: "Older thread 10" }),
-		).toHaveCount(0);
+		await expect(rows.nth(2)).toHaveAttribute("data-state", "done");
 		await expect(rows.nth(0)).toHaveAttribute("href", `/threads/${id(101)}`);
+		await expect(threads.locator(`[data-id="${id(103)}"]`)).toHaveCount(0);
+		const more = threads.getByTestId("threads-show-more");
+		await expect(more).toHaveText("Show 2 more");
+		await more.click();
+		await expect(rows).toHaveCount(17);
+		await expect(more).toHaveCount(0);
 
-		// One line each, with one trailing mark when there is something to say.
-		for (const n of [0, 1]) {
-			const box = await rows.nth(n).boundingBox();
-			expect(box?.height).toBeLessThanOrEqual(36);
-			await expect(rows.nth(n).getByTestId("tree-state")).toHaveCount(1);
-		}
-		await expect(rows.nth(3).getByTestId("tree-state")).toHaveCount(0);
-		await expect(rows.nth(3).getByTestId("row-origin")).toHaveCount(0);
+		// Needs you sits above Threads.
+		const needsBox = await needs.boundingBox();
+		const threadsBox = await threads.boundingBox();
+		expect(needsBox?.y ?? 0).toBeLessThan(threadsBox?.y ?? 0);
 
-		// The sections main's list had are gone.
-		for (const gone of [
-			"threads-needs",
-			"threads-active",
-			"threads-settled",
-			"thread-incident-chip",
-		])
-			await expect(page.getByTestId(gone)).toHaveCount(0);
-
-		// Waiting sits above Recents.
-		const waitingBox = await waiting.boundingBox();
-		const recentsBox = await recents.boundingBox();
-		expect(waitingBox!.y).toBeLessThan(recentsBox!.y);
-
-		await recents.getByTestId("threads-view-all").click();
-		await expect(page).toHaveURL(/\/threads$/);
-		await expect(page.getByTestId("threads-page")).toBeVisible();
-		await expect(
-			page.getByRole("main").locator(`[data-id="${id(103)}"]`),
-		).toHaveCount(1);
+		// Settled is folded at the foot with its count, and opens to the settled thread.
+		const settledGroup = list.getByTestId("thread-section-settled");
+		await expect(settledGroup.getByTestId("settled-toggle")).toContainText(
+			"Settled1",
+		);
+		await expect(settledGroup.getByTestId("thread-row")).toHaveCount(0);
+		await settledGroup.getByTestId("settled-toggle").click();
+		await expect(settledGroup.getByTestId("thread-row")).toHaveAttribute(
+			"data-id",
+			id(103),
+		);
 	});
 
-	// #1154: UI moved or app changed: expected 1, received 0
-	test.fixme("2. A settled thread is off Recents, and new activity brings it back at the top as working", async ({
+	test("2. A settled thread is off Threads, and new activity brings it back at the top as working", async ({
 		page,
 	}) => {
 		let hasNewActivity = false;
@@ -227,50 +214,31 @@ test.describe("#1020 — thread list journeys (more)", () => {
 
 		await page.goto("/incidents");
 		const rows = page
-			.getByTestId("thread-section-recents")
+			.getByTestId("thread-section-threads")
 			.getByTestId("thread-row");
-		// Settled, it is off Recents.
+		// Settled, it is off Threads.
 		await expect(rows).toHaveCount(1);
 		await expect(rows.nth(0)).toHaveAttribute("data-id", id(201));
 
 		hasNewActivity = true;
 		await page.reload();
 
+		await expect(rows).toHaveCount(2);
 		await expect(rows.nth(0)).toHaveAttribute("data-id", threadId);
 		await expect(rows.nth(0)).toHaveAttribute("data-state", "working");
 		await expect(rows.nth(0)).toContainText("Checkout latency investigation");
 	});
 
-	// #1154: UI moved or app changed: expected 0, received 1
-	test.fixme("3. The palette narrows by typing and holds no filters; the Threads page filters by who started it, status, project and search; Clear restores it", async ({
+	// The Threads page and its filters went with #1101 (sheet §1); the sidebar's Filter took them.
+	test("3. The palette narrows by typing and holds no filters; the sidebar's Filter keeps the list to a state in the URL, and Clear restores it", async ({
 		page,
 	}) => {
-		const REPO_1_ID = "11111111-2222-4333-8444-555555555551";
-		const REPO_2_ID = "11111111-2222-4333-8444-555555555552";
-		const SCHEDULE_ID = "22222222-3333-4444-8555-666666666661";
-		await page.route(
-			(url) => url.pathname === "/api/repositories",
-			async (route) => {
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify({
-						data: [
-							{ id: REPO_1_ID, fullName: "org/repo-one" },
-							{ id: REPO_2_ID, fullName: "org/repo-two" },
-						],
-						pagination: { total: 2, limit: 100, offset: 0, hasMore: false },
-					}),
-				});
-			},
-		);
 		const rows = [
 			threadRow({
 				id: id(301),
 				title: "Alpha chat on repo one",
 				status: "running",
 				completedAt: null,
-				repositoryId: REPO_1_ID,
 				lastActivityAt: ago(30 * MIN),
 			}),
 			threadRow({
@@ -278,29 +246,18 @@ test.describe("#1020 — thread list journeys (more)", () => {
 				title: "Beta investigation on repo two",
 				kind: "investigation",
 				status: "failed",
-				unseen: true,
-				repositoryId: REPO_2_ID,
 				lastActivityAt: ago(60 * MIN),
 			}),
 			threadRow({
 				id: id(303),
 				title: "Gamma scheduled check",
-				scheduleId: SCHEDULE_ID,
-				repositoryId: REPO_1_ID,
 				lastActivityAt: ago(90 * MIN),
 			}),
 		];
-		const searches: string[] = [];
 		await serveFeed(page, (params) => {
 			const search = params.get("search")?.toLowerCase();
-			const repositoryId = params.get("repositoryId");
-			if (search) searches.push(search);
 			return single(
-				rows.filter(
-					(r) =>
-						(!search || r.title.toLowerCase().includes(search)) &&
-						(!repositoryId || r.repositoryId === repositoryId),
-				),
+				rows.filter((r) => !search || r.title.toLowerCase().includes(search)),
 			);
 		});
 
@@ -310,7 +267,6 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		await expect(page.getByTestId("thread-search")).toBeVisible();
 		const results = page.getByTestId("thread-search-result");
 		await expect(results).toHaveCount(3);
-		// The palette holds no filters; they live on the Threads page (#1020).
 		await expect(page.getByTestId("thread-search-filters")).toHaveCount(0);
 		await page.getByTestId("thread-search-input").fill("Alpha");
 		await expect(results).toHaveCount(1);
@@ -318,69 +274,44 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		await page.getByTestId("thread-search-input").fill("");
 		await expect(results).toHaveCount(3);
 		await page.keyboard.press("Escape");
-		// The sidebar has no filter of its own.
-		await expect(page.getByTestId("sidebar-filter")).toHaveCount(0);
+		await expect(page.getByTestId("thread-search")).toHaveCount(0);
 
-		await page.getByTestId("nav-threads").click();
-		const threads = page.getByTestId("threads-page");
-		await expect(threads).toBeVisible();
-		const titles = threads.getByTestId("thread-row");
+		const titles = page.getByTestId("thread-list").getByTestId("row-title");
 		await expect(titles).toHaveText([
 			/Alpha chat/,
 			/Beta investigation/,
 			/Gamma scheduled/,
 		]);
-		// A schedule's run opens under its schedule.
-		await expect(titles.nth(2)).toHaveAttribute(
-			"href",
-			`/schedules/${SCHEDULE_ID}/runs/${id(303)}`,
-		);
-		await expect(threads.getByTestId("threads-clear")).toHaveCount(0);
-		const pick = async (filter: string, option: string) => {
-			await threads.getByTestId(`threads-filter-${filter}`).click();
-			await page.getByRole("option", { name: option, exact: true }).click();
+		const pick = async (state: string) => {
+			await page.getByTestId("sidebar-filter").click();
+			await page.getByTestId("thread-filter-state").click();
+			await page.getByTestId(`thread-filter-state-${state}`).click();
+			// Escape goes to the top layer: the list must be unmounted, not just closing, first.
+			await expect(page.getByRole("listbox")).toHaveCount(0);
+			await page.keyboard.press("Escape");
+			await expect(page.getByTestId("thread-filter-state")).toHaveCount(0);
 		};
-
-		// Started by
-		await pick("started-by", "Scheduled");
-		await expect(page).toHaveURL(/origin=schedule/);
-		await expect(titles).toHaveText([/Gamma scheduled/]);
-		await pick("started-by", "Started by you");
-		await expect(titles).toHaveText([/Alpha chat/, /Beta investigation/]);
-		await pick("started-by", "Started by anyone");
-		await expect(titles).toHaveCount(3);
-
-		// Status
-		await pick("status", "Failed");
+		await pick("failed");
+		await expect(page).toHaveURL(/state=failed/);
 		await expect(titles).toHaveText([/Beta investigation/]);
-		await pick("status", "Working");
+		await expect(page.getByTestId("sidebar-filter")).toHaveAttribute(
+			"aria-label",
+			"Filter, 1 on",
+		);
+		await pick("working");
 		await expect(titles).toHaveText([/Alpha chat/]);
-		await pick("status", "Any status");
-		await expect(titles).toHaveCount(3);
+		// A reload keeps the filter: the URL holds it.
+		await page.reload();
+		await expect(titles).toHaveText([/Alpha chat/]);
 
-		// Project: asked of the server
-		await pick("project", "org/repo-two");
-		await expect(page).toHaveURL(new RegExp(`project=${REPO_2_ID}`));
-		await expect(titles).toHaveText([/Beta investigation/]);
-		await pick("project", "Any project");
+		await page.getByTestId("sidebar-filter").click();
+		await page.getByTestId("thread-filters-clear").click();
 		await expect(titles).toHaveCount(3);
-
-		// Search: asked of the server and matched on the title
-		await threads.getByTestId("threads-search").fill("gamma");
-		await expect(titles).toHaveText([/Gamma scheduled/]);
-		expect(searches).toContain("gamma");
-
-		// Clear restores every thread
-		await pick("status", "Failed");
-		await expect(threads.getByTestId("threads-none")).toBeVisible();
-		await threads.getByTestId("threads-clear").click();
-		await expect(titles).toHaveCount(3);
-		await expect(threads.getByTestId("threads-search")).toHaveValue("");
-		await expect(page).toHaveURL(/\/threads$/);
+		await expect(page).not.toHaveURL(/state=/);
 	});
 
-	// #1154: UI moved or app changed: expected 2, received 0
-	test.fixme("4. An incident's threads show as one row that opens the incident", async ({
+	// #1101's list is flat (sheet §1): an incident's threads are rows of their own, not one block.
+	test("4. An incident's threads list as rows that open the incident at their run; an alert's run reads as its incident", async ({
 		page,
 	}) => {
 		const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
@@ -388,6 +319,7 @@ test.describe("#1020 — thread list journeys (more)", () => {
 			id: id(401),
 			incidentId: INCIDENT_ID,
 			title: "Root cause analysis",
+			triggerType: "auto_critical",
 			status: "running",
 			completedAt: null,
 			lastActivityAt: ago(1 * MIN),
@@ -421,24 +353,30 @@ test.describe("#1020 — thread list journeys (more)", () => {
 
 		await page.goto("/incidents");
 		const rows = page
-			.getByTestId("thread-section-recents")
+			.getByTestId("thread-section-threads")
 			.getByTestId("thread-row");
-		await expect(rows).toHaveCount(2);
-		const incident = rows.nth(0);
-		await expect(incident).toContainText("Gateway 502 spike");
-		await expect(incident).not.toContainText("Root cause analysis");
-		await expect(incident).not.toContainText("Mitigation run");
-		await expect(incident).toHaveAttribute("href", `/incidents/${INCIDENT_ID}`);
-		await expect(incident).toHaveAttribute("data-id", id(401));
-		// The block shows its liveliest state: one of its threads is working.
-		await expect(incident).toHaveAttribute("data-state", "working");
+		const at = (n: number) =>
+			`/incidents/${INCIDENT_ID}/conversation?investigation=${id(n)}`;
+		// By last activity: the alert's run, the plain thread, then the incident's other run.
+		await expect(rows).toHaveCount(3);
+		await expect(rows.nth(0)).toHaveAttribute("data-id", id(401));
+		await expect(rows.nth(0)).toHaveAttribute("href", at(401));
+		await expect(rows.nth(0)).toHaveAttribute("data-state", "working");
+		await expect(rows.nth(0).getByTestId("row-title")).toHaveText(
+			"Gateway 502 spike",
+		);
+		await expect(rows.nth(1)).toHaveAttribute("href", `/threads/${id(403)}`);
+		await expect(rows.nth(2)).toHaveAttribute("href", at(402));
+		await expect(rows.nth(2).getByTestId("row-title")).toHaveText(
+			"Mitigation run",
+		);
 		await expect(page.getByTestId("thread-unit")).toHaveCount(0);
 		await expect(page.getByTestId("thread-incident-chip")).toHaveCount(0);
-		await expect(rows.nth(1)).toHaveAttribute("href", `/threads/${id(403)}`);
+		await rows.nth(0).click();
+		await expect(page).toHaveURL(new RegExp(`investigation=${id(401)}`));
 	});
 
-	// #1154: UI moved or app changed: expected visible, received hidden
-	test.fixme("5. The sidebar's doors: New, Search, Threads, Automation, Services, Settings at the foot, and Operations only once alerts exist; c opens Home with Incident on; Ctrl Shift O opens Home", async ({
+	test("5. The sidebar's doors: Home, Search, Triggers, Projects, Settings at the foot, and Operations only once alerts exist; c opens Home with Incident on; Ctrl Shift O opens Home", async ({
 		page,
 	}) => {
 		let delivered = false;
@@ -470,28 +408,47 @@ test.describe("#1020 — thread list journeys (more)", () => {
 							}),
 						}),
 		);
+		// Alerts with no service earn a door of their own; none here.
+		await page.route(
+			(url) => url.pathname === "/api/alerts",
+			(route) =>
+				route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						data: [],
+						pagination: { total: 0, limit: 1, offset: 0, hasMore: false },
+					}),
+				}),
+		);
+		// The door stays once earned on this device; the paired state earned it on the seeded stack.
+		await page.addInitScript(() =>
+			localStorage.removeItem("pl.nav.operations"),
+		);
+		// The Threads page is gone (#1101 sheet §1): /threads lands on Home, the list is the sidebar.
 		await page.goto("/threads");
+		await expect(page).toHaveURL(/\/new$/);
 		const sidebar = page.getByTestId("sidebar");
 		await expect(sidebar).toBeVisible();
 		const doors: [string, RegExp][] = [
-			["nav-new", /\/new$/],
-			["nav-threads", /\/threads$/],
 			["nav-automation", /\/automation$/],
+			["nav-projects", /\/projects$/],
 			["nav-settings", /\/settings/],
-			// Last: Services opens its first service by itself, which would race a next click.
-			["nav-services", /\/services/],
+			["nav-new", /\/new$/],
 		];
 		for (const [door] of doors)
 			await expect(sidebar.getByTestId(door)).toBeVisible();
 		await expect(sidebar.getByTestId("nav-search")).toBeVisible();
-		await expect(sidebar.getByTestId("nav-incidents")).toHaveCount(0);
-		await expect(sidebar.getByTestId("nav-schedules")).toHaveCount(0);
+		await expect(sidebar.getByTestId("nav-automation")).toHaveText(/Triggers/);
+		// At full width the list is in the sidebar, so its rail door stays hidden.
+		await expect(sidebar.getByTestId("nav-threads")).toBeHidden();
+		await expect(sidebar.getByTestId("nav-incidents")).toBeHidden();
 		await expect(sidebar.getByTestId("nav-alerts")).toHaveCount(0);
 		// Settings sits at the foot, below the list.
 		const settingsBox = await sidebar.getByTestId("nav-settings").boundingBox();
 		const listBox = await sidebar.getByTestId("thread-list").boundingBox();
-		expect(settingsBox!.y).toBeGreaterThan(listBox!.y);
-		await expect(sidebar.getByTestId("nav-threads")).toHaveAttribute(
+		expect(settingsBox?.y ?? 0).toBeGreaterThan(listBox?.y ?? 0);
+		await expect(sidebar.getByTestId("nav-new")).toHaveAttribute(
 			"aria-current",
 			"page",
 		);
@@ -506,8 +463,8 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		await sidebar.getByTestId("nav-incidents").click();
 		await expect(page).toHaveURL(/\/incidents$/);
 
-		// `c` opens Home with Incident on
-		await expect(page.getByTestId("thread-list")).toBeVisible();
+		// `c` opens Home with Incident on; the board owns the key, so it must be up.
+		await expect(page.getByTestId("create-incident-button")).toBeVisible();
 		// Clear focus without clicking: a click at the page's centre can land on a field or a row.
 		await page.evaluate(() =>
 			(document.activeElement as HTMLElement | null)?.blur(),
@@ -535,8 +492,7 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		});
 	});
 
-	// #1154: App looks broken: the test timed out with no pending locator (120 s)
-	test.fixme("6. The list is read-only safe: a thread title containing <img src=x onerror=alert(1)> renders as plain text", async ({
+	test("6. The list is read-only safe: a thread title containing <img src=x onerror=alert(1)> renders as plain text", async ({
 		page,
 	}) => {
 		let dialogFired = false;
@@ -549,12 +505,12 @@ test.describe("#1020 — thread list journeys (more)", () => {
 
 		await page.goto("/incidents");
 		await expect(
-			page.getByTestId("thread-row").locator("span[dir=auto]"),
+			page.getByTestId("thread-row").getByTestId("row-title"),
 		).toHaveText(xss);
-		await page.getByTestId("nav-threads").click();
-		await expect(
-			page.getByTestId("threads-page").getByTestId("thread-row"),
-		).toContainText(xss);
+		// The Threads page is gone (#1101 sheet §1); the palette is the other place a title shows.
+		await hydrated(page);
+		await page.keyboard.press("Control+k");
+		await expect(page.getByTestId("thread-search-result")).toContainText(xss);
 		await expect(page.locator("img[src='x']")).toHaveCount(0);
 		expect(dialogFired).toBe(false);
 	});
