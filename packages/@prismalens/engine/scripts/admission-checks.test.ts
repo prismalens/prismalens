@@ -8,6 +8,7 @@ import {
 	firstWord,
 	toolCallLine,
 	contextKeptLine,
+	firstPromptEchoLine,
 	followUpToolLine,
 	readsAllowed,
 	parseTranscript,
@@ -335,6 +336,26 @@ describe("admissionExit (#848): the gate's truth table", () => {
 		expect(toolCallLine({ gateway: false, ran: true, calls: 3, connected: true })).toBe(
 			"fail (no PrismaLens gateway was offered)",
 		);
+	});
+});
+
+describe("firstPromptEchoLine (R11, #1085)", () => {
+	const marker = "R11-PROMPT-1";
+	const reply = `I checked the prior session's state: you said "${marker} investigate", so I will continue.`;
+
+	it("fails a scripted run whose reply carries the first prompt as new text", () => {
+		expect(firstPromptEchoLine({ live: false, reply, marker, path: "load, 0 replayed updates dropped" })).toBe(
+			`fail (the first prompt came back as new text: ${JSON.stringify(reply.slice(0, 80))}; load, 0 replayed updates dropped)`,
+		);
+	});
+
+	it("does not judge a live model that quotes the prompt it was reopened with", () => {
+		expect(firstPromptEchoLine({ live: true, reply, marker, path: "load" })).toBeNull();
+	});
+
+	it("passes a reply that never names the marker, scripted or live", () => {
+		for (const live of [false, true])
+			expect(firstPromptEchoLine({ live, reply: "Continuing.", marker, path: "load" })).toBeNull();
 	});
 });
 

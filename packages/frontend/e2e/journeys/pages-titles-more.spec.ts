@@ -475,11 +475,4 @@ test.describe("#1020 — pages, titles, schedules", () => {
 		await nameInput.fill(serviceName);
 		await expect(makeSection.getByText(`service=${serviceName}`)).toBeVisible();
 	});
-
-	test("6. After a user rename, an agent title update does not overwrite the user's title", async () => {
-		test.skip(
-			true,
-			"The stack does not expose an HTTP/UI path or fake-session for agent pl_thread_title updates",
-		);
-	});
 });
