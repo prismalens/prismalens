@@ -282,8 +282,14 @@ test.describe("#1020 — thread list journeys (more)", () => {
 			/Beta investigation/,
 			/Gamma scheduled/,
 		]);
+		// The Filter's popover loads after first paint; a press on its stand-in can be lost in dev (#1154).
+		const openFilter = async () => {
+			const filter = page.getByTestId("sidebar-filter");
+			await expect(filter).toHaveAttribute("aria-haspopup", "dialog");
+			await filter.click();
+		};
 		const pick = async (state: string) => {
-			await page.getByTestId("sidebar-filter").click();
+			await openFilter();
 			await page.getByTestId("thread-filter-state").click();
 			await page.getByTestId(`thread-filter-state-${state}`).click();
 			// Escape goes to the top layer: the list must be unmounted, not just closing, first.
@@ -304,7 +310,7 @@ test.describe("#1020 — thread list journeys (more)", () => {
 		await page.reload();
 		await expect(titles).toHaveText([/Alpha chat/]);
 
-		await page.getByTestId("sidebar-filter").click();
+		await openFilter();
 		await page.getByTestId("thread-filters-clear").click();
 		await expect(titles).toHaveCount(3);
 		await expect(page).not.toHaveURL(/state=/);
