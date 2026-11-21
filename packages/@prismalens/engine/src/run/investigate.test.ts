@@ -452,7 +452,25 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(errCalls).toEqual([{ phase: "start", turnId: 1 }]);
 	});
 
-	it.skip("a hook that never resolves lets the turn go on after TURN_HOOK_MS (needs fake timers; investigate.test.ts uses real timers with subprocesses)", () => {});
+	it("a hook that never resolves lets the turn go on after TURN_HOOK_MS, and its signal is aborted", async () => {
+		vi.useFakeTimers();
+		try {
+			const signals: AbortSignal[] = [];
+			const { events, runDir } = await collect("ok", {
+				onTurn: (_phase, _turnId, signal) => {
+					signals.push(signal);
+					vi.advanceTimersByTime(15_000);
+					return new Promise<void>(() => {});
+				},
+			});
+			expect(events.at(-1)?.kind).toBe("report");
+			expect(promptsSent(runDir).length).toBeGreaterThan(0);
+			expect(signals.length).toBeGreaterThan(0);
+			expect(signals.every((s) => s.aborted)).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 
 	it("delivers a queued message when the turn ends and answers it before the report (#743)", async () => {
 		const queue = [{ text: "Check the 13:58 deploy first." }];

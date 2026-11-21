@@ -395,6 +395,51 @@ describe("summarySections (#811 data mapping)", () => {
 	});
 });
 
+describe("a folder checkout's Code row (the credential left the run strip for Run details, #1101)", () => {
+	it("says a folder was cloned without a credential, and from where", () => {
+		const out = summarySections(
+			inv({
+				workspace: {
+					layout: "single",
+					cwd: "/work",
+					repos: [
+						{
+							name: "walk",
+							dir: "/work/walk",
+							sourceKind: "folder",
+							url: "/src/walk",
+							subPath: null,
+							connectionId: null,
+							head: "a".repeat(40),
+							branch: "main",
+							services: [],
+							credential: { source: "none", label: "folder", via: "a local folder" },
+						},
+					],
+				},
+			}),
+			{
+				status: { text: "Concluded: likely cause", tone: "ok" },
+				started: { text: "Today 01:05 by PrismaLens" },
+				took: { label: "Took", text: "2m 16s" },
+				agent: "Claude Code 2.3.1",
+				model: { text: "Opus", warn: false },
+				effort: "High",
+				access: { text: "Auto", sub: "No sandbox on this machine." },
+				chat: false,
+			},
+		);
+		expect(out.find((s) => s.title === "Code")?.rows).toEqual([
+			{
+				label: "walk",
+				text: "main at aaaaaaa",
+				mono: true,
+				sub: "Cloned without a credential (folder) from /src/walk.",
+			},
+		]);
+	});
+});
+
 describe("filterSteps", () => {
 	const s = (n: number, kind: "command" | "file", ok: boolean | null) =>
 		({ n, kind, ok }) as RunStep;

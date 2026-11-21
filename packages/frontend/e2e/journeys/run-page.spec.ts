@@ -318,13 +318,6 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		);
 	});
 
-	test("run-strip-code reads credential, hidden while panel is open", async () => {
-		test.skip(
-			true,
-			"run-strip-code was removed in #1101; the credential sits in Run details under Code (RunStrip.tsx:23)",
-		);
-	});
-
 	test("run-strip warning reads 'X, asked Y' when served model differs", async ({
 		page,
 	}) => {
@@ -374,13 +367,6 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 			timeout: 15_000,
 		});
 		await expect(page.getByTestId("composer-stop")).toHaveCount(0);
-	});
-
-	test("runs-menu lists runs-menu-item + runs-menu-new; current run has aria-current=page", async () => {
-		test.skip(
-			true,
-			"runs-menu was removed from the run page in #1101; runs sit in the header's ⋯ menu (RunStrip.tsx:23)",
-		);
 	});
 
 	test("crumb-incident goes to /incidents/$id; incident-back goes to /new", async ({
