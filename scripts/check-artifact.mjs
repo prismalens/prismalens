@@ -35,6 +35,12 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const win = (entry) => entry.split("/").join("\\");
 
+/**
+ * Nightlies live on GitHub only (#717): no Scoop bucket carries one, and their version
+ * (`0.5.6-nightly.20261121.27`) is 20 chars longer than a release's, twice in a Scoop path.
+ */
+const scoopCarries = (version) => !version.includes("-nightly.");
+
 /** Where each Windows install channel puts the artifact's entries, as [model, prefix, entry]. */
 export function pathModels({ kind, name, version, top }, entries) {
 	const models = [];
@@ -53,11 +59,12 @@ export function pathModels({ kind, name, version, top }, entries) {
 					`${HOME}\\AppData\\Local\\prismalens\\runtime\\${version}\\`,
 					`app/${rel}`,
 				]);
-				models.push([
-					"scoop",
-					`${HOME}\\scoop\\apps\\prismalens\\${version}\\_tmp\\`,
-					`prismalens-${version}-win32-x64/app/${rel}`,
-				]);
+				if (scoopCarries(version))
+					models.push([
+						"scoop",
+						`${HOME}\\scoop\\apps\\prismalens\\${version}\\_tmp\\`,
+						`prismalens-${version}-win32-x64/app/${rel}`,
+					]);
 			}
 		} else {
 			// install.ps1 unpacks without the top dir; Scoop's extract_dir unpacks into _tmp (#905).
@@ -66,11 +73,12 @@ export function pathModels({ kind, name, version, top }, entries) {
 				`${HOME}\\AppData\\Local\\prismalens\\runtime\\${version}\\`,
 				entry.slice(top.length + 1),
 			]);
-			models.push([
-				"scoop",
-				`${HOME}\\scoop\\apps\\prismalens\\${version}\\_tmp\\`,
-				entry,
-			]);
+			if (scoopCarries(version))
+				models.push([
+					"scoop",
+					`${HOME}\\scoop\\apps\\prismalens\\${version}\\_tmp\\`,
+					entry,
+				]);
 		}
 	}
 	const deepest = new Map();
