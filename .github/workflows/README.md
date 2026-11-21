@@ -49,7 +49,7 @@ the packed tarball starts with `Tarball:`.
 | `Tarball: installs and boots` (`packed-smoke`) | the tarball installs and boots in a clean container | plan `code` | yes |
 | `Tarball: alert to incident to report, unattended` (`packed-intake`) | a webhook becomes an incident, is investigated by the scripted fake ACP agent, and resolves | plan `intake` | yes, when it runs |
 | `Tarball: upgrades an old database` (`packed-upgrade-smoke`) | a database that predates `investigation_turns` upgrades on the packed tarball (#673) | plan `intake` | yes, when it runs |
-| `E2E / Playwright (Chromium, shard <n>/2)` (`e2e`, calls `e2e-browser.yml`) | the browser suite | plan `e2e` | yes, when it runs |
+| `E2E / Playwright (Chromium, shard <n>/4)` (`e2e`, calls `e2e-browser.yml`) | the browser suite | plan `e2e` | yes, when it runs |
 | `Proofs` (`proofs`, calls `proofs.yml`) | the release proofs below | plan `full` or `agents` | yes, when it runs |
 
 `proofs.yml` holds what a PR would otherwise pay for on every push. Each job packs or builds its own input:
@@ -121,7 +121,7 @@ and the standalone, desktop and cross-OS builds report in their own runs.
 
 ## `e2e-browser.yml`: sharded, with a quarantine
 
-The suite runs as 2 shards (`--shard=n/2`), each on its own runner with its own stacks; the `pair`
+The suite runs as 4 shards (`--shard=n/4`; #1154 brought back about 140 tests, and each shard holds the 15-minute limit), each on its own runner with its own stacks; the `pair`
 setup project runs in both. Every shard writes its flaky and failed tests to the job summary.
 
 A test tagged `@quarantine` leaves the `chromium` and `journeys` projects and runs in
