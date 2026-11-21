@@ -99,12 +99,20 @@ export function triage(rows: readonly IncidentWithRelations[]): Folded[] {
 }
 
 /** Needs you (spec §1): one tab per band, then each band's cards in triage order. */
-export function NeedsYou({ groups, now }: { groups: Grouped[]; now: number }) {
+export function NeedsYou({
+	groups,
+	now,
+	arrived,
+}: {
+	groups: Grouped[];
+	now: number;
+	/** Rows that came after the inbox's first paint (`useArrivals`). */
+	arrived: Set<string>;
+}) {
 	const [filter, setFilter] = useState<NeedKey | "all">("all");
 	const [more, setMore] = useState<Partial<Record<NeedKey, boolean>>>({});
 	const [prompt, setPrompt] = useState<Prompt | null>(null);
 	const [busy, setBusy] = useState<Record<string, string>>({});
-	const arrived = useArrivals(groups);
 	const act = useRowActions(setBusy);
 	const total = groups.reduce((n, g) => n + g.rows.length, 0);
 	const shown =
@@ -334,6 +342,7 @@ export function IncidentCard({
 	return (
 		<ListCard
 			testId="inbox-row"
+			fresh={fresh}
 			title={readableTitle(incident.title)}
 			icon={
 				<Mark
@@ -348,7 +357,6 @@ export function IncidentCard({
 					params={{ id: incident.id }}
 					dir="auto"
 					data-testid="inbox-row-title"
-					data-new={fresh ? "" : undefined}
 				>
 					{title}
 				</Link>
@@ -426,13 +434,17 @@ export function IncidentCard({
 	);
 }
 
-/** Rows that appear after the first paint settle in with the arrival glow, once. */
-function useArrivals(groups: Grouped[]): Set<string> {
+/**
+ * Rows that appear after the first paint settle in with the arrival glow, once. Held by the
+ * inbox, not Needs you: an empty inbox has no Needs you, and its first arrival must glow (#891).
+ */
+export function useArrivals(groups: Grouped[], ready: boolean): Set<string> {
 	const seen = useRef<Set<string> | null>(null);
 	const [fresh, setFresh] = useState<Set<string>>(new Set());
 	const timers = useRef<number[]>([]);
 	const ids = groups.flatMap((g) => g.rows.map((r) => r.id)).join(",");
 	useEffect(() => {
+		if (!ready) return;
 		const now = ids ? ids.split(",") : [];
 		if (seen.current === null) {
 			seen.current = new Set(now);
@@ -452,7 +464,7 @@ function useArrivals(groups: Grouped[]): Set<string> {
 				3000,
 			),
 		);
-	}, [ids]);
+	}, [ids, ready]);
 	useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
 	return fresh;
 }

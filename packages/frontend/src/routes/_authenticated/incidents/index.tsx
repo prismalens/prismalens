@@ -11,7 +11,7 @@ import { HomeComposer } from "@/components/home/HomeComposer";
 import { AllIncidents } from "@/components/inbox/AllIncidents";
 import { InboxTiles } from "@/components/inbox/InboxTiles";
 import { groupNeeds, matches } from "@/components/inbox/inbox-model";
-import { NeedsYou } from "@/components/inbox/NeedsYou";
+import { NeedsYou, useArrivals } from "@/components/inbox/NeedsYou";
 import {
 	RecentlyResolved,
 	SetupCard,
@@ -231,6 +231,7 @@ function Inbox({ filter, now }: { filter: string; now: number | null }) {
 		() => groupNeeds(active.incidents.filter((i) => matches(i, filter))),
 		[active.incidents, filter],
 	);
+	const arrived = useArrivals(groups, !loading);
 	return (
 		<div
 			className="flex flex-col gap-4 px-4 pt-3 pb-6"
@@ -267,7 +268,7 @@ function Inbox({ filter, now }: { filter: string; now: number | null }) {
 				<>
 					<SetupLine />
 					{groups.length > 0 ? (
-						<NeedsYou groups={groups} now={now ?? 0} />
+						<NeedsYou groups={groups} now={now ?? 0} arrived={arrived} />
 					) : (
 						<section className="flex flex-col gap-2" aria-label="Needs you">
 							<h2 className="text-title">To look at</h2>
