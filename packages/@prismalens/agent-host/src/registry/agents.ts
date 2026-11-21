@@ -242,7 +242,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 					note: "OpenCode decides: a sub-agent the turn waits on stops with it, and one it sent to the background finishes.",
 				},
 				via: "source",
-				verifiedAt: { cli: "1.19.5", adapter: null },
+				verifiedAt: { cli: "1.19.6", adapter: null },
 				where: "packages/opencode/src/tool/task.ts onAbort, background.start",
 			},
 		},
@@ -284,7 +284,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 			systemPromptVia: {
 				value: "claude-meta",
 				via: "source",
-				verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
+				verifiedAt: { cli: "2.1.327", adapter: "0.108.0" },
 				where: "src/v1/acp-agent.ts params._meta?.systemPrompt",
 			},
 			subagentsOnStop: {
@@ -294,7 +294,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 					note: "A sub-agent the turn waits on always stops with it; one running in the background follows this setting.",
 				},
 				via: "source",
-				verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
+				verifiedAt: { cli: "2.1.327", adapter: "0.108.0" },
 				where:
 					"src/v1/acp-agent.ts perTaskStopAffordance, stopsWorkflowsOnCancel",
 			},
@@ -398,7 +398,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 					note: "Codex decides: a stop interrupts its main conversation, and nothing in its protocol chooses for its sub-agents.",
 				},
 				via: "source",
-				verifiedAt: { cli: "0.169.0", adapter: "2.6.0" },
+				verifiedAt: { cli: "0.170.0", adapter: "2.7.0" },
 				where: "src/CodexAcpServer.ts cancel(), interruptSessionTurn",
 			},
 		},
