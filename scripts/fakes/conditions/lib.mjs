@@ -58,7 +58,7 @@ export async function connect(url) {
 	 * @returns {Promise<any>}
 	 */
 	const api = async (path, init = {}) => {
-		const res = await fetch(`${url}/api${path}`, {
+		const res = await sent(`${url}/api${path}`, {
 			method: init.method ?? "GET",
 			// As the operator's own page sends it, so the UI's dev proxy in between is no cross-site hop.
 			headers: {
@@ -88,6 +88,31 @@ export async function connect(url) {
 			body: { harness: "claude-code" },
 		});
 	return { api, cookie };
+}
+
+/** Socket errors where the server never read the request: a closed keep-alive or a refused port. */
+const UNSENT = new Set([
+	"ECONNRESET",
+	"ECONNREFUSED",
+	"UND_ERR_SOCKET",
+	"EPIPE",
+]);
+
+/**
+ * fetch, again on a socket the server closed under it: a clock skip (host.standby) or a
+ * loaded host drops idle keep-alive sockets, and undici reuses one ("fetch failed", #1193).
+ * @param {string} url @param {RequestInit} init
+ */
+async function sent(url, init) {
+	for (let i = 1; ; i++) {
+		try {
+			return await fetch(url, init);
+		} catch (e) {
+			const code = /** @type {{ cause?: { code?: string } }} */ (e).cause?.code;
+			if (i === 4 || !code || !UNSENT.has(code)) throw e;
+			await sleep(1000 * i);
+		}
+	}
 }
 
 /**
