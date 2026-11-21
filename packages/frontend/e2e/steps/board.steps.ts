@@ -34,7 +34,6 @@ interface World {
 	named: Record<string, Made>;
 	page?: Page;
 	prefix?: string;
-	before?: number;
 	startedAt?: number;
 	refire?: Made;
 	boundary?: number;
@@ -319,11 +318,11 @@ When(
 	"an Alertmanager delivery for a new alert arrives",
 	async ({ page, alertmanager, deliverWebhook, unique }) => {
 		await openBoard(page);
-		const count = page
-			.getByTestId("sidebar")
-			.getByTestId("nav-incidents-count");
-		await expect(count).toHaveText(/\d+/);
-		w(page).before = Number(await count.innerText());
+		// A row is new only after the inbox's first paint: one in its first load never glows (#891).
+		await expect(page.getByTestId("inbox")).not.toHaveAttribute(
+			"aria-busy",
+			"true",
+		);
 		await page
 			.waitForResponse((r) => r.url().includes("/api/live/changes"), {
 				timeout: 15_000,

@@ -7,8 +7,6 @@ Feature: Services
     When I open Services
     Then each row shows the name, its health, its kind (Service, Database, Gateway, …), its code source as a folder path or host/owner/repo, and its open incidents
 
-  # Quarantined: #892 - the Services 'One page, Back at the band' journey passes on its first attempt
-  @quarantine
   Scenario: One page, Back at the band
     When I open "booklogr-api"
     Then I see "Code the run reads", "Connections", "Dependencies", "Runs" and "Incidents" on one page with no tabs

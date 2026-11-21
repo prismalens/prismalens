@@ -766,11 +766,11 @@ When(
 		await openDraft(page, { alertmanager, deliverWebhook }, unique("ChipRun"));
 		w(page).incident = new URL(page.url()).pathname.split("/")[2];
 		await page.getByTestId("agent-picker").click();
-		await picker(page).getByTestId("rail-codex").click();
-		await picker(page)
-			.locator(`[data-testid=model-option][data-model="${model}"]`)
-			.click();
-		await expect(page.getByTestId("model-pill")).toHaveText(model);
+		// One list grouped by agent, no rail (#893): Codex's ids are its names in lower case.
+		await row(page, "Codex", "codex", model.toLowerCase()).click();
+		await expect(
+			page.getByTestId("docked-composer").getByTestId("agent-picker"),
+		).toHaveAttribute("aria-label", `Model: ${model}`);
 		await page.getByTestId("effort-chip").click();
 		await page.getByTestId("effort-option").filter({ hasText: level }).click();
 		await expect(page.getByTestId("effort-chip")).toContainText(level);
@@ -797,7 +797,9 @@ Then(
 		await page.goBack();
 		await page.goBack();
 		await expect(page.getByTestId("docked-composer")).toBeVisible();
-		await expect(page.getByTestId("model-pill")).toHaveText(model);
+		await expect(
+			page.getByTestId("docked-composer").getByTestId("agent-picker"),
+		).toHaveAttribute("aria-label", `Model: ${model}`);
 		await expect(page.getByTestId("effort-chip")).toContainText(level);
 	},
 );

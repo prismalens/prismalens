@@ -35,8 +35,6 @@ Feature: Agent and model picker
     When I pick "/ask" under "/"
     Then the box's one send control is the arrow and its placeholder reads "Ask about this incident"
 
-  # Quarantined: #893 - the picker's 'A chip changes only this run' journey passes on its first attempt
-  @quarantine
   Scenario: A chip changes only this run, never Settings
     Given OpenCode and Codex are checked and Settings names OpenCode
     When on a new run's draft I pick Codex's "GPT-5.6" and "High" effort in the box

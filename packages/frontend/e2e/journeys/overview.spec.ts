@@ -741,10 +741,12 @@ test.describe("Incident Overview (#811, PR #815)", {
 		await expect(page.getByTestId("impact-retry")).toBeVisible();
 	});
 
-	// Quarantined: #894 - the overview's 'what changed' test passes on its first attempt
-	test("what changed: git credential problem, no repos, newest first rows, and all toggle", {
-		tag: "@quarantine",
-	}, async ({ page, alertmanager, deliverWebhook, unique }) => {
+	test("what changed: git credential problem, no repos, newest first rows, and all toggle", async ({
+		page,
+		alertmanager,
+		deliverWebhook,
+		unique,
+	}) => {
 		test.setTimeout(90_000);
 		const inc = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("WhatChanged"),
@@ -783,19 +785,19 @@ test.describe("Incident Overview (#811, PR #815)", {
 		await rewrite(page, run.id, { extraRows: true, impact: "chart" });
 		await visit(page, `/incidents/${inc.id}/conversation?panel=incident`);
 
+		// More than 6 rows: changes-all toggles between 6 and all 8. The rows are read once all 6 are in (#894).
 		const rows = page.getByTestId("changes-row");
+		const allBtn = page.getByTestId("changes-all");
+		await expect(allBtn).toBeVisible();
+		await expect(allBtn).toHaveText(/All \d+ events/);
+		await expect(rows).toHaveCount(6);
+
 		const allTexts = await rows.allTextContents();
 		const idx1 = allTexts.findIndex((t) => t.includes("Merge PR #88"));
 		const idx2 = allTexts.findIndex((t) => t.includes("Deploy v1.42"));
 		expect(idx1).toBeGreaterThanOrEqual(0);
 		expect(idx2).toBeGreaterThanOrEqual(0);
 		expect(idx1, "newer event appears before older event").toBeLessThan(idx2);
-
-		// More than 6 rows: changes-all toggles between 6 and all 8
-		const allBtn = page.getByTestId("changes-all");
-		await expect(allBtn).toBeVisible();
-		await expect(allBtn).toHaveText(/All \d+ events/);
-		await expect(rows).toHaveCount(6);
 
 		await allBtn.click();
 		await expect(allBtn).toHaveText("Latest 6");
