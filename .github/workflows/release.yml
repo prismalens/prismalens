@@ -70,10 +70,11 @@ jobs:
       - run: node scripts/acp-registry-snapshot.mjs
       - name: Commit when it changed
         run: |
-          git diff --quiet -- packages/@prismalens/config/src/acp-registry.json && exit 0
+          paths=(packages/@prismalens/config/src/acp-registry.json packages/@prismalens/config/src/acp-marks.json)
+          git diff --quiet -- "${paths[@]}" && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(#848): refresh the bundled ACP registry list" -- packages/@prismalens/config/src/acp-registry.json
+          git commit -m "chore(#848): refresh the bundled ACP registry list" -- "${paths[@]}"
           git push
 
   # Merging the release PR makes a DRAFT release (`draft` + `force-tag-creation` in
