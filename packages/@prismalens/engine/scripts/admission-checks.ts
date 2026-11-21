@@ -211,6 +211,21 @@ export function replayedText(
 	return null;
 }
 
+/**
+ * R11: the first prompt's marker came back in the reply as new text. The scripted model says it only
+ * if the agent replayed it, so there it fails; a live model may quote the prompt it was reopened
+ * with, so on it only `replayedText` (what the agent re-sent on the wire) is judged (#1085).
+ */
+export function firstPromptEchoLine(o: {
+	live: boolean;
+	reply: string;
+	marker: string;
+	path: string;
+}): string | null {
+	if (o.live || !o.reply.includes(o.marker)) return null;
+	return `fail (the first prompt came back as new text: ${JSON.stringify(o.reply.slice(0, 80))}; ${o.path})`;
+}
+
 /** An R-line's first word: `pass (…)` is `pass`. */
 export function firstWord(line: string): string {
 	return /^\S+/.exec(line)?.[0] ?? "missing";

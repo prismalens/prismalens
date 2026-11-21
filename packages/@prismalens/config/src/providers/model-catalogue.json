@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"updatedAt": "2026-11-19T00:00:00Z",
+	"updatedAt": "2026-11-21T00:00:00Z",
 	"source": "https://models.dev/api.json",
 	"harnesses": {
 		"opencode": {
@@ -188,7 +188,7 @@
 				{
 					"id": "opencode/gemini-3-flash",
 					"name": "Gemini 3 Flash",
-					"status": "current",
+					"status": "legacy",
 					"maker": "google"
 				},
 				{
@@ -200,7 +200,7 @@
 				{
 					"id": "opencode/gemini-3.1-pro",
 					"name": "Gemini 3.1 Pro Preview",
-					"status": "current",
+					"status": "legacy",
 					"maker": "google"
 				},
 				{
@@ -530,7 +530,7 @@
 				{
 					"id": "opencode/inkling-2-small-free",
 					"name": "Inkling 2 Small Free",
-					"status": "training",
+					"status": "legacy",
 					"maker": "thinkingmachines"
 				},
 				{

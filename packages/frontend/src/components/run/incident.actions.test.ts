@@ -33,6 +33,9 @@ describe("an incident page's ⋯ (#1101: only status and the primary action stay
 	it("lists All runs only when there is more than one run", () => {
 		expect(incidentRuns.when?.({ is: { manyRuns: true } })).toBe(true);
 		expect(incidentRuns.when?.({ is: {} })).toBe(false);
+		const c = ctx({ allRuns: vi.fn() });
+		incidentRuns.run(c);
+		expect(c.allRuns).toHaveBeenCalledTimes(1);
 	});
 
 	it("offers Resolve only on a resolvable incident", () => {

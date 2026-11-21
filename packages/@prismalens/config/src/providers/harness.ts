@@ -303,8 +303,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 			"full-access": () =>
 				"OpenCode runs its build agent with each tool's catch-all allowed; your own deny rules stay.",
 		},
-		// The pin-bump PR moved this on 2026-10-31: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "1.19.5", date: "2026-10-31" },
+		// The pin-bump PR moved this on 2026-11-21: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "1.19.6", date: "2026-11-21" },
 		loginHint: "`opencode auth login`, or a provider key in env",
 		signInArgs: ["auth", "login"],
 		loginEnvKeys: ["XDG_DATA_HOME", "OPENCODE_DB"],
@@ -352,8 +352,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 					: `Claude Code runs in ${bypass}, or ${edits} where your settings turn it off.`;
 			},
 		},
-		// The pin-bump PR moved this on 2026-11-16: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "0.106.0", date: "2026-11-16", companion: "2.1.323" },
+		// The pin-bump PR moved this on 2026-11-21: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "0.108.0", date: "2026-11-21", companion: "2.1.327" },
 		loginHint: "`claude auth login`, or `ANTHROPIC_API_KEY` in env",
 		signInArgs: ["auth", "login"],
 		loginEnvKeys: ["CLAUDE_CONFIG_DIR"],
@@ -404,8 +404,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 				`Codex runs in ${modeNamed(c, "agent-full-access", "Full access")}, outside its sandbox.`,
 		},
 		// Real-model runs were on codex 0.163.0: scripts/acp-admission.ts 3 of 3, gpt-6-luna (#846), and #848 live runs. Must equal @prismalens/agent-adapters' pin.
-		// The pin-bump PR moved this on 2026-11-16: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "2.6.0", date: "2026-11-16", companion: "0.169.0" },
+		// The pin-bump PR moved this on 2026-11-21: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "2.7.0", date: "2026-11-21", companion: "0.170.0" },
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 		signInArgs: ["login"],
 		loginEnvKeys: ["CODEX_HOME"],
