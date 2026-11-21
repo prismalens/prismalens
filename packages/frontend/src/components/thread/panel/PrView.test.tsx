@@ -104,6 +104,7 @@ const basePr: PullRequestView = {
 	id: "pr-1",
 	number: 42,
 	host: "github",
+	can: { rerunCheck: true },
 	repo: "acme/shop",
 	title: "feat: new feature",
 	url: "https://github.com/acme/shop/pull/42",

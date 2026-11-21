@@ -30,6 +30,7 @@ import type {
 } from "@/components/thread/panel/details.actions";
 import { KindTab } from "@/components/thread/panel/KindTab";
 import { NewTabPage } from "@/components/thread/panel/PaneBodies";
+import { PaneMenu, type PaneTool } from "@/components/thread/panel/PaneMenu";
 import { PrView } from "@/components/thread/panel/PrView";
 import {
 	type PrWatch,
@@ -414,10 +415,51 @@ const paneCtx = (shown: boolean): PaneCtx => ({
 	show: noopFile,
 	tile: noopFile,
 	close: noopFile,
+	closeTab: noopFile,
+	closeOthers: noopFile,
+	move: noopFile,
 	widen: noopFile,
 	link: "https://prismalens.local/threads/t1?panel=changes",
-	facts: { is: { shown, tileable: !shown, widenable: true } },
+	facts: { is: { shown, tileable: !shown, widenable: true, others: true } },
 });
+
+/** The tools a thread offers, one unavailable, for the New tab page and the pane menu. */
+const PANE_TOOLS: PaneTool[] = [
+	{
+		id: "thread",
+		label: "Details",
+		detail: "Pull requests, child threads, steps",
+		keys: ["Alt", "1"],
+	},
+	{
+		id: "changes",
+		label: "Changes",
+		detail: "The diff, by turn or against base",
+		keys: ["Alt", "2"],
+	},
+	{
+		id: "files",
+		label: "Files",
+		detail: "The worktree's files",
+		keys: ["Alt", "3"],
+	},
+	{
+		id: "browser",
+		label: "Browser",
+		detail: "A browser you and the agent share",
+		keys: ["Alt", "4"],
+	},
+	{
+		id: "terminal",
+		label: "Terminal",
+		detail: "A shell on the host, below the thread",
+		keys: ["Ctrl", "`"],
+		unavailable: {
+			why: "The terminal opens only on the host.",
+			next: "Open PrismaLens on that machine, or use Copy on any command.",
+		},
+	},
+];
 
 export const panelGallery: GallerySection[] = [
 	{
@@ -441,47 +483,38 @@ export const panelGallery: GallerySection[] = [
 		),
 	},
 	{
+		id: "pane-tab-menu",
+		title: "A pane tab's menu: close, close others, move",
+		render: () => (
+			<div className="flex h-[340px] justify-start">
+				<SurfaceMore id="pane.tab" ctx={paneCtx(true)} open align="start" />
+			</div>
+		),
+	},
+	{
+		id: "pane-menu",
+		title: "The pane menu: each tool that works here, by its key",
+		render: () => (
+			<div className="flex h-[340px] justify-start">
+				<PaneMenu
+					tools={PANE_TOOLS}
+					open
+					trigger={
+						<button type="button" aria-label="Open a pane">
+							Panes
+						</button>
+					}
+				/>
+			</div>
+		),
+	},
+	{
 		id: "pane-new-tab",
 		title: "New tab: every tool with its key, Tile below, and a path to open",
 		render: () => (
 			<div className="flex h-[300px] w-full max-w-[420px] flex-col">
 				<NewTabPage
-					tools={[
-						{
-							id: "thread",
-							label: "Details",
-							detail: "Pull requests, child threads, steps",
-							keys: ["Alt", "1"],
-						},
-						{
-							id: "changes",
-							label: "Changes",
-							detail: "The diff, by turn or against base",
-							keys: ["Alt", "2"],
-						},
-						{
-							id: "files",
-							label: "Files",
-							detail: "The worktree's files",
-							keys: ["Alt", "3"],
-						},
-						{
-							id: "browser",
-							label: "Browser",
-							detail: "A browser you and the agent share",
-							keys: ["Alt", "4"],
-						},
-						{
-							id: "terminal",
-							label: "Terminal",
-							detail: "A shell on the host, below the thread",
-							keys: ["Ctrl", "`"],
-							unavailable: {
-								why: "The terminal opens only on the host.",
-								next: "Open PrismaLens on that machine, or use Copy on any command.",
-							},
-						},
-					]}
+					tools={PANE_TOOLS}
 					onOpen={noopFile}
 					onTile={noopFile}
 					onOpenPath={noopFile}

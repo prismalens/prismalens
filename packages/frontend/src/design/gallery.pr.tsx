@@ -43,6 +43,7 @@ export const FIXTURE_PR: PullRequestView = {
 	id: "pr-1101",
 	url: "https://example.com/acme/shop/pull/412",
 	host: "github",
+	can: { rerunCheck: true },
 	repo: "acme/shop",
 	number: 412,
 	title: "Restore the orders index the checkout query lost",

@@ -8,9 +8,9 @@ export const attachmentChip = defineSurface({
 	object: "chip",
 	label: "Attachment actions",
 	menus: {
-		context: ["chip.expand", "chip.open", "-", "chip.remove"],
+		context: ["chip.expand", "chip.open", "chip.copy", "-", "chip.remove"],
 		// The design matrix draws it; the chip itself shows only its icons.
-		more: ["chip.expand", "chip.open", "-", "chip.remove"],
+		more: ["chip.expand", "chip.open", "chip.copy", "-", "chip.remove"],
 	},
 	states: {
 		default: "composer-chips",

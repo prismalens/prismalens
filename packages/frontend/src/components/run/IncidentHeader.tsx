@@ -11,12 +11,13 @@ import {
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal, PanelRight } from "lucide-react";
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { DRAFT } from "@/components/incidents/record-context";
 import { fact } from "@/components/kit/fact";
+import { runAction } from "@/components/kit/registry";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import type { SurfaceSection } from "@/components/kit/SurfaceMenus";
 import { Hint } from "@/components/shared/Hint";
@@ -46,8 +47,18 @@ import { isPlainChat } from "@/lib/trigger";
 import { cn } from "@/lib/utils";
 import type { IncidentCtx } from "./incident.actions";
 import { NoteDialog } from "./NoteDialog";
+import type { PageAct } from "./page-acts";
 import { firingWord } from "./run-labels";
 import { StatusUpdateDialog } from "./StatusUpdateDialog";
+
+const PAGE_ACTION = {
+	resolve: "incident.resolve",
+	note: "incident.note",
+	statusUpdate: "incident.statusUpdate",
+	merge: "incident.merge",
+	editCause: "incident.editCause",
+	investigateAgain: "incident.investigateAgain",
+} as const satisfies Record<PageAct, string>;
 
 /**
  * The breadcrumb header (#811): back to the inbox, `INC-1 WalkGrouped / Run 2`,
@@ -154,6 +165,8 @@ export function IncidentHeader({
 		...(warned && details ? details.warns : []),
 	].join(", ");
 	const ctx: IncidentCtx = {
+		open: () =>
+			void navigate({ to: "/incidents/$id", params: { id: incident.id } }),
 		toggleDetails: () => details?.onToggle(),
 		detailsLabel: details?.label ?? "Details",
 		allRuns: () =>
@@ -194,6 +207,16 @@ export function IncidentHeader({
 			},
 		},
 	};
+	// A row's action that needs this page's dialog arrives as `?act=`; it runs once it can.
+	const act = useSearch({ strict: false }) as { act?: PageAct };
+	useEffect(() => {
+		if (!act.act || !runAction(PAGE_ACTION[act.act], ctx)) return;
+		void navigate({
+			to: ".",
+			search: (s: Record<string, unknown>) => ({ ...s, act: undefined }),
+			replace: true,
+		});
+	});
 	return (
 		<Surface id="incident.header" ctx={ctx}>
 			<header

@@ -224,10 +224,12 @@ export function pullRequestView(
 		checks,
 		conflicts: row.conflicts,
 	};
+	const host = PrHostSchema.safeParse(row.host).data ?? "other";
 	return {
 		id: row.id,
 		url: row.url,
-		host: PrHostSchema.safeParse(row.host).data ?? "other",
+		host,
+		can: { rerunCheck: !!codeHost(host)?.rerunCheck },
 		repo: row.repo,
 		number: row.number,
 		title: row.title,

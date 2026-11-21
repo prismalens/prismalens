@@ -6,7 +6,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Surface } from "@/components/kit/Surface";
 import { DeleteServiceDialog } from "@/components/services/DeleteServiceDialog";
+import {
+	SERVICE_PAGE_ACTS,
+	type ServicePageAct,
+} from "@/components/services/page-acts";
 import { ServiceCodeSection } from "@/components/services/ServiceCodeSection";
 import { ServiceDependenciesSection } from "@/components/services/ServiceDependenciesSection";
 import { ServiceDetailSkeleton } from "@/components/services/ServiceDetailSkeleton";
@@ -15,6 +20,7 @@ import { ServiceIncidentsSection } from "@/components/services/ServiceIncidentsS
 import { ServiceInvestigationsSection } from "@/components/services/ServiceInvestigationsSection";
 import { ServiceTelemetrySection } from "@/components/services/ServiceTelemetrySection";
 import { ServiceWorkspaceSection } from "@/components/services/ServiceWorkspaceSection";
+import type { ServiceCtx } from "@/components/services/service.actions";
 import {
 	kindWord,
 	tierMeaning,
@@ -24,6 +30,7 @@ import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
 import { ProjectMark } from "@/components/shared/ProjectMark";
 import { NotFound, Problem } from "@/components/shared/State";
+import { openNewThread } from "@/components/thread/composer/quote";
 import { Button } from "@/components/ui/button";
 import { backTarget, useBack } from "@/hooks/use-back";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
@@ -36,8 +43,14 @@ import { orpc } from "@/lib/api/orpc-client";
 
 export const Route = createFileRoute("/_authenticated/services/$id/")({
 	// `tab` is accepted and ignored so links from before the one-page layout resolve.
-	validateSearch: (search: Record<string, unknown>): { tab?: string } =>
-		typeof search.tab === "string" ? { tab: search.tab } : {},
+	validateSearch: (
+		search: Record<string, unknown>,
+	): { tab?: string; act?: ServicePageAct } => ({
+		...(typeof search.tab === "string" ? { tab: search.tab } : {}),
+		...(SERVICE_PAGE_ACTS.includes(search.act as ServicePageAct)
+			? { act: search.act as ServicePageAct }
+			: {}),
+	}),
 	component: ServicePage,
 });
 
@@ -57,6 +70,18 @@ function ServicePage() {
 	const back = useBack(inServiceRecord, "/services");
 	const [editing, setEditing] = useState(false);
 	const [deleting, setDeleting] = useState(false);
+	// A card's Edit or Delete arrives as `?act=` and opens its dialog here.
+	const { act } = Route.useSearch();
+	useEffect(() => {
+		if (!act) return;
+		if (act === "edit") setEditing(true);
+		else setDeleting(true);
+		void navigate({
+			to: ".",
+			search: (s: Record<string, unknown>) => ({ ...s, act: undefined }),
+			replace: true,
+		});
+	}, [act, navigate]);
 	const [removing, setRemoving] = useState<{ from: string; to: string } | null>(
 		null,
 	);
@@ -136,63 +161,77 @@ function ServicePage() {
 		(i) => Date.now() - new Date(i.triggeredAt).getTime() < 30 * DAY,
 	).length;
 	const backHref = backTarget(inServiceRecord, "/services");
+	const ctx: ServiceCtx = {
+		open: () => {},
+		ask: () =>
+			openNewThread({
+				quotes: [],
+				references: [{ kind: "service", id: service.id, label: service.name }],
+			}),
+		link: `${window.location.origin}/services/${service.id}`,
+		edit: () => setEditing(true),
+		remove: () => setDeleting(true),
+		facts: {},
+	};
 
 	return (
 		<div className="flex h-full flex-col bg-canvas" data-testid="service-page">
-			<header
-				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-3 md:px-4"
-				data-testid="service-band"
-				data-title-row
-			>
-				<Button variant="text" size="icon" className="shrink-0" asChild>
-					<a
-						href={backHref}
-						onClick={(e) => {
-							e.preventDefault();
-							back();
-						}}
-						aria-label={
-							backHref === "/services" ? "Back to the services" : "Back"
-						}
-						data-testid="service-back"
+			<Surface id="service.header" ctx={ctx}>
+				<header
+					className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-3 md:px-4"
+					data-testid="service-band"
+					data-title-row
+				>
+					<Button variant="text" size="icon" className="shrink-0" asChild>
+						<a
+							href={backHref}
+							onClick={(e) => {
+								e.preventDefault();
+								back();
+							}}
+							aria-label={
+								backHref === "/services" ? "Back to the services" : "Back"
+							}
+							data-testid="service-back"
+						>
+							<ChevronLeft className="size-4" />
+						</a>
+					</Button>
+					<ProjectMark name={service.name} iconUrl={service.iconUrl} />
+					<h1 className="min-w-0 truncate text-title">{service.name}</h1>
+					<span
+						className="flex min-w-0 items-baseline gap-2.5 text-meta"
+						data-testid="service-meta"
 					>
-						<ChevronLeft className="size-4" />
-					</a>
-				</Button>
-				<ProjectMark name={service.name} iconUrl={service.iconUrl} />
-				<h1 className="min-w-0 truncate text-title">{service.name}</h1>
-				<span
-					className="flex min-w-0 items-baseline gap-2.5 text-meta"
-					data-testid="service-meta"
-				>
-					<span className="text-text-2">{kindWord(service.type)}</span>
-					<Hint label={tierMeaning(service.tier)}>
-						<span className="text-text-3">{tierWord(service.tier)}</span>
-					</Hint>
-					{service.team && (
-						<span className="truncate text-text-3 max-sm:hidden">
-							{service.team}
-						</span>
-					)}
-				</span>
-				<span className="flex-1" />
-				<Button
-					variant="text"
-					size="sm"
-					onClick={() => setEditing(true)}
-					data-testid="service-edit"
-				>
-					Edit
-				</Button>
-				<Button
-					variant="danger"
-					size="sm"
-					onClick={() => setDeleting(true)}
-					data-testid="service-delete"
-				>
-					Delete
-				</Button>
-			</header>
+						<span className="text-text-2">{kindWord(service.type)}</span>
+						<Hint label={tierMeaning(service.tier)}>
+							<span className="text-text-3">{tierWord(service.tier)}</span>
+						</Hint>
+						{service.team && (
+							<span className="truncate text-text-3 max-sm:hidden">
+								{service.team}
+							</span>
+						)}
+					</span>
+					<span className="flex-1" />
+					<Button
+						variant="text"
+						size="sm"
+						onClick={() => setEditing(true)}
+						data-testid="service-edit"
+					>
+						Edit
+					</Button>
+					<Button
+						variant="danger"
+						size="sm"
+						onClick={() => setDeleting(true)}
+						data-testid="service-delete"
+					>
+						Delete
+					</Button>
+				</header>
+			</Surface>
 			<div className="min-h-0 flex-1 overflow-y-auto">
 				<div className="mx-auto w-full max-w-[52rem] px-4 pt-3 pb-12">
 					{service.description && (
