@@ -7,6 +7,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Picker, type PickerOption } from "./Picker";
+import { PickerList } from "./PickerList";
 
 vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children: ReactNode }) => children,
@@ -239,5 +240,40 @@ describe("Picker", () => {
 		});
 
 		expect(document.querySelector("[cmdk-input]")).not.toBeNull();
+	});
+
+	// With no search field the list itself takes focus, not the Command root (#1197 review).
+	it("opens focused on the search when there is one, else on the list", async () => {
+		const opts = (n: number): PickerOption[] =>
+			Array.from({ length: n }, (_, i) => ({
+				id: `o${i}`,
+				name: `Option ${i}`,
+			}));
+		const mount = async (n: number) => {
+			await act(async () => {
+				root.render(
+					<PickerList
+						label="Model"
+						options={opts(n)}
+						groups={[""]}
+						values={[]}
+						emptyText="None"
+						pick={vi.fn()}
+					/>,
+				);
+			});
+		};
+
+		await mount(3);
+		expect(document.activeElement).toBe(document.querySelector("[cmdk-list]"));
+
+		await act(async () => root.unmount());
+		document.body.innerHTML = "";
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		root = createRoot(container);
+
+		await mount(9);
+		expect(document.activeElement).toBe(document.querySelector("[cmdk-input]"));
 	});
 });

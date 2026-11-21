@@ -3,6 +3,7 @@
 
 import { Command } from "cmdk";
 import { Check, TriangleAlert } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { OptionIcon, type PickerOption } from "./Picker";
@@ -32,11 +33,23 @@ export function PickerList({
 	listTestId?: string;
 	pick: (o: PickerOption) => void;
 }) {
+	const root = useRef<HTMLDivElement>(null);
+	// The list opens on its search, else on its list: the popover would focus a row's star (#1154).
+	useEffect(() => {
+		const el = root.current;
+		if (!el || el.contains(document.activeElement)) return;
+		(
+			el.querySelector<HTMLElement>("[cmdk-input]") ??
+			el.querySelector<HTMLElement>("[cmdk-list]")
+		)?.focus();
+	}, []);
 	return (
 		<Command
+			ref={root}
+			tabIndex={-1}
 			loop
 			label={label}
-			className="flex flex-col"
+			className="flex flex-col outline-none"
 			data-testid={listTestId}
 			filter={(_, search, keywords) =>
 				keywords?.some((k) => k.toLowerCase().includes(search.toLowerCase()))
@@ -54,7 +67,10 @@ export function PickerList({
 					<div className="-mx-1 my-1 h-px bg-hairline" />
 				</>
 			)}
-			<Command.List className="max-h-[320px] overflow-y-auto">
+			<Command.List
+				tabIndex={-1}
+				className="max-h-[320px] overflow-y-auto outline-none"
+			>
 				<Command.Empty className="px-2 py-1.5 text-body text-text-3">
 					{emptyText}
 				</Command.Empty>

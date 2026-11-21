@@ -11,7 +11,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ExternalLink, GitMerge, RotateCw, SquareCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
 import { ResolveDialog } from "@/components/incidents/ResolveDialog";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
@@ -99,12 +99,20 @@ export function triage(rows: readonly IncidentWithRelations[]): Folded[] {
 }
 
 /** Needs you (spec §1): one tab per band, then each band's cards in triage order. */
-export function NeedsYou({ groups, now }: { groups: Grouped[]; now: number }) {
+export function NeedsYou({
+	groups,
+	now,
+	arrived,
+}: {
+	groups: Grouped[];
+	now: number;
+	/** Rows that came after the inbox's first paint (`useArrivals`). */
+	arrived: Set<string>;
+}) {
 	const [filter, setFilter] = useState<NeedKey | "all">("all");
 	const [more, setMore] = useState<Partial<Record<NeedKey, boolean>>>({});
 	const [prompt, setPrompt] = useState<Prompt | null>(null);
 	const [busy, setBusy] = useState<Record<string, string>>({});
-	const arrived = useArrivals(groups);
 	const act = useRowActions(setBusy);
 	const total = groups.reduce((n, g) => n + g.rows.length, 0);
 	const shown =
@@ -334,6 +342,7 @@ export function IncidentCard({
 	return (
 		<ListCard
 			testId="inbox-row"
+			fresh={fresh}
 			title={readableTitle(incident.title)}
 			icon={
 				<Mark
@@ -348,7 +357,6 @@ export function IncidentCard({
 					params={{ id: incident.id }}
 					dir="auto"
 					data-testid="inbox-row-title"
-					data-new={fresh ? "" : undefined}
 				>
 					{title}
 				</Link>
@@ -424,37 +432,6 @@ export function IncidentCard({
 			menu={menu}
 		/>
 	);
-}
-
-/** Rows that appear after the first paint settle in with the arrival glow, once. */
-function useArrivals(groups: Grouped[]): Set<string> {
-	const seen = useRef<Set<string> | null>(null);
-	const [fresh, setFresh] = useState<Set<string>>(new Set());
-	const timers = useRef<number[]>([]);
-	const ids = groups.flatMap((g) => g.rows.map((r) => r.id)).join(",");
-	useEffect(() => {
-		const now = ids ? ids.split(",") : [];
-		if (seen.current === null) {
-			seen.current = new Set(now);
-			return;
-		}
-		const added = now.filter((id) => !seen.current?.has(id));
-		for (const id of now) seen.current.add(id);
-		if (added.length === 0) return;
-		setFresh((f) => new Set(Array.from(f).concat(added)));
-		// Each batch ends its own glow: a later arrival must not cancel an earlier timer.
-		timers.current.push(
-			window.setTimeout(
-				() =>
-					setFresh(
-						(f) => new Set(Array.from(f).filter((id) => !added.includes(id))),
-					),
-				3000,
-			),
-		);
-	}, [ids]);
-	useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
-	return fresh;
 }
 
 /** The mutations a row's buttons call; a row shows its in-flight word until the list refreshes. */

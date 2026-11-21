@@ -4,10 +4,11 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import {
-	deliver,
+	deliverLive,
 	eventFactory,
 	hideQueryDevtools,
 	installStreamDouble,
+	serveThreadWindow,
 } from "./live-stream-fixtures";
 
 const THREAD_ID = "f3333333-3333-4333-8333-333333333333";
@@ -100,6 +101,7 @@ async function serveThread(
 				body: JSON.stringify({ events: state.events, nextCursor: null }),
 			}),
 	);
+	await serveThreadWindow(page, threadId, () => state.events);
 }
 
 test.describe("#1020 — project thread journeys", () => {
@@ -138,8 +140,7 @@ test.describe("#1020 — project thread journeys", () => {
 		await expect(page.getByTestId("project-name")).toHaveText(projectName);
 	});
 
-	// #1154: App looks broken: the page opened no EventSource for the thread stream (`no EventSource was opened by the p...
-	test.fixme("2. start a thread on a project, reload the page, the thread page still loads with the same transcript", async ({
+	test("2. start a thread on a project, reload the page, the thread page still loads with the same transcript", async ({
 		page,
 	}) => {
 		const state: ThreadState = {
@@ -198,8 +199,8 @@ test.describe("#1020 — project thread journeys", () => {
 			"Analysis complete: added index on orders(created_at)",
 		);
 		state.events = [step1, step2];
-		await deliver(page, step1);
-		await deliver(page, step2);
+		await deliverLive(page, THREAD_ID, step1);
+		await deliverLive(page, THREAD_ID, step2);
 
 		await expect(
 			page.getByText("Checking index efficiency on orders table"),

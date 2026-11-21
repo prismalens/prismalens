@@ -7,6 +7,8 @@ import {
 	hideQueryDevtools,
 	installStreamDouble,
 	RUN_ID,
+	serveThreadContext,
+	serveThreadWindow,
 } from "./live-stream-fixtures";
 
 /**
@@ -114,6 +116,23 @@ async function serveThread(page: Page, state: ThreadState): Promise<void> {
 		(url) => url.pathname === `/api/investigations/${THREAD_ID}/events`,
 		(route) => route.fulfill(json({ events: state.events, nextCursor: null })),
 	);
+	await serveThreadWindow(page, THREAD_ID, () => state.events);
+	await serveThreadContext(page, THREAD_ID, () => ({
+		title: state.title ?? "Add backoff to retries",
+		cwd: CWD,
+		repos: [
+			{
+				name: "repo",
+				branch: "prismalens/shop-f7777777",
+				head: HEAD,
+				additions: null,
+				deletions: null,
+			},
+		],
+		...(state.repositoryId
+			? { project: { id: state.repositoryId, name: "prismalens/shop" } }
+			: {}),
+	}));
 	await page.route(
 		(url) => url.pathname === `/api/investigations/${THREAD_ID}/changes`,
 		(route) => route.fulfill(json(state.changes)),
@@ -195,8 +214,7 @@ const DELETED_WORKSPACE_CHANGES: WorktreeChanges = {
 test.describe("#1020 S2 — watch a thread work (more journeys)", () => {
 	test.beforeEach(({ page }) => hideQueryDevtools(page));
 
-	// #1154: UI moved: waits for `getByRole('tab', { name: 'Thread' })`, which no longer renders
-	test.fixme("1. the right panel never opens itself: closed after load and reload, opens on toggle with empty surface and tabs Files, Diff, Browser", async ({
+	test("1. the right panel never opens itself: closed after load and reload, opens on toggle at Details beside Changes and Files", async ({
 		page,
 	}) => {
 		seq = 0;
@@ -213,7 +231,7 @@ test.describe("#1020 S2 — watch a thread work (more journeys)", () => {
 		});
 
 		// Header toggle is present immediately (no late pop-in) and panel is closed
-		const panelToggle = page.getByRole("button", { name: "Panel" });
+		const panelToggle = page.getByTestId("panel-toggle");
 		await expect(panelToggle).toBeVisible();
 		await expect(page.getByTestId("thread-panel")).toHaveCount(0);
 
@@ -229,18 +247,18 @@ test.describe("#1020 S2 — watch a thread work (more journeys)", () => {
 		await panelToggle.click();
 		await expect(page.getByTestId("thread-panel")).toBeVisible();
 
-		// One panel (#1024): Thread and Changes; Browser only after a page opened, no Suspects here.
-		await expect(page.getByRole("tab", { name: "Thread" })).toHaveAttribute(
+		// One panel (#1024): Details, Changes and Files; Browser only after a page opened, no Suspects here.
+		await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
 		await expect(page.getByRole("tab", { name: "Changes" })).toBeVisible();
+		await expect(page.getByRole("tab", { name: "Files" })).toBeVisible();
 		await expect(page.getByRole("tab", { name: "Browser" })).toHaveCount(0);
 		await expect(page.getByRole("tab", { name: "Suspects" })).toHaveCount(0);
 	});
 
-	// #1154: UI moved: waits for `getByRole('button', { name: 'Status' })`, which no longer renders
-	test.fixme("2. the status box is closed by default and opens on click, showing project and branch", async ({
+	test("2. the details box beside the transcript names the project, its folder and the branch", async ({
 		page,
 	}) => {
 		seq = 0;
@@ -257,28 +275,17 @@ test.describe("#1020 S2 — watch a thread work (more journeys)", () => {
 			timeout: 15_000,
 		});
 
-		// Status box is closed by default
-		await expect(page.getByTestId("status-box")).toHaveCount(0);
-
-		// Header toggle for Status is present
-		const statusToggle = page.getByRole("button", { name: "Status" });
-		await expect(statusToggle).toBeVisible();
-
-		// Opens on click
-		await statusToggle.click();
-		await expect(page.getByTestId("status-box")).toBeVisible();
-
-		// Showing project and branch
-		await expect(page.getByTestId("status-project")).toHaveText(
+		// The box is always there at this width (#1101 cat 21); the place names the folder on hover.
+		const box = page.getByTestId("details-dock");
+		await expect(box.getByTestId("details-place-name")).toHaveText(
 			"prismalens/shop",
 		);
-		await expect(page.getByTestId("status-branch")).toHaveText(
+		await expect(box.getByTestId("details-branch")).toHaveText(
 			"prismalens/shop-f7777777",
 		);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('worktree-diff')`, which no longer renders
-	test.fixme("3. diff tab lists edited and untracked new files, and shows an empty state for a deleted workspace", async ({
+	test("3. diff tab lists edited and untracked new files, and shows an empty state for a deleted workspace", async ({
 		page,
 	}) => {
 		seq = 0;
@@ -295,22 +302,22 @@ test.describe("#1020 S2 — watch a thread work (more journeys)", () => {
 		});
 
 		// Open panel and select Changes: files and the diff together (#1024)
-		await page.getByRole("button", { name: "Panel" }).click();
+		await page.getByTestId("panel-toggle").click();
 		await expect(page.getByTestId("thread-panel")).toBeVisible();
 		await page.getByRole("tab", { name: "Changes" }).click();
-		await expect(page.getByTestId("worktree-diff")).toBeVisible();
+		await expect(page.getByTestId("diff-surface")).toBeVisible();
 
-		// Both edited file and untracked new file are listed
-		const diffFiles = page.getByTestId("diff-file");
-		await expect(diffFiles).toHaveCount(2);
-		const modifiedFile = diffFiles.filter({ hasText: "src/pay/retry.ts" });
-		await expect(modifiedFile).toBeVisible();
-		await expect(modifiedFile).toHaveAttribute("data-status", "modified");
-
-		const addedFile = diffFiles.filter({ hasText: "src/pay/backoff.ts" });
-		await expect(addedFile).toBeVisible();
-		await expect(addedFile).toHaveAttribute("data-status", "added");
-		await expect(addedFile).toContainText("new");
+		// The edited file and the untracked new one are both listed, each with its counts.
+		const files = page.getByRole("tree", { name: "Changed files" });
+		await expect(
+			files.getByRole("treeitem", { name: "retry.ts" }),
+		).toContainText("+77 −3");
+		await expect(
+			files.getByRole("treeitem", { name: "backoff.ts" }),
+		).toContainText("+12 −0");
+		await expect(page.getByTestId("diff-scope-named")).toHaveText(
+			"· 2 files +89 −3",
+		);
 
 		// Switch changes to deleted workspace
 		state.changes = DELETED_WORKSPACE_CHANGES;
@@ -334,8 +341,7 @@ test.describe("#1020 S2 — watch a thread work (more journeys)", () => {
 		await expect(page.getByRole("alert")).toHaveCount(0);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('transcript-tools')`, which no longer renders
-	test.fixme("4. untrusted text in title or step line renders as plain text without creating elements or dialogs", async ({
+	test("4. untrusted text in title or step line renders as plain text without creating elements or dialogs", async ({
 		page,
 	}) => {
 		seq = 0;
@@ -407,8 +413,7 @@ test.describe("#1020 S2 — watch a thread work (more journeys)", () => {
 		expect(dialogFired).toBe(false);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('transcript')`, which no longer renders
-	test.fixme("5. reduced motion: with page.emulateMedia({reducedMotion: 'reduce'}) no running CSS animation on the transcript", async ({
+	test("5. reduced motion: with page.emulateMedia({reducedMotion: 'reduce'}) no running CSS animation on the transcript", async ({
 		page,
 	}) => {
 		seq = 0;

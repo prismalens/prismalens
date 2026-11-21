@@ -7,6 +7,8 @@ import {
 	admissionExit,
 	firstWord,
 	toolCallLine,
+	contextKeptLine,
+	followUpToolLine,
 	readsAllowed,
 	parseTranscript,
 	permissionDecisions,
@@ -283,12 +285,50 @@ describe("admissionExit (#848): the gate's truth table", () => {
 		).toBe(1);
 	});
 
+	it("passes R9 on a live model when the resumed session reaches the gateway again, never on the scripted one (#1085)", () => {
+		const turn = { gateway: true, ran: true, calls: 0, connected: true, reached: true };
+		expect(followUpToolLine(turn, true, "no follow-up ran")).toBe(
+			"pass (the resumed session reached the gateway again; the live model was asked for no tool)",
+		);
+		expect(followUpToolLine(turn, false, "no follow-up ran")).toBe(
+			"fail (the agent reached the gateway but the model called no PrismaLens tool)",
+		);
+		expect(followUpToolLine({ ...turn, reached: false }, true, "no follow-up ran")).toBe(
+			"fail (the resumed session never reached the gateway)",
+		);
+		expect(followUpToolLine({ ...turn, calls: 1 }, true, "x")).toBe("pass (1 PrismaLens tool call)");
+		expect(followUpToolLine({ ...turn, ran: false }, true, "no follow-up ran")).toBe("fail (no follow-up ran)");
+	});
+
+	it("judges R11's context on a live model by the reopen and the handoff sent, never on the scripted one (#1085)", () => {
+		const o = { kept: false, live: true, reopened: true, handoffSent: false, reply: "Checked.", path: "resume" };
+		expect(contextKeptLine(o)).toBe(
+			"pass (the agent reopened its own session, nothing replayed; the live model's words are not judged; resume)",
+		);
+		expect(contextKeptLine({ ...o, live: false })).toBe(
+			'fail (the next model request lacked the first prompt: "Checked."; resume)',
+		);
+		expect(contextKeptLine({ ...o, reopened: false })).toBe(
+			"fail (the handoff PrismaLens sent lacked the first prompt; resume)",
+		);
+		expect(contextKeptLine({ ...o, reopened: false, handoffSent: true })).toBe(
+			"pass (the handoff PrismaLens sent carried the first prompt, nothing replayed; resume)",
+		);
+		expect(contextKeptLine({ ...o, live: false, kept: true })).toBe(
+			"pass (the next request carried the first prompt, nothing replayed; resume)",
+		);
+	});
+
 	it("passes R8 only on a real call through the gateway", () => {
 		expect(toolCallLine({ gateway: true, ran: true, calls: 2, connected: true })).toBe(
 			"pass (2 PrismaLens tool calls)",
 		);
-		expect(toolCallLine({ gateway: true, ran: true, calls: 0, connected: true })).toMatch(/^fail \(the agent reached the gateway/);
-		expect(toolCallLine({ gateway: true, ran: true, calls: 0, connected: false })).toMatch(/^fail \(the agent never reached/);
+		expect(toolCallLine({ gateway: true, ran: true, calls: 0, connected: true })).toBe(
+			"fail (the agent reached the gateway but the model called no PrismaLens tool)",
+		);
+		expect(toolCallLine({ gateway: true, ran: true, calls: 0, connected: false })).toBe(
+			"fail (the agent never reached the gateway)",
+		);
 		expect(toolCallLine({ gateway: true, ran: false, calls: 0, connected: true }, "no follow-up ran")).toBe(
 			"fail (no follow-up ran)",
 		);

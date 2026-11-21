@@ -4,11 +4,13 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import {
-	deliver,
+	deliverLive,
 	eventFactory,
 	hideQueryDevtools,
 	installStreamDouble,
 	RUN_ID,
+	serveThreadContext,
+	serveThreadWindow,
 } from "./live-stream-fixtures";
 
 /**
@@ -101,13 +103,26 @@ async function serveThread(page: Page, state: ThreadState): Promise<void> {
 				body: JSON.stringify({ events: state.events, nextCursor: null }),
 			}),
 	);
+	await serveThreadWindow(page, THREAD_ID, () => state.events);
+	await serveThreadContext(page, THREAD_ID, () => ({
+		title: "Rename retryOnce to retry",
+		cwd: CWD,
+		repos: [
+			{
+				name: "repo",
+				branch: "prismalens/shop-f1111111",
+				head: "abc123def4567890",
+				additions: 0,
+				deletions: 0,
+			},
+		],
+	}));
 }
 
 test.describe("#1020 — a project thread", () => {
 	test.beforeEach(({ page }) => hideQueryDevtools(page));
 
-	// #1154: UI moved: waits for `getByTestId('status-box-toggle')`, which no longer renders
-	test.fixme("add a project, start a thread, approve an edit, stop, reload, resume in the same workspace", async ({
+	test("add a project, start a thread, approve an edit, stop, reload, resume in the same workspace", async ({
 		page,
 	}) => {
 		const state: ThreadState = {
@@ -154,16 +169,15 @@ test.describe("#1020 — a project thread", () => {
 		await expect(page.getByTestId("thread-title")).toHaveText(
 			"Rename retryOnce to retry",
 		);
-		// A follow-up's branch is in the status box; nothing sits under the box (#1020).
+		// A follow-up's branch is in the details box; nothing sits under the composer (#1020).
 		await expect(page.getByTestId("composer-branch")).toHaveCount(0);
 		await expect(
 			page.getByTestId("thread-composer").getByTestId("access-chip"),
 		).toBeVisible();
-		await page.getByTestId("status-box-toggle").click();
-		await expect(page.getByTestId("status-branch")).toHaveText(
-			"prismalens/shop-f1111111",
-		);
-		await page.getByTestId("status-box-toggle").click();
+		const branch = page
+			.getByTestId("details-dock")
+			.getByTestId("details-branch");
+		await expect(branch).toHaveText("prismalens/shop-f1111111");
 
 		// The agent edits a file, then asks to run a command.
 		const ev = eventFactory("main");
@@ -183,8 +197,8 @@ test.describe("#1020 — a project thread", () => {
 			expiresAt: new Date(Date.now() + 600_000).toISOString(),
 		} as CanonicalEvent;
 		state.events = [edit, ask];
-		await deliver(page, edit);
-		await deliver(page, ask);
+		await deliverLive(page, THREAD_ID, edit);
+		await deliverLive(page, THREAD_ID, ask);
 		await expect(page.getByText("Renamed retryOnce")).toBeVisible();
 
 		// Approve.
@@ -203,6 +217,20 @@ test.describe("#1020 — a project thread", () => {
 		);
 		await page.getByTestId("ask-approve").click();
 		await expect.poll(() => answered).toMatchObject({ decision: "approve" });
+		// The record closes the ask as the server would; a reload reads it from there.
+		const approved = {
+			kind: "permission_answer",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 2,
+			ts: new Date().toISOString(),
+			label: null,
+			askId: ASK_ID,
+			outcome: "approved",
+		} as CanonicalEvent;
+		state.events = [edit, ask, approved];
+		await deliverLive(page, THREAD_ID, approved);
 
 		// Stop.
 		await page.route(
@@ -220,7 +248,7 @@ test.describe("#1020 — a project thread", () => {
 
 		// Reload: the thread is stopped, and what the agent did is still there.
 		await page.reload();
-		await expect(page.getByTestId("thread-state")).toHaveText("Stopped");
+		await expect(page.getByTestId("thread-state")).toHaveText(/Stopped by you/);
 		await expect(page.getByText("Renamed retryOnce")).toBeVisible();
 
 		// Resume: the follow-up goes to the same run, so the same workspace.
@@ -246,9 +274,6 @@ test.describe("#1020 — a project thread", () => {
 				kind: "chat",
 			});
 		await expect(page.getByTestId("thread-state")).toHaveText("Working");
-		await page.getByTestId("status-box-toggle").click();
-		await expect(page.getByTestId("status-branch")).toHaveText(
-			"prismalens/shop-f1111111",
-		);
+		await expect(branch).toHaveText("prismalens/shop-f1111111");
 	});
 });

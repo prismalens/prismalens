@@ -9,9 +9,10 @@ interface Landing {
 	position?: string;
 }
 
-/** A page started before the view that reads it; past this it is stale and asked for again. */
+/** A page that arrived before the view that reads it; past this it is stale and asked for again. */
 const FRESH_MS = 30_000;
-const early = new Map<string, { at: number; page: Promise<Opened> }>();
+// `at` is when the page arrived; null while it is on its way, which is never stale (#1154).
+const early = new Map<string, { at: number | null; page: Promise<Opened> }>();
 const keyOf = (id: string, l: Landing) =>
 	`${id}\0${l.at ?? ""}\0${l.position ?? ""}`;
 
@@ -23,9 +24,18 @@ export function prefetchWindow(id: string, landing: Landing): void {
 	const key = keyOf(id, landing);
 	if (early.has(key)) return;
 	const page = client.investigations.openWindow({ id, fold: true, ...landing });
+	const entry: { at: number | null; page: Promise<Opened> } = {
+		at: null,
+		page,
+	};
 	// A failed prefetch is asked for again by the view; never an unhandled rejection.
-	page.catch(() => early.delete(key));
-	early.set(key, { at: Date.now(), page });
+	page.then(
+		() => {
+			entry.at = Date.now();
+		},
+		() => early.delete(key),
+	);
+	early.set(key, entry);
 }
 
 /** The prefetched page for this open, once; null when there is none or it is stale. */
@@ -36,5 +46,7 @@ export function takeWindow(
 	const key = keyOf(id, landing);
 	const got = early.get(key);
 	early.delete(key);
-	return got && Date.now() - got.at < FRESH_MS ? got.page : null;
+	return got && (got.at === null || Date.now() - got.at < FRESH_MS)
+		? got.page
+		: null;
 }

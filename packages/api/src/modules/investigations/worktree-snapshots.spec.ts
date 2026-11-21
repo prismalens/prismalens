@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import {
 	mkdirSync,
 	mkdtempSync,
+	readFileSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
@@ -262,6 +263,28 @@ describe("worktree-snapshots (#1101 category 16)", () => {
 			{ seq: 1, start: head, end: null },
 			{ seq: 2, start: head, end: head },
 		]);
+	});
+
+	// The candidate path is cached by the config stamp; whether a file sits there is asked on every open (#1197 review).
+	it("openStore uses a global ignore file that appears after an earlier open found none", async () => {
+		const host = join(baseDir, "host");
+		const ignore = join(host, "xdg", "git", "ignore");
+		const saved = { ...process.env };
+		process.env.HOME = host;
+		process.env.USERPROFILE = host;
+		process.env.XDG_CONFIG_HOME = join(host, "xdg");
+		try {
+			const excludesOf = async () =>
+				readFileSync(join((await openStore(runId, 0, repo, [loc])).gitDir, "config"), "utf8");
+			expect(await excludesOf()).not.toContain("xdg/git/ignore");
+			mkdirSync(join(host, "xdg", "git"), { recursive: true });
+			writeFileSync(ignore, "hidden.txt\n");
+			expect(await excludesOf()).toContain("xdg/git/ignore");
+		} finally {
+			for (const k of ["HOME", "USERPROFILE", "XDG_CONFIG_HOME"])
+				if (saved[k] === undefined) delete process.env[k];
+				else process.env[k] = saved[k];
+		}
 	});
 
 	it("changedPaths and statesAt handle empty and changed paths", async () => {

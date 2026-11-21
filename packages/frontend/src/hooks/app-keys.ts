@@ -54,7 +54,9 @@ function isTyping(target: EventTarget | null): boolean {
 		tag === "INPUT" ||
 		tag === "TEXTAREA" ||
 		tag === "SELECT" ||
-		!!el?.isContentEditable
+		!!el?.isContentEditable ||
+		// An open list or menu's typeahead owns plain letters (#1154).
+		!!el?.closest?.("[role=listbox], [role=menu]")
 	);
 }
 

@@ -233,6 +233,11 @@ async function serve(page: Page) {
 	return reverts;
 }
 
+async function pickScope(page: Page, scope: Scope) {
+	await page.getByTestId("diff-scope").click();
+	await page.getByTestId(`diff-scope-${scope}`).click();
+}
+
 const shots = !!process.env.DESIGN_SHOTS;
 async function shot(page: Page, name: string) {
 	if (!shots) return;
@@ -250,30 +255,34 @@ test.describe("#1101 — the thread's diff and panes", () => {
 		await installStreamDouble(page);
 	});
 
-	// #1154: UI moved or app changed: expected "All vs base · 3 files +7 −2", received "· 3 files +7 −2"
-	test.fixme("the diff names its scope, splits when wide, goes unified when narrow, and switches scope", async ({
+	test("the diff names its scope, splits when wide, goes unified when narrow, and switches scope", async ({
 		page,
 	}) => {
 		await serve(page);
 		await page.setViewportSize({ width: 1600, height: 900 });
 		await page.goto(`/threads/${ID}?panel=changes&path=shop:src/app.txt`);
 		await expect(page.getByTestId("diff-surface")).toBeVisible();
-		await expect(page.getByTestId("diff-scope-named")).toContainText(
-			"All vs base · 3 files +7 −2",
+		// The scope is a picker; the line beside it counts what it holds.
+		await expect(page.getByTestId("diff-scope")).toHaveText("All vs base");
+		await expect(page.getByTestId("diff-scope-named")).toHaveText(
+			"· 3 files +7 −2",
 		);
-		// The side panel is narrower than two code columns: Auto stays unified there.
+		// The side panel is narrower than two code columns: with no style pressed it stays unified.
 		await expect(page.getByTestId("diff-file-pane")).toHaveAttribute(
 			"data-split",
 			"unified",
 		);
 		await shot(page, "diff-unified-1600");
-		await page.getByTestId("diff-style-split").click();
+		const split = page.getByTestId("diff-style-split");
+		await split.click();
+		await expect(split).toHaveAttribute("aria-pressed", "true");
 		await expect(page.getByTestId("diff-file-pane")).toHaveAttribute(
 			"data-split",
 			"split",
 		);
 		await shot(page, "diff-split-1600");
-		await page.getByTestId("diff-style-auto").click();
+		await split.click();
+		await expect(split).toHaveAttribute("aria-pressed", "false");
 		await page.setViewportSize({ width: 390, height: 844 });
 		await expect(page.getByTestId("diff-file-pane")).toHaveAttribute(
 			"data-split",
@@ -281,20 +290,24 @@ test.describe("#1101 — the thread's diff and panes", () => {
 		);
 		await shot(page, "diff-unified-390");
 		await page.setViewportSize({ width: 1600, height: 900 });
-		for (const [s, named] of [
-			["turn", "This turn · 2 files +5 −2"],
-			["uncommitted", "Uncommitted · 3 files +7 −2"],
-			["outside", "Outside turns · 1 file +2 −0"],
+		for (const [s, label, named] of [
+			["turn", "This turn", "· 2 files +5 −2"],
+			["uncommitted", "Uncommitted", "· 3 files +7 −2"],
+			["outside", "Outside turns", "· 1 file +2 −0"],
 		] as const) {
-			await page.getByTestId(`diff-scope-${s}`).click();
-			await expect(page.getByTestId("diff-scope-named")).toContainText(named);
+			await pickScope(page, s);
+			await expect(page.getByTestId("diff-scope")).toHaveText(label);
+			await expect(page.getByTestId("diff-scope-named")).toHaveText(named);
 			await expect(page).toHaveURL(new RegExp(`scope=${s}`));
 			await shot(page, `diff-scope-${s}-1600`);
 		}
+		// A scope other than All marks the picker and offers Clear back to it.
+		await expect(page.getByTestId("diff-scope-dot")).toBeVisible();
+		await page.getByTestId("diff-scope-clear").click();
+		await expect(page.getByTestId("diff-scope")).toHaveText("All vs base");
 	});
 
-	// #1154: UI moved: waits for `getByTestId('diff-scope-turn')`, which no longer renders
-	test.fixme("a revert asks first and names the file, and a turn's Undo asks first", async ({
+	test("a revert asks first and names the file, and a turn's Undo asks first", async ({
 		page,
 	}) => {
 		const reverts = await serve(page);
@@ -314,7 +327,7 @@ test.describe("#1101 — the thread's diff and panes", () => {
 			target: { kind: "file", path: "src/app.txt" },
 			expect: { "src/app.txt": `100644 ${"9".repeat(40)}` },
 		});
-		await page.getByTestId("diff-scope-turn").click();
+		await pickScope(page, "turn");
 		await page.getByTestId("turn-undo").click();
 		await expect(page.getByTestId("turn-undo-confirm")).toContainText(
 			"Undo this turn's changes?",
@@ -325,15 +338,24 @@ test.describe("#1101 — the thread's diff and panes", () => {
 	test("a + on a line opens a comment, and two comments go to the composer as two chips", async ({
 		page,
 	}) => {
+		// The thread's saved draft is restored into the box; one an earlier attempt left adds its chips (#1154).
+		await page.request.delete(
+			`/api/drafts/${encodeURIComponent(`thread:${ID}`)}`,
+		);
 		await serve(page);
 		await page.setViewportSize({ width: 1600, height: 900 });
 		await page.goto(`/threads/${ID}?panel=changes&path=shop:src/app.txt`);
+		// A comment reaches only a box whose editor is up; before that it is dropped with a toast.
+		await expect(page.getByTestId("composer-input")).toBeVisible();
 		const patch = page.getByTestId("diff-patch");
-		// The plain stand-in covers the diff until the highlighter is up; it has no `+` or line clicks.
+		// The highlighted line, not the plain stand-in that covers it until the highlighter is up.
+		const line = patch.locator('[data-line-type="change-addition"]', {
+			hasText: "timeout = 30",
+		});
+		await expect(line).toBeVisible();
 		await expect(page.getByTestId("diff-patch-stand-in")).toHaveCount(0);
 		// The `+` follows pointer moves; a redraw after one hover leaves it hidden until the next,
 		// so the pointer moves again until it shows. The first comment opens from it.
-		const line = patch.getByText("timeout = 30");
 		const plus = patch.locator("[data-utility-button]").last();
 		await expect
 			.poll(async () => {
@@ -362,20 +384,45 @@ test.describe("#1101 — the thread's diff and panes", () => {
 		await shot(page, "diff-comment-chips-1600");
 	});
 
-	// #1154: UI moved: waits for `getByTestId('new-tab-unavailable-browser')`, which no longer renders
-	test.fixme("the New tab page lists every tool with its key, says why one cannot open, and tiles a pane", async ({
+	test("the New tab page lists every tool with its key, says why one cannot open, and tiles a pane", async ({
 		page,
 	}) => {
 		await serve(page);
+		// A browser that is not the host's cannot open the terminal.
+		await page.route(
+			(u) => u.pathname === "/api/terminal/availability",
+			(r) =>
+				r.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({ available: false, reason: "not-host" }),
+				}),
+		);
 		await page.setViewportSize({ width: 1600, height: 900 });
 		await page.goto(`/threads/${ID}?panel=thread`);
 		await page.getByTestId("panel-new-tab").click();
 		await expect(page.getByTestId("new-tab-page")).toBeVisible();
-		for (const id of ["thread", "changes", "files", "browser", "terminal"])
-			await expect(page.getByTestId(`new-tab-${id}`)).toBeVisible();
-		await expect(page.getByTestId("new-tab-unavailable-browser")).toHaveText(
-			"The browser pane needs the desktop app. Open this thread in PrismaLens desktop; links open in a new tab here.",
-		);
+		const listedWithKey = async (id: string) => {
+			const row = page.getByTestId(`new-tab-${id}`);
+			await expect(row).toBeVisible();
+			await expect(row.locator("kbd").first()).toBeVisible();
+		};
+		await listedWithKey("thread");
+		await listedWithKey("changes");
+		await listedWithKey("files");
+		await listedWithKey("browser");
+		await listedWithKey("terminal");
+		// The one tool that cannot open says why behind its `?`, and is not offered as a tile.
+		const terminal = page.getByTestId("new-tab-terminal");
+		await expect(page.getByTestId("new-tab-tile-terminal")).toHaveCount(0);
+		await expect(
+			page.getByTestId("new-tab-page").getByTestId("help"),
+		).toHaveCount(1);
+		await terminal.getByTestId("help").click();
+		await expect(
+			page.getByText("The terminal opens only on the host."),
+		).toBeVisible();
+		await page.keyboard.press("Escape");
 		await shot(page, "panes-new-tab-1600");
 		await page.getByTestId("new-tab-tile-changes").click();
 		await expect(page.getByTestId("panel-split")).toBeVisible();

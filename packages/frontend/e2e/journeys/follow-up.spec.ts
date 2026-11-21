@@ -55,8 +55,7 @@ async function serveFollowUpState(
 test.describe("#752 — a follow-up on a finished investigation", () => {
 	test.beforeEach(({ page }) => hideQueryDevtools(page));
 
-	// #1154: UI moved: waits for `getByTestId('transcript-divider')`, which no longer renders
-	test.fixme("sends, marks the resumed session, streams the answer, keeps the report", async ({
+	test("sends, marks the resumed session, streams the answer, keeps the report", async ({
 		page,
 	}) => {
 		let status = "completed";
@@ -130,9 +129,21 @@ test.describe("#752 — a follow-up on a finished investigation", () => {
 			toolCalls: [],
 		});
 
-		await expect(page.getByTestId("transcript-divider")).toContainText(
+		// The resumed line joins the follow-up's hover meta (META_ROW.resumed in lib/fold.ts).
+		const followUp = page
+			.getByTestId("transcript-operator")
+			.filter({ hasText: "Why did the pool saturate at 14:02?" })
+			.last();
+		await followUp.hover();
+		await expect(followUp.getByTestId("message-meta")).toBeVisible();
+		await expect(followUp.getByTestId("message-meta")).toContainText(
 			"Resumed in the same session, code at 1a2b3c4",
 		);
+		await expect(
+			page
+				.getByTestId("transcript-divider")
+				.filter({ hasText: "Resumed in the same session" }),
+		).toHaveCount(0);
 		await expect(
 			page
 				.getByTestId("transcript")

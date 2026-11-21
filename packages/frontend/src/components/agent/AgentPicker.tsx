@@ -190,6 +190,12 @@ export function ModelChip({
 			);
 		const isStarred = (h: HarnessStatus, id: string) =>
 			models[h.id as HarnessId] === id;
+		const toggleStar = (r: ModelRow) =>
+			update.mutate({
+				models: {
+					[r.harness.id]: isStarred(r.harness, r.model) ? null : r.model,
+				},
+			});
 		const star = (r: ModelRow) => (
 			<button
 				type="button"
@@ -200,11 +206,14 @@ export function ModelChip({
 				onPointerDown={(e) => {
 					e.preventDefault();
 					e.stopPropagation();
-					update.mutate({
-						models: {
-							[r.harness.id]: isStarred(r.harness, r.model) ? null : r.model,
-						},
-					});
+					toggleStar(r);
+				}}
+				onKeyDown={(e) => {
+					// cmdk takes Enter for the row it has selected; on a focused star it stars (#1154).
+					if (e.key !== "Enter" && e.key !== " ") return;
+					e.preventDefault();
+					e.stopPropagation();
+					toggleStar(r);
 				}}
 				onClick={(e) => {
 					// cmdk selects the row on click; the star must not.

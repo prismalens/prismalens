@@ -214,7 +214,10 @@ export function PanelShell({ children }: { children: ReactNode }) {
 		if (!dragging.current) return;
 		dragging.current = false;
 		try {
-			const px = Math.round(rightRef.current?.getSize().inPixels ?? 0);
+			// inPixels is the drawn width, one keyboard step behind the layout this callback announces.
+			const share = rightRef.current?.getSize().asPercentage ?? 0;
+			const framePx = frame.current?.getBoundingClientRect().width ?? 0;
+			const px = Math.round((share / 100) * framePx);
 			if (px >= MIN_RIGHT_PX) writePersonSetting(WIDTH, String(px));
 		} catch {}
 	};
@@ -285,6 +288,41 @@ export function PanelShell({ children }: { children: ReactNode }) {
 		};
 		return listenKeys(onKey, { target: rightHost });
 	}, [rightHost, onClose, floating, expanded]);
+
+	// The sheet's content is portalled from the page, so Radix's Tab loop, a React handler on the
+	// dialog, misses some of its keys and Tab walks out to a focus guard (#1154).
+	useEffect(() => {
+		if (!sheet || !rightHost) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Tab" || e.altKey || e.ctrlKey || e.metaKey) return;
+			const stops = Array.from(
+				rightHost.querySelectorAll<HTMLElement>(
+					"a[href],button,input,select,textarea,[tabindex]",
+				),
+			).filter(
+				(el) =>
+					el.tabIndex >= 0 &&
+					!el.matches(":disabled") &&
+					!el.closest("[inert]") &&
+					el.checkVisibility(),
+			);
+			const first = stops[0];
+			const last = stops[stops.length - 1];
+			if (!first || !last) return;
+			const at = document.activeElement;
+			const to = e.shiftKey
+				? at === first || at === rightHost
+					? last
+					: null
+				: at === last
+					? first
+					: null;
+			if (!to) return;
+			e.preventDefault();
+			to.focus({ preventScroll: true });
+		};
+		return listenKeys(onKey, { target: rightHost });
+	}, [sheet, rightHost]);
 
 	// A floating panel takes focus when it opens; the page that opened it returns focus on close.
 	useEffect(() => {
@@ -383,10 +421,11 @@ export function PanelShell({ children }: { children: ReactNode }) {
 								// Double-click resets to the default width, not the size the panel opened at.
 								disableDoubleClick
 								onDoubleClick={resetWidth}
+								// Capture: the library's own keydown on the separator resizes before a bubbling handler runs.
 								onPointerDown={() => {
 									dragging.current = true;
 								}}
-								onKeyDown={() => {
+								onKeyDownCapture={() => {
 									dragging.current = true;
 								}}
 								className={cn(

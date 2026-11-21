@@ -135,9 +135,19 @@ export function plan(registry, pins, latest) {
 				channel: row.nextChannel,
 				version: latest[channelPackage(row.nextChannel)],
 				label: "next major, latest",
+				next: true,
 			});
 	}
 	return out;
+}
+
+/** The probed facts a probe is held to: the row's, with its next major's differences on a `next` probe. */
+export function factsFor(row, probe) {
+	if (!probe.next || !row.facts || !row.nextFacts) return row.facts;
+	const facts = { ...row.facts };
+	for (const [name, value] of Object.entries(row.nextFacts))
+		facts[name] = { ...facts[name], value };
+	return facts;
 }
 
 const npmInstall = (dir, specs) =>
@@ -292,7 +302,7 @@ async function probeOne(built, probe) {
 		return verdict(result, {
 			keyless: keyless(row.id),
 			mismatches: result.raw?.initialize
-				? host.factMismatches(row.facts, result.raw.initialize)
+				? host.factMismatches(factsFor(row, probe), result.raw.initialize)
 				: [],
 		});
 	} finally {
