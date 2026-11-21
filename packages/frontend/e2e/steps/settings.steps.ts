@@ -678,6 +678,8 @@ Then(
 	async ({ page }, why: string) => {
 		const effort = page.getByTestId("effort-chip");
 		await expect(effort).toHaveAttribute("data-locked", "");
+		// The hint opens on a pointer move: a pointer the last page left over the chip never moves onto it.
+		await page.mouse.move(0, 0);
 		await effort.hover();
 		await expect(page.getByTestId("hint").last()).toHaveText(why);
 	},
