@@ -19,13 +19,50 @@ concurrency:
 
 jobs:
   mutate:
-    name: stryker (${{ matrix.package }})
+    name: stryker (${{ matrix.package }}${{ matrix.shard && format(', {0}', matrix.shard) || '' }})
     runs-on: ubuntu-latest
     timeout-minutes: 300
     strategy:
       fail-fast: false
+      # The api's ~6,900 mutants take ~34 h on one runner (#1154): each shard names a slice of the
+      # config's `mutate`; a file's last range is open-ended, so the slices cover it whole.
       matrix:
-        package: ["@prismalens/engine", "@prismalens/auth", "@prismalens/api"]
+        include:
+          - package: "@prismalens/engine"
+          - package: "@prismalens/auth"
+          - package: "@prismalens/api"
+            shard: "guards, dispatch 1"
+            mutate: "src/middlewares/host-allowlist.middleware.ts,src/core/auth/auth.guard.ts,src/core/auth/owner.ts,src/infrastructure/dispatch/in-process-runner.ts,src/infrastructure/dispatch/checkout-status.ts,src/infrastructure/dispatch/event-bus.ts,src/infrastructure/dispatch/restart-recovery.ts"
+          - package: "@prismalens/api"
+            shard: "dispatch 2"
+            mutate: "src/infrastructure/dispatch/folder-lock.ts,src/infrastructure/dispatch/dispatcher.ts,src/infrastructure/dispatch/run-ports.ts"
+          - package: "@prismalens/api"
+            shard: "dispatch 3"
+            mutate: "src/infrastructure/dispatch/prisma-investigation-store.ts,src/infrastructure/dispatch/checkout-lease.ts,src/infrastructure/dispatch/job-store.ts"
+          - package: "@prismalens/api"
+            shard: "dispatch rest"
+            mutate: "src/infrastructure/dispatch/**/*.ts,!src/**/*.spec.ts,!src/infrastructure/dispatch/in-process-runner.ts,!src/infrastructure/dispatch/checkout-status.ts,!src/infrastructure/dispatch/event-bus.ts,!src/infrastructure/dispatch/restart-recovery.ts,!src/infrastructure/dispatch/folder-lock.ts,!src/infrastructure/dispatch/dispatcher.ts,!src/infrastructure/dispatch/run-ports.ts,!src/infrastructure/dispatch/prisma-investigation-store.ts,!src/infrastructure/dispatch/checkout-lease.ts,!src/infrastructure/dispatch/job-store.ts,!src/infrastructure/dispatch/dispatch.service.ts,!src/infrastructure/dispatch/investigation-run.ts"
+          - package: "@prismalens/api"
+            shard: "dispatch.service 1"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:1-900"
+          - package: "@prismalens/api"
+            shard: "dispatch.service 2"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:901-1800"
+          - package: "@prismalens/api"
+            shard: "dispatch.service 3"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:1801-99999"
+          - package: "@prismalens/api"
+            shard: "investigation-run 1"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:1-860"
+          - package: "@prismalens/api"
+            shard: "investigation-run 2"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:861-1720"
+          - package: "@prismalens/api"
+            shard: "investigation-run 3"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:1721-2580"
+          - package: "@prismalens/api"
+            shard: "investigation-run 4"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:2581-99999"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,7 +84,9 @@ jobs:
         run: pnpm turbo run build --filter="${{ matrix.package }}^..."
 
       - name: Run Stryker
-        run: pnpm --filter "${{ matrix.package }}" exec stryker run
+        env:
+          MUTATE: ${{ matrix.mutate }}
+        run: pnpm --filter "${{ matrix.package }}" exec stryker run ${MUTATE:+--mutate "$MUTATE"}
 
       - name: Upload the report
         if: always()
