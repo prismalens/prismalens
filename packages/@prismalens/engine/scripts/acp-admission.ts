@@ -50,6 +50,7 @@ import { AcpSession, type ReopenPath } from "../src/runner/acp-client.js";
 import {
 	admissionExit,
 	contextKeptLine,
+	firstPromptEchoLine,
 	firstWord,
 	followUpToolLine,
 	initializeVersion,
@@ -538,8 +539,13 @@ const r11 = await (async (): Promise<string> => {
 		const reply = after
 			.map((e) => (e.kind === "agent_step" ? e.text : ""))
 			.join("");
-		if (reply.includes("R11-PROMPT-1"))
-			return `fail (the first prompt came back as new text: ${JSON.stringify(reply.slice(0, 80))}; ${path})`;
+		const echoed = firstPromptEchoLine({
+			live: process.env.ADMISSION_LIVE_MODEL === "1",
+			reply,
+			marker: "R11-PROMPT-1",
+			path,
+		});
+		if (echoed) return echoed;
 		const transcript2 = join(dir2, "transcript.jsonl");
 		const wire2 = parseTranscript(
 			existsSync(transcript2) ? readFileSync(transcript2, "utf8") : "",
