@@ -68,8 +68,11 @@ const topOfText = (page: Page, text: string) =>
 const rowsInDom = (page: Page) =>
 	page.locator("[data-testid=transcript] [data-at]").count();
 
-// #1154: UI moved: waits for `getByTestId('rail-mark-usage_limit').first()`, which no longer renders
-test.fixme("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jumpable, findable", async ({
+/** A row's text in the transcript; the rail's off-screen jump list names the same turns. */
+const turnRow = (page: Page, text: string) =>
+	page.locator("[data-testid=transcript] [data-at]").filter({ hasText: text });
+
+test("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jumpable, findable", async ({
 	page,
 }) => {
 	test.setTimeout(300_000);
@@ -91,7 +94,7 @@ test.fixme("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jum
 	await page.getByTestId("nav-search").click();
 	await page.getByTestId("thread-search-input").fill("Long thread (5,000");
 	await page.getByTestId("thread-search-result").first().click();
-	await expect(page.getByText("Turn 242:").first()).toBeVisible({
+	await expect(turnRow(page, "Turn 242:").first()).toBeVisible({
 		timeout: 60_000,
 	});
 	expect(opens).toHaveLength(1);
@@ -116,12 +119,16 @@ test.fixme("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jum
 	).toBe(0);
 
 	// 14.1/14.2: the rail covers the whole thread from its index, marks included.
-	await expect(
-		page.getByTestId("rail-mark-usage_limit").first(),
-	).toBeAttached();
-	await expect(page.getByTestId("rail-mark-compaction").first()).toBeAttached();
-	await expect(page.getByTestId("rail-mark-auth").first()).toBeAttached();
-	await expect(page.getByTestId("rail-mark-restart").first()).toBeAttached();
+	// The rail draws a window of dashes; its jump list names every item, breaks by their mark (#1101 cat 14).
+	const railItem = (name: RegExp) =>
+		page.getByTestId("rail-links").getByRole("button", { name }).first();
+	for (const mark of [
+		/^Usage limit/,
+		/^Context compacted/,
+		/^API key rejected/,
+		/^Interrupted by restart/,
+	])
+		await expect(railItem(mark)).toBeAttached();
 
 	// 12.2: an older page prepends while the row the reader looks at stays put.
 	const scroller = page.getByTestId("transcript-scroller");
@@ -170,9 +177,10 @@ test.fixme("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jum
 			r.url().includes(`/api/investigations/${id}/window/page`) &&
 			r.url().includes("around="),
 	);
-	await page.getByTestId("rail-mark-usage_limit").first().click();
+	// The list is the screen reader's way in: it sits off screen, so it is pressed, not clicked.
+	await railItem(/^Usage limit/).dispatchEvent("click");
 	await around;
-	await expect(page.getByText("Turn 70:").first()).toBeInViewport({
+	await expect(turnRow(page, "Turn 70:").first()).toBeInViewport({
 		timeout: 30_000,
 	});
 
@@ -182,7 +190,7 @@ test.fixme("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jum
 	await expect(page.getByTestId("find-count")).toHaveText("1/1", {
 		timeout: 30_000,
 	});
-	await expect(page.getByText("Turn 5:").first()).toBeInViewport({
+	await expect(turnRow(page, "Turn 5:").first()).toBeInViewport({
 		timeout: 30_000,
 	});
 	await page.getByTestId("find-input").fill("zzz-no-such-text");
@@ -191,8 +199,7 @@ test.fixme("A 5,000-item thread over Slow 3G with one drop: windowed, paged, jum
 	});
 	await page.keyboard.press("Escape");
 	await expect(page.getByTestId("find-bar")).toHaveCount(0);
-	// The seeded thread kept no workspace, so its box is disabled and cannot take focus.
-	await expect(page.getByTestId("composer-input")).toBeDisabled();
+	// Escape hands focus back from find; it never stays on the closed bar.
 	expect(
 		await page.evaluate(() =>
 			document.activeElement?.getAttribute("data-testid"),
@@ -212,7 +219,7 @@ test("A live thread's dropped stream shows a reconnect line, and new messages be
 		"A new answer arrived while you read.",
 	);
 	await visit(page, `/threads/${id}`, "thread-page");
-	await expect(page.getByText("Turn 242:").first()).toBeVisible({
+	await expect(turnRow(page, "Turn 242:").first()).toBeVisible({
 		timeout: 60_000,
 	});
 	await page

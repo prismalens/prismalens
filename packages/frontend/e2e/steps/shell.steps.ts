@@ -120,19 +120,23 @@ When("I open the board", async ({ page }) => {
 });
 
 Then(
-	"the sidebar shows Threads, Automation, Services, Operations and Settings with Operations current",
+	"the sidebar shows Triggers, Projects, Operations and Settings beside the threads, with Operations current",
 	async ({ page }) => {
 		const sidebar = page.getByTestId("sidebar");
-		// Operations keeps the test id `incidents`: it is the board at /incidents (#1020).
-		for (const door of [
-			"threads",
-			"automation",
-			"services",
-			"incidents",
-			"settings",
+		// Operations keeps the test id `incidents`, Triggers `automation` (#1020, #1101 nav).
+		for (const [door, label] of [
+			["automation", "Triggers"],
+			["projects", "Projects"],
+			["incidents", "Operations"],
+			["settings", "Settings"],
 		]) {
-			await expect(sidebar.getByTestId(`nav-${door}`)).toBeVisible();
+			await expect(sidebar.getByTestId(`nav-${door}`)).toHaveText(
+				new RegExp(`^${label}`),
+			);
 		}
+		// At full width the list sits in the sidebar; its rail door opens it only when folded.
+		await expect(sidebar.getByTestId("thread-list")).toBeVisible();
+		await expect(sidebar.getByTestId("nav-threads")).toBeHidden();
 		await expect(sidebar.getByTestId("nav-incidents")).toHaveAttribute(
 			"aria-current",
 			"page",
@@ -142,12 +146,13 @@ Then(
 
 Then("the sidebar lists INC-1", async ({ page }) => {
 	const incident = world(page).incident;
-	// One flat list of threads; a row is found by where it goes (#1020).
+	// A row is found by where it goes: the incident, at its run (#1020).
 	await expect(
 		page
 			.getByTestId("sidebar")
 			.getByTestId("thread-list")
-			.locator(`a[href="/incidents/${incident?.id}"]`),
+			.locator(`a[href^="/incidents/${incident?.id}/"]`)
+			.first(),
 	).toBeVisible();
 });
 
@@ -158,13 +163,13 @@ When("I open Alerts", async ({ page }) => {
 	await expect(page).toHaveURL(/\/alerts$/);
 });
 
-When("I open Automation", async ({ page }) => {
+When("I open Triggers", async ({ page }) => {
 	await page.getByTestId("sidebar").getByTestId("nav-automation").click();
 	await expect(page).toHaveURL(/\/automation$/);
 });
 
 Then(
-	"Automation is current, the page offers schedules and alerts, and the sidebar keeps the threads",
+	"Triggers is current, the page offers schedules and alerts, and the sidebar keeps the threads",
 	async ({ page }) => {
 		const sidebar = page.getByTestId("sidebar");
 		await expect(sidebar.getByTestId("nav-automation")).toHaveAttribute(
@@ -239,7 +244,7 @@ When(
 			"true",
 		);
 		await page.getByTestId("composer-subject").click();
-		await page.getByRole("menuitemradio", { name: service }).click();
+		await page.getByRole("option", { name: service, exact: true }).click();
 		const box = page.getByTestId("composer-input");
 		await box.fill("/");
 		await page.getByTestId("composer-slash-note").click();
@@ -410,7 +415,7 @@ Then("a sheet lists the shortcuts", async ({ page }) => {
 	const sheet = page.getByTestId("shortcut-sheet");
 	await expect(sheet).toBeVisible();
 	await expect(sheet).toContainText("Log incident");
-	await expect(sheet).toContainText("Go to Threads");
+	await expect(sheet).toContainText("Go to Home");
 	await page.keyboard.press("Escape");
 	await expect(sheet).toBeHidden();
 });
