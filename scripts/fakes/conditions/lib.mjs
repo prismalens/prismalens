@@ -39,7 +39,7 @@ export async function connect(url) {
 	);
 	const token = out.match(/\/pair#([^\s#]+)/)?.[1];
 	if (!token) throw new Error(`No pairing link in:\n${out}`);
-	const redeemed = await fetch(`${url}/api/pairing/redeem`, {
+	const redeemed = await sent(`${url}/api/pairing/redeem`, {
 		method: "POST",
 		headers: { "content-type": "application/json", origin: url },
 		body: JSON.stringify({ token, name: "condition simulator" }),
@@ -109,7 +109,7 @@ async function sent(url, init) {
 			return await fetch(url, init);
 		} catch (e) {
 			const code = /** @type {{ cause?: { code?: string } }} */ (e).cause?.code;
-			if (i === 4 || !code || !UNSENT.has(code)) throw e;
+			if (i === 6 || !code || !UNSENT.has(code)) throw e;
 			await sleep(1000 * i);
 		}
 	}
