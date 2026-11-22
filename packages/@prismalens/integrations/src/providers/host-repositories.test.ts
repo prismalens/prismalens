@@ -45,9 +45,9 @@ describe("hostRepositoriesUrl", () => {
 			"https://gitlab.example.com/api/v4/projects?membership=true&order_by=last_activity_at&sort=desc&per_page=30&page=1&search=inv",
 		);
 		expect(
-			hostRepositoriesUrl("bitbucket", "https://api.bitbucket.org/2.0", { search: 'bill"ing' }),
+			hostRepositoriesUrl("bitbucket", "https://api.bitbucket.org/2.0", { search: 'bill"ing', workspace: "acme-team" }),
 		).toBe(
-			"https://api.bitbucket.org/2.0/repositories?role=member&sort=-updated_on&pagelen=30&page=1&q=name+%7E+%22billing%22",
+			"https://api.bitbucket.org/2.0/repositories/acme-team?sort=-updated_on&pagelen=30&page=1&q=name+%7E+%22billing%22",
 		);
 	});
 });
@@ -128,6 +128,7 @@ describe("listHostRepositories against recorded answers", () => {
 			"bitbucket",
 			"bitbucket.org",
 			async () => fixture("bitbucket-repositories.json"),
+			{ workspace: "acme-team" },
 		);
 		expect(page.hasMore).toBe(true);
 		expect(page.repositories).toEqual([

@@ -2,10 +2,15 @@
 // Copyright 2026 Sumit Patel
 
 import type { GitHostView, HostRepository } from "@prismalens/contracts";
+import {
+	GIT_HOST_SLUG,
+	GIT_HOSTS,
+	type GitHostKind,
+	publicGitHostKind,
+} from "@prismalens/contracts/schemas";
 import { Lock } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { SourceConnectDialog } from "@/components/settings/SourceConnectDialog";
-import { hostVendor } from "@/components/settings/source-words";
 import { ProjectMark } from "@/components/shared/ProjectMark";
 import { Loading, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
@@ -21,37 +26,23 @@ export interface HostChoice {
 	connected: boolean;
 }
 
-/**
- * One entry per known git host, by name only. GitHub is always offered, so a
- * fresh install can connect it from here.
- */
 export function hostChoices(hosts: readonly GitHostView[]): HostChoice[] {
-	const seen = new Map<string, HostChoice>();
+	const choices = new Map<string, HostChoice>();
+	for (const { host, label } of Object.values(GIT_HOSTS)) {
+		choices.set(host, { host, label, connected: false });
+	}
 	for (const h of hosts) {
-		const vendor = hostVendor(h.host);
-		seen.set(h.host, {
+		choices.set(h.host, {
 			host: h.host,
-			label: vendor === "Git host" ? h.host : vendor,
+			label: choices.get(h.host)?.label ?? h.host,
 			connected: h.stored.length > 0 || !!h.env || !!h.machine,
 		});
 	}
-	if (!seen.has("github.com"))
-		seen.set("github.com", {
-			host: "github.com",
-			label: "GitHub",
-			connected: false,
-		});
-	return Array.from(seen.values()).sort(
-		(a, b) =>
-			Number(b.connected) - Number(a.connected) ||
-			a.label.localeCompare(b.label),
-	);
+	return Array.from(choices.values());
 }
 
-/** The Sources page a host's Connect opens on. */
-export function connectKindFor(host: string): string {
-	const v = hostVendor(host).toLowerCase();
-	return v === "git host" ? "github" : v;
+export function connectKindFor(host: string): GitHostKind {
+	return publicGitHostKind(host) ?? "gitlab";
 }
 
 /** A host's repositories, most recently pushed first; a pick hands back its clone URL. */
@@ -67,14 +58,21 @@ export function HostRepoPicker({
 	pending: boolean;
 }) {
 	const [search, setSearch] = useState("");
+	const [workspace, setWorkspace] = useState("");
+	const kind = connectKindFor(choice.host);
+	const workspaceRequired = GIT_HOSTS[kind].scope === "workspace";
+	const scope = useDeferredValue(workspace.trim());
+	const ready =
+		!workspaceRequired || (scope.length <= 100 && GIT_HOST_SLUG.test(scope));
 	const [connecting, setConnecting] = useState(false);
 	const list = useHostRepositories(
-		choice.host,
+		ready && choice.connected ? choice.host : null,
 		useDeferredValue(search.trim()),
+		workspaceRequired ? scope : undefined,
 	);
 	const repos = list.data?.repositories ?? [];
 
-	if (list.data?.credential === "none")
+	if (!choice.connected || list.data?.credential === "none")
 		return (
 			<div
 				className="grid justify-items-start gap-2 py-2"
@@ -105,7 +103,8 @@ export function HostRepoPicker({
 							setConnecting(o);
 							if (!o) void list.refetch();
 						}}
-						initialKind={connectKindFor(choice.host)}
+						initialKind={kind}
+						initialUrl={`https://${choice.host}`}
 					/>
 				)}
 			</div>
@@ -113,48 +112,72 @@ export function HostRepoPicker({
 
 	return (
 		<div className="grid gap-2" data-testid="host-repos">
-			<Input
-				autoFocus
-				value={search}
-				onChange={(e) => setSearch(e.target.value)}
-				placeholder={`Search ${choice.label}`}
-				aria-label={`Search ${choice.label} repositories`}
-				data-testid="host-repos-search"
-			/>
-			{list.isLoading ? (
-				<Loading rows={4} />
-			) : list.error ? (
-				<Problem
-					text={getErrorMessage(list.error)}
-					onRetry={() => void list.refetch()}
-				/>
-			) : repos.length === 0 ? (
-				<p
-					className="px-1 py-2 text-meta text-text-3"
-					data-testid="host-repos-empty"
-				>
-					{search ? "No repository matches" : "No repositories"}
-				</p>
+			{workspaceRequired && (
+				<label className="grid gap-1 text-body">
+					Bitbucket workspace
+					<Input
+						autoFocus
+						value={workspace}
+						maxLength={100}
+						onChange={(e) => setWorkspace(e.target.value)}
+					/>
+				</label>
+			)}
+			{!ready ? (
+				<Button variant="text" onClick={onPasteUrl}>
+					Paste a repository URL
+				</Button>
 			) : (
-				<ul
-					className="grid max-h-72 gap-px overflow-y-auto rounded-surface bg-surface-1 p-1"
-					aria-label={`${choice.label} repositories`}
-					data-testid="host-repos-list"
-				>
-					{repos.map((r) => (
-						<RepoRow
-							key={r.url}
-							repo={r}
-							disabled={pending}
-							onPick={() => onChoose(r.url)}
-						/>
-					))}
-					{list.data?.hasMore && (
-						<li className="px-2 py-1 text-meta text-text-3">
-							Search to find more
-						</li>
+				<>
+					<Input
+						autoFocus={!workspaceRequired}
+						value={search}
+						onChange={(e) => setSearch(e.target.value)}
+						placeholder={`Search ${choice.label}`}
+						aria-label={`Search ${choice.label} repositories`}
+						data-testid="host-repos-search"
+					/>
+					{list.isLoading ? (
+						<Loading rows={4} />
+					) : list.error ? (
+						<div className="grid justify-items-start gap-2">
+							<Problem
+								text={getErrorMessage(list.error)}
+								onRetry={() => void list.refetch()}
+							/>
+							<Button variant="text" onClick={onPasteUrl}>
+								Paste a repository URL
+							</Button>
+						</div>
+					) : repos.length === 0 ? (
+						<p
+							className="px-1 py-2 text-meta text-text-3"
+							data-testid="host-repos-empty"
+						>
+							{search ? "No repository matches" : "No repositories"}
+						</p>
+					) : (
+						<ul
+							className="grid max-h-72 gap-px overflow-y-auto rounded-surface bg-surface-1 p-1"
+							aria-label={`${choice.label} repositories`}
+							data-testid="host-repos-list"
+						>
+							{repos.map((r) => (
+								<RepoRow
+									key={r.url}
+									repo={r}
+									disabled={pending}
+									onPick={() => onChoose(r.url)}
+								/>
+							))}
+							{list.data?.hasMore && (
+								<li className="px-2 py-1 text-meta text-text-3">
+									Search to find more
+								</li>
+							)}
+						</ul>
 					)}
-				</ul>
+				</>
 			)}
 		</div>
 	);

@@ -101,13 +101,16 @@ export function useGitHosts(enabled = true) {
 }
 
 /** One host's repositories the resolved credential can see, most recently pushed first. */
-export function useHostRepositories(host: string | null, search: string) {
+export function useHostRepositories(
+	host: string | null,
+	search: string,
+	workspace?: string,
+) {
 	return useQuery({
 		...orpc.sources.hostRepositories.queryOptions({
-			input: { host: host ?? "", ...(search ? { search } : {}) },
+			input: { host: host ?? "", ...(search ? { search } : {}), workspace },
 		}),
 		enabled: !!host,
 		staleTime: 30_000,
-		placeholderData: (prev) => prev,
 	});
 }

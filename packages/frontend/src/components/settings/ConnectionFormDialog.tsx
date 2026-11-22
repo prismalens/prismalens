@@ -8,7 +8,9 @@ import {
 	type ConnectionWithIntegration,
 	CREDENTIAL_KIND_FIELDS,
 	CREDENTIAL_KIND_LABELS,
+	GIT_HOSTS,
 	type Integration,
+	publicGitHostKind,
 	SOURCE_CREDENTIAL_KINDS,
 	type SourceCredentialKind,
 } from "@prismalens/contracts/schemas";
@@ -42,10 +44,12 @@ import {
 	useTemplates,
 	useUpdateConnection,
 } from "@/lib/api/hooks";
+import { useTestSource } from "@/lib/api/hooks/use-sources-orpc";
 import { validateFieldValues } from "@/lib/credential-schema";
 import { DynamicCredentialForm } from "./DynamicCredentialForm";
 import { Field } from "./Field";
 import { getTemplateIcon } from "./integration-utils";
+import { GitProbeTarget, parseGitTarget } from "./SourceConnectDialog";
 
 /** Prefix to distinguish new-template selections from existing integration IDs */
 const NEW_TEMPLATE_PREFIX = "new:";
@@ -123,6 +127,8 @@ export function ConnectionFormDialog({
 	const createIntegration = useCreateIntegration();
 	const deleteIntegration = useDeleteIntegration();
 	const updateConnection = useUpdateConnection();
+	const test = useTestSource();
+	const [gitTarget, setGitTarget] = useState("");
 
 	const [selectedValue, setSelectedValue] = useState<string | null>(
 		preselectedIntegrationId ?? null,
@@ -152,6 +158,7 @@ export function ConnectionFormDialog({
 				setCredentialKind("");
 				setShowErrors(false);
 				setError(null);
+				setGitTarget("");
 			} else {
 				setSelectedValue(preselectedIntegrationId ?? null);
 				setConnectionLabel("");
@@ -192,6 +199,16 @@ export function ConnectionFormDialog({
 
 	// A field's default fills the form, so a git host token starts at github.com.
 	const templateId = selectedTemplate?.id;
+	const editingGitToken = mode === "edit" && templateId === "git-host-token";
+	const testHost = connectionFieldValues.host?.trim();
+	const gitKind = testHost ? publicGitHostKind(testHost) : undefined;
+	const workspaceRequired =
+		!!gitKind && GIT_HOSTS[gitKind].scope === "workspace";
+	const target = testHost
+		? parseGitTarget(gitTarget, testHost, workspaceRequired)
+		: undefined;
+	const invalidTarget = (workspaceRequired || !!gitTarget.trim()) && !target;
+	const replacement = credentialValues.token?.trim();
 	const credentialKinds = selectedTemplate?.credentialKinds?.filter(
 		(k): k is SourceCredentialKind =>
 			(SOURCE_CREDENTIAL_KINDS as readonly string[]).includes(k),
@@ -514,20 +531,66 @@ export function ConnectionFormDialog({
 								<DynamicCredentialForm
 									fields={credentialFields}
 									values={credentialValues}
-									onChange={setCredentialValues}
+									onChange={(values) => {
+										setCredentialValues(values);
+										if (editingGitToken) test.reset();
+									}}
 									showErrors={showErrors}
 									note={credentialKinds ? undefined : blankKeeps}
 								/>
 							)}
+							{editingGitToken && replacement && (
+								<GitProbeTarget
+									value={gitTarget}
+									workspaceRequired={workspaceRequired}
+									invalid={!!gitTarget.trim() && invalidTarget}
+									onChange={(value) => {
+										setGitTarget(value);
+										test.reset();
+									}}
+								/>
+							)}
+							{editingGitToken && test.data && (
+								<div role="status" className="grid gap-1 text-body">
+									{test.data.probes.map((probe) => (
+										<p key={probe.id}>{probe.detail}</p>
+									))}
+								</div>
+							)}
 						</>
 					)}
-					<MutationError error={error} />
+					<MutationError
+						error={error ?? (editingGitToken ? test.error : null)}
+					/>
 				</div>
 
 				<DialogFooter>
 					<Button variant="text" onClick={() => handleOpenChange(false)}>
 						Cancel
 					</Button>
+					{editingGitToken && (
+						<Button
+							variant="secondary"
+							disabled={
+								isSaving ||
+								test.isPending ||
+								!replacement ||
+								!testHost ||
+								invalidTarget
+							}
+							onClick={() => {
+								if (!replacement || !testHost) return;
+								test.mutate({
+									type: "git-host-token",
+									url: `https://${testHost}`,
+									credential: { kind: "bearer", token: replacement },
+									gitTarget: target,
+								});
+							}}
+						>
+							{test.isPending ? "Testing..." : "Test replacement token"}
+						</Button>
+					)}
 					<Button variant="primary" onClick={handleSave} disabled={isSaving}>
 						{ring && <RingTick state={ring} />}
 						{oauth

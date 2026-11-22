@@ -8,11 +8,12 @@ import type {
 	GitHostView,
 	SourceRow,
 } from "@prismalens/contracts/schemas";
+import { GIT_HOSTS } from "@prismalens/contracts/schemas";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HostDetail } from "./SourceDetail";
-import { SourcesSettings } from "./SourcesSettings";
+import { AddSourceButton, SourcesSettings } from "./SourcesSettings";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -125,6 +126,20 @@ afterEach(async () => {
 });
 
 describe("SourcesSettings (cases 4, 9, and Many layout)", () => {
+	it("offers every code host when connecting a source", async () => {
+		await act(async () => root.render(createElement(AddSourceButton)));
+		const add = document.body.querySelector<HTMLButtonElement>(
+			'[data-testid="sources-add"]',
+		);
+		await act(async () => add?.click());
+		for (const [kind, host] of Object.entries(GIT_HOSTS)) {
+			const choice = document.body.querySelector(
+				`[data-testid="source-kind-${kind}"]`,
+			);
+			expect(choice?.textContent).toContain(host.label);
+		}
+	});
+
 	it("renders Overrides note when overridesEnv is present (case 4)", async () => {
 		mockData.sources = [
 			{

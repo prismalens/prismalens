@@ -4,8 +4,9 @@
 
 // Readies a checkout in one command: install, Prisma client, registry, and the build a built sim
 // serves, from turbo's cache, which worktrees of one clone share (#1133). Safe to run again.
-//   pnpm setup:worktree [--rebuild]
-import { execSync } from "node:child_process";
+//   pnpm setup:worktree [--rebuild] [--serve]
+import { execSync, spawnSync } from "node:child_process";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { buildForSim, ROOT } from "./build-cache.mjs";
 
@@ -73,4 +74,41 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
 				}),
 		],
 	]);
+	if (!process.exitCode && process.argv.includes("--serve")) {
+		const sim = resolve(process.env.PRISMALENS_SIM_DIR ?? join(ROOT, ".sim"));
+		const env = {
+			...process.env,
+			PRISMALENS_SIM_DIR: sim,
+			PRISMALENS_SIM_PREBUILT: "1",
+			PRISMALENS_WORKSPACE_DIR: join(sim, "workspace"),
+			PRISMALENS_HOST: "127.0.0.1",
+		};
+		for (const name of [
+			"PRISMALENS_PORT",
+			"PRISMALENS_FRONTEND_PORT",
+			"PRISMALENS_FRONTEND_URL",
+			"PRISMALENS_CORS_ORIGIN",
+		]) {
+			delete env[name];
+		}
+		const serve = spawnSync(
+			process.execPath,
+			[
+				join(ROOT, "scripts/sim/sim.mjs"),
+				"up",
+				"--profile",
+				"bare",
+				"--mode",
+				"built",
+			],
+			{
+				cwd: ROOT,
+				windowsHide: true,
+				stdio: "inherit",
+				env,
+			},
+		);
+		if (serve.error) console.error(serve.error.message);
+		process.exitCode = serve.status ?? 1;
+	}
 }

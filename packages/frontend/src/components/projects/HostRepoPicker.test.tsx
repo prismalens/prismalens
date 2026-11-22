@@ -44,13 +44,15 @@ afterEach(async () => {
 });
 
 describe("HostRepoPicker", () => {
-	it("returns disconnected GitHub when host list is empty", () => {
+	it("offers all code hosts before any tokens are saved", () => {
 		expect(hostChoices([])).toEqual([
 			{ host: "github.com", label: "GitHub", connected: false },
+			{ host: "gitlab.com", label: "GitLab", connected: false },
+			{ host: "bitbucket.org", label: "Bitbucket", connected: false },
 		]);
 	});
 
-	it("places connected GitLab before disconnected GitHub in hostChoices", () => {
+	it("keeps host order after connecting GitLab", () => {
 		const gitlabView: GitHostView = {
 			host: "gitlab.com",
 			order: ["stored"],
@@ -71,8 +73,9 @@ describe("HostRepoPicker", () => {
 		};
 
 		expect(hostChoices([gitlabView])).toEqual([
-			{ host: "gitlab.com", label: "GitLab", connected: true },
 			{ host: "github.com", label: "GitHub", connected: false },
+			{ host: "gitlab.com", label: "GitLab", connected: true },
+			{ host: "bitbucket.org", label: "Bitbucket", connected: false },
 		]);
 	});
 

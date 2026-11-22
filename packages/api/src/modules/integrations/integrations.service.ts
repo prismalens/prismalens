@@ -729,12 +729,18 @@ export class IntegrationsService implements OnModuleInit {
 	async probeHostToken(
 		token: HostToken,
 		connectionId?: string,
+		repositoryUrl?: string,
 	): Promise<TestConnectionResult> {
-		const { details, rejected, failures } = await this.lsRemoteMatching(token);
+		const { details, rejected, failures } = await this.lsRemoteMatching(
+			token,
+			repositoryUrl,
+		);
 		const who = { host: token.host, label: token.label };
 		const said = (kind: GitErrorKind) => gitErrorSentence(kind, who) ?? "";
 		const api =
-			token.host === "github.com" ? await this.githubUser(token) : null;
+			!repositoryUrl && token.host === "github.com"
+				? await this.githubUser(token)
+				: null;
 		if (connectionId && api?.expiresAt !== undefined)
 			await this.prisma.connection.update({
 				where: { id: connectionId },
@@ -774,18 +780,23 @@ export class IntegrationsService implements OnModuleInit {
 			: { success: true, details };
 	}
 
-	private async lsRemoteMatching(token: HostToken): Promise<{
+	private async lsRemoteMatching(
+		token: HostToken,
+		repositoryUrl?: string,
+	): Promise<{
 		details: string[];
 		rejected: boolean;
 		failures: GitErrorKind[];
 	}> {
-		const rows = await this.prisma.repository.findMany({
-			where: { sourceKind: "url" },
-			select: { url: true, metadata: true },
-			orderBy: { updatedAt: "desc" },
-		});
-		const targets: string[] = [];
-		const pinned = new Set<string>();
+		const rows = repositoryUrl
+			? []
+			: await this.prisma.repository.findMany({
+					where: { sourceKind: "url" },
+					select: { url: true, metadata: true },
+					orderBy: { updatedAt: "desc" },
+				});
+		const targets: string[] = repositoryUrl ? [repositoryUrl] : [];
+		const pinned = new Set(targets);
 		for (const { url, metadata } of rows) {
 			if (targets.length >= TEST_REPO_LIMIT) break;
 			const effective = await effectiveGitUrl(url);
@@ -811,7 +822,16 @@ export class IntegrationsService implements OnModuleInit {
 					batch.map(async (url) => {
 						try {
 							await spawnGit(
-								["ls-remote", "--exit-code", "--heads", "--", url],
+								[
+									...(repositoryUrl
+										? ["-c", "http.followRedirects=false"]
+										: []),
+									"ls-remote",
+									"--exit-code",
+									"--heads",
+									"--",
+									url,
+								],
 								{
 									env: await remoteGitEnv(cred.envInput(url)),
 									timeoutMs: GIT_LS_REMOTE_TIMEOUT_MS,

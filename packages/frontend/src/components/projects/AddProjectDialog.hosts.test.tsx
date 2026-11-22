@@ -3,6 +3,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { GitHostView } from "@prismalens/contracts";
+import { GIT_HOSTS } from "@prismalens/contracts/schemas";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -95,7 +96,7 @@ describe("AddProjectDialog (git hosts)", () => {
 		expect(switcher).toBeNull();
 	});
 
-	it("shows GitHub and Folder or URL switch options and defaults to source field when no host is connected", async () => {
+	it("offers every code host before setup", async () => {
 		mockGitHosts = [];
 
 		await act(async () => {
@@ -112,7 +113,9 @@ describe("AddProjectDialog (git hosts)", () => {
 			'[data-testid="add-project-from"]',
 		);
 		expect(switcher).not.toBeNull();
-		expect(switcher?.textContent).toContain("GitHub");
+		for (const { label } of Object.values(GIT_HOSTS)) {
+			expect(switcher?.textContent).toContain(label);
+		}
 		expect(switcher?.textContent).toContain("Folder or URL");
 
 		const sourceInput = document.body.querySelector(

@@ -3,6 +3,7 @@
 
 import { Injectable } from "@nestjs/common";
 import type { HostRepositories } from "@prismalens/contracts";
+import { GIT_HOSTS } from "@prismalens/contracts/schemas";
 import { gitHostKind, listHostRepositories } from "@prismalens/integrations";
 import { normalizeGitHost } from "../../core/harness/git-credential.js";
 import {
@@ -29,6 +30,7 @@ export class HostRepositoriesService {
 
 	async list(input: {
 		host: string;
+		workspace?: string;
 		search?: string;
 		page?: number;
 	}): Promise<HostRepositories> {
@@ -51,6 +53,8 @@ export class HostRepositoriesService {
 			});
 		}
 		const kind = gitHostKind(host);
+		if (GIT_HOSTS[kind].scope === "workspace" && !input.workspace)
+			throw new HostListingError("Enter a Bitbucket workspace slug.");
 		let signed = false;
 		const page = await listHostRepositories(
 			kind,
@@ -70,7 +74,7 @@ export class HostRepositoriesService {
 					);
 				return res.json();
 			},
-			{ search: input.search, page: input.page },
+			{ search: input.search, page: input.page, workspace: input.workspace },
 		).catch((error: unknown) => {
 			if (error instanceof MissingCredential) return null;
 			throw error;

@@ -51,7 +51,7 @@ describe("HostRepositoriesService", () => {
 			if (calls++ === 0) throw new GitCredentialAmbiguousError("bitbucket.org", []);
 			return stored("bitbucket.org");
 		}, { values: [] });
-		expect((await s.list({ host: "bitbucket.org" })).credential).toBe("resolved");
+		expect((await s.list({ host: "bitbucket.org", workspace: "acme" })).credential).toBe("resolved");
 		expect(credentials.resolveForUse).toHaveBeenLastCalledWith(expect.objectContaining({ pick: "c1" }));
 	});
 

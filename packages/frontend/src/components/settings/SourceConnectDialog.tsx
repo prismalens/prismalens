@@ -4,7 +4,11 @@
 import {
 	CREDENTIAL_KIND_FIELDS,
 	CREDENTIAL_KIND_LABELS,
+	GIT_HOST_SLUG,
+	GIT_HOSTS,
+	isGitProbeRepository,
 	type ProbeReport,
+	publicGitHostKind,
 	type SourceCredentialKind,
 	type SourceDraft,
 } from "@prismalens/contracts/schemas";
@@ -76,30 +80,14 @@ export const SOURCE_KINDS: readonly SourceKindOption[] = [
 		url: "http://loki.internal:3100",
 		git: false,
 	},
-	{
-		id: "github",
-		label: "GitHub",
-		description: "Repositories, cloned with a token you paste",
+	...Object.entries(GIT_HOSTS).map(([id, { host, label }]) => ({
+		id,
+		label,
+		description: "Browse repositories and connect a project",
 		type: "git-host-token",
-		url: "https://github.com",
+		url: `https://${host}`,
 		git: true,
-	},
-	{
-		id: "gitlab",
-		label: "GitLab",
-		description: "Repositories, cloned with a token you paste",
-		type: "git-host-token",
-		url: "https://gitlab.com",
-		git: true,
-	},
-	{
-		id: "bitbucket",
-		label: "Bitbucket",
-		description: "Repositories, cloned with a token you paste",
-		type: "git-host-token",
-		url: "https://bitbucket.org",
-		git: true,
-	},
+	})),
 ];
 
 const TELEMETRY_KINDS: readonly SourceCredentialKind[] = [
@@ -152,6 +140,61 @@ export function StepList({
 				);
 			})}
 		</ol>
+	);
+}
+
+export function parseGitTarget(
+	value: string,
+	host: string,
+	workspaceRequired: boolean,
+): SourceDraft["gitTarget"] {
+	const input = value.trim();
+	if (input.length <= 2048 && isGitProbeRepository(input, host))
+		return { repositoryUrl: input };
+	if (workspaceRequired && input.length <= 100 && GIT_HOST_SLUG.test(input))
+		return { workspace: input };
+	return undefined;
+}
+
+export function GitProbeTarget({
+	value,
+	onChange,
+	invalid,
+	workspaceRequired,
+}: {
+	value: string;
+	onChange: (value: string) => void;
+	invalid?: boolean;
+	workspaceRequired: boolean;
+}) {
+	const id = useId();
+	return (
+		<Field
+			label="Test target"
+			htmlFor={id}
+			hint={
+				workspaceRequired
+					? "Enter a workspace to test browsing, or an HTTPS repository URL to test Git access."
+					: "Leave blank to test browsing. Enter an HTTPS repository URL to test Git access instead."
+			}
+			error={
+				invalid &&
+				(workspaceRequired
+					? "Enter a workspace slug or an HTTPS repository URL on this host."
+					: "Enter an HTTPS repository URL on this host.")
+			}
+		>
+			{(describedBy) => (
+				<Input
+					id={id}
+					maxLength={2048}
+					value={value}
+					onChange={(e) => onChange(e.target.value)}
+					aria-describedby={describedBy}
+					aria-invalid={invalid}
+				/>
+			)}
+		</Field>
 	);
 }
 
@@ -210,15 +253,18 @@ export function SourceConnectDialog({
 	open,
 	onOpenChange,
 	initialKind = "prometheus",
+	initialUrl,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	initialKind?: string;
+	initialUrl?: string;
 }) {
 	const [step, setStep] = useState(0);
 	const [kindId, setKindId] = useState(initialKind);
 	const [name, setName] = useState("");
 	const [url, setUrl] = useState("");
+	const [gitTarget, setGitTarget] = useState("");
 	const [credKind, setCredKind] = useState<SourceCredentialKind>("bearer");
 	const [values, setValues] = useState<Record<string, string>>({});
 	const [showErrors, setShowErrors] = useState(false);
@@ -241,16 +287,31 @@ export function SourceConnectDialog({
 		setStep(0);
 		setKindId(initialKind);
 		setName("");
-		setUrl("");
+		setUrl(
+			initialUrl ??
+				SOURCE_KINDS.find((option) => option.git && option.id === initialKind)
+					?.url ??
+				"",
+		);
+		setGitTarget("");
 		setCredKind("bearer");
 		setValues({});
 		setShowErrors(false);
 		setReport(null);
 		test.reset();
 		connect.reset();
-	}, [open, initialKind]);
+	}, [open, initialKind, initialUrl]);
 
 	const host = hostOfUrl(url);
+	const hostKind = host ? publicGitHostKind(host) : undefined;
+	const workspaceRequired =
+		!!hostKind && GIT_HOSTS[hostKind].scope === "workspace";
+	const target =
+		kind.git && host
+			? parseGitTarget(gitTarget, host, workspaceRequired)
+			: undefined;
+	const invalidTarget =
+		kind.git && (workspaceRequired || !!gitTarget.trim()) && !target;
 	const fieldErrors = {
 		...validateFieldValues(fields, values),
 		...credentialProblem(fields, values),
@@ -259,13 +320,14 @@ export function SourceConnectDialog({
 		type: kind.type,
 		url: url.trim(),
 		credential: { kind: effectiveKind, ...values },
+		...(target ? { gitTarget: target } : {}),
 		...(name.trim() ? { label: name.trim() } : {}),
 		...(saveUntested ? { saveUntested: true } : {}),
 	});
 
 	const runTest = () => {
 		setShowErrors(true);
-		if (!host || Object.keys(fieldErrors).length > 0) return;
+		if (!host || invalidTarget || Object.keys(fieldErrors).length > 0) return;
 		setReport(null);
 		setStep(2);
 		test.mutate(draft(), { onSuccess: setReport });
@@ -297,7 +359,14 @@ export function SourceConnectDialog({
 					<div>
 						<RadioGroupPrimitive.Root
 							value={kindId}
-							onValueChange={setKindId}
+							onValueChange={(id) => {
+								setKindId(id);
+								setUrl(
+									SOURCE_KINDS.find((option) => option.git && option.id === id)
+										?.url ?? "",
+								);
+								setGitTarget("");
+							}}
 							aria-label="Kind of source"
 							className="grid gap-2 sm:grid-cols-2"
 						>
@@ -366,6 +435,14 @@ export function SourceConnectDialog({
 								/>
 							)}
 						</Field>
+						{kind.git && (
+							<GitProbeTarget
+								value={gitTarget}
+								onChange={setGitTarget}
+								invalid={showErrors && invalidTarget}
+								workspaceRequired={workspaceRequired}
+							/>
+						)}
 						{!kind.git && (
 							<Field label="Credential type" htmlFor={credId}>
 								<Select

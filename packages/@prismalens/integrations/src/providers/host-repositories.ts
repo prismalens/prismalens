@@ -7,7 +7,14 @@
  * each request; this only builds paths and reads answers.
  */
 
-export type GitHostKind = "github" | "gitlab" | "bitbucket";
+import {
+	GIT_HOST_SLUG,
+	GIT_HOSTS,
+	type GitHostKind,
+	publicGitHostKind,
+} from "@prismalens/contracts/schemas";
+
+export type { GitHostKind };
 
 export interface HostRepositoryRow {
 	fullName: string;
@@ -37,20 +44,18 @@ export function gitHostKind(
 	githubHosts: string[] = [],
 ): GitHostKind {
 	const h = host.toLowerCase();
-	if (h === "github.com" || githubHosts.includes(h)) return "github";
-	if (h === "bitbucket.org") return "bitbucket";
-	return "gitlab";
+	return githubHosts.includes(h)
+		? "github"
+		: (publicGitHostKind(h) ?? "gitlab");
 }
 
 /** The REST API root for a git host. */
 export function hostApiBase(kind: GitHostKind, host: string): string {
 	const h = host.toLowerCase();
-	if (kind === "github")
-		return h === "github.com"
-			? "https://api.github.com"
-			: `https://${h}/api/v3`;
-	if (kind === "bitbucket") return "https://api.bitbucket.org/2.0";
-	return `https://${h}/api/v4`;
+	const descriptor = GIT_HOSTS[kind];
+	if (h === descriptor.host || descriptor.scope === "workspace")
+		return descriptor.apiBase;
+	return `https://${h}/api/${kind === "github" ? "v3" : "v4"}`;
 }
 
 const text = (v: unknown): string | undefined =>
@@ -154,7 +159,7 @@ function bitbucket(rows: unknown[]): HostRepositoryRow[] {
 export function hostRepositoriesUrl(
 	kind: GitHostKind,
 	apiBase: string,
-	opts: { search?: string; page?: number },
+	opts: { search?: string; page?: number; workspace?: string },
 ): string {
 	const page = opts.page ?? 1;
 	const search = opts.search?.trim();
@@ -177,19 +182,20 @@ export function hostRepositoriesUrl(
 		if (search) q.set("search", search);
 		return `${apiBase}/projects?${q}`;
 	}
-	q.set("role", "member");
+	if (!opts.workspace || !GIT_HOST_SLUG.test(opts.workspace))
+		throw new Error("Enter a Bitbucket workspace slug.");
 	q.set("sort", "-updated_on");
 	q.set("pagelen", String(HOST_PAGE_SIZE));
 	q.set("page", String(page));
 	if (search) q.set("q", `name ~ "${search.replace(/["\\]/g, "")}"`);
-	return `${apiBase}/repositories?${q}`;
+	return `${apiBase}/repositories/${encodeURIComponent(opts.workspace)}?${q}`;
 }
 
 export async function listHostRepositories(
 	kind: GitHostKind,
 	host: string,
 	get: HostGet,
-	opts: { search?: string; page?: number } = {},
+	opts: { search?: string; page?: number; workspace?: string } = {},
 ): Promise<HostRepositoryPage> {
 	const apiBase = hostApiBase(kind, host);
 	const search = opts.search?.trim().toLowerCase();

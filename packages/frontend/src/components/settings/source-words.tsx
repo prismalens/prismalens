@@ -7,7 +7,9 @@
  * resolution behind them stays in the report and `pl doctor`.
  */
 import {
+	GIT_HOSTS,
 	type GitHostView,
+	publicGitHostKind,
 	type SourceRow,
 	sourceType,
 } from "@prismalens/contracts/schemas";
@@ -116,11 +118,8 @@ export const kindLabel = (kind: string) =>
 
 /** The vendor a git host belongs to, for its second line. */
 export function hostVendor(host: string): string {
-	const h = host.toLowerCase();
-	if (h === "github.com") return "GitHub";
-	if (h === "gitlab.com") return "GitLab";
-	if (h === "bitbucket.org") return "Bitbucket";
-	return "Git host";
+	const kind = publicGitHostKind(host);
+	return kind ? GIT_HOSTS[kind].label : "Git host";
 }
 
 /** The kind a git host's icon is drawn for: its vendor, else the generic git kind. */

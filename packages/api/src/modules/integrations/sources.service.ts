@@ -8,8 +8,11 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import {
 	ALERT_PULL_TEMPLATES,
+	GIT_HOSTS,
+	isGitProbeRepository,
 	type ProbeReport,
 	parseSourceCredential,
+	publicGitHostKind,
 	type SourceCredential,
 	type SourceDraft,
 	type SourceProblem,
@@ -17,8 +20,15 @@ import {
 	type SourcesOverview,
 	sourceType,
 } from "@prismalens/contracts/schemas";
-import { getTemplate } from "@prismalens/integrations";
-import { normalizeGitHost } from "../../core/harness/git-credential.js";
+import {
+	getTemplate,
+	hostApiBase,
+	hostRepositoriesUrl,
+} from "@prismalens/integrations";
+import {
+	GitCredential,
+	normalizeGitHost,
+} from "../../core/harness/git-credential.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
 import type { HostToken } from "./host-token.js";
@@ -266,7 +276,7 @@ export class SourcesService {
 		};
 	}
 
-	/** The draft token against the saved repositories on its host; none there reads untested. */
+	/** A read-only check of browsing or Git access with an unsaved token. */
 	private async testGitToken(
 		draft: SourceDraft,
 		plan: Plan,
@@ -283,7 +293,71 @@ export class SourcesService {
 			tokenExpiresAt: null,
 			lastErrorMessage: null,
 		};
-		const result = await this.integrations.probeHostToken(draftToken);
+		const target = draft.gitTarget;
+		const repository =
+			target && "repositoryUrl" in target ? target.repositoryUrl : undefined;
+		if (repository && !isGitProbeRepository(repository, plan.host))
+			throw new BadRequestException(
+				"Enter an HTTPS repository URL on the token's host.",
+			);
+		const workspace =
+			target && "workspace" in target ? target.workspace : undefined;
+		const kind = publicGitHostKind(plan.host);
+		if (
+			!repository &&
+			kind &&
+			(GIT_HOSTS[kind].scope === "account" || workspace)
+		) {
+			const url = hostRepositoriesUrl(kind, hostApiBase(kind, plan.host), {
+				workspace,
+			});
+			const credential = new GitCredential(
+				{ source: "connection", label: draftToken.label, via: GIT_TOKEN_TYPE },
+				token,
+				{ host: plan.host },
+			);
+			const authorization = credential.apiAuthorization(url);
+			const capability = "List repositories";
+			let ok = false;
+			let detail = `Could not reach ${plan.host} to test repository access.`;
+			if (authorization) {
+				try {
+					const response = await fetch(url, {
+						headers: { accept: "application/json", authorization },
+						redirect: "error",
+						signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+					});
+					await response.body?.cancel();
+					ok = response.ok;
+					detail = ok
+						? `${capability} succeeded.`
+						: `${plan.host} returned HTTP ${response.status}. Check the token's repository read permission and the target.`;
+				} catch {
+					// Report only the host; transport errors can include request details.
+				}
+			}
+			return {
+				type: GIT_TOKEN_TYPE,
+				host: plan.host,
+				ok,
+				probes: [
+					{
+						id: "repository-access",
+						capability,
+						need: "required",
+						why: "Check access before saving the token.",
+						ok,
+						detail,
+					},
+				],
+				discovered: {},
+			};
+		}
+		const result = await this.integrations.probeHostToken(
+			draftToken,
+			undefined,
+			repository,
+		);
 		const lines = result.details ?? (result.error ? [result.error] : []);
 		return {
 			type: GIT_TOKEN_TYPE,
@@ -293,7 +367,7 @@ export class SourcesService {
 				id: `repository-${i + 1}`,
 				capability: "Read a repository on this host",
 				need: "required",
-				why: "Checks the token against the repositories your services name.",
+				why: "Checks whether Git can read the repository using this token.",
 				ok: detail.startsWith("ok "),
 				detail,
 			})),

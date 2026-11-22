@@ -53,6 +53,10 @@ const github = {
 	postCreationAction: "oauth_redirect" as const,
 } satisfies AuthTemplateResponse;
 
+vi.mock("@/lib/api/hooks/use-sources-orpc", () => ({
+	useTestSource: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false }),
+}));
+
 vi.mock("@/lib/api/hooks", () => ({
 	useIntegrations: () => ({ data: [] }),
 	useTemplates: () => ({ data: [alertmanager, prometheus, github] }),

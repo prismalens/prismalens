@@ -531,6 +531,73 @@ const hasUserinfo = (value: string): boolean => {
 	}
 };
 
+export const GIT_HOSTS = {
+	github: {
+		host: "github.com",
+		label: "GitHub",
+		scope: "account",
+		apiBase: "https://api.github.com",
+		gitUsername: "x-access-token",
+	},
+	gitlab: {
+		host: "gitlab.com",
+		label: "GitLab",
+		scope: "account",
+		apiBase: "https://gitlab.com/api/v4",
+		gitUsername: "oauth2",
+	},
+	bitbucket: {
+		host: "bitbucket.org",
+		label: "Bitbucket",
+		scope: "workspace",
+		apiBase: "https://api.bitbucket.org/2.0",
+		gitUsername: "x-token-auth",
+	},
+} as const;
+
+export type GitHostKind = keyof typeof GIT_HOSTS;
+
+export function publicGitHostKind(host: string): GitHostKind | undefined {
+	return (Object.keys(GIT_HOSTS) as GitHostKind[]).find(
+		(kind) => GIT_HOSTS[kind].host === host.toLowerCase(),
+	);
+}
+
+export const GIT_HOST_SLUG = /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/;
+
+export function isGitProbeRepository(value: string, host?: string): boolean {
+	try {
+		const url = new URL(value);
+		return (
+			url.protocol === "https:" &&
+			(!host || url.host === host.toLowerCase()) &&
+			!url.username &&
+			!url.password &&
+			!/[?#]/.test(value) &&
+			url.pathname.split("/").filter(Boolean).length >= 2
+		);
+	} catch {
+		return false;
+	}
+}
+
+const GitProbeTargetSchema = /* @__PURE__ */ lazySchema(() =>
+	z.union([
+		z
+			.object({ workspace: z.string().trim().max(100).regex(GIT_HOST_SLUG) })
+			.strict(),
+		z
+			.object({
+				repositoryUrl: z
+					.string()
+					.trim()
+					.max(2048)
+					.refine((url) => isGitProbeRepository(url)),
+			})
+			.strict(),
+	]),
+);
+
 export const SourceDraftSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		type: z.string(),
@@ -551,6 +618,7 @@ export const SourceDraftSchema = /* @__PURE__ */ lazySchema(() =>
 		credential: z.record(z.string(), z.string()).optional(),
 		/** Take the token or URL from the variable the api detected. */
 		useDetected: z.boolean().optional(),
+		gitTarget: GitProbeTargetSchema.optional(),
 		serviceLabel: z.string().trim().min(1).optional(),
 		label: z.string().trim().min(1).optional(),
 		/** A vendor MCP connection's name (`CONNECTION_NAME`) and one-line description. */
@@ -655,6 +723,7 @@ export const HostRepositoriesInputSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		/** A git host's name as `GET /sources/git-hosts` lists it, e.g. `github.com`. */
 		host: z.string().trim().min(1).max(253),
+		workspace: z.string().trim().max(100).regex(GIT_HOST_SLUG).optional(),
 		search: z.string().trim().max(200).optional(),
 		page: z.coerce.number().int().min(1).max(100).optional(),
 	}),

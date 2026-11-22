@@ -70,13 +70,15 @@ export function AddProjectDialog({
 	const [hidden, setHidden] = useState(false);
 	const [native, setNative] = useState(!!desktopBridge()?.pickFolder);
 	useEffect(() => {
-		if (open) setTyped("");
+		if (open) {
+			setTyped("");
+			setPicked(null);
+		}
 	}, [open]);
 	const { managesPairing: host } = useOperator();
 	const hosts = useGitHosts(open && !folderOnly);
 	const choices = useMemo(() => hostChoices(hosts.data ?? []), [hosts.data]);
 	const [picked, setPicked] = useState<string | null>(null);
-	// The first connected host leads; with none, today's form does.
 	const from =
 		folderOnly || !hosts.data
 			? FOLDER

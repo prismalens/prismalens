@@ -3,7 +3,11 @@
 
 import { isAbsolute } from "node:path";
 import { inspect } from "node:util";
-import type { GitCredentialDisplay } from "@prismalens/contracts/schemas";
+import {
+	GIT_HOSTS,
+	type GitCredentialDisplay,
+	publicGitHostKind,
+} from "@prismalens/contracts/schemas";
 import type { GitEnvInput } from "./git-env.js";
 
 export type { GitCredentialDisplay };
@@ -16,8 +20,9 @@ export type GitCredentialSource = GitCredentialDisplay["source"];
  */
 export function tokenUsernameFor(hostname: string): string {
 	const host = hostname.toLowerCase();
-	if (host === "bitbucket.org") return "x-token-auth";
-	if (host === "gitlab.com" || host.split(".").includes("gitlab")) {
+	const kind = publicGitHostKind(host);
+	if (kind) return GIT_HOSTS[kind].gitUsername;
+	if (host.split(".").includes("gitlab")) {
 		return "oauth2";
 	}
 	return "x-access-token";
@@ -307,10 +312,9 @@ export class GitCredential {
 		}
 		if (url.protocol !== "https:") return undefined;
 		const api = url.host.toLowerCase();
-		const ok =
-			api === this.#host ||
-			(this.#host === "github.com" && api === "api.github.com") ||
-			(this.#host === "bitbucket.org" && api === "api.bitbucket.org");
+		const kind = publicGitHostKind(this.#host);
+		const apiHost = kind ? new URL(GIT_HOSTS[kind].apiBase).host : undefined;
+		const ok = api === this.#host || api === apiHost;
 		return ok ? `Bearer ${this.#token}` : undefined;
 	}
 

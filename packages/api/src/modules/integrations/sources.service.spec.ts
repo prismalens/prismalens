@@ -4,7 +4,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { ACCESS_SCOPE } from "@prismalens/auth";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SourcesOverviewSchema } from "@prismalens/contracts/schemas";
+import { GIT_HOSTS, SourcesOverviewSchema } from "@prismalens/contracts/schemas";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { GitCredentialService } from "./git-credential.service.js";
 import type { IntegrationsService } from "./integrations.service.js";
@@ -417,24 +417,43 @@ describe("SourcesService (#848 C17)", () => {
 			expect(mockPrisma.connection.update).not.toHaveBeenCalled();
 		});
 
-		it("tests git-host-token draft and returns untested when host has no repos", async () => {
-			mockIntegrations.probeHostToken.mockResolvedValueOnce({
-				success: false,
-				untested: true,
-				details: ["No repository on github.com yet."],
-			});
+		it.each([
+			["github.com", undefined, "https://api.github.com/user/repos?"],
+			["gitlab.com", undefined, "https://gitlab.com/api/v4/projects?"],
+			["bitbucket.org", { workspace: "acme" }, "https://api.bitbucket.org/2.0/repositories/acme?"],
+		] as const)("tests browsing %s before saving", async (host, gitTarget, endpoint) => {
+			const request = vi.fn(async (_url: string, _options: RequestInit) => new Response("{}"));
+			vi.stubGlobal("fetch", request);
+			try {
+				const report = await service.test({
+					type: "git-host-token",
+					url: `https://${host}`,
+					credential: { kind: "bearer", token: "draft-token" },
+					gitTarget,
+				});
+				expect(report.ok).toBe(true);
+				expect(request).toHaveBeenCalledWith(expect.stringContaining(endpoint), expect.objectContaining({ redirect: "error", headers: expect.objectContaining({ authorization: "Bearer draft-token" }) }));
+				expect(mockPrisma.connection.create).not.toHaveBeenCalled();
+				expect(mockPrisma.connection.update).not.toHaveBeenCalled();
+			} finally {
+				vi.unstubAllGlobals();
+			}
+		});
 
+		it.each(Object.values(GIT_HOSTS))("tests a specific repository on $label before saving", async ({ host }) => {
+			const repositoryUrl = `https://${host}/acme/billing.git`;
 			const draft = {
 				type: "git-host-token",
-				url: "github.com",
-				credential: { kind: "bearer" as const, token: "ghp_draft" },
+				url: `https://${host}`,
+				credential: { kind: "bearer", token: "draft-token" },
+				gitTarget: { repositoryUrl },
 			};
-
-			const report = await service.test(draft as any);
-			expect(report.type).toBe("git-host-token");
-			expect(report.untested).toBe(true);
-			expect(report.ok).toBe(false);
-
+			expect((await service.test(draft)).ok).toBe(true);
+			expect(mockIntegrations.probeHostToken).toHaveBeenCalledWith(
+				expect.objectContaining({ host, token: "draft-token" }), undefined, repositoryUrl,
+			);
+			await expect(service.test({ ...draft, gitTarget: { repositoryUrl: "https://elsewhere.invalid/acme/billing.git" } })).rejects.toThrow(BadRequestException);
+			expect(mockIntegrations.probeHostToken).toHaveBeenCalledTimes(1);
 			expect(mockPrisma.connection.create).not.toHaveBeenCalled();
 		});
 

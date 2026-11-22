@@ -75,8 +75,15 @@ const profileSeeds = (/** @type {string} */ profile) =>
 	registry(["profile", profile, "--seeds", "--json"]);
 
 /** The command a person runs to mint another sign-in link for this sim. */
-const pairCommand = () =>
-	`${process.env.PRISMALENS_SIM_DIR ? `PRISMALENS_SIM_DIR=${SIM} ` : ""}pnpm sim pair`;
+function pairCommand() {
+	if (!process.env.PRISMALENS_SIM_DIR) return "pnpm sim pair";
+	if (process.platform === "win32") {
+		const directory = SIM.replaceAll("'", "''");
+		return `$env:PRISMALENS_SIM_DIR = '${directory}'; pnpm sim pair`;
+	}
+	const directory = SIM.replaceAll("'", "'" + String.fromCharCode(92) + "''");
+	return `PRISMALENS_SIM_DIR='${directory}' pnpm sim pair`;
+}
 
 /** A one-time sign-in link on `host`, minted for the server's workspace. */
 function pairLink(
@@ -382,7 +389,7 @@ async function bootDev(env, pids, foreground, apiOnly = false) {
 			url,
 			workspace,
 			env: full,
-			health: `http://127.0.0.1:${api}/health`,
+			health: `http://127.0.0.1:${api}/api/health/ready`,
 		};
 	} else
 		for (const [name, cmd, args, cwd] of lines)
@@ -395,13 +402,13 @@ async function bootDev(env, pids, foreground, apiOnly = false) {
 				/** @type {string} */ (cwd),
 				name === "api",
 			);
-	await ready(`http://127.0.0.1:${api}/health`, 120_000);
+	await ready(`http://127.0.0.1:${api}/api/health/ready`, 120_000);
 	await ready(url, 120_000);
 	return {
 		url,
 		workspace,
 		env: full,
-		health: `http://127.0.0.1:${api}/health`,
+		health: `http://127.0.0.1:${api}/api/health/ready`,
 	};
 }
 

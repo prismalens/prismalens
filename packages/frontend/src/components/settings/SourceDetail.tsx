@@ -33,7 +33,6 @@ import {
 	AlsoInNote,
 	CredentialChip,
 	credentialWord,
-	hostCredentialWord,
 	OverridesNote,
 	StatePill,
 	sourceState,
@@ -278,9 +277,6 @@ export function HostDetail({
 					<PickToken host={host} />
 				</>
 			)}
-			<Section title="Credential">
-				<CredentialChip text={hostCredentialWord(host)} />
-			</Section>
 			{host.stored.length > 0 && (
 				<ul className="flex flex-col divide-y divide-hairline rounded-pool bg-well-in-pool px-3">
 					{host.stored.map((t) => (

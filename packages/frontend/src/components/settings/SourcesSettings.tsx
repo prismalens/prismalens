@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { GitHostView, SourceRow } from "@prismalens/contracts/schemas";
+import {
+	type GitHostView,
+	publicGitHostKind,
+	type SourceRow,
+} from "@prismalens/contracts/schemas";
 import {
 	ChevronDown,
 	ChevronRight,
@@ -108,12 +112,6 @@ export function sourceItems(
 	];
 }
 
-/** Which page an "Add source" opens on; an "Add a token" opens on its vendor. */
-function kindForHost(host: string): string {
-	const v = hostVendor(host).toLowerCase();
-	return v === "git host" ? "github" : v;
-}
-
 /** The page's primary: Add source, three steps (Kind, Details, Test and save). */
 export function AddSourceButton() {
 	const [open, setOpen] = useState(false);
@@ -165,7 +163,7 @@ export function SourcesSettings({ source }: { source?: string }) {
 			remove.reset();
 			setDeleting(id);
 		},
-		onAddToken: (host) => setAdding(kindForHost(host)),
+		onAddToken: setAdding,
 	};
 
 	if (isError)
@@ -199,7 +197,10 @@ export function SourcesSettings({ source }: { source?: string }) {
 			<SourceConnectDialog
 				open={!!adding}
 				onOpenChange={(o) => !o && setAdding(null)}
-				initialKind={adding ?? undefined}
+				initialKind={
+					adding ? (publicGitHostKind(adding) ?? "gitlab") : undefined
+				}
+				initialUrl={adding ? `https://${adding}` : undefined}
 			/>
 		</>
 	);
