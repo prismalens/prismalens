@@ -145,8 +145,8 @@ function probed(at: FactVersions, values: ProbedValues) {
  */
 export const PROBED_AT = {
 	opencode: { cli: "1.19.6", adapter: null },
-	"claude-code": { cli: "2.1.327", adapter: "0.108.0" },
-	codex: { cli: "0.170.0", adapter: "2.7.0" },
+	"claude-code": { cli: "2.1.329", adapter: "0.109.0" },
+	codex: { cli: "0.171.0", adapter: "2.8.0" },
 	gemini: { cli: "0.65.0", adapter: null },
 	// First read in deepagents-code main.py (load_sessions=True) and deepagents-acp server.py initialize; the probe holds them on the pin.
 	deepagents: { cli: "0.2.1", adapter: null },
