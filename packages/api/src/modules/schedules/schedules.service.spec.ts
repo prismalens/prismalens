@@ -373,7 +373,7 @@ describe("SchedulesService (#979)", () => {
 			"started",
 			"run_now",
 		]);
-		expect(ready.mock.calls.map((c) => c[1])).toEqual([
+		expect((ready.mock.calls as unknown as [string, string | null][]).map((c) => c[1])).toEqual([
 			"google/gemini-4-neon",
 			"google/gemini-4-neon",
 		]);
