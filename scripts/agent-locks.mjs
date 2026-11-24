@@ -254,14 +254,10 @@ export function installLocked(pin, into, locksDir = LOCKS, pins = readPins()) {
 	}
 	for (const name of ["package.json", "package-lock.json"])
 		copyFileSync(join(src, name), join(into, name));
-	runLoud("npm", [
-		"ci",
-		"--prefix",
-		into,
-		"--no-audit",
-		"--no-fund",
-		"--loglevel=error",
-	]);
+	// npm runs through a shell on Windows, so the path goes in as cwd, never as an argument.
+	runLoud("npm", ["ci", "--no-audit", "--no-fund", "--loglevel=error"], {
+		cwd: into,
+	});
 	return join(into, "node_modules", ".bin");
 }
 
