@@ -15,7 +15,7 @@ import {
 	Plus,
 	Siren,
 } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	CHIP,
@@ -116,6 +116,11 @@ export function HomeComposer({
 	const [adding, setAdding] = useState(false);
 	const only = onlyProject(repos, search);
 	const picked = only ? { ...search, project: only.id } : search;
+	// The default is written to the address like a pick, so the URL and the chip agree.
+	const onlyId = only?.id;
+	useEffect(() => {
+		if (onlyId) set({ project: onlyId });
+	}, [onlyId]);
 	const subject = subjectOf(picked);
 	const repo = repos.find((r) => r.id === picked.project);
 	const service = services.find((s) => s.id === picked.service);

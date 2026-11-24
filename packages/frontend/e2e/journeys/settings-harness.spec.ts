@@ -1051,7 +1051,8 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 						at: new Date().toISOString(),
 						outcome: result.outcome,
 						detail: result.detail,
-						servedModel: null,
+						// A model the agent runs without a login, so its provider check has an answer.
+						servedModel: result.id === "opencode" ? "opencode/fixture" : null,
 						effort: null,
 						images: false,
 					};
