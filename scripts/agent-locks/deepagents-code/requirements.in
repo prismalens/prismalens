@@ -1,2 +1,3 @@
 deepagents-code==0.2.1
 deepagents-acp
+agent-client-protocol<1

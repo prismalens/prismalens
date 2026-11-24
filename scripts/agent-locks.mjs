@@ -36,11 +36,19 @@ const WINDOWS = process.platform === "win32";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const LOCKS = join(ROOT, "scripts/agent-locks");
 const PYTHON = "3.14";
-/** Days a release soaks before its pin moves; a lock resolves its dependencies as of then. */
+/** Days a release soaks before its pin moves; an npm lock resolves its dependencies as of then. */
 export const PIN_SOAK_DAYS = 3;
 
 /** Python pins and the packages installed beside the CLI, as `harness.ts` names its uv channel. */
 export const PYTHON_PINS = { "deepagents-code": ["deepagents-acp"] };
+
+/**
+ * What the pin needs that the channel does not cap. A Python lock resolves the rest as of its regen:
+ * 0.2.1 as of its soak date fails the killed-mid-turn check (R11), and with today's passes (#1204).
+ */
+export const PYTHON_PIN_CONSTRAINTS = {
+	"deepagents-code": ["agent-client-protocol<1"],
+};
 
 export const readPins = (root = ROOT) =>
 	JSON.parse(readFileSync(join(root, "scripts/agent-pins.json"), "utf8")).pins;
@@ -71,16 +79,6 @@ function npmPublishedAt(pkg, version) {
 	const at = JSON.parse(run("npm", ["view", pkg, "time", "--json"]))[version];
 	if (!at) throw new Error(`npm lists no ${pkg}@${version}`);
 	return at;
-}
-
-async function pypiUploadedAt(pkg, version) {
-	const res = await fetch(`https://pypi.org/pypi/${pkg}/${version}/json`);
-	if (!res.ok)
-		throw new Error(`PyPI answered ${res.status} for ${pkg} ${version}`);
-	const times = (await res.json()).urls.map((u) => u.upload_time_iso_8601);
-	if (!times.length)
-		throw new Error(`PyPI lists no file for ${pkg} ${version}`);
-	return times.sort()[0];
 }
 
 /**
@@ -170,11 +168,12 @@ async function regenOne(pin, version, locksDir) {
 	rmSync(dir, { recursive: true, force: true });
 	mkdirSync(dir, { recursive: true });
 	if (PYTHON_PINS[pin]) {
-		const asOf = resolvedAsOf(await pypiUploadedAt(pin, version));
-		writeFileSync(
-			join(dir, "requirements.in"),
-			`${[`${pin}==${version}`, ...PYTHON_PINS[pin]].join("\n")}\n`,
-		);
+		const wants = [
+			`${pin}==${version}`,
+			...PYTHON_PINS[pin],
+			...(PYTHON_PIN_CONSTRAINTS[pin] ?? []),
+		];
+		writeFileSync(join(dir, "requirements.in"), `${wants.join("\n")}\n`);
 		runLoud(
 			"uv",
 			[
@@ -185,8 +184,6 @@ async function regenOne(pin, version, locksDir) {
 				"--python-version",
 				PYTHON,
 				"--generate-hashes",
-				"--exclude-newer",
-				asOf,
 				"--output-file",
 				"requirements.lock",
 				"--quiet",

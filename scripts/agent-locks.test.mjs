@@ -21,6 +21,7 @@ import {
 	lockName,
 	lockProblems,
 	PIN_SOAK_DAYS,
+	PYTHON_PIN_CONSTRAINTS,
 	PYTHON_PINS,
 	readPins,
 	resolvedAsOf,
@@ -202,4 +203,17 @@ test("every pinned install in a workflow comes from its lock, never from the reg
 		assert.doesNotMatch(text, /--before|--exclude-newer|uv tool install/);
 		assert.doesNotMatch(text, /npm install -g "(\$PIN|opencode-ai)@/);
 	}
+});
+
+test("a Python lock carries the pin's constraints the channel leaves uncapped", () => {
+	for (const [pin, constraints] of Object.entries(PYTHON_PIN_CONSTRAINTS)) {
+		const wants = readFileSync(
+			join(LOCKS, lockName(pin), "requirements.in"),
+			"utf8",
+		).split("\n");
+		for (const c of constraints) assert.ok(wants.includes(c), `${pin}: ${c}`);
+	}
+	assert.deepEqual(PYTHON_PIN_CONSTRAINTS, {
+		"deepagents-code": ["agent-client-protocol<1"],
+	});
 });
