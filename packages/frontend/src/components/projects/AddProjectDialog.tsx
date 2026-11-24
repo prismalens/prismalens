@@ -136,7 +136,7 @@ export function AddProjectDialog({
 			>
 				<DialogTitle className="shrink-0">{title}</DialogTitle>
 				{/* The footer stays in view; a short screen scrolls this body instead. */}
-				<div className="-mx-1 grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-3 overflow-y-auto px-1">
+				<div className="-mx-1 grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] content-start gap-3 overflow-x-hidden overflow-y-auto px-1">
 					{!folderOnly && (
 						<SourceList
 							from={from}
@@ -227,7 +227,7 @@ export function AddProjectDialog({
 							)}
 							{host && !url && !pasting && !usesNative && (
 								<div className="grid gap-1.5 rounded-surface bg-surface-1 p-2">
-									<div className="flex items-center gap-2">
+									<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
 										<Button
 											type="button"
 											variant="text"
@@ -241,7 +241,7 @@ export function AddProjectDialog({
 										</Button>
 										<PathTail
 											path={at?.path ?? ""}
-											className="min-w-0 flex-1 font-mono text-meta text-text-3"
+											className="min-w-0 flex-1 basis-28 font-mono text-meta text-text-3"
 										/>
 										<label className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-meta text-text-2">
 											<Switch
