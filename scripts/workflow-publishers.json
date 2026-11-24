@@ -93,7 +93,8 @@
 			"uses": "./.github/workflows/proofs.yml",
 			"with": {
 				"full": "${{ needs.changes.outputs.full == 'true' }}",
-				"agents": "${{ needs.changes.outputs.agents == 'true' }}"
+				"agents": "${{ needs.changes.outputs.agents == 'true' }}",
+				"code": "${{ needs.changes.outputs.code == 'true' }}"
 			},
 			"secrets": null,
 			"permissions": {
