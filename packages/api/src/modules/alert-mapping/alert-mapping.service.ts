@@ -28,15 +28,19 @@ const lastSegment = (name: string) => name.split("/").pop() ?? name;
 @Injectable()
 export class AlertMappingService {
 	private readonly logger = new Logger(AlertMappingService.name);
+	/** The service being made for a project: alerts that arrive meanwhile await it instead of racing it. */
+	private readonly making = new Map<string, Promise<Service>>();
 
 	constructor(private readonly prisma: PrismaService) {}
 
 	async resolveServiceForAlert(alert: AlertInfo): Promise<Service | null> {
-		const names = [alert.serviceName, alert.labels?.service]
-			.map((n) => n?.trim())
-			.filter((n): n is string => !!n);
+		// A stored service name may carry spaces (the contract allows it): look it up as sent, then trimmed.
+		const raw = [alert.serviceName, alert.labels?.service].filter(
+			(n): n is string => !!n?.trim(),
+		);
+		const names = raw.map((n) => n.trim());
 
-		for (const name of names) {
+		for (const name of new Set(raw.flatMap((n) => [n, n.trim()]))) {
 			const service = await this.prisma.service.findUnique({ where: { name } });
 			if (service) {
 				this.logger.debug(
@@ -88,30 +92,82 @@ export class AlertMappingService {
 		return found.length === 1 ? (found[0] ?? null) : null;
 	}
 
-	/** The project's primary service; made, named for the project, when it has none. */
+	/**
+	 * The project's primary service; made when it has none. A service is reused
+	 * only through a repository link: a same-named service of another project is
+	 * not this project's, so the new one takes a name no service holds.
+	 */
 	private async serviceOf(project: Repository): Promise<Service> {
+		const linked = await this.linkedService(project.id);
+		if (linked) return linked;
+		const running = this.making.get(project.id);
+		if (running) return running;
+		const made = this.makeOrTakeService(project).finally(() =>
+			this.making.delete(project.id),
+		);
+		this.making.set(project.id, made);
+		return made;
+	}
+
+	private async makeOrTakeService(project: Repository): Promise<Service> {
+		try {
+			return await this.makeLinkedService(project);
+		} catch (error) {
+			if ((error as { code?: string }).code !== "P2002") throw error;
+			// A concurrent first alert for this project won the unique name or link: take its service, or retry once.
+			return (
+				(await this.linkedService(project.id)) ??
+				(await this.makeLinkedService(project))
+			);
+		}
+	}
+
+	private async linkedService(repositoryId: string): Promise<Service | null> {
 		const link = await this.prisma.serviceRepository.findFirst({
-			where: { repositoryId: project.id },
+			where: { repositoryId },
 			orderBy: { isPrimary: "desc" },
 			include: { service: true },
 		});
-		if (link) return link.service;
+		return link?.service ?? null;
+	}
 
-		const name = lastSegment(project.fullName);
-		const service =
-			(await this.prisma.service.findUnique({ where: { name } })) ??
-			(await this.prisma.service.create({ data: { name } }));
-		await this.prisma.serviceRepository.create({
-			data: {
-				serviceId: service.id,
-				repositoryId: project.id,
-				subPath: project.subPath,
-				isPrimary: true,
-			},
+	private async makeLinkedService(project: Repository): Promise<Service> {
+		const service = await this.prisma.$transaction(async (tx) => {
+			const taken = await tx.serviceRepository.findFirst({
+				where: { repositoryId: project.id },
+				include: { service: true },
+			});
+			if (taken) return taken.service;
+			const name = await this.freeServiceName(tx, project);
+			const made = await tx.service.create({ data: { name } });
+			await tx.serviceRepository.create({
+				data: {
+					serviceId: made.id,
+					repositoryId: project.id,
+					subPath: project.subPath,
+					isPrimary: true,
+				},
+			});
+			return made;
 		});
 		this.logger.log(
 			`Project ${project.fullName} became service "${service.name}" because an alert reached it`,
 		);
 		return service;
+	}
+
+	/** The project's folder name, else its full name, else the full name numbered. */
+	private async freeServiceName(
+		tx: Pick<PrismaService, "service">,
+		project: Repository,
+	): Promise<string> {
+		const base = lastSegment(project.fullName);
+		for (const name of [base, project.fullName]) {
+			if (!(await tx.service.findUnique({ where: { name } }))) return name;
+		}
+		for (let n = 2; ; n++) {
+			const name = `${project.fullName}-${n}`;
+			if (!(await tx.service.findUnique({ where: { name } }))) return name;
+		}
 	}
 }

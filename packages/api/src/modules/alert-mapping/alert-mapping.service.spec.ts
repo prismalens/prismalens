@@ -11,6 +11,7 @@ import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { AlertMappingService } from "./alert-mapping.service.js";
 
 const mockPrisma = {
+	$transaction: vi.fn(),
 	service: { findUnique: vi.fn(), create: vi.fn(), count: vi.fn() },
 	repository: { findMany: vi.fn() },
 	serviceRepository: { findFirst: vi.fn(), create: vi.fn(), count: vi.fn() },
@@ -28,6 +29,7 @@ describe("AlertMappingService.resolveServiceForAlert", () => {
 
 	beforeEach(async () => {
 		vi.resetAllMocks();
+		mockPrisma.$transaction.mockImplementation((run: (tx: unknown) => unknown) => run(mockPrisma));
 		mockPrisma.service.findUnique.mockResolvedValue(null);
 		mockPrisma.service.count.mockResolvedValue(0);
 		mockPrisma.repository.findMany.mockResolvedValue([]);
@@ -232,5 +234,100 @@ describe("AlertMappingService.resolveServiceForAlert", () => {
 
 		expect(result).toBeNull();
 		expect(mockPrisma.service.create).not.toHaveBeenCalled();
+	});
+
+	it("finds a stored service name that carries spaces by the name as sent", async () => {
+		const spaced = { id: "svc-1", name: " checkout " };
+		mockPrisma.service.findUnique.mockImplementation(
+			async ({ where }: { where: { name: string } }) =>
+				where.name === " checkout " ? spaced : null,
+		);
+
+		const result = await service.resolveServiceForAlert({
+			title: "High CPU",
+			labels: { service: " checkout " },
+		});
+
+		expect(result).toBe(spaced);
+	});
+
+	it("looks the project up by the trimmed name", async () => {
+		const made = { id: "svc-new", name: "demo-proj" };
+		mockPrisma.repository.findMany.mockResolvedValue([
+			project("repo-1", "demo-proj"),
+		]);
+		mockPrisma.service.create.mockResolvedValue(made);
+
+		const result = await service.resolveServiceForAlert({
+			title: "Boom",
+			serviceName: "  demo-proj ",
+		});
+
+		expect(result).toBe(made);
+	});
+
+	it("gives a project whose folder name another service holds a name of its own, and links only that project", async () => {
+		const taken = { id: "svc-a", name: "api" };
+		const made = { id: "svc-b", name: "team-b/api" };
+		mockPrisma.repository.findMany.mockResolvedValue([
+			project("repo-b", "team-b/api"),
+		]);
+		mockPrisma.service.findUnique.mockImplementation(
+			async ({ where }: { where: { name: string } }) =>
+				where.name === "api" ? taken : null,
+		);
+		mockPrisma.service.create.mockResolvedValue(made);
+
+		const result = await service.resolveServiceForAlert({
+			title: "Boom",
+			labels: { service: "team-b/api" },
+		});
+
+		expect(result).toBe(made);
+		expect(mockPrisma.service.create).toHaveBeenCalledWith({
+			data: { name: "team-b/api" },
+		});
+		expect(mockPrisma.serviceRepository.create).toHaveBeenCalledWith({
+			data: {
+				serviceId: "svc-b",
+				repositoryId: "repo-b",
+				subPath: null,
+				isPrimary: true,
+			},
+		});
+	});
+
+	it("takes the service a concurrent first alert linked when its own create loses a unique key", async () => {
+		const winner = { id: "svc-w", name: "demo-proj" };
+		mockPrisma.repository.findMany.mockResolvedValue([
+			project("repo-1", "demo-proj"),
+		]);
+		mockPrisma.service.create.mockRejectedValueOnce(
+			Object.assign(new Error("Unique constraint failed"), { code: "P2002" }),
+		);
+		mockPrisma.serviceRepository.findFirst
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce({ service: winner });
+
+		const result = await service.resolveServiceForAlert({
+			title: "Boom",
+			serviceName: "demo-proj",
+		});
+
+		expect(result).toBe(winner);
+		expect(mockPrisma.service.create).toHaveBeenCalledTimes(1);
+		expect(mockPrisma.serviceRepository.create).not.toHaveBeenCalled();
+	});
+
+	it("rethrows an error that is not a lost unique key", async () => {
+		mockPrisma.repository.findMany.mockResolvedValue([
+			project("repo-1", "demo-proj"),
+		]);
+		mockPrisma.service.create.mockRejectedValueOnce(new Error("disk full"));
+
+		await expect(
+			service.resolveServiceForAlert({ title: "Boom", serviceName: "demo-proj" }),
+		).rejects.toThrow("disk full");
 	});
 });
