@@ -225,7 +225,11 @@ jobs:
         env:
           FAKETIME: "+40d"
           FAKETIME_DONT_FAKE_MONOTONIC: "1"
-        run: LD_PRELOAD="$(dpkg -L libfaketime | grep 'libfaketime.so.1$')" pnpm exec vitest run
+        # A real browser has no coherent clock here: faked, it takes over 20 s to start; exempted
+        # (FAKETIME_SKIP_CMDS), it disagrees with the api and the scenario hangs. It runs on the real clock.
+        run: >-
+          LD_PRELOAD="$(dpkg -L libfaketime | grep 'libfaketime.so.1$')"
+          pnpm exec vitest run --exclude test/scenarios/agent-browser.spec.ts
 
   # Packed-artifact smoke (work-005 R0.d): pack the single published tarball
   # (prismalens — the @prismalens/* closure is bundled into it, issue #193) and
