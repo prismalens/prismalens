@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { expect, type Page } from "@playwright/test";
 import type { AttentionEvent, AttentionThread } from "@prismalens/contracts";
 import { decide } from "../../../src/lib/attention/notify-rules";

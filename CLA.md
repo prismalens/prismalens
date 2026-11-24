@@ -1,7 +1,7 @@
 # prismalens Individual Contributor License Agreement
 
 **Status: not yet in force.** prismalens is not accepting outside code
-contributions yet (see [CONTRIBUTING.md](CONTRIBUTING.md#contribution-status)).
+contributions yet (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 This document is published in advance so it is ready when contributions open. It
 applies to a contribution only once the CLA gate is active and you have signed.
 

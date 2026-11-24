@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     branches: [main]
-  # Recovery: resume an existing draft release from its assets on (CONTRIBUTING.md, #717).
+  # Recovery: resume an existing draft release from its assets on (docs/contributing/release-pipeline.md, #717).
   workflow_dispatch:
     inputs:
       tag:
@@ -13,12 +13,8 @@ permissions:
 concurrency: release-${{ github.ref }}
 jobs:
   release-please:
-    # HELD until 0.5.0 is deliberately cut. release-please opens a release PR on
-    # every push to main, and merging that PR publishes to npm and cuts a GitHub
-    # Release — so an open release PR is a live publish button nobody asked for.
-    # Set the `RELEASE_ENABLED` repository variable to "true" to re-arm it
-    # (Settings -> Secrets and variables -> Actions -> Variables); no code change
-    # and no PR needed to turn it back on.
+    # Runs only while the `RELEASE_ENABLED` repository variable is "true": an open
+    # release PR is a live publish button, so unsetting the variable pauses releases.
     #
     # Every release is a 0.5.x patch (`versioning: always-bump-patch` in
     # release-please-config.json); a minor needs that line changed on purpose.

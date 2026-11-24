@@ -17,7 +17,7 @@ reviews:
     #
     # No dry run exists for this setting: CodeRabbit applies base-branch config
     # only for open-source repos, so it takes effect the moment it lands on main.
-    # The revert is one commit — see ~/ai-context/state/prismalens-valve-revert.md.
+    # The revert is one commit: set `enabled: true` again.
     enabled: false
     labels:
       - "coderabbit_review"

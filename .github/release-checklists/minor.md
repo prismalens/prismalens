@@ -19,10 +19,10 @@ Site and docs checks (from #118 - Standing phase-exit issue, SDLC hygiene):
 - [ ] docs.prismalens.io updated: every new command, flag and config key this release shipped is documented (reference completeness), with input/output symmetry (what each command produces, where artifacts land).
 - [ ] **Adversarial docs review** run against the updated site. Findings triaged: quick wins applied, over-engineering rejected explicitly.
 - [ ] prismalens.io site matches what this release ships: every product claim on `/` and `/about` checked against the packed artifact and docs.prismalens.io; no retired command or flag described; "not yet" / "in development" lines removed for anything that shipped.
-- [ ] Site imagery re-captured from a run on the packed release if the incident or report page changed: `site/public/screenshots/` and the evidence in `site/src/components/Refraction.astro`.
-- [ ] If the tagline or positioning changed: OG card and README banners re-rendered from `brand/sheet.html`, and the banners copied to `.github/assets/` in this repo.
+- [ ] Site imagery re-captured from a run on the packed release if the incident or report page changed: `prismalens.io:site/public/screenshots/` and the evidence in `prismalens.io:site/src/components/Refraction.astro`.
+- [ ] If the tagline or positioning changed: OG card and README banners re-rendered from `prismalens.io:brand/sheet.html`, and the banners copied to `.github/assets/` in this repo.
 - [ ] Links validated on the **built** docs and site, not dev mode (relative .md links 404 in prod; starlight-links-validator).
-- [ ] CHANGELOG narrative paragraph and ROADMAP.md "Where we are" reconciled in the platform repo.
+- [ ] Release notes narrative paragraph reconciled with `packages/cli/CHANGELOG.md`.
 
 Live test (from #120 - Standing phase-exit issue, scripted live test):
 

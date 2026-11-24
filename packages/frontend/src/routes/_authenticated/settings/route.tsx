@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * Settings (#523, study-v3 §2): the sidebar swaps to the pages with Back
  * at its foot (#848); the chosen page's rows fill the frame. `tab` names it.

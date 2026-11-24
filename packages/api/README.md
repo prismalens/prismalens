@@ -1,6 +1,5 @@
 # @prismalens/api
 
-@prismalens/api is the NestJS backend service for PrismaLens. It exposes REST and oRPC endpoints for alert ingestion, incident management, investigation lifecycle orchestration, and settings administration, while serving the web application assets. The package coordinates in-process investigation dispatch, database access, and authentication for the application.
+The NestJS server behind `pl up`: alert intake, incidents, investigations, settings and the web app's assets.
 
-Product documentation and deployment guides are available at https://docs.prismalens.io.
-
+See https://docs.prismalens.io.
