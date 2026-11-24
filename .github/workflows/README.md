@@ -93,6 +93,10 @@ tool process from another run's.
 The pins for the agents these jobs install are in `scripts/agent-pins.json` (the agent) and
 `@prismalens/agent-adapters` (the adapter); `agent-release-watch.yml` moves them.
 
+A pinned agent installs from its lock in `scripts/agent-locks/<agent>/` (`npm ci`, or `uv pip sync` of a hashed
+`requirements.lock`), the same bytes on every runner (#1154); the latest legs stay unlocked. After a pin moves,
+`node scripts/agent-locks.mjs regen` rewrites the locks and `check` (in `format-and-lint`) fails until it has run.
+
 One build per run (#885): `build` saves turbo's cache (`TURBO_CACHE_DIR`, `.turbo-cache`) under
 `turbo-<os>-<sha>`; `test` and `pack` need it and restore it, so their `pnpm build` replays.
 `e2e` needs `build`, so it restores this commit's own cache.
