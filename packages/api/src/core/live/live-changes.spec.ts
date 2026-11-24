@@ -92,24 +92,30 @@ describe("LiveChanges (walk f27)", () => {
 	});
 
 	it("wakes the thread list for an agent's events, once per slower window (#1020)", async () => {
-		const live = new LiveChanges(1, 30);
-		const seen: string[][] = [];
-		const controller = new AbortController();
-		const reader = (async () => {
-			for await (const change of live.subscribe(controller.signal)) {
-				if ("topics" in change) seen.push(change.topics);
-			}
-		})();
-		live.noteWrite("InvestigationEvent", "create");
-		await new Promise((r) => setTimeout(r, 10));
-		live.noteWrite("InvestigationEvent", "create");
-		live.noteWrite("Alert", "create");
-		await new Promise((r) => setTimeout(r, 10));
-		expect(seen).toEqual([["alerts"]]);
-		await new Promise((r) => setTimeout(r, 40));
-		expect(seen).toEqual([["alerts"], ["threads"]]);
-		controller.abort();
-		await reader;
+		// The windows are 1 and 30 ms; fake time keeps a loaded runner from crossing them (#1085).
+		vi.useFakeTimers();
+		try {
+			const live = new LiveChanges(1, 30);
+			const seen: string[][] = [];
+			const controller = new AbortController();
+			const reader = (async () => {
+				for await (const change of live.subscribe(controller.signal)) {
+					if ("topics" in change) seen.push(change.topics);
+				}
+			})();
+			live.noteWrite("InvestigationEvent", "create");
+			await vi.advanceTimersByTimeAsync(10);
+			live.noteWrite("InvestigationEvent", "create");
+			live.noteWrite("Alert", "create");
+			await vi.advanceTimersByTimeAsync(10);
+			expect(seen).toEqual([["alerts"]]);
+			await vi.advanceTimersByTimeAsync(40);
+			expect(seen).toEqual([["alerts"], ["threads"]]);
+			controller.abort();
+			await reader;
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("ends a subscription quietly when the browser goes away", async () => {
