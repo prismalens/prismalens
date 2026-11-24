@@ -81,9 +81,7 @@ test("the tracking issue waits on every live job and stays open when one failed"
 		"live-pack",
 		"packed-intake-live",
 	]);
-	const step = jobs.report.steps.find((s) =>
-		s.name?.startsWith("Open, update"),
-	);
+	const step = jobs.report.steps.find((s) => s.id === "night");
 	for (const job of live) {
 		assert.ok(jobs.report.needs.includes(job), `report.needs lacks ${job}`);
 		assert.ok(
@@ -93,7 +91,6 @@ test("the tracking issue waits on every live job and stays open when one failed"
 	}
 	// The pack job failed, its dependant was skipped, the rest passed: the issue is not closed.
 	const dir = mkdtempSync(join(tmpdir(), "pl-report-"));
-	const log = join(dir, "gh.log");
 	const run = (liveResults) =>
 		runStep(
 			step,
@@ -101,23 +98,35 @@ test("the tracking issue waits on every live job and stays open when one failed"
 				PROOFS: "success",
 				PUBLISH: "skipped",
 				LIVE: liveResults,
-				DRY_RUN: "false",
 				RUNNER_TEMP: dir,
 				REPO: "prismalens/prismalens",
 				RUN_URL: "u",
 				RUN_ID: "1",
 			},
-			{
-				gh: `echo "$@" >> "${log}"; case "$1 $2" in "issue list") echo '[{"number":7,"title":"Nightly CI failing","state":"OPEN"}]';; "api repos/prismalens/prismalens/actions/runs/1/jobs") ;; esac`,
-			},
-		);
-	run("failure skipped success");
-	const red = readFileSync(log, "utf8");
-	assert.ok(!red.includes("issue close"), red);
-	assert.ok(red.includes("issue edit 7"), red);
-	writeFileSync(log, "");
-	run("success success success");
-	assert.ok(readFileSync(log, "utf8").includes("issue close 7"));
+			{ gh: "true" },
+		).out;
+	assert.match(run("failure skipped success"), /^ok=false$/m);
+	assert.match(run("success success success"), /^ok=true$/m);
+});
+
+test("a night with NIGHTLY_ENABLED unset says it was skipped and touches no issue", () => {
+	const { jobs } = workflow("nightly.yml");
+	const gate = jobs.report.steps.find((s) => s.id === "gate");
+	const dir = mkdtempSync(join(tmpdir(), "pl-gate-"));
+	const summary = join(dir, "summary.md");
+	const env = { EVENT: "schedule", GITHUB_STEP_SUMMARY: summary };
+	const unset = runStep(gate, { ...env, ENABLED: "" });
+	assert.match(unset.out, /^skipped=true$/m);
+	assert.match(readFileSync(summary, "utf8"), /NIGHTLY_ENABLED is "unset"/);
+	assert.doesNotMatch(
+		runStep(gate, { ...env, ENABLED: "true" }).out,
+		/skipped/,
+	);
+	assert.doesNotMatch(
+		runStep(gate, { ...env, EVENT: "workflow_dispatch", ENABLED: "" }).out,
+		/skipped/,
+	);
+	assert.equal(jobs.report.if, "always()");
 });
 
 test("a release takes `latest` only if it is the newest when it is promoted", () => {

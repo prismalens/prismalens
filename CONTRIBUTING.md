@@ -91,10 +91,15 @@ Two things to know before running it locally:
   re-running blind.
 
 A test that passes only on a retry is quarantined, not left to retry. Tag it `@quarantine` (a
-`{ tag: "@quarantine" }` option, or the tag line above a Gherkin scenario) with a comment naming its
-open `bug` issue, one per test. It then runs in the non-blocking `chromium-quarantine` and
+`{ tag: "@quarantine" }` option, or the tag line above a Gherkin scenario) with its open `bug` issue's
+number (`#891`) on the same line as the tag, one issue per test. It then runs in the non-blocking `chromium-quarantine` and
 `journeys-quarantine` projects, and the issue closes only when the tag comes off. Every run lists its
-flaky and failed tests in the job summary.
+flaky and failed tests in the job summary, and on the default branch a failing one opens or updates the
+`Quarantined e2e tests failing` issue.
+
+A quarantine has an owner and a limit, held by `pnpm quarantine:check` in the `lint` job: every tag names
+an open issue on its own line, at most 5 tags exist at once, and each named issue is under 14 days old.
+The check names every offender. Past the limit, fix the test or delete it; do not tag a sixth.
 
 ```mermaid
 stateDiagram-v2
@@ -110,7 +115,7 @@ In `packages/frontend/e2e/features/inbox.feature`:
 
 ```gherkin
   # Quarantined: #891 - the inbox's new-alert-row journey passes on its first attempt
-  @quarantine
+  @quarantine #891
   Scenario: A new alert's row appears without a reload
 ```
 
