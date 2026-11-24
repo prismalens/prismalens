@@ -52,6 +52,7 @@ import {
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
 import { toast } from "@/hooks/use-toast";
+import { alertSearchLine } from "@/lib/alert-groups";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import {
 	useSettleThread,
@@ -275,7 +276,7 @@ export function Palette({
 					key: `alert-${a.id}`,
 					tab: "alerts",
 					label: a.title,
-					sub: `${a.status}${a.fingerprint ? `, ${a.fingerprint.slice(0, 12)}` : ""}`,
+					sub: alertSearchLine(a),
 					icon: Bell,
 					run: () =>
 						void navigate({ to: "/alerts/$id", params: { id: a.id } } as never),

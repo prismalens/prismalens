@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	ALERT_STATUS_LABEL,
 	type AlertWithRelations,
 	isAlertFiring,
 	type Severity,
@@ -10,6 +11,15 @@ import {
 /** An alert's dot: its severity colour while firing, quiet once cleared (#673 w24). */
 export function alertDotColor(severity: Severity, firing: boolean): string {
 	return firing ? `var(--sev-${severity})` : "var(--text-3)";
+}
+
+/** The line under an alert in Search: severity, state and where it came from, never its fingerprint. */
+export function alertSearchLine(
+	a: Pick<AlertWithRelations, "severity" | "status" | "source" | "service">,
+): string {
+	const state = (ALERT_STATUS_LABEL[a.status] ?? a.status).toLowerCase();
+	const where = a.service?.displayName ?? a.service?.name ?? a.source;
+	return [a.severity, state, where].filter(Boolean).join(", ");
 }
 
 const RANK: Record<Severity, number> = {

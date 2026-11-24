@@ -3,7 +3,13 @@
 
 import type { AlertWithRelations } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
-import { alertDetail, alertDotColor, alertGroups, alertName } from "./alert-groups";
+import {
+	alertDetail,
+	alertDotColor,
+	alertGroups,
+	alertName,
+	alertSearchLine,
+} from "./alert-groups";
 
 function alert(
 	title: string,
@@ -71,5 +77,29 @@ describe("alertGroups", () => {
 	it("returns severity colour while firing, quiet once cleared", () => {
 		expect(alertDotColor("critical", true)).toBe("var(--sev-critical)");
 		expect(alertDotColor("critical", false)).toBe("var(--text-3)");
+	});
+});
+
+describe("alertSearchLine", () => {
+	it("reads severity, state and service, with no fingerprint", () => {
+		const a = alert("Boom", {
+			status: "correlated",
+			severity: "high",
+			source: "webhook",
+			fingerprint: "b050226cedba1234",
+			service: { name: "demo-proj" },
+		} as Partial<AlertWithRelations>);
+
+		expect(alertSearchLine(a)).toBe("high, correlated, demo-proj");
+	});
+
+	it("names the source when the alert has no service", () => {
+		const a = alert("Boom", {
+			status: "resolved",
+			severity: "low",
+			source: "webhook",
+		});
+
+		expect(alertSearchLine(a)).toBe("low, cleared, webhook");
 	});
 });
