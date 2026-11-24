@@ -284,7 +284,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 			systemPromptVia: {
 				value: "claude-meta",
 				via: "source",
-				verifiedAt: { cli: "2.1.327", adapter: "0.108.0" },
+				verifiedAt: { cli: "2.1.329", adapter: "0.109.0" },
 				where: "src/v1/acp-agent.ts params._meta?.systemPrompt",
 			},
 			subagentsOnStop: {
@@ -294,7 +294,7 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 					note: "A sub-agent the turn waits on always stops with it; one running in the background follows this setting.",
 				},
 				via: "source",
-				verifiedAt: { cli: "2.1.327", adapter: "0.108.0" },
+				verifiedAt: { cli: "2.1.329", adapter: "0.109.0" },
 				where:
 					"src/v1/acp-agent.ts perTaskStopAffordance, stopsWorkflowsOnCancel",
 			},
@@ -395,11 +395,12 @@ export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
 				value: {
 					stop: false,
 					finish: false,
-					note: "Codex decides: a stop interrupts its main conversation, and nothing in its protocol chooses for its sub-agents.",
+					note: "Codex decides: a stop interrupts its main conversation and every sub-agent turn running under it.",
 				},
 				via: "source",
-				verifiedAt: { cli: "0.170.0", adapter: "2.7.0" },
-				where: "src/CodexAcpServer.ts cancel(), interruptSessionTurn",
+				verifiedAt: { cli: "0.171.0", adapter: "2.8.0" },
+				where:
+					"src/CodexAcpServer.ts cancel(), interruptSessionTurn, interruptStandardChildren",
 			},
 		},
 	},
