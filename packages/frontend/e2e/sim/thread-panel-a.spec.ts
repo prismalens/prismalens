@@ -915,7 +915,7 @@ test.describe
 			const mark = rows.first().getByTestId("agent-logo");
 			await expect(mark).toHaveAttribute("data-brand", "opencode");
 			const box = await mark.boundingBox();
-			expect([box?.width, box?.height]).toEqual([14, 14]);
+			expect([box?.width, box?.height]).toEqual([16, 20]);
 			await expect(rows.first()).toHaveAttribute("data-state", "failed");
 			const toggle = page.getByTestId("started-finished-toggle");
 			await expect(toggle).toContainText("Finished");
