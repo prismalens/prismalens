@@ -8,8 +8,10 @@ import {
 	channelPackage,
 	factsFor,
 	keyless,
+	PIN_SOAK_DAYS,
 	PROBE_FILES,
 	plan,
+	resolvedAsOf,
 	run,
 	shown,
 	verdict,
@@ -201,5 +203,13 @@ test("native process arguments keep requirement operators literal on Windows", (
 			"agent-client-protocol<1",
 		]).trim(),
 		"agent-client-protocol<1",
+	);
+});
+
+test("a pinned Python agent resolves its dependencies as of its upload plus the soak (#1085)", () => {
+	assert.equal(PIN_SOAK_DAYS, 3);
+	assert.equal(
+		resolvedAsOf("2026-10-23T17:05:35.357726Z"),
+		"2026-10-26T17:05:35.357Z",
 	);
 });
