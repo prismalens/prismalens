@@ -259,3 +259,13 @@ test("npm publishes a release only after every published release upgrades to it,
 		"https://github.com/${{ github.repository }}/releases/download",
 	);
 });
+
+test("a Nightly whose only red jobs never got a runner or hit the network is rerun once, as CI is (#1085)", () => {
+	const { on } = workflow("ci-rerun-unstarted.yml");
+	assert.deepEqual(on.workflow_run.workflows, [
+		"CI",
+		"Standalone CLI build",
+		"Nightly",
+	]);
+	assert.equal(workflow("nightly.yml").name, "Nightly");
+});
