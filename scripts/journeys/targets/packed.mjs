@@ -136,6 +136,128 @@ const sleep = (/** @type {number} */ ms) =>
 	new Promise((r) => setTimeout(r, ms));
 
 /**
+ * How to start the `pl` launcher. On Windows it is a .cmd shim that only a shell starts, and a shell takes
+ * one string, so the path and every argument are quoted into it; elsewhere it runs directly.
+ * @param {string} bin
+ * @param {string[]} args
+ * @param {boolean} [win]
+ */
+export function launcherCommand(bin, args, win = WIN) {
+	if (!win) return { command: bin, args, shell: false };
+	const quote = (/** @type {string} */ a) =>
+		a === "" || /\s/.test(a) ? `"${a}"` : a;
+	return {
+		command: [bin, ...args].map(quote).join(" "),
+		args: [],
+		shell: true,
+	};
+}
+
+/**
+ * Runs the launcher to its end and returns its stdout.
+ * @param {string} bin
+ * @param {string[]} args
+ * @param {{ timeout?: number }} [options]
+ */
+export function runLauncher(bin, args, options = {}) {
+	const { command, args: rest, shell } = launcherCommand(bin, args);
+	return execFileSync(command, rest, { encoding: "utf8", shell, ...options });
+}
+
+/**
+ * One `pl up` across boots and restarts. A spawn failure or a log write failure rejects the boot, so the
+ * target's cleanup runs; `stop` kills the tree, closes the log once, and no later boot starts (#1154).
+ * @param {{
+ *   spawnUp: () => import("node:child_process").ChildProcess,
+ *   logPath: string,
+ *   log: (message: string) => void,
+ *   kill?: (pid: number | undefined) => void,
+ *   readyTimeoutMs?: number,
+ *   stopTimeoutMs?: number,
+ * }} p
+ */
+export function upServer({
+	spawnUp,
+	logPath,
+	log,
+	kill = killTree,
+	readyTimeoutMs = BOOT_TIMEOUT_MS,
+	stopTimeoutMs = 30_000,
+}) {
+	/** @type {import("node:child_process").ChildProcess | undefined} */
+	let child;
+	let stopped = false;
+	/** @type {Error | undefined} */
+	let logError;
+	const logStream = createWriteStream(logPath);
+	logStream.on("error", (e) => {
+		logError = e;
+	});
+
+	const boot = async () => {
+		let bootLog = "";
+		/** @type {Error | undefined} */
+		let spawnError;
+		const proc = spawnUp();
+		child = proc;
+		proc.on("error", (e) => {
+			spawnError = e;
+		});
+		for (const stream of [proc.stdout, proc.stderr]) {
+			stream?.on("data", (d) => {
+				bootLog += d;
+				if (!logStream.writableEnded && !logStream.destroyed)
+					logStream.write(d);
+			});
+		}
+		const start = Date.now();
+		while (!/PrismaLens API running/.test(bootLog)) {
+			if (stopped) throw new Error("the packed target was cleaned up");
+			if (spawnError)
+				throw new Error(`pl up did not start: ${spawnError.message}`);
+			if (logError)
+				throw new Error(`writing ${logPath} failed: ${logError.message}`);
+			if (proc.exitCode !== null || Date.now() - start > readyTimeoutMs) {
+				console.error(`----- boot log -----
+${bootLog.slice(-4000)}`);
+				throw new Error(
+					`pl up did not report ready within ${readyTimeoutMs / 1000}s`,
+				);
+			}
+			await sleep(50);
+		}
+		log("pl up is ready");
+	};
+
+	return {
+		boot,
+		/** Kills `pl up`, waits for it to end, then boots a replacement unless the target was cleaned up. */
+		async restart() {
+			const old = child;
+			kill(old?.pid);
+			const start = Date.now();
+			while (old && old.exitCode === null && old.signalCode === null) {
+				if (Date.now() - start > stopTimeoutMs)
+					throw new Error(
+						`pl up did not stop within ${stopTimeoutMs / 1000}s of the kill`,
+					);
+				await sleep(50);
+			}
+			if (stopped)
+				throw new Error("the packed target was cleaned up during restart");
+			await boot();
+		},
+		async stop() {
+			if (stopped) return;
+			stopped = true;
+			kill(child?.pid);
+			if (!logStream.destroyed)
+				await new Promise((done) => logStream.end(() => done(undefined)));
+		},
+	};
+}
+
+/**
  * Installs the tarball's launcher, boots `pl up` and pairs a device.
  * @param {ReturnType<typeof packedConfig> & { tgz: string }} config
  * @param {(message: string) => void} [log]
@@ -148,15 +270,15 @@ export async function openPackedTarget(config, log = console.log) {
 	mkdirSync(workspace, { recursive: true });
 	mkdirSync(workDir);
 	const base = `http://127.0.0.1:${config.port}`;
-	/** @type {import("node:child_process").ChildProcess | undefined} */
-	let child;
+	/** @type {ReturnType<typeof upServer> | undefined} */
+	let server;
 	let cookie = "";
 	let cleaned = false;
 
 	const cleanup = async () => {
 		if (cleaned) return;
 		cleaned = true;
-		killTree(child?.pid);
+		await server?.stop();
 		rmSync(prefix, { recursive: true, force: true });
 	};
 
@@ -196,10 +318,8 @@ export async function openPackedTarget(config, log = console.log) {
 			PRISMALENS_LAUNCHER_DIR: join(prefix, "launcher-cache"),
 		};
 		Object.assign(process.env, launcherEnv);
-		const printed = execFileSync(bin, ["--version"], {
-			encoding: "utf8",
+		const printed = runLauncher(bin, ["--version"], {
 			timeout: 600_000,
-			shell: WIN,
 		}).trim();
 		if (printed !== version)
 			throw new Error(
@@ -220,47 +340,34 @@ export async function openPackedTarget(config, log = console.log) {
 			log("agent: scripted fake as opencode");
 		}
 
-		const logStream = createWriteStream(join(prefix, "up.log"));
-		const boot = async () => {
-			let bootLog = "";
-			log(`pl up on ${base} (workspace ${workspace})`);
-			const proc = spawn(bin, ["up"], {
-				shell: WIN,
-				stdio: ["ignore", "pipe", "pipe"],
-				env: {
-					...process.env,
-					CI: process.env.CI ?? "true",
-					// Keeps an exported `off`; otherwise a local run counts as internal (#1021).
-					PRISMALENS_TELEMETRY: process.env.PRISMALENS_TELEMETRY || "internal",
-					PATH: agentPath,
-					PRISMALENS_WORKSPACE_DIR: workspace,
-					// The default (quiet) console level keeps the readiness line out of stdout (#610).
-					PRISMALENS_LOG_CONSOLE: "verbose",
-					PRISMALENS_HOST: "127.0.0.1",
-					PRISMALENS_PORT: config.port,
-					...launcherEnv,
-				},
-			});
-			child = proc;
-			for (const stream of [proc.stdout, proc.stderr]) {
-				stream?.on("data", (d) => {
-					bootLog += d;
-					logStream.write(d);
+		const up = upServer({
+			logPath: join(prefix, "up.log"),
+			log,
+			spawnUp: () => {
+				log(`pl up on ${base} (workspace ${workspace})`);
+				const { command, args, shell } = launcherCommand(bin, ["up"]);
+				return spawn(command, args, {
+					shell,
+					stdio: ["ignore", "pipe", "pipe"],
+					env: {
+						...process.env,
+						CI: process.env.CI ?? "true",
+						// Keeps an exported `off`; otherwise a local run counts as internal (#1021).
+						PRISMALENS_TELEMETRY:
+							process.env.PRISMALENS_TELEMETRY || "internal",
+						PATH: agentPath,
+						PRISMALENS_WORKSPACE_DIR: workspace,
+						// The default (quiet) console level keeps the readiness line out of stdout (#610).
+						PRISMALENS_LOG_CONSOLE: "verbose",
+						PRISMALENS_HOST: "127.0.0.1",
+						PRISMALENS_PORT: config.port,
+						...launcherEnv,
+					},
 				});
-			}
-			const start = Date.now();
-			while (!/PrismaLens API running/.test(bootLog)) {
-				if (proc.exitCode !== null || Date.now() - start > BOOT_TIMEOUT_MS) {
-					console.error(`----- boot log -----\n${bootLog.slice(-4000)}`);
-					throw new Error(
-						`pl up did not report ready within ${BOOT_TIMEOUT_MS / 1000}s`,
-					);
-				}
-				await sleep(300);
-			}
-			log("pl up is ready");
-		};
-		await boot();
+			},
+		});
+		server = up;
+		await up.boot();
 
 		/** @param {string} path @param {RequestInit} [init] */
 		const raw = (path, init) =>
@@ -309,21 +416,7 @@ export async function openPackedTarget(config, log = console.log) {
 					},
 					body: JSON.stringify(body),
 				}),
-			async restart() {
-				const stopped = child;
-				killTree(stopped?.pid);
-				const start = Date.now();
-				while (
-					stopped &&
-					stopped.exitCode === null &&
-					stopped.signalCode === null
-				) {
-					if (Date.now() - start > 30_000)
-						throw new Error("pl up did not stop within 30s of the kill");
-					await sleep(100);
-				}
-				await boot();
-			},
+			restart: () => up.restart(),
 			cleanup,
 		};
 	} catch (error) {
@@ -338,11 +431,12 @@ export async function openPackedTarget(config, log = console.log) {
  * @returns {Promise<string>} the device cookie
  */
 async function pairDevice({ bin, workspace, raw, log }) {
-	const pairOut = execFileSync(
-		bin,
-		["pair", "--start-runs", "--workspace", workspace],
-		{ encoding: "utf8", shell: WIN },
-	);
+	const pairOut = runLauncher(bin, [
+		"pair",
+		"--start-runs",
+		"--workspace",
+		workspace,
+	]);
 	const token = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
 	const redeem = () =>
 		raw("/api/pairing/redeem", {

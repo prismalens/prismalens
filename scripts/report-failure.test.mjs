@@ -53,8 +53,8 @@ test("red with no issue creates one with the exact title, the body file and only
 
 test("red with an open issue of the same title rewrites its body and creates nothing", () => {
 	const { gh, calls } = fakeGh([
-		{ number: 7, title: "Audit failing", state: "OPEN" },
 		{ number: 8, title: "Audit failing too", state: "OPEN" },
+		{ number: 7, title: "Audit failing", state: "OPEN" },
 	]);
 	assert.equal(
 		reportFailure({

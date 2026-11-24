@@ -27,7 +27,7 @@ flowchart TD
     walk -- "a step fails" --> fix["Findings filed at the end, the fix merges"]
     fix --> merge
     walk -- "every step passes" --> paste["Transcript pasted on the release PR"]
-    paste --> release["The release PR merges: draft release, npm, published release"]
+    paste --> release["The release PR merges: draft release, proofs, published release, npm"]
     release --> after["On the released version: install from the real tap and bucket,<br/>registry-mode cross-os-smoke, the docs site goes live, the docs sweep"]
 ```
 

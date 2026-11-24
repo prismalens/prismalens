@@ -131,7 +131,13 @@ describe("Walk #981: runs a restart cut off are taken up again", () => {
 
 		// Let it end, so a later case's restart does not resume it again.
 		await pullIn(id);
-		await eventually(() => run(id), ended, "the resumed run to end", 60_000);
+		const resumed = await eventually(
+			() => run(id),
+			ended,
+			"the resumed run to end",
+			60_000,
+		);
+		expect(resumed.status).toBe("completed");
 	}, 120_000);
 
 	it("Given a run the operator stopped, When PrismaLens restarts, Then it stays cancelled and nothing runs", async () => {

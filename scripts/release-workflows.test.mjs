@@ -273,34 +273,30 @@ function ancestors(jobs, job, seen = new Set()) {
 const PROOFS = ["upgrade-chain", "release-side-checks"];
 const runs = (job) => (job.steps ?? []).map((s) => String(s.run ?? ""));
 
-test("the release proofs run before publish-release, on the draft's own assets (#1154)", () => {
-	const { jobs } = workflow("release.yml");
-	for (const proof of PROOFS) {
+for (const proof of PROOFS)
+	test(`the ${proof} proof runs before publish-release, on the draft's own assets (#1154)`, () => {
+		const { jobs } = workflow("release.yml");
 		const before = ancestors(jobs, proof);
-		assert.ok(
-			!before.has("publish-release"),
-			`${proof} waits on publish-release`,
-		);
-		assert.ok(
-			before.has("sums"),
-			`${proof} does not wait on the draft's SHA256SUMS`,
-		);
+		assert.equal(before.has("publish-release"), false);
+		assert.equal(before.has("sums"), true);
 		const download = jobs[proof].steps.filter((s) =>
 			String(s.run).includes('gh release download "$TAG"'),
 		);
-		assert.ok(download.length > 0, `${proof} downloads no draft asset`);
-		for (const step of download)
-			assert.equal(
-				step.env.GH_TOKEN,
-				"${{ github.token }}",
-				`${proof}: a draft is not public`,
-			);
-		for (const step of jobs[proof].steps)
-			assert.ok(
-				!JSON.stringify(step).includes("PACKED_CHAIN_RELEASE_BASE"),
-				proof,
-			);
-	}
+		assert.equal(download.length > 0, true);
+		assert.deepEqual(
+			download.map((step) => step.env.GH_TOKEN),
+			download.map(() => "${{ github.token }}"),
+		);
+		assert.deepEqual(
+			jobs[proof].steps.filter((step) =>
+				JSON.stringify(step).includes("PACKED_CHAIN_RELEASE_BASE"),
+			),
+			[],
+		);
+	});
+
+test("the upgrade chain and the side checks each run the launcher and archive of the draft (#1154)", () => {
+	const { jobs } = workflow("release.yml");
 	assert.equal(
 		jobs["upgrade-chain"].steps.at(-1).run,
 		'node scripts/packed-upgrade-chain.mjs --assets assets --launcher "$(ls launcher/prismalens-*.tgz)"',
@@ -323,15 +319,18 @@ test("the release proofs run before publish-release, on the draft's own assets (
 	);
 });
 
-test("publish-release and npm each wait on every release proof (#1154)", () => {
+for (const job of ["publish-release", "npm"])
+	test(`${job} waits on every release proof (#1154)`, () => {
+		const { jobs } = workflow("release.yml");
+		assert.deepEqual(
+			PROOFS.filter((proof) => [jobs[job].needs].flat().includes(proof)),
+			PROOFS,
+		);
+	});
+
+test("npm waits on publish-release, so the release is public before npm has the launcher (#1154)", () => {
 	const { jobs } = workflow("release.yml");
-	for (const job of ["publish-release", "npm"])
-		for (const proof of PROOFS)
-			assert.ok(
-				[jobs[job].needs].flat().includes(proof),
-				`${job} does not need ${proof}`,
-			);
-	assert.ok(ancestors(jobs, "npm").has("publish-release"));
+	assert.equal(ancestors(jobs, "npm").has("publish-release"), true);
 });
 
 test("a release builds each artifact once: no job after the build stage rebuilds one (#1154)", () => {
@@ -348,18 +347,21 @@ test("a release builds each artifact once: no job after the build stage rebuilds
 		),
 	);
 	assert.deepEqual(packsLauncher, ["launcher"]);
-	for (const user of [...PROOFS, "npm"]) {
-		const download = jobs[user].steps.find((s) =>
-			String(s.uses).startsWith("actions/download-artifact@"),
-		);
-		assert.equal(download.with.name, "release-launcher", user);
-		assert.ok(ancestors(jobs, user).has("launcher"), user);
-	}
 	const upload = jobs.launcher.steps.find((s) =>
 		String(s.uses).startsWith("actions/upload-artifact@"),
 	);
 	assert.equal(upload.with.name, "release-launcher");
 });
+
+for (const user of [...PROOFS, "npm"])
+	test(`${user} installs the launcher artifact that the launcher job packed once (#1154)`, () => {
+		const { jobs } = workflow("release.yml");
+		const download = jobs[user].steps.find((s) =>
+			String(s.uses).startsWith("actions/download-artifact@"),
+		);
+		assert.equal(download.with.name, "release-launcher");
+		assert.equal(ancestors(jobs, user).has("launcher"), true);
+	});
 
 test("npm publishes the launcher the proofs ran, as packed", () => {
 	const { jobs } = workflow("release.yml");
@@ -380,12 +382,29 @@ test("npm publishes the launcher the proofs ran, as packed", () => {
 	assert.equal(publish.env.GH_TOKEN, "");
 });
 
-test("a Nightly whose only red jobs never got a runner or hit the network is rerun once, as CI is (#1085)", () => {
-	const { on } = workflow("ci-rerun-unstarted.yml");
+// Which failures count as never started or a network fault is `ci-gate-report.test.mjs`'s.
+test("the rerun workflow watches the Nightly as it watches CI, for a failed first attempt only, and rerun-mode is on (#1085)", () => {
+	const { on, jobs } = workflow("ci-rerun-unstarted.yml");
 	assert.deepEqual(on.workflow_run.workflows, [
 		"CI",
 		"Standalone CLI build",
 		"Nightly",
 	]);
 	assert.equal(workflow("nightly.yml").name, "Nightly");
+	assert.equal(
+		jobs.rerun.if,
+		"github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt == 1",
+	);
+	assert.equal(
+		jobs.rerun.steps.find((s) => s.run === "node scripts/ci-gate-report.mjs")
+			.env.RERUN,
+		"1",
+	);
+});
+
+test("the lint job may read the issues its quarantine check looks up (#1154)", () => {
+	assert.deepEqual(workflow("ci.yml").jobs.lint.permissions, {
+		contents: "read",
+		issues: "read",
+	});
 });
