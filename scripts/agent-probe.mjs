@@ -95,26 +95,10 @@ export async function latestOf(channel) {
 	return (await res.json()).info.version;
 }
 
-/** Days a release soaks before its pin moves; a pin resolves its Python dependencies as of then. */
-export const PIN_SOAK_DAYS = 3;
-
-/**
- * uv's `--exclude-newer` for a pinned Python agent: its upload plus the soak, so a later release
- * of a dependency cannot break an old pin, while users installing latest get today's (#1085).
- */
-export const resolvedAsOf = (uploadedAt, days = PIN_SOAK_DAYS) =>
-	new Date(Date.parse(uploadedAt) + days * 86_400_000).toISOString();
-
-/** When PyPI first received `pkg`==`version`. */
-export async function uploadedAt(pkg, version) {
-	const res = await fetch(`https://pypi.org/pypi/${pkg}/${version}/json`);
-	if (!res.ok)
-		throw new Error(`PyPI answered ${res.status} for ${pkg} ${version}`);
-	const times = (await res.json()).urls.map((u) => u.upload_time_iso_8601);
-	if (!times.length)
-		throw new Error(`PyPI lists no file for ${pkg} ${version}`);
-	return times.sort()[0];
-}
+/** What a pinned Python agent needs that its channel leaves uncapped: 0.2.1 predates ACP 1.0 (#1204). */
+export const PIN_CONSTRAINTS = {
+	"deepagents-code": ["agent-client-protocol<1"],
+};
 
 /** One entry per version: a latest that is also the pin runs once. */
 function atLatestAndPin(latest, pin, make) {
@@ -225,9 +209,7 @@ async function install(built, row, probe, dir) {
 		join(bin, WINDOWS ? "python.exe" : "python"),
 		`${cli}==${probe.version}`,
 		...extras,
-		...(probe.label === "pin"
-			? ["--exclude-newer", resolvedAsOf(await uploadedAt(cli, probe.version))]
-			: []),
+		...(probe.label === "pin" ? (PIN_CONSTRAINTS[cli] ?? []) : []),
 	]);
 	return { bin };
 }
