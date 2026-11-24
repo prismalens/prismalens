@@ -11,9 +11,16 @@ import type {
 } from "@prismalens/contracts/schemas";
 import type { Repository as PrismaRepository } from "@prismalens/database";
 import type { Request, Response } from "express";
+import { isHostOwner, requireHostOwner } from "../../core/auth/host.js";
 import { requireOwner } from "../../core/auth/owner.js";
 import { sendImage } from "../images/images.controller.js";
 import { browseFolders } from "./folder-browser.js";
+import {
+	type DialogDeps,
+	folderDialogTool,
+	pickNativeFolder,
+	systemDialogDeps,
+} from "./native-folder-dialog.js";
 import { projectScripts } from "./project-scripts.js";
 import { RepositoriesService } from "./repositories.service.js";
 import { RepositoryIconService } from "./repository-icon.service.js";
@@ -23,6 +30,9 @@ const SCRIPTS_OWNER = "Only the owner adds project scripts.";
 
 @Controller()
 export class RepositoriesController {
+	/** The OS dialog runner; a test replaces it so no window opens. */
+	dialogDeps: DialogDeps = systemDialogDeps;
+
 	constructor(
 		private readonly repositoriesService: RepositoriesService,
 		private readonly icons: RepositoryIconService,
@@ -80,6 +90,23 @@ export class RepositoriesController {
 				async ({ input, context }) => {
 					requireOwner(context.request);
 					return browseFolders(input.path);
+				},
+			),
+
+			// POST /fs/pick-folder/available - Whether the host's folder dialog can open for this client
+			pickFolderAvailable: implement(
+				repositoriesContract.pickFolderAvailable,
+			).handler(async ({ context }) => ({
+				available:
+					isHostOwner(context.request) &&
+					(await folderDialogTool(this.dialogDeps)) !== null,
+			})),
+
+			// POST /fs/pick-folder - Open the host's folder dialog and answer the pick
+			pickFolder: implement(repositoriesContract.pickFolder).handler(
+				async ({ context }) => {
+					requireHostOwner(context.request);
+					return pickNativeFolder(this.dialogDeps);
 				},
 			),
 

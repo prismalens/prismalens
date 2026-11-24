@@ -59,7 +59,8 @@ export function latestBackup(workspaceDir: string): string | null {
 @Injectable()
 export class AboutService {
 	private readonly version = resolveServiceVersion();
-	private readonly build = resolveServiceBuild();
+	/** Stamped at pack time; null when run from a source checkout, which no release replaces. */
+	build: string | null = resolveServiceBuild();
 	/** One refresh at a time, for one channel: the cache file holds one channel's answer. */
 	private refreshing: { channel: UpdateChannel; done: Promise<void> } | null =
 		null;
@@ -117,7 +118,8 @@ export class AboutService {
 
 		const cache = checking ? readCache(workspaceDir, updateChannel) : null;
 		const latest = cache?.latest ?? null;
-		const available = latest !== null && isNewer(latest, this.version);
+		const available =
+			latest !== null && this.build !== null && isNewer(latest, this.version);
 		const envChannel = this.env.PRISMALENS_UPDATE_CHANNEL?.trim().toLowerCase();
 		return {
 			version: this.version,

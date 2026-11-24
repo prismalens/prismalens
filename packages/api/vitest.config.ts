@@ -147,6 +147,8 @@ export default defineConfig({
 				"src/shared/utils/literal-like.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/serves.ts": NEW_CODE_THRESHOLD,
 				"src/modules/repositories/folder-browser.ts": NEW_CODE_THRESHOLD,
+				"src/modules/repositories/native-folder-dialog.ts": NEW_CODE_THRESHOLD,
+				"src/core/auth/host.ts": NEW_CODE_THRESHOLD,
 				"src/modules/repositories/start-git.ts": NEW_CODE_THRESHOLD,
 				"src/infrastructure/dispatch/folder-lock.ts": NEW_CODE_THRESHOLD,
 				"src/modules/schedules/allowed-asks.ts": NEW_CODE_THRESHOLD,

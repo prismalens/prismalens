@@ -1279,3 +1279,127 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect(models.checked("claude-code")).toBeNull();
 	});
 });
+
+describe("HarnessService provider sign-in (multi-provider agents)", () => {
+	const answered = (providers: string[] | null) =>
+		({
+			outcome: "answers-acp",
+			detail: "answers ACP",
+			servedModel: "google/gemini-4-neon",
+			effort: null,
+			images: false,
+			providers,
+		}) as const;
+
+	function seeded(
+		providers: string[] | null,
+		listed = [
+			{ id: "google/gemini-4-neon", name: "Gemini 4 Neon" },
+			{ id: "opencode/beam-free", name: "Beam Free" },
+		],
+	) {
+		const models = new HarnessModelsService();
+		models.remember("opencode", listed);
+		models.rememberCheck("opencode", answered(providers));
+		models.rememberCheck("codex", {
+			outcome: "answers-acp",
+			detail: "answers ACP",
+			servedModel: null,
+			effort: null,
+			images: false,
+		});
+		const svc = new HarnessService(
+			mockPrismaService as unknown as PrismaService,
+			models,
+			{ check: vi.fn() } as unknown as HarnessProbeService,
+		);
+		return svc;
+	}
+
+	beforeEach(() => {
+		mockPrismaService.setting.findUnique.mockResolvedValue(null);
+	});
+
+	it("starts a run on a model whose provider the agent lists no login for, warning and naming the provider", async () => {
+		expect(
+			await seeded(["Ollama Cloud"]).ensureReady("opencode", "google/gemini-4-neon"),
+		).toEqual({
+			ready: true,
+			warning:
+				"OpenCode is not signed in to Google. Sign in with its own CLI, then retry.",
+		});
+	});
+
+	it("lets the run start when the agent lists the provider, or when it could not read its logins", async () => {
+		expect(
+			await seeded(["Google"]).ensureReady("opencode", "google/gemini-4-neon"),
+		).toEqual({ ready: true });
+		expect(
+			await seeded(null).ensureReady("opencode", "google/gemini-4-neon"),
+		).toEqual({ ready: true });
+	});
+
+	it("judges a null model as the agent's own default and an absent one as the model saved in Settings", async () => {
+		mockPrismaService.setting.findUnique.mockResolvedValue(
+			settingRow({ models: { opencode: "anthropic/claude-5" } }),
+		);
+		const svc = seeded(["Google"]);
+		expect(await svc.ensureReady("opencode", null)).toEqual({ ready: true });
+		expect(await svc.ensureReady("opencode")).toEqual({
+			ready: true,
+			warning:
+				"OpenCode is not signed in to Anthropic. Sign in with its own CLI, then retry.",
+		});
+	});
+
+	it("reports the chosen model's login as the agent's providerSignIn in the status", async () => {
+		const status = async (providers: string[] | null) =>
+			Object.fromEntries(
+				(await seeded(providers).getStatus()).harnesses
+					.filter((h) => h.id === "opencode" || h.id === "codex")
+					.map((h) => [h.id, h.providerSignIn]),
+			);
+		expect(await status([])).toEqual({
+			codex: "na",
+			opencode: "signed-in",
+		});
+		expect(await status(["Google"])).toEqual({
+			codex: "na",
+			opencode: "signed-in",
+		});
+		expect(await status(null)).toEqual({ codex: "na", opencode: "unchecked" });
+	});
+
+	it("takes a listed model that needs no login or whose provider is signed in when its own default is not one", () => {
+		expect(seeded(["Ollama Cloud"]).runModelOf("opencode")).toBe(
+			"opencode/beam-free",
+		);
+		expect(seeded([]).runModelOf("opencode")).toBe("opencode/beam-free");
+		expect(seeded([]).runModelOverride("opencode")).toBe("opencode/beam-free");
+		expect(seeded(["Google"]).runModelOverride("opencode")).toBeNull();
+		expect(seeded([]).runModelOverride("codex")).toBeNull();
+		expect(seeded(["Google"]).runModelOf("opencode")).toBe(
+			"google/gemini-4-neon",
+		);
+	});
+
+	it("auto skips an agent that holds no login for its model and picks one known to be signed in", async () => {
+		const original = process.env.PATH;
+		process.env.PATH = pathWith("opencode", "codex-acp");
+		try {
+			const onlyGoogle = [{ id: "google/gemini-4-neon", name: "Gemini 4 Neon" }];
+			expect(await seeded([], onlyGoogle).resolveSelection()).toMatchObject({
+				runnable: true,
+				harness: "codex",
+				auto: true,
+			});
+			expect(await seeded(["Google"]).resolveSelection()).toMatchObject({
+				runnable: true,
+				harness: "opencode",
+				auto: true,
+			});
+		} finally {
+			process.env.PATH = original;
+		}
+	});
+});

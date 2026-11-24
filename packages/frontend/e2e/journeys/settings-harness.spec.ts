@@ -818,7 +818,7 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 			"Used by the next run",
 		);
 		await openModels(page);
-		await expect(mark(page, '[data-letters="CC"]')).toHaveCount(1);
+		await expect(mark(page, '[data-brand="claude-code"]')).toHaveCount(1);
 	});
 
 	test("states plainly when no harness is available, with the server's reason", async ({
@@ -1015,7 +1015,8 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 						at: new Date().toISOString(),
 						outcome: result.outcome,
 						detail: result.detail,
-						servedModel: null,
+						// A model the agent runs without a login, so its provider check has an answer.
+						servedModel: result.id === "opencode" ? "opencode/fixture" : null,
 						effort: null,
 						images: false,
 					};

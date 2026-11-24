@@ -66,7 +66,6 @@ measure/ci-minutes	review-findings-sweep.yml	1
 measure/ci-minutes	telemetry-health.yml	7
 measure/security	attacks-failing	1
 measure/security	review-stale-commits	742
-src/components/agent/AgentMark.test.tsx	T2	4
 src/components/agent/AgentPicker.test.ts	T2	1
 src/components/agent/AgentPicker.tsx	fact-unmarked	3
 src/components/alerts/AlertsBlank.tsx	copy-handrolled	1

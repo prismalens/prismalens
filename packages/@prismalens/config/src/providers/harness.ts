@@ -18,6 +18,7 @@ import {
 	reopens,
 } from "@prismalens/agent-host/registry";
 import CATALOGUE_SOURCES from "./catalogue-sources.json" with { type: "json" };
+import { modelProvider, providerName } from "./model-makers.js";
 
 export {
 	ACCESS_LEVELS,
@@ -168,6 +169,11 @@ interface ProductFacts {
 	compactTakesFocus: boolean;
 	/** A larger context window taken as a suffix on the model id; absent, the agent offers one window. */
 	modelWindow?: { alias: string; base: string; large: string };
+	/**
+	 * A multi-provider agent whose CLI lists the providers it holds a login for (`args`, one provider
+	 * per line, name first); `keyless` providers run with none. Absent: no provider check exists.
+	 */
+	providerAuth?: { args: readonly string[]; keyless: readonly string[] };
 	/** With no model over ACP, the agent runs a model it chooses itself, so there is no list to wait for. */
 	picksOwnModel?: true;
 	/** The user sets its command and arguments in Settings; no binary is looked up. */
@@ -180,8 +186,8 @@ interface ProductFacts {
 	ownSettingsNote?: (checked: CheckedModes) => string | null;
 	/** One line on how a level becomes its permission rules (#673 w21). */
 	permissionRulesNote?: string;
-	/** How the UI draws it: its owner's published logo, or a lettered tile (#1101). */
-	mark: AgentMarkFact;
+	/** A lettered tile, only where the agent has no published logo (#1101). */
+	mark?: AgentMarkFact;
 	/** The provider that makes and bills its models, by its models.dev id (`providerFacts`). */
 	vendor?: string;
 	/** Where its fallback model list comes from in the models.dev snapshot (`catalogue-sources.json`). */
@@ -190,26 +196,8 @@ interface ProductFacts {
 	usageReports?: readonly ("cache" | "cost" | "limits")[];
 }
 
-/**
- * An agent's owner's logo as published, drawn in its own inks for each theme at no less
- * than its stated minimum, or two letters where the owner's terms rule the logo out.
- * `source` and `terms` are the pages read before the entry was added (#1101).
- */
-export type AgentMarkFact =
-	| {
-			logo: {
-				viewBox: string;
-				/** The smallest size its terms allow, in px. */
-				min: { width: number; height: number };
-				/** The outline's path, then the inner shade's, drawn at `shade` opacity. */
-				paths: { ink: string; shade?: string };
-				ink: { light: string; dark: string };
-				shade: { light: number; dark: number };
-			};
-			source: string;
-			terms: string;
-	  }
-	| { letters: string; withheld: string; terms?: string };
+/** Two letters for an agent with no published logo; one with a logo has its art in `assets/brands.ts`. */
+export type AgentMarkFact = { letters: string };
 
 export interface CatalogueSource {
 	providers: readonly string[];
@@ -262,22 +250,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["opencode", "opencode-v2"],
-		mark: {
-			logo: {
-				viewBox: "0 0 240 300",
-				min: { width: 16, height: 20 },
-				paths: {
-					ink: "M180 60H60V240H180V60ZM240 300H0V0H240V300Z",
-					shade: "M180 240H60V120H180V240Z",
-				},
-				ink: { light: "#1F1F1F", dark: "#EEEEEE" },
-				shade: { light: 0.2, dark: 0.28 },
-			},
-			source:
-				"https://opencode.ai/brand/files/opencode-logo-transparent-light.svg",
-			// "Plugins, providers and tools that work with OpenCode … can say so"; its own inks, at least 16 × 20px.
-			terms: "https://opencode.ai/brand",
-		},
+		// Its own published logo in both themes: opencode.ai/brand (assets/brands.ts).
 		usageReports: [],
 		settingsFile: "~/.config/opencode/opencode.json",
 		noLevelReason: "OpenCode has per-tool rules, not one permission level.",
@@ -307,6 +280,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		tested: { version: "1.19.6", date: "2026-11-21" },
 		loginHint: "`opencode auth login`, or a provider key in env",
 		signInArgs: ["auth", "login"],
+		providerAuth: { args: ["auth", "list"], keyless: ["opencode"] },
 		loginEnvKeys: ["XDG_DATA_HOME", "OPENCODE_DB"],
 	},
 	"claude-code": {
@@ -320,12 +294,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		compactTakesFocus: true,
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["claude-acp"],
-		mark: {
-			letters: "CC",
-			// "No alterations of our trademarks (changes to color, font, proportion, or otherwise) are permitted."
-			withheld: "Its logo needs written permission and may not be recoloured.",
-			terms: "https://www.anthropic.com/legal/trademark-guidelines",
-		},
+		// Its own published mark in its owner's colours: lobehub/lobe-icons (assets/brands.ts).
 		vendor: "anthropic",
 		usageReports: ["cache", "cost", "limits"],
 		modelWindow: { alias: "[1m]", base: "200k", large: "1M" },
@@ -370,13 +339,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		compactTakesFocus: false,
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["codex-acp"],
-		mark: {
-			letters: "CX",
-			// Search excerpts of its brand page (403 to every fetch): "DON'T add any colors to the Blossom"; no Codex mark is published.
-			withheld:
-				"Its owner's brand page forbids altering its logo, and no Codex logo is published.",
-			terms: "https://openai.com/brand",
-		},
+		// Its own published mark in its owner's colours: lobehub/lobe-icons (assets/brands.ts).
 		vendor: "openai",
 		usageReports: ["cache"],
 		settingsFile: "~/.codex/config.toml",
@@ -421,14 +384,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["gemini"],
-		mark: {
-			letters: "GE",
-			// "Don't remove, distort, or alter any element of a Google Brand Feature."; "Use only Google-approved artwork".
-			withheld:
-				"Its owner allows only approved artwork, unaltered, so no theme-coloured mark.",
-			terms:
-				"https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/",
-		},
+		// Its own published mark in its owner's colours: lobehub/lobe-icons (assets/brands.ts).
 		vendor: "google",
 		usageReports: [],
 		settingsFile: "~/.gemini/settings.json",
@@ -464,12 +420,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["deepagents"],
-		mark: {
-			letters: "DA",
-			// "Use the light and dark variants as provided, rather than recoloring"; "Pair each mark with its own wordmark".
-			withheld: "Its mark may only appear unrecoloured beside its wordmark.",
-			terms: "https://www.langchain.com/brand-assets",
-		},
+		// Its own published tile: langchain-ai/deepagents .github/images (assets/brands.ts).
 		picksOwnModel: true,
 		install: installCommand(DEEPAGENTS_CHANNEL),
 		channel: DEEPAGENTS_CHANNEL,
@@ -486,10 +437,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		compactCommand: null,
 		compactTakesFocus: false,
 		commandSetByUser: true,
-		mark: {
-			letters: "LA",
-			withheld: "An agent of the user's own, with no owner's logo.",
-		},
+		// An agent of the user's own has no owner's logo, so it takes letters.
+		mark: { letters: "LA" },
 		install: "Add it under Settings → Agents → Add agent → Local ACP command.",
 		lines: noModeLines("Local agent"),
 		loginHint: "It signs in on its own.",
@@ -606,4 +555,67 @@ export function resumeBlockedReason(harnessId: HarnessId): string | null {
 	const row = HARNESS_REGISTRY[harnessId];
 	if (reopens(row)) return null;
 	return `${row.label} can't reopen a finished session, so a new run starts from the report.`;
+}
+
+/** A provider's name and its models.dev id compare equal: `Ollama Cloud` and `ollama-cloud`. */
+export function providerKey(name: string): string {
+	return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Can `harness` run `modelId` as far as its provider login goes? `unchecked` is a multi-provider
+ * agent whose logins no check has read: never reported as ready. `na` is an agent with no such check.
+ */
+export function providerSignIn(
+	harness: HarnessId,
+	checked: { providers?: readonly string[] | null } | null | undefined,
+	modelId: string | null | undefined,
+): "signed-in" | "signed-out" | "unchecked" | "na" {
+	const gate = HARNESS_REGISTRY[harness].providerAuth;
+	if (!gate) return "na";
+	const provider = modelId ? modelProvider(modelId) : null;
+	// A model not known is a login not known: never ready.
+	if (!provider) return "unchecked";
+	if (gate.keyless.includes(provider)) return "signed-in";
+	if (!checked?.providers) return "unchecked";
+	// The list may print the provider's display name, which need not resemble its id: Vertex for google-vertex.
+	const keys = [provider, providerName(provider)].flatMap((n) =>
+		n ? [providerKey(n)] : [],
+	);
+	return checked.providers.some((p) => keys.includes(providerKey(p)))
+		? "signed-in"
+		: "signed-out";
+}
+
+/**
+ * The model a run takes when none is starred: the agent's own when its provider is signed in,
+ * else the first listed one whose provider is. The agent's own when none is, or its logins were not read.
+ */
+export function preferredModel(
+	harness: HarnessId,
+	checked:
+		| { providers?: readonly string[] | null; servedModel?: string | null }
+		| null
+		| undefined,
+	entries: readonly { id: string }[],
+): string | null {
+	const own = checked?.servedModel ?? null;
+	if (!HARNESS_REGISTRY[harness].providerAuth || !checked?.providers)
+		return own;
+	if (own && providerSignIn(harness, checked, own) === "signed-in") return own;
+	const signedIn = entries.find(
+		(e) => providerSignIn(harness, checked, e.id) === "signed-in",
+	);
+	return signedIn?.id ?? own;
+}
+
+/** A model whose provider the agent holds no login for, in the words the box, the picker and the Timeline share. */
+export function providerSignedOutLine(
+	harness: HarnessId,
+	modelId: string | null | undefined,
+): string {
+	const provider = modelId ? modelProvider(modelId) : null;
+	const named =
+		(provider && providerName(provider)) || provider || "its provider";
+	return `${HARNESS_REGISTRY[harness].label} is not signed in to ${named}. Sign in with its own CLI, then retry.`;
 }

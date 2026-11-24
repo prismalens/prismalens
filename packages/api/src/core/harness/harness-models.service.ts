@@ -97,6 +97,7 @@ export class HarnessModelsService {
 			| "companionVersion"
 			| "account"
 			| "signInMethods"
+			| "providers"
 			| "lastTry"
 		> &
 			Partial<
@@ -109,6 +110,7 @@ export class HarnessModelsService {
 					| "companionVersion"
 					| "account"
 					| "signInMethods"
+					| "providers"
 				>
 			>,
 		runtime = "",

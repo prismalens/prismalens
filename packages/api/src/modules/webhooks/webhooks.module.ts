@@ -12,6 +12,7 @@ import { ServicesModule } from "../services/services.module.js";
 import { DeployWebhookController } from "./deploy-webhook.controller.js";
 import { RenderWebhookSignatureGuard } from "./render-webhook-signature.guard.js";
 import { WebhookSignatureGuard } from "./webhook-signature.guard.js";
+import { WebhookTestController } from "./webhook-test.controller.js";
 import { WebhooksController } from "./webhooks.controller.js";
 import { WebhooksService } from "./webhooks.service.js";
 
@@ -25,7 +26,11 @@ import { WebhooksService } from "./webhooks.service.js";
 		ChangesModule,
 		ServicesModule,
 	],
-	controllers: [WebhooksController, DeployWebhookController],
+	controllers: [
+		WebhooksController,
+		DeployWebhookController,
+		WebhookTestController,
+	],
 	providers: [
 		WebhooksService,
 		WebhookSignatureGuard,

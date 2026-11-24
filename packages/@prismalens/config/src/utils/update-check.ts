@@ -16,6 +16,8 @@ import type { UpdateChannel } from "./update-channel.js";
 
 const RELEASES_LATEST_URL =
 	"https://github.com/prismalens/prismalens/releases/latest";
+// GitHub, not downloads.prismalens.io: a release is ready once GitHub has its SHA256SUMS, and
+// the clients that download fall back to it.
 const RELEASES_DOWNLOAD_URL =
 	"https://github.com/prismalens/prismalens/releases/download";
 export const RELEASES_URL = "https://github.com/prismalens/prismalens/releases";
