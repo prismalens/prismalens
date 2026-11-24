@@ -12,7 +12,7 @@
 //   defer   "true": a draft release PR; nothing runs and `CI gate` stays red until it is marked ready.
 // Package paths are decided by turbo's graph (`turbo ls --affected`: the changed packages and their dependents).
 // A path outside every package is looked up in OUTSIDE; one it does not name turns every tier on.
-// A renamed file counts under both its names. A push to main runs the PR tiers; a merge group runs everything.
+// A renamed file counts under both its names. A push to main or a merge group runs the PR tiers; the proofs run on the PR and nightly (#1023).
 // ci.yml's `CI gate` allows a skip only where the plan says `false` in so many words.
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
@@ -147,11 +147,6 @@ export function plan({
 		full: true,
 		agents: true,
 	};
-	if (event === "merge_group")
-		return {
-			...everything,
-			reason: "merge queue: everything runs on the group's own commit",
-		};
 	if (event !== "pull_request")
 		return {
 			skip: false,

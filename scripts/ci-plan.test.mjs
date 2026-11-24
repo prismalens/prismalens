@@ -313,17 +313,15 @@ test("a push to main runs the PR checks and leaves the release proofs to the nig
 	}
 });
 
-test("a merge group runs every tier, whatever it changes, with no lookup", () => {
-	const p = plan({ event: "merge_group", files: [] });
-	assert.deepEqual(tiers(p), EVERYTHING);
-	assert.equal(
-		p.reason,
-		"merge queue: everything runs on the group's own commit",
-	);
-	assert.deepEqual(
-		tiers(plan({ event: "merge_group", files: ["README.md"] })),
-		EVERYTHING,
-	);
+test("a merge group runs the push tiers, never the network-bound proofs, whatever it changes", () => {
+	for (const files of [[], ["README.md"], ["packages/cli/src/index.ts"]]) {
+		const p = plan({ event: "merge_group", files });
+		assert.deepEqual(tiers(p), [false, true, true, true, false, false]);
+		assert.equal(
+			p.reason,
+			"merge_group: the PR checks run; the release proofs run nightly",
+		);
+	}
 });
 
 test("when turbo cannot say what is affected, every tier runs", () => {
