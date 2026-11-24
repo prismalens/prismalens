@@ -15,7 +15,7 @@ conventional-commit titles on `main` for the changelog and opens a release PR,
 and merging that PR publishes the bump. A minor (`0.N.0`) happens only when a
 maintainer changes that line on purpose, for a phase from the
 [GitHub milestones](https://github.com/prismalens/prismalens/milestones) (see
-[CONTRIBUTING.md](CONTRIBUTING.md#releases-and-package-publishing)).
+[release-pipeline.md](docs/contributing/release-pipeline.md)).
 
 ## Alpha
 

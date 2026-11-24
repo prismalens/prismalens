@@ -1,115 +1,67 @@
 # Releasing
 
-This file says what the release gate is and what a patch and a minor release do and do not do. Each 0.x release's Phase gate issue, filed by `.github/workflows/milestone-release-checklist.yml` from `.github/release-checklists/patch.md` or `minor.md`, tracks its own run of the gate. The workflow skips any milestone that is not `0.Y.Z`, so a major release gets no automatic issue.
+What a release manager does, in order. The mechanics of the release run, artifact standards and publishing by hand are in [docs/contributing/release-pipeline.md](docs/contributing/release-pipeline.md).
 
-## The gate
+## 1. Milestones
+Milestones are versions, and exactly two are open: the current release and the next. When the current release PR merges:
+1. Finish and close its Phase gate issue. A milestone closed before its gate issue makes `milestone-release-checklist.yml` warn on that issue.
+2. Move the closed milestone's open issues to the next one, then close it.
+3. Create the milestone after the next. `milestone-release-checklist.yml` files its Phase gate issue from `.github/release-checklists/patch.md`, or `minor.md` for a `0.N.0`. It skips a milestone that is not `0.Y.Z`, so a major release gets no automatic issue.
+
+Direction by theme lives in the pinned roadmap issue, #881 - Roadmap and handoff, not in milestones.
+
+## 2. The Phase gate issue
+Each 0.x release has one Phase gate issue. Its checklist is the gate: close it last, because the milestone is not done while it is open. Findings go in that issue, or in one linked `X.Y.Z walk findings` issue with a checkbox per finding, its evidence, and screenshots attached with `gh issue comment --attach`.
+
+## 3. The gate
 - A release publishes nothing to npm until one packed-tarball walk has passed on the release PR's base SHA. The pass is keyed to that SHA.
-- release-please opens the release PR (`chore(main): release X`) but publishes nothing until it merges. So the gate blocks the release, never a merge to `main`.
-- CI proves what a script can; the walk is a person at their own desk trying what it cannot, from the packed tarball, with an agent guiding one step at a time. Each step is recorded as pass or fail with a screenshot or the terminal output.
-- The step-by-step walkthrough is kept maintainer-side. It describes the current UI and changes with every release, so it is not part of this repository.
+- release-please opens the release PR (`chore(main): release X`) and publishes nothing until it merges. The gate blocks the release, never a merge to `main`.
+- The walk is a person trying what CI cannot, from the packed tarball, one step at a time, recording each as pass or fail with a screenshot or the terminal output.
+- Anything merged to `main` moves the base SHA. Redo the CI lines below on the new base.
+- The release PR is a draft, rebuilt on every push to `main`, and its own CI waits until you mark it ready for review (#1052). Read the gate on the base SHA's `main` run; the run on the PR's head, started by "ready for review", is what lets it merge. While the PR is ready, every rebuild runs CI again; `gh pr ready <n> --undo` returns it to a draft.
+- Install the `npm-tarballs` artifact of `Pack npm tarball` on the base SHA, never a version from npm. Work in a fresh `mktemp -d` directory on a port other than 6473.
+- Paste the passing walk's transcript on the release PR. Recheck a failed step once its fix merges.
 
-## How the gate works
-- Anything merged to `main` moves the base SHA. Redo the CI lines under **Before the walk** on the new base.
-- The release PR is a draft, rebuilt on every push to `main`, and its own CI waits until you mark it ready for review (#1052). The gate is read on the base SHA's `main` run; the run on the PR's head, started by "ready for review", is what lets it merge. While the PR is ready, every rebuild runs CI again; `gh pr ready <n> --undo` puts it back to a draft.
-- The manual steps install the `npm-tarballs` artifact of `Pack npm tarball` on the base SHA, never a version from npm. They run in a fresh `mktemp -d` workspace on a port other than 6473.
-- `CI gate` is the set of jobs below. A step the walk used to do by hand is gone once one of them proves it; the list of what stays manual is under **Before the walk**.
-- `Standalone CLI` is green on every OS on the base SHA. Its `smoke-installer` job installs each release npm lists from 0.5.0 on, then upgrades it to the candidate with its data, and covers PATH, reinstall, the downgrade guard, a second `pl` on PATH and uninstall.
-- docs.prismalens.io describes every command, flag, env var and page the release changed, checked against the packed tarball. The site goes live after npm has the version.
-- Once published, the release run installs the formula and manifest it pushed from the real Homebrew tap and Scoop bucket and fails when `PACKAGE_MANAGERS_TOKEN` is unset; registry-mode `cross-os-smoke` runs on the released version, and a docs sweep catches renamed or retired identifiers.
-- Failures are noted as the walk goes and filed together at the end. A failed step is rechecked once its fix merges.
-- The transcript of the passing walk is pasted on the release PR.
-
-```mermaid
-flowchart TD
-    merge["A PR merges to main"] --> base["The release PR's base SHA moves"]
-    base --> before["Before the walk, on the base SHA: CI gate green,<br/>Standalone CLI and Desktop run, docs merged in prismalens.io"]
-    before --> walk["The manual walk installs Pack npm tarball's npm-tarballs artifact<br/>and tries only what CI cannot prove"]
-    walk -- "a step fails" --> fix["Findings filed at the end, the fix merges"]
-    fix --> merge
-    walk -- "every step passes" --> paste["Transcript pasted on the release PR"]
-    paste --> release["The release PR merges: draft release, npm, published release"]
-    release --> after["On the released version: install from the real tap and bucket,<br/>registry-mode cross-os-smoke, the docs site goes live, the docs sweep"]
-```
-
-## Before the walk
-`CI gate` is the one required status check, and it waits on these jobs. A green gate on the release PR's base SHA means every one of them passed there:
-
-| Job | What it proves |
-| :--- | :--- |
-| `Build & typecheck`, `Lint (Biome)`, `Test` | the code builds, type-checks and passes its tests |
-| `Pack npm tarball`, `Packed smoke` | the one published tarball installs and boots in a clean container |
-| `Packed intake` | a webhook becomes an incident, an unattended investigation reports, a resolution closes it |
-| `Packed service` | `pl service` installs, restarts and uninstalls on a real systemd user manager |
-| `Packed upgrade smoke` | a database that predates `investigation_turns` upgrades, and every release npm lists from 0.5.0 on upgrades to the tarball through its own `pl upgrade`, with its data |
-| `Gate side checks` on Linux, macOS and Windows | telemetry, update notice, workspace lock, reset, Host allowlist and a `pl upgrade` through npm; on Linux also the trial upgrade and its rollback |
-| `Harness admission` for opencode, claude-code and codex | each agent's real binary and adapter against the scripted model |
-| `E2E` | the browser suite |
+### Required checks
+Two checks are required on `main`: `CI gate` and `Validate PR title`. `CI gate` waits on the build, type-check, lint and test jobs, the packed-tarball jobs (smoke, intake, service, upgrade smoke), the side checks on Linux, macOS and Windows, the harness admission of each agent, and `E2E`; `ci.yml` lists them. A green gate on the base SHA means all of them passed there.
 
 Also on the base SHA, outside the gate:
-- [ ] `Standalone CLI` dispatched on the base branch (`gh workflow run build-standalone-cli.yml --ref main`; `--ref` takes a branch or tag, never a SHA; it runs on no push), and the run's head SHA is the base SHA (`gh run list --workflow build-standalone-cli.yml --json headSha`).
-- [ ] `Desktop` on the base. The desktop part of the walk uses its artifact.
-- [ ] Docs for this release's screens merged in `prismalens/prismalens.io`.
+- [ ] `Standalone CLI` dispatched on the base branch (`gh workflow run build-standalone-cli.yml --ref main`; `--ref` takes a branch or tag, never a SHA), with the run's head SHA equal to the base SHA (`gh run list --workflow build-standalone-cli.yml --json headSha`). Its `smoke-installer` job installs each release npm lists from 0.5.0 on and upgrades it to the candidate with its data.
+- [ ] `Desktop` run on the base. The desktop part of the walk uses its artifact.
+- [ ] Docs for this release's screens merged in `prismalens/prismalens.io`, describing every command, flag, env var and page the release changed, checked against the packed tarball. The site goes live after npm has the version.
 
 What stays manual, because a runner cannot do it:
 - one real, signed-in agent run per agent and per OS;
 - `pl doctor`, and a private-repo clone through the real credential helper;
 - the desktop window, tray and notification;
-- Ctrl+C in a real terminal on Windows and macOS (the scripted checks end the process by signal or by kill);
+- Ctrl+C in a real terminal on Windows and macOS;
 - WSL2, Tailscale and the phone, when their files changed;
 - a real `irm | iex` install after publish.
 
-Flaky gate checks are tracked in #742 - Release-gate CI checks pass or fail on the same commit: App boot on Windows and Packed intake.
+After publish, the release run installs the formula and manifest it pushed from the real Homebrew tap and Scoop bucket, and fails when `PACKAGE_MANAGERS_TOKEN` is unset. Run registry-mode `cross-os-smoke` on the released version, then the docs sweep for renamed or retired identifiers.
 
-## The release run
-`.github/workflows/release.yml` builds every artifact once and proves those bytes before anything is public (#1154):
-1. The draft release gets the archives and `SHA256SUMS`.
-2. `launcher` packs the npm launcher once, pinned to the draft's digests (`pack-launcher.mjs --assets`), and uploads it.
-3. `upgrade-chain` and `release-side-checks` (Linux, macOS, Windows) download the draft's archive for their OS with the job's token and run on it with that launcher. A red proof leaves the release a draft.
-4. `publish-release` makes the release public, then `npm` publishes the same launcher file (`pack-launcher.mjs --publish --tarball`), after checking that the public release holds the digests it pins.
+## 4. Patch release
+In 0.x every release is a patch (`0.N.P`), whatever its commits. `versioning: always-bump-patch` in `release-please-config.json` holds the line ([VERSIONING.md](VERSIONING.md)).
 
-## Patch release
-In 0.x every release is a patch (`0.N.P`), whatever its commits: fixes, features and breaking changes alike. `versioning: always-bump-patch` in `release-please-config.json` holds the line ([VERSIONING.md](VERSIONING.md)).
+A patch walk:
+- walks only the manual steps the release's diff changed, and carries each unchanged step forward with git-diff evidence that its files are untouched since the walk that last passed it;
+- runs `.github/release-checklists/patch.md`: a green `CI gate`, the scoped manual walk, registry-mode `cross-os-smoke`, the real-tap install jobs, the docs sweep and the findings record;
+- has no full walk, no site review, no scripted live test and no close-out. Those belong to a minor.
 
-What a patch walk does:
-- Walks only the manual steps the release's diff changed.
-- Carries each unchanged step forward, with git-diff evidence that its files are untouched since the walk that last passed it.
-- Runs the checks in `.github/release-checklists/patch.md`: a green `CI gate`, the scoped manual walk, registry-mode `cross-os-smoke`, the real-tap install jobs, the docs sweep and the findings record.
+## 5. Minor release
+A minor (`0.N.0`) happens only when a maintainer changes the `always-bump-patch` line on purpose, for a phase from the milestones. It adds to a patch:
+- the full manual walk: every manual step, nothing carried forward;
+- the site and docs checks in `.github/release-checklists/minor.md`: reference completeness, the adversarial docs review, the site's claims checked against the packed artifact, re-captured imagery where the pages changed, and links validated on the built site;
+- a scripted live test against the packed tarball, a deterministic script and not an agent-driven run;
+- the close-out: update #881 - Roadmap and handoff.
 
-What a patch walk does not do:
-- No full walk.
-- No site review, scripted live test or close-out. Those belong to a minor.
+A major release is not decided. `1.0.0` is a deliberate stability promise, set out in [VERSIONING.md](VERSIONING.md).
 
-## Minor release
-A minor (`0.N.0`) happens only when a maintainer changes the `always-bump-patch` line on purpose, for a phase from the milestones ([VERSIONING.md](VERSIONING.md)).
+## 6. Nightly
+- Each night whose proofs pass, `.github/workflows/nightly.yml` publishes main's head as `<next patch>-nightly.<YYYYMMDD>.<run number>` (`scripts/nightly-version.mjs`), ordered above the newest published nightly. It is drafted as a GitHub prerelease that is never marked latest, gets the five standalone archives and `SHA256SUMS`, then publishes. `scripts/release-complete.mjs --public` then downloads it with no token and hashes every archive. A night with no new commits publishes nothing, and a re-run computes the same version and publishes the draft it finds.
+- Nightlies are never on npm, which carries stable launchers only. `pl upgrade --channel nightly` switches an npm install to the newest nightly's archive, and `--channel stable` switches it back, refusing when the workspace database is newer than the target. The installers, Homebrew and Scoop stay on stable, and there is no nightly desktop build.
+- `scripts/prune-nightlies.mjs` keeps the newest 10 nightly prereleases. It never deletes a stable release, a draft or a tag a published npm launcher names; `--dry-run` prints what it would delete.
 
-What a minor adds to a patch:
-- The full manual walk: every step in the list above. Nothing carries forward.
-- The site and docs checks in `.github/release-checklists/minor.md`: reference completeness on docs.prismalens.io, the adversarial docs review, the site's claims checked against the packed artifact, re-captured imagery when the pages it shows changed, and links validated on the built site.
-- A scripted live test against the packed tarball. A deterministic script, not an agent-driven run.
-- The close-out: update the pinned roadmap issue, #881 - Roadmap and handoff.
-
-## Patch and minor side by side
-| | Patch (`0.N.P`) | Minor (`0.N.0`) |
-| :--- | :--- | :--- |
-| Manual walk scope | Steps the diff changed | Every manual step |
-| Unchanged steps | Carried forward with git-diff evidence | Nothing carries forward |
-| Site and docs checks | Docs sweep only | Reference completeness, adversarial docs review, site claims, imagery, built-site links, then the sweep |
-| Live test | None | Scripted, against the packed tarball |
-| Close-out | None | Update the pinned roadmap issue |
-| What bumps the version | The default: every release | A maintainer changes `always-bump-patch` on purpose |
-
-## Major release
-Not decided yet. VERSIONING.md: "`1.0.0` is a deliberate stability promise, not just the number after `0.9`."
-
-## Nightly
-- Each night whose proofs pass, `.github/workflows/nightly.yml` publishes main's head as `<next patch>-nightly.<YYYYMMDD>.<run number>` (`scripts/nightly-version.mjs`), ordered above the newest published nightly prerelease. It is drafted as a GitHub prerelease that is never marked latest, gets the five standalone archives and `SHA256SUMS`, then publishes, then `scripts/release-complete.mjs --public` downloads it with no token and hashes every archive. There is no walk and no soak. A night with no new commits publishes nothing.
-- Nightlies are never on npm. npm carries stable launchers only; `pl upgrade --channel nightly` switches an npm install to the newest nightly's archive and `--channel stable` switches it back, refusing when the workspace database is newer than the target. The installers, Homebrew and Scoop stay on stable, and there is no nightly desktop build.
-- `scripts/prune-nightlies.mjs` keeps the newest 10 nightly prereleases. It never deletes a stable release, a draft, or a tag a published npm launcher names; `--dry-run` prints what it would delete. A launcher pointed at a pruned nightly runs its recorded previous runtime and says so.
-- To turn it on: ship a stable release that carries the 30-release installers, then set the repository variable `NIGHTLY_PUBLISH` to `true`. A dispatch on `main` with `publish` checked and no `ref` publishes once by hand.
-- A re-run computes the same version, rebuilds the archives on a prerelease still in draft, and publishes it.
-
-## Where findings go
-Each walk records its findings in the Phase gate issue or one linked GitHub issue titled `X.Y.Z walk findings`: one checkbox per finding with its evidence, screenshots attached with `gh issue comment --attach`.
-
-## Where this came from
-The operator scoped the walk to the release in a ruling on #673 - release gate: a packed-tarball session gates every release PR. Full walks of every feature had taken about nine rounds, with 37 to 50 findings each. The release-train model behind it: a change that misses one release catches the next ([Rust 1.0 trains](https://blog.rust-lang.org/2014/12/12/1.0-Timeline/), [RFC 507](https://rust-lang.github.io/rfcs/0507-release-channels.html)), and a study of feature-based versus time-based releases ([IFIP](https://dl.ifip.org/hal-01776290v1)).
+Two repository variables switch it on, under Settings, Secrets and variables, Actions, Variables:
+- `NIGHTLY_ENABLED` set to `true` lets the schedule run the proofs. Unset, the scheduled run skips every job and says so in its summary.
+- `NIGHTLY_PUBLISH` set to `true` lets the schedule draft and publish the nightly. A dispatch on `main` with `publish` checked and no `ref` publishes once by hand.

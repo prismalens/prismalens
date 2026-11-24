@@ -35,7 +35,7 @@ Fixtures from `steps/fixtures.ts`: `alertmanager`, `deliverWebhook`, `unique` (a
 Tags:
 - `@responsive` also runs the feature on the `Pixel 7` and `iPad (gen 7)` projects, nightly in `e2e-browser-mobile.yml`. Tag a feature whose layout matters on a phone.
 - `@reset-data` marks a scenario that empties its stack (Settings, Reset data). The main run skips it; CI runs it alone, one worker, afterwards.
-- `@quarantine` moves a test that passes only on a retry out of the blocking run; the rule is in `CONTRIBUTING.md`, "Browser e2e tier".
+- `@quarantine` moves a test that passes only on a retry out of the blocking run; the rule is in `docs/contributing/testing.md`, "Flaky e2e tests".
 
 ## The fakes
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * The incident's layout (#811): no band or tabs of its own; the overview and
  * the run pages each draw their header. It holds the record they share and

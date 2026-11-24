@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { parse } from "yaml";
 
 const dir = join(import.meta.dirname, "..", ".github", "workflows");
 
@@ -30,4 +31,16 @@ test("no workflow pipes a script fetched from a moving URL", () => {
 			/get\.scoop\.sh/,
 			file,
 		);
+});
+
+test("every job that runs steps sets timeout-minutes", () => {
+	const unbounded = [];
+	// A job that calls a reusable workflow cannot set one.
+	for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)))
+		for (const [id, job] of Object.entries(
+			parse(readFileSync(join(dir, file), "utf8")).jobs ?? {},
+		))
+			if (!job.uses && job["timeout-minutes"] === undefined)
+				unbounded.push(`${file} ${id}`);
+	assert.deepEqual(unbounded, []);
 });

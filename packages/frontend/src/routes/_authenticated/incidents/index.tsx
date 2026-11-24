@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * The incidents landing (#811): the inbox, All incidents with `?view=all`, or
  * Analytics with `?view=analytics`. A workspace with no incidents shows only
