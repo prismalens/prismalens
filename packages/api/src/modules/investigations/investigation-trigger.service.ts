@@ -64,7 +64,7 @@ export const REOPEN_RUN_SPACING_MS = 60 * 60 * 1000;
 export const NO_SERVICE_REASON =
 	"This alert did not say which project it is about, so there is no code to look at. Add the label `service=<project name>` (or the field `serviceName`) to the alert, or open the incident, pick its service and press Investigate.";
 
-export const plainFolderReason = (name: string) =>
+const plainFolderReason = (name: string) =>
 	`${name} is a folder with no git, so there is no code history to investigate. Start git in it from its project page, then send the alert again.`;
 
 /** The service's own policy from `metadata.investigation.trigger`; the default when absent or invalid. */

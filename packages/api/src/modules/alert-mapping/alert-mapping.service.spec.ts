@@ -101,6 +101,10 @@ describe("AlertMappingService.resolveServiceForAlert", () => {
 	});
 
 	it("does not fall back to a contains match: 'checkout-legacy' must not resolve to 'checkout'", async () => {
+		mockPrisma.service.findUnique.mockImplementation(
+			async ({ where }: { where: { name: string } }) =>
+				where.name === "checkout" ? { id: "svc-1", name: "checkout" } : null,
+		);
 		const result = await service.resolveServiceForAlert({
 			title: "High CPU",
 			labels: { service: "checkout-legacy" },
@@ -318,6 +322,45 @@ describe("AlertMappingService.resolveServiceForAlert", () => {
 		expect(result).toBe(winner);
 		expect(mockPrisma.service.create).toHaveBeenCalledTimes(1);
 		expect(mockPrisma.serviceRepository.create).not.toHaveBeenCalled();
+	});
+
+	it("answers SERVICE_UNAVAILABLE, so the sender retries, when the creation transaction cannot start", async () => {
+		mockPrisma.repository.findMany.mockResolvedValue([
+			project("repo-1", "demo-proj"),
+		]);
+		mockPrisma.$transaction.mockRejectedValueOnce(
+			Object.assign(new Error("Transaction API error"), { code: "P2028" }),
+		);
+
+		await expect(
+			service.resolveServiceForAlert({ title: "Boom", serviceName: "demo-proj" }),
+		).rejects.toMatchObject({
+			code: "SERVICE_UNAVAILABLE",
+			message:
+				"Could not make a service for demo-proj: the database was busy",
+		});
+	});
+
+	it("answers SERVICE_UNAVAILABLE when the retry after a lost unique key cannot start its transaction", async () => {
+		mockPrisma.repository.findMany.mockResolvedValue([
+			project("repo-1", "demo-proj"),
+		]);
+		mockPrisma.$transaction
+			.mockRejectedValueOnce(
+				Object.assign(new Error("Unique constraint failed"), { code: "P2002" }),
+			)
+			.mockRejectedValueOnce(
+				Object.assign(new Error("Transaction API error"), { code: "P2028" }),
+			);
+
+		await expect(
+			service.resolveServiceForAlert({ title: "Boom", serviceName: "demo-proj" }),
+		).rejects.toMatchObject({
+			code: "SERVICE_UNAVAILABLE",
+			status: 503,
+			message:
+				"Could not make a service for demo-proj: the database was busy",
+		});
 	});
 
 	it("rethrows an error that is not a lost unique key", async () => {

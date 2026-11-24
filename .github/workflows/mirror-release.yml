@@ -31,6 +31,10 @@ jobs:
     name: Mirror ${{ inputs.tag }} to downloads.prismalens.io
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Named, so GitHub adds pipefail: a failed listing must not read as an empty bucket.
+    defaults:
+      run:
+        shell: bash
     env:
       TAG: ${{ inputs.tag }}
       BUCKET: prismalens-releases
@@ -52,7 +56,8 @@ jobs:
       - name: Only the newest releases are mirrored
         id: keep
         run: |
-          listed=$(aws s3 ls "s3://$BUCKET/" --endpoint-url "$ENDPOINT" | awk '$1=="PRE"{print $2}' | tr -d / | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          all=$(aws s3 ls "s3://$BUCKET/" --endpoint-url "$ENDPOINT")
+          listed=$(echo "$all" | awk '$1=="PRE"{print $2}' | tr -d / | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
           keep=$(echo $listed "$TAG" | tr ' ' '\n' | sort -uV | tail -n "$KEEP")
           echo "Kept after this run:" $keep
           if ! echo "$keep" | grep -qx "$TAG"; then

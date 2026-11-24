@@ -578,7 +578,11 @@ export function providerSignIn(
 	if (!provider) return "unchecked";
 	if (gate.keyless.includes(provider)) return "signed-in";
 	if (!checked?.providers) return "unchecked";
-	return checked.providers.some((p) => providerKey(p) === providerKey(provider))
+	// The list may print the provider's display name, which need not resemble its id: Vertex for google-vertex.
+	const keys = [provider, providerName(provider)].flatMap((n) =>
+		n ? [providerKey(n)] : [],
+	);
+	return checked.providers.some((p) => keys.includes(providerKey(p)))
 		? "signed-in"
 		: "signed-out";
 }

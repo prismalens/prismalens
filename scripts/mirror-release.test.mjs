@@ -29,8 +29,14 @@ const step = (name) => {
 	return found;
 };
 
-/** Runs a step's script in a scratch dir; `aws` prints `listing` and logs every call. */
-function run(name, { env, listing = "", assets = {} }) {
+// GitHub runs a step under `shell: bash` as `bash --noprofile --norc -eo pipefail`.
+const shell =
+	mirror.jobs.mirror.defaults?.run?.shell === "bash"
+		? ["--noprofile", "--norc", "-eo", "pipefail", "-c"]
+		: ["-e", "-c"];
+
+/** Runs a step's script in a scratch dir; `aws` prints `listing`, logs every call and exits `awsExit`. */
+function run(name, { env, listing = "", assets = {}, awsExit = 0 }) {
 	const dir = mkdtempSync(join(tmpdir(), "pl-mirror-"));
 	const bin = join(dir, "bin");
 	mkdirSync(bin);
@@ -38,13 +44,13 @@ function run(name, { env, listing = "", assets = {} }) {
 	writeFileSync(calls, "");
 	writeFileSync(
 		join(bin, "aws"),
-		`#!/usr/bin/env bash\necho "$*" >> "${calls.replaceAll("\\", "/")}"\ncat <<'LISTING'\n${listing}\nLISTING\n`,
+		`#!/usr/bin/env bash\necho "$*" >> "${calls.replaceAll("\\", "/")}"\ncat <<'LISTING'\n${listing}\nLISTING\nexit ${awsExit}\n`,
 	);
 	chmodSync(join(bin, "aws"), 0o755);
 	mkdirSync(join(dir, "assets"));
 	for (const [file, bytes] of Object.entries(assets))
 		writeFileSync(join(dir, "assets", file), "x".repeat(bytes));
-	const r = spawnSync("bash", ["-e", "-c", step(name).run], {
+	const r = spawnSync("bash", [...shell, step(name).run], {
 		cwd: dir,
 		encoding: "utf8",
 		env: {
@@ -136,3 +142,19 @@ test("a release that would pass the ceiling is refused before any write", () => 
 		"s3 ls s3://bucket/ --recursive --endpoint-url https://r2.example",
 	]);
 });
+
+for (const name of [
+	"Only the newest releases are mirrored",
+	"The bucket has room for this release",
+	"The bucket stays under its ceiling",
+]) {
+	test(`"${name}" stops when the bucket listing fails, rather than reading it as empty`, () => {
+		const r = run(name, {
+			env: { TAG: "v0.5.7", KEEP: "3", DROP: "" },
+			assets: { "a.tar.gz": 10 },
+			awsExit: 255,
+		});
+		assert.equal(r.status, 255);
+		assert.equal(r.calls.length, 1);
+	});
+}

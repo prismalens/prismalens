@@ -122,7 +122,7 @@ export class ScenarioApp {
 		return this.app.get(PrismaService);
 	}
 
-	/** Intake's service lookup, called directly so a scenario can race several first alerts (#1216). */
+	/** Intake's service lookup, so a scenario can make one of its database writes fail (#1222). */
 	async alertMapping() {
 		if (!this.app) throw new Error("PrismaLens is not running");
 		const { AlertMappingService } = await import(

@@ -19,7 +19,16 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { parse } from "yaml";
-import { plan, TIER_PACKAGES, turboPackages } from "./ci-plan.mjs";
+import {
+	countsAsProof,
+	DRAFT_PLAN_JOB,
+	DRAFT_REASON,
+	firstProof,
+	PLAN_JOB,
+	plan,
+	TIER_PACKAGES,
+	turboPackages,
+} from "./ci-plan.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const WORKFLOWS = join(ROOT, ".github", "workflows");
@@ -393,6 +402,108 @@ test("a draft release PR defers everything; the same PR ready, or a draft featur
 		draft: true,
 	});
 	assert.deepEqual([feature.skip, feature.defer], [false, undefined]);
+});
+
+const FRONTEND_AND_API = [
+	"packages/frontend/src/routes/index.tsx",
+	"packages/api/src/main.ts",
+];
+
+test("a draft PR plans the fast tier only; the same PR ready plans the browser suite and the intake, and the reason says so", () => {
+	const draft = planFor(FRONTEND_AND_API, { draft: true, headRef: "feat/x" });
+	assert.deepEqual(tiers(draft), [false, true, false, false, false, false]);
+	assert.equal(draft.draft, true);
+	assert.equal(
+		draft.reason,
+		"draft: the fast tier only; marking it ready runs the full plan",
+	);
+	assert.equal(draft.reason, DRAFT_REASON);
+	const ready = planFor(FRONTEND_AND_API, { draft: false, headRef: "feat/x" });
+	assert.deepEqual(tiers(ready), [false, true, true, true, false, false]);
+	assert.equal(ready.draft, undefined);
+});
+
+test("a draft keeps `code` off when only CI-only paths changed, and a push is never planned as a draft", () => {
+	const ciOnly = planFor(["scripts/ci-plan.mjs"], { draft: true });
+	assert.deepEqual(tiers(ciOnly), [false, false, false, false, false, false]);
+	assert.equal(ciOnly.draft, true);
+	const push = plan({ event: "push", files: [], draft: true });
+	assert.equal(push.draft, undefined);
+	assert.equal(push.e2e, true);
+});
+
+test("a draft docs-only PR still skips, and a draft whose tree already passed still skips", () => {
+	const docs = pr({ files: ["README.md"], draft: true });
+	assert.deepEqual(tiers(docs), NOTHING);
+	assert.equal(docs.draft, undefined);
+	assert.equal(docs.reason, "docs only: nothing to build or test");
+	const same = pr({
+		files: ["packages/cli/src/a.ts"],
+		sameTreeAs: "abc123",
+		draft: true,
+	});
+	assert.deepEqual(tiers(same), NOTHING);
+	assert.equal(same.draft, undefined);
+});
+
+test("a draft release PR still defers, not the draft tier", () => {
+	const d = pr({
+		headRef: "release-please--branches--main",
+		files: ["package.json"],
+		draft: true,
+	});
+	assert.equal(d.defer, true);
+	assert.equal(d.draft, undefined);
+	assert.equal(
+		d.reason,
+		"draft release PR: CI waits until it is marked ready for review",
+	);
+});
+
+test("a draft with a path on no plan rule still plans the fast tier only", () => {
+	const p = pr({ files: ["Dockerfile"], draft: true });
+	assert.deepEqual(tiers(p), [false, true, false, false, false, false]);
+	assert.equal(p.reason, DRAFT_REASON);
+});
+
+test("a run whose plan job was the draft one is no proof for a ready PR; one whose plan job was not, is", () => {
+	assert.equal(DRAFT_PLAN_JOB, "Plan (draft)");
+	assert.equal(countsAsProof([PLAN_JOB, "Build & typecheck"]), true);
+	assert.equal(countsAsProof([DRAFT_PLAN_JOB, "Build & typecheck"]), false);
+	assert.equal(countsAsProof([PLAN_JOB, DRAFT_PLAN_JOB]), false);
+	// A run with no plan job in its list (a failed lookup's empty page) is not trusted either.
+	assert.equal(countsAsProof([]), false);
+	assert.equal(countsAsProof(["Build & typecheck"]), false);
+});
+
+test("the first full run is the proof; draft runs before it are passed over, and a lookup that throws propagates", () => {
+	const jobs = {
+		draft1: [DRAFT_PLAN_JOB, "Lint (Biome)"],
+		draft2: [DRAFT_PLAN_JOB],
+		full: [PLAN_JOB, "Lint (Biome)", "E2E / shard 1"],
+	};
+	const names = (/** @type {keyof typeof jobs} */ id) => jobs[id];
+	assert.equal(firstProof(["draft1", "draft2", "full"], names), "full");
+	assert.equal(firstProof(["draft1", "draft2"], names), undefined);
+	assert.equal(firstProof([], names), undefined);
+	assert.throws(
+		() =>
+			firstProof(["full"], () => {
+				throw new Error("gh api failed");
+			}),
+		/gh api failed/,
+	);
+});
+
+test("ci.yml names the plan job so the draft filter can read a run's mode, and exposes `draft`", () => {
+	const { changes } = parse(
+		readFileSync(join(WORKFLOWS, "ci.yml"), "utf8"),
+	).jobs;
+	assert.equal(
+		changes.name,
+		`\${{ github.event.pull_request.draft && '${DRAFT_PLAN_JOB}' || '${PLAN_JOB}' }}`,
+	);
+	assert.equal(changes.outputs.draft, `\${{ steps.plan.outputs.draft }}`);
 });
 
 test("marking a PR ready after its head passed CI runs nothing; without that pass it plans as usual", () => {

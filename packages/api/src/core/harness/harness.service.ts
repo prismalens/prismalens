@@ -79,7 +79,9 @@ import { HarnessProbeService } from "./harness-probe.service.js";
 /** How long a remembered "ready" stands before a run checks again; "not ready" is never reused (#673 w9). */
 export const READY_CHECK_TTL_MS = 24 * 60 * 60 * 1000;
 
-export type Readiness = { ready: true } | { ready: false; reason: string };
+export type Readiness =
+	| { ready: true; warning?: string }
+	| { ready: false; reason: string };
 
 type Check = NonNullable<HarnessStatus["checked"]>;
 
@@ -836,11 +838,17 @@ export class HarnessService implements OnApplicationBootstrap {
 	/**
 	 * Would a run on this agent start? A remembered `answers-acp` under a day
 	 * old, else a check now: a remembered failure is checked again, so signing
-	 * in takes effect on the next run (#673 w9).
+	 * in takes effect on the next run (#673 w9). `null` asks for the agent's own
+	 * default, as dispatch does; `undefined` takes Settings'.
 	 */
 	async ensureReady(id: HarnessId, model?: string | null): Promise<Readiness> {
 		const off = { ready: false, reason: this.offMessage(id) } as const;
 		if (await this.isOff(id)) return off;
+		const settings = await this.getSettings();
+		const chosenBy = (c: Check) =>
+			model === null
+				? (c.servedModel ?? null)
+				: (model ?? settings.models?.[id] ?? this.runModelOf(id));
 		const remembered = this.models.checked(id);
 		const fresh =
 			remembered?.outcome === "answers-acp" &&
@@ -855,10 +863,13 @@ export class HarnessService implements OnApplicationBootstrap {
 		if (!fresh && (await this.isOff(id))) return off;
 		if (check.outcome !== "answers-acp")
 			return { ready: false, reason: notReadyReason(id, check) };
-		const settings = await this.getSettings();
-		const chosen = model ?? settings.models?.[id] ?? this.runModelOf(id);
-		if (providerSignIn(id, check, chosen) === "signed-out")
-			return { ready: false, reason: providerSignedOutLine(id, chosen) };
+		const chosen = chosenBy(check);
+		// A warning, not a refusal: the login list misses keys set in config files, AWS and ADC (#1222).
+		if (providerSignIn(id, check, chosen) === "signed-out") {
+			const warning = providerSignedOutLine(id, chosen);
+			this.logger.warn(`Starting anyway: ${warning}`);
+			return { ready: true, warning };
+		}
 		return { ready: true };
 	}
 

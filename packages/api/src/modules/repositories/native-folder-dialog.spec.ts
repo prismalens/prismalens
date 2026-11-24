@@ -116,6 +116,27 @@ describe("pickNativeFolder", () => {
 		});
 	});
 
+	it("keeps a trailing backslash in a Linux folder's name", async () => {
+		const d = deps({ answer: ran({ stdout: "/work/app\\\n" }) });
+		expect(await pickNativeFolder(d)).toEqual({
+			status: "picked",
+			path: "/work/app\\",
+		});
+	});
+
+	it("is unavailable, not cancelled, when the Windows dialog script fails with exit 1", async () => {
+		const d = deps({ platform: "win32", answer: ran({ code: 1 }) });
+		expect(await pickNativeFolder(d)).toEqual({ status: "unavailable" });
+	});
+
+	it("is cancelled when the dialog was left open past its time limit, on Windows too", async () => {
+		const d = deps({
+			platform: "win32",
+			answer: ran({ code: null, timedOut: true }),
+		});
+		expect(await pickNativeFolder(d)).toEqual({ status: "cancelled" });
+	});
+
 	it("is cancelled, with no path, when the dialog prints nothing", async () => {
 		expect(await pickNativeFolder(deps({ answer: ran({ stdout: "" }) }))).toEqual(
 			{ status: "cancelled" },

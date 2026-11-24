@@ -220,7 +220,7 @@ export class SchedulesService
 		if (STARTING.has(outcome)) {
 			const ready = await this.harness.ensureReady(
 				s.harness as HarnessId,
-				s.model,
+				s.model ?? undefined,
 			);
 			if (!ready.ready) {
 				outcome = "skipped_agent_not_ready";
@@ -835,7 +835,7 @@ export class SchedulesService
 			if (!s) throw new ScheduleError("NOT_FOUND", "No such schedule.");
 			const ready = await this.harness.ensureReady(
 				s.harness as HarnessId,
-				s.model,
+				s.model ?? undefined,
 			);
 			if (!ready.ready)
 				throw new ScheduleError("PRECONDITION_FAILED", ready.reason);

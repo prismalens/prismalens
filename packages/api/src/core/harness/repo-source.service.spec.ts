@@ -597,6 +597,54 @@ describe("repo-source.service", () => {
 			expect(check.prefix).toBe("sub/dir");
 		});
 
+		it("checkFolder() names the branch whose commit it read, though the checkout changes between its git calls", async () => {
+			const src = tmp("pl-src-");
+			const main = initRepo(src);
+			git(["checkout", "-q", "-b", "other"], src);
+			writeFileSync(join(src, "a.txt"), "v2");
+			git(
+				["-c", "user.email=test@test.local", "-c", "user.name=Test", "commit", "-q", "-am", "other"],
+				src,
+			);
+			git(["checkout", "-q", "main"], src);
+			const service = new RepoSourceService();
+			type Git = (...a: unknown[]) => Promise<{ stdout: string; stderr: string }>;
+			const inner = service as unknown as { git: Git };
+			const real = inner.git.bind(service);
+			let calls = 0;
+			vi.spyOn(inner, "git").mockImplementation(async (...a) => {
+				const out = await real(...a);
+				if (++calls === 1) git(["checkout", "-q", "other"], src);
+				return out;
+			});
+
+			const check = await service.checkFolder(src);
+
+			expect({ branch: check.branch, head: check.head }).toEqual({
+				branch: "main",
+				head: main,
+			});
+		});
+
+		it("checkFolder() reads the branch, not a tag of the same name, when both are called main", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			git(["tag", "main"], src);
+			writeFileSync(join(src, "a.txt"), "v2");
+			git(
+				["-c", "user.email=test@test.local", "-c", "user.name=Test", "commit", "-q", "-am", "v2"],
+				src,
+			);
+			const tip = headOf(src);
+
+			const check = await new RepoSourceService().checkFolder(src);
+
+			expect({ branch: check.branch, head: check.head }).toEqual({
+				branch: "main",
+				head: tip,
+			});
+		});
+
 		it("checkFolder() tells a plain folder, a file and a repo with no commit apart (#1020)", async () => {
 			const service = new RepoSourceService();
 			const plain = tmp("pl-plain-");

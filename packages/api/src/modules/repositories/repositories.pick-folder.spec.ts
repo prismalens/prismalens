@@ -82,7 +82,7 @@ describe("RepositoriesController folder dialog (#1216)", () => {
 		expect(run).not.toHaveBeenCalled();
 	});
 
-	it("refuses with 403 a paired device on the host's own browser", async () => {
+	it("refuses with FORBIDDEN a paired device on the host's own browser", async () => {
 		const { routes, run } = controller(picked);
 		await expect(
 			call(routes.pickFolder, { ...OWNER_ON_HOST, scopes: ["operate"] }),
@@ -90,7 +90,7 @@ describe("RepositoriesController folder dialog (#1216)", () => {
 		expect(run).not.toHaveBeenCalled();
 	});
 
-	it("refuses with 403 the owner reaching the API from another computer", async () => {
+	it("refuses with FORBIDDEN the owner reaching the API from another computer", async () => {
 		const { routes, run } = controller(picked);
 		const remote: Who = {
 			...OWNER_ON_HOST,
@@ -104,7 +104,7 @@ describe("RepositoriesController folder dialog (#1216)", () => {
 		expect(run).not.toHaveBeenCalled();
 	});
 
-	it("refuses with 403 the owner behind a proxy on the host (forwarded) or from another origin", async () => {
+	it("refuses with FORBIDDEN the owner behind a proxy on the host (forwarded) or from another origin", async () => {
 		const { routes, run } = controller(picked);
 		await expect(
 			call(routes.pickFolder, {
