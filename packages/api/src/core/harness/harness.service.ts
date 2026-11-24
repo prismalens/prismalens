@@ -633,17 +633,30 @@ export class HarnessService implements OnApplicationBootstrap {
 	/** Auto prefers an agent whose provider login for its model is known; one it could not read waits behind. */
 	private providerKnown(id: HarnessId, model: string | undefined): boolean {
 		const c = this.models.checked(id);
-		const state = providerSignIn(id, c, model ?? c?.servedModel);
+		const chosen = model ?? this.runModelOf(id);
+		// No model to read a login for: auto keeps its order; the status says Sign-in not checked.
+		if (!chosen) return true;
+		const state = providerSignIn(id, c, chosen);
 		return state === "na" || state === "signed-in";
 	}
 
 	/** The model a run on `id` takes when none is starred or asked: one whose provider is signed in. */
 	runModelOf(id: HarnessId): string | null {
+		// Only models the agent itself listed: a catalogue one may be a name it does not know.
+		const listed = this.models.modelsFor(id, this.models.catalogue());
 		return preferredModel(
 			id,
 			this.models.checked(id),
-			this.models.modelsFor(id, this.models.catalogue()).entries,
+			listed.source === "harness" ? listed.entries : [],
 		);
+	}
+
+	/** A model to send when none is starred: only one that replaces the agent's own default, else null. */
+	runModelOverride(id: HarnessId): string | null {
+		const model = this.runModelOf(id);
+		return model && model !== this.models.checked(id)?.servedModel
+			? model
+			: null;
 	}
 
 	private checkPasses(id: HarnessId): boolean {

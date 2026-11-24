@@ -878,7 +878,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			h,
 			pick(
 				requested.model,
-				settings.models?.[h] ?? this.harnessService.runModelOf(h) ?? undefined,
+				settings.models?.[h] ??
+					this.harnessService.runModelOverride(h) ??
+					undefined,
 			),
 			runtime.env,
 		);

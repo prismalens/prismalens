@@ -156,7 +156,9 @@ export function defaultModel(
 	const preferred = preferredModel(
 		h.id as HarnessId,
 		{ ...h.checked, servedModel: own?.id ?? null },
-		h.models.entries.filter((e) => !isAgentDefault(e)),
+		h.models.source === "harness"
+			? h.models.entries.filter((e) => !isAgentDefault(e))
+			: [],
 	);
 	if (preferred && preferred !== own?.id)
 		return { id: preferred, name: modelName(h, preferred) ?? preferred };

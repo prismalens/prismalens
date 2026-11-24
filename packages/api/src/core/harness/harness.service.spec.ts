@@ -1291,8 +1291,15 @@ describe("HarnessService provider sign-in (multi-provider agents)", () => {
 			providers,
 		}) as const;
 
-	function seeded(providers: string[] | null) {
+	function seeded(
+		providers: string[] | null,
+		listed = [
+			{ id: "google/gemini-4-neon", name: "Gemini 4 Neon" },
+			{ id: "opencode/beam-free", name: "Beam Free" },
+		],
+	) {
 		const models = new HarnessModelsService();
+		models.remember("opencode", listed);
 		models.rememberCheck("opencode", answered(providers));
 		models.rememberCheck("codex", {
 			outcome: "answers-acp",
@@ -1355,6 +1362,9 @@ describe("HarnessService provider sign-in (multi-provider agents)", () => {
 			"opencode/beam-free",
 		);
 		expect(seeded([]).runModelOf("opencode")).toBe("opencode/beam-free");
+		expect(seeded([]).runModelOverride("opencode")).toBe("opencode/beam-free");
+		expect(seeded(["Google"]).runModelOverride("opencode")).toBeNull();
+		expect(seeded([]).runModelOverride("codex")).toBeNull();
 		expect(seeded(["Google"]).runModelOf("opencode")).toBe(
 			"google/gemini-4-neon",
 		);
@@ -1364,7 +1374,8 @@ describe("HarnessService provider sign-in (multi-provider agents)", () => {
 		const original = process.env.PATH;
 		process.env.PATH = pathWith("opencode", "codex-acp");
 		try {
-			expect(await seeded([]).resolveSelection()).toMatchObject({
+			const onlyGoogle = [{ id: "google/gemini-4-neon", name: "Gemini 4 Neon" }];
+			expect(await seeded([], onlyGoogle).resolveSelection()).toMatchObject({
 				runnable: true,
 				harness: "codex",
 				auto: true,
