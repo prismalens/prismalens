@@ -144,6 +144,7 @@ export const ConnectionWithIntegrationSchema = /* @__PURE__ */ lazySchema(() =>
 		legacy: z.literal(true).optional(),
 		/** A git host token's host, `host[:port]` (#673). */
 		host: z.string().optional(),
+		apiUsername: z.string().optional(),
 		/** `fp` of a git host token: an HMAC of host and token, never the token. */
 		fingerprint: z.string().optional(),
 	}),

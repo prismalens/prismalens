@@ -13,8 +13,12 @@ const { useHostRepositoriesMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api/hooks/use-app-settings-orpc", () => ({
-	useHostRepositories: (host: string | null, search: string) =>
-		useHostRepositoriesMock(host, search),
+	useHostRepositories: (
+		host: string | null,
+		search: string,
+		workspace?: string,
+		credentialConnectionId?: string,
+	) => useHostRepositoriesMock(host, search, workspace, credentialConnectionId),
 	useHostImages: () => true,
 }));
 
@@ -74,7 +78,12 @@ describe("HostRepoPicker", () => {
 
 		expect(hostChoices([gitlabView])).toEqual([
 			{ host: "github.com", label: "GitHub", connected: false },
-			{ host: "gitlab.com", label: "GitLab", connected: true },
+			{
+				host: "gitlab.com",
+				label: "GitLab",
+				connected: true,
+				stored: gitlabView.stored,
+			},
 			{ host: "bitbucket.org", label: "Bitbucket", connected: false },
 		]);
 	});
@@ -204,6 +213,8 @@ describe("HostRepoPicker", () => {
 			expect(useHostRepositoriesMock).toHaveBeenLastCalledWith(
 				"github.com",
 				"api",
+				undefined,
+				undefined,
 			);
 		});
 	});

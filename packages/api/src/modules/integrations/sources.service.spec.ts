@@ -440,13 +440,40 @@ describe("SourcesService (#848 C17)", () => {
 			}
 		});
 
+		it("tests and saves a personal Bitbucket API token with its Atlassian account email", async () => {
+			const draft = {
+				type: "git-host-token",
+				url: "https://bitbucket.org",
+				credential: { kind: "bearer", token: "test-token" },
+				gitTarget: { workspace: "acme" },
+				gitApiUsername: "user@example.com",
+			};
+			const request = vi.fn(async () => new Response("{}"));
+			vi.stubGlobal("fetch", request);
+			try {
+				expect((await service.connect(draft)).connectionId).toBe("new-conn-123");
+				expect(request).toHaveBeenCalledWith(
+					expect.stringContaining("https://api.bitbucket.org/2.0/repositories/acme?"),
+					expect.objectContaining({ headers: expect.objectContaining({
+						authorization: `Basic ${Buffer.from("user@example.com:test-token").toString("base64")}`,
+					}) }),
+				);
+				expect(mockIntegrations.createConnection).toHaveBeenCalledWith(expect.objectContaining({
+					connectionConfig: { host: "bitbucket.org", apiUsername: "user@example.com" },
+					credentials: { token: "test-token" },
+				}));
+			} finally {
+				vi.unstubAllGlobals();
+			}
+		});
+
 		it.each(Object.values(GIT_HOSTS))("tests a specific repository on $label before saving", async ({ host }) => {
 			const repositoryUrl = `https://${host}/acme/billing.git`;
 			const draft = {
 				type: "git-host-token",
 				url: `https://${host}`,
 				credential: { kind: "bearer", token: "draft-token" },
-				gitTarget: { repositoryUrl },
+				gitTarget: { repositoryUrl: `https:${host}/acme/billing.git` },
 			};
 			expect((await service.test(draft)).ok).toBe(true);
 			expect(mockIntegrations.probeHostToken).toHaveBeenCalledWith(

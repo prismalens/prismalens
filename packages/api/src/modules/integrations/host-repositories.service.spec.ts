@@ -19,7 +19,7 @@ const machine = () => new GitCredential({ source: "machine", label: "helper", vi
 function service(cred: () => GitCredential | Promise<GitCredential>, body: unknown = []) {
 	const credentials = {
 		resolveForUse: vi.fn(async () => cred()),
-		candidates: vi.fn(async () => [{ connectionId: "c1" }]),
+		tokenFor: vi.fn(async (_url: string, id: string) => id === "c2" ? {} : null),
 	} as unknown as GitCredentialService;
 	const s = new HostRepositoriesService(credentials);
 	const fetchImpl = vi.fn(async () => new Response(JSON.stringify(body)));
@@ -45,14 +45,29 @@ describe("HostRepositoriesService", () => {
 		expect(fetchImpl).not.toHaveBeenCalled();
 	});
 
-	it("uses the first of two saved tokens rather than failing", async () => {
-		let calls = 0;
-		const { s, credentials } = service(() => {
-			if (calls++ === 0) throw new GitCredentialAmbiguousError("bitbucket.org", []);
-			return stored("bitbucket.org");
-		}, { values: [] });
-		expect((await s.list({ host: "bitbucket.org", workspace: "acme" })).credential).toBe("resolved");
-		expect(credentials.resolveForUse).toHaveBeenLastCalledWith(expect.objectContaining({ pick: "c1" }));
+	it("requires an explicit saved token when discovery is ambiguous", async () => {
+		const { s, fetchImpl, credentials } = service(() => stored("bitbucket.org"), { values: [] });
+		vi.mocked(credentials.resolveForUse).mockRejectedValueOnce(new GitCredentialAmbiguousError("bitbucket.org", []));
+		const input = { host: "bitbucket.org", workspace: "acme" };
+		await expect(s.list(input)).rejects.toThrow("Choose a saved token");
+		await expect(s.list({ ...input, credentialConnectionId: "other" })).rejects.toThrow("Choose a saved token");
+		expect(fetchImpl).not.toHaveBeenCalled();
+		expect((await s.list({ ...input, credentialConnectionId: "c2" })).credential).toBe("resolved");
+		expect(credentials.tokenFor).toHaveBeenLastCalledWith("https://bitbucket.org/_/_", "c2");
+		expect(credentials.resolveForUse).toHaveBeenLastCalledWith(expect.objectContaining({ pick: "c2" }));
+	});
+
+	it("uses the Atlassian email for a saved Bitbucket personal API token", async () => {
+		const credential = new GitCredential(stored("bitbucket.org").display, "test-token", {
+			host: "bitbucket.org",
+			apiUsername: "user@example.com",
+		});
+		const { s, fetchImpl } = service(() => credential, { values: [] });
+		await s.list({ host: "bitbucket.org", workspace: "acme", credentialConnectionId: "c2" });
+		const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+		expect(new Headers(init.headers).get("authorization")).toBe(
+			`Basic ${Buffer.from("user@example.com:test-token").toString("base64")}`,
+		);
 	});
 
 	it("passes a host's refusal on, and refuses a non-host", async () => {

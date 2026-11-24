@@ -9,6 +9,8 @@ import {
 	CREDENTIAL_KIND_FIELDS,
 	CREDENTIAL_KIND_LABELS,
 	GIT_HOSTS,
+	gitHostApiUsernameField,
+	hostFromGithubBaseUrl,
 	type Integration,
 	publicGitHostKind,
 	SOURCE_CREDENTIAL_KINDS,
@@ -108,7 +110,13 @@ function savedFields(
 	connection: ConnectionWithIntegration,
 ): Record<string, string> {
 	if (connection.baseUrl) return { baseUrl: connection.baseUrl };
-	if (connection.host) return { host: connection.host };
+	if (connection.host)
+		return {
+			host: connection.host,
+			...(connection.apiUsername
+				? { apiUsername: connection.apiUsername }
+				: {}),
+		};
 	return {};
 }
 
@@ -199,16 +207,41 @@ export function ConnectionFormDialog({
 
 	// A field's default fills the form, so a git host token starts at github.com.
 	const templateId = selectedTemplate?.id;
-	const editingGitToken = mode === "edit" && templateId === "git-host-token";
-	const testHost = connectionFieldValues.host?.trim();
+	const editingGitToken = mode === "edit" && selectedTemplate?.gitHost;
+	const testHost =
+		templateId === "github-token"
+			? hostFromGithubBaseUrl(
+					credentialValues.baseUrl ||
+						connectionFieldValues.baseUrl ||
+						(connection?.host ? `https://${connection.host}` : undefined),
+				)
+			: connectionFieldValues.host?.trim();
 	const gitKind = testHost ? publicGitHostKind(testHost) : undefined;
+	const apiUsernameField =
+		templateId === "git-host-token" && testHost
+			? gitHostApiUsernameField(testHost)
+			: undefined;
+	const baseFields = selectedTemplate?.connectionFields ?? [];
+	const connectionFields = apiUsernameField
+		? [...baseFields, apiUsernameField]
+		: baseFields;
+	const { apiUsername, ...otherConnectionFields } = connectionFieldValues;
+	const connectionConfig = apiUsernameField
+		? connectionFieldValues
+		: otherConnectionFields;
+	const connectionErrors = validateFieldValues(
+		connectionFields,
+		connectionConfig,
+	);
 	const workspaceRequired =
 		!!gitKind && GIT_HOSTS[gitKind].scope === "workspace";
 	const target = testHost
 		? parseGitTarget(gitTarget, testHost, workspaceRequired)
 		: undefined;
 	const invalidTarget = (workspaceRequired || !!gitTarget.trim()) && !target;
-	const replacement = credentialValues.token?.trim();
+	const replacement = (
+		credentialValues.token ?? credentialValues.apiKey
+	)?.trim();
 	const credentialKinds = selectedTemplate?.credentialKinds?.filter(
 		(k): k is SourceCredentialKind =>
 			(SOURCE_CREDENTIAL_KINDS as readonly string[]).includes(k),
@@ -269,15 +302,9 @@ export function ConnectionFormDialog({
 			}
 
 			// Validate connection fields
-			if (selectedTemplate?.connectionFields) {
-				const fieldErrors = validateFieldValues(
-					selectedTemplate.connectionFields,
-					connectionFieldValues,
-				);
-				if (Object.keys(fieldErrors).length > 0) {
-					setShowErrors(true);
-					return;
-				}
+			if (Object.keys(connectionErrors).length > 0) {
+				setShowErrors(true);
+				return;
 			}
 
 			// Validate credential fields for non-OAuth
@@ -317,7 +344,7 @@ export function ConnectionFormDialog({
 						label:
 							connectionLabel.trim() || selectedTemplate?.name || "Connection",
 						credentials: credentialsToSave(),
-						connectionConfig: connectionFieldValues,
+						connectionConfig,
 					});
 					handleOpenChange(false);
 					onSuccess?.();
@@ -337,6 +364,10 @@ export function ConnectionFormDialog({
 				);
 			}
 		} else if (mode === "edit" && connection) {
+			if (connectionErrors.apiUsername) {
+				setShowErrors(true);
+				return;
+			}
 			try {
 				const hasNewCredentials = credentialKinds
 					? credentialKind !== ""
@@ -351,7 +382,7 @@ export function ConnectionFormDialog({
 					id: connection.id,
 					...(label && label !== connection.label ? { label } : {}),
 					credentials: hasNewCredentials ? credentialsToSave() : undefined,
-					connectionConfig: fieldsChanged ? connectionFieldValues : undefined,
+					connectionConfig: fieldsChanged ? connectionConfig : undefined,
 				});
 				handleOpenChange(false);
 				onSuccess?.();
@@ -478,15 +509,17 @@ export function ConnectionFormDialog({
 								</Field>
 							)}
 
-							{selectedTemplate.connectionFields &&
-								selectedTemplate.connectionFields.length > 0 && (
-									<DynamicCredentialForm
-										fields={selectedTemplate.connectionFields}
-										values={connectionFieldValues}
-										onChange={setConnectionFieldValues}
-										showErrors={showErrors}
-									/>
-								)}
+							{connectionFields.length > 0 && (
+								<DynamicCredentialForm
+									fields={connectionFields}
+									values={connectionFieldValues}
+									onChange={(values) => {
+										setConnectionFieldValues(values);
+										if (editingGitToken) test.reset();
+									}}
+									showErrors={showErrors}
+								/>
+							)}
 
 							{envChange && (
 								<p
@@ -576,6 +609,7 @@ export function ConnectionFormDialog({
 								test.isPending ||
 								!replacement ||
 								!testHost ||
+								!!connectionErrors.apiUsername ||
 								invalidTarget
 							}
 							onClick={() => {
@@ -585,6 +619,9 @@ export function ConnectionFormDialog({
 									url: `https://${testHost}`,
 									credential: { kind: "bearer", token: replacement },
 									gitTarget: target,
+									gitApiUsername: apiUsernameField
+										? apiUsername?.trim()
+										: undefined,
 								});
 							}}
 						>

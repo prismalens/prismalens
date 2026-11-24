@@ -566,7 +566,7 @@ export class IntegrationsController {
 						}),
 					}
 				: {}),
-			...(git ? { host: git.host, fingerprint: git.fingerprint } : {}),
+			...(git ?? {}),
 			...(legacy ? { legacy: true as const } : {}),
 			integration: this.serializeIntegration(integration),
 			templateId: integration.templateId,

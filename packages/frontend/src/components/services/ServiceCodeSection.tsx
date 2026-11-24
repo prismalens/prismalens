@@ -210,9 +210,9 @@ export function ServiceCodeSection({
 					title="Add code"
 					pending={add.isPending}
 					error={add.error ? getErrorMessage(add.error) : null}
-					onChoose={(source) =>
+					onChoose={(source, credentialConnectionId) =>
 						add.mutate(
-							{ serviceId: service.id, source },
+							{ serviceId: service.id, source, credentialConnectionId },
 							{ onSuccess: () => setAdding(false) },
 						)
 					}

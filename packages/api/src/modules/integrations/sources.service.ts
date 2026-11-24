@@ -19,6 +19,7 @@ import {
 	type SourceRow,
 	type SourcesOverview,
 	sourceType,
+	validGitHostApiUsername,
 } from "@prismalens/contracts/schemas";
 import {
 	getTemplate,
@@ -241,13 +242,22 @@ export class SourcesService {
 		if (draft.type === GIT_TOKEN_TYPE) {
 			const host = normalizeGitHost(draft.url);
 			if (!host) throw new BadRequestException("The address names no git host");
+			if (!validGitHostApiUsername(host, draft.gitApiUsername ?? ""))
+				throw new BadRequestException(
+					"Enter a valid API account email for this git host.",
+				);
 			if (credential.kind !== "bearer")
 				throw new BadRequestException("A git host takes a token");
 			return {
 				templateId: GIT_TOKEN_TYPE,
 				name: "Git host token",
 				host,
-				connectionConfig: { host },
+				connectionConfig: {
+					host,
+					...(draft.gitApiUsername
+						? { apiUsername: draft.gitApiUsername }
+						: {}),
+				},
 				credentials: { token: credential.token },
 				credential,
 			};
@@ -314,7 +324,7 @@ export class SourcesService {
 			const credential = new GitCredential(
 				{ source: "connection", label: draftToken.label, via: GIT_TOKEN_TYPE },
 				token,
-				{ host: plan.host },
+				{ host: plan.host, apiUsername: plan.connectionConfig.apiUsername },
 			);
 			const authorization = credential.apiAuthorization(url);
 			const capability = "List repositories";
@@ -356,7 +366,7 @@ export class SourcesService {
 		const result = await this.integrations.probeHostToken(
 			draftToken,
 			undefined,
-			repository,
+			repository ? new URL(repository).href : undefined,
 		);
 		const lines = result.details ?? (result.error ? [result.error] : []);
 		return {

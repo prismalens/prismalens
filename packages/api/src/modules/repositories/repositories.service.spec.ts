@@ -511,6 +511,21 @@ describe("RepositoriesService.addSource", () => {
 		expect(mockTx.serviceRepository.updateMany).not.toHaveBeenCalled();
 	});
 
+	it("validates and pins the selected discovery credential when adding a repository", async () => {
+		const source = "https://bitbucket.org/acme/app.git";
+		mockGitCredentials.tokenFor.mockResolvedValue({});
+		mockGitCredentials.withCredential.mockResolvedValue({ result: { branch: "main", head: "abc1234" } });
+		await service.addSource({ source, credentialConnectionId: "workspace-token" });
+		expect(mockGitCredentials.tokenFor).toHaveBeenCalledWith(source, "workspace-token");
+		expect(mockGitCredentials.withCredential).toHaveBeenCalledWith(
+			expect.objectContaining({ url: source, pick: "workspace-token" }),
+			expect.any(Function),
+		);
+		expect(mockTx.repository.create).toHaveBeenCalledWith({
+			data: expect.objectContaining({ metadata: JSON.stringify({ credentialConnectionId: "workspace-token" }) }),
+		});
+	});
+
 	it("T16c: addSource uses withCredential and stores the returned credential's label on the row preview", async () => {
 		mockGitCredentials.withCredential.mockResolvedValue({
 			result: { branch: "main", head: "abc1234" },

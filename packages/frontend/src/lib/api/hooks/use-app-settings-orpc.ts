@@ -105,10 +105,16 @@ export function useHostRepositories(
 	host: string | null,
 	search: string,
 	workspace?: string,
+	credentialConnectionId?: string,
 ) {
 	return useQuery({
 		...orpc.sources.hostRepositories.queryOptions({
-			input: { host: host ?? "", ...(search ? { search } : {}), workspace },
+			input: {
+				host: host ?? "",
+				...(search ? { search } : {}),
+				workspace,
+				credentialConnectionId,
+			},
 		}),
 		enabled: !!host,
 		staleTime: 30_000,

@@ -113,10 +113,13 @@ describe("AddProjectDialog (git hosts)", () => {
 			'[data-testid="add-project-from"]',
 		);
 		expect(switcher).not.toBeNull();
-		for (const { label } of Object.values(GIT_HOSTS)) {
-			expect(switcher?.textContent).toContain(label);
-		}
-		expect(switcher?.textContent).toContain("Folder or URL");
+		const options = [...(switcher?.querySelectorAll("button") ?? [])].map(
+			(option) => option.textContent,
+		);
+		expect(options).toEqual([
+			...Object.values(GIT_HOSTS).map(({ label }) => label),
+			"Folder or URL",
+		]);
 
 		const sourceInput = document.body.querySelector(
 			'[data-testid="add-project-source"]',

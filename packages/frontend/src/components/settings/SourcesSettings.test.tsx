@@ -132,12 +132,13 @@ describe("SourcesSettings (cases 4, 9, and Many layout)", () => {
 			'[data-testid="sources-add"]',
 		);
 		await act(async () => add?.click());
-		for (const [kind, host] of Object.entries(GIT_HOSTS)) {
-			const choice = document.body.querySelector(
-				`[data-testid="source-kind-${kind}"]`,
-			);
-			expect(choice?.textContent).toContain(host.label);
-		}
+		const labels = Object.keys(GIT_HOSTS).map(
+			(kind) =>
+				document.body.querySelector(
+					`[data-testid="source-kind-${kind}"] strong`,
+				)?.textContent,
+		);
+		expect(labels).toEqual(Object.values(GIT_HOSTS).map(({ label }) => label));
 	});
 
 	it("renders Overrides note when overridesEnv is present (case 4)", async () => {

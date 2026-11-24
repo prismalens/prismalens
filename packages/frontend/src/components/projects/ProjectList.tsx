@@ -30,10 +30,10 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 	}, [openAtStart]);
 	const [error, setError] = useState<string | null>(null);
 
-	const onAdd = async (source: string) => {
+	const onAdd = async (source: string, credentialConnectionId?: string) => {
 		setError(null);
 		try {
-			const repo = await add.mutateAsync({ source });
+			const repo = await add.mutateAsync({ source, credentialConnectionId });
 			setOpen(false);
 			await navigate({ to: "/projects/$id", params: { id: repo.id } });
 		} catch (err) {
@@ -67,7 +67,7 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 						if (!o && openAtStart)
 							void navigate({ to: "/projects", search: {}, replace: true });
 					}}
-					onChoose={(s) => void onAdd(s)}
+					onChoose={onAdd}
 					pending={add.isPending}
 					error={error}
 				/>

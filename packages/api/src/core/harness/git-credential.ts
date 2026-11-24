@@ -6,6 +6,7 @@ import { inspect } from "node:util";
 import {
 	GIT_HOSTS,
 	type GitCredentialDisplay,
+	gitHostApiUsernameField,
 	publicGitHostKind,
 } from "@prismalens/contracts/schemas";
 import type { GitEnvInput } from "./git-env.js";
@@ -183,16 +184,7 @@ export function normalizeGitHost(input: string): string | null {
 export const GIT_HOST_RULE =
 	"Host must be a hostname with an optional :port, like github.com or git.example.com:8443";
 
-/** The git host a saved GitHub token belongs to: `api.github.com` → `github.com`, `https://h/api/v3` → `h`. */
-export function hostFromGithubBaseUrl(baseUrl: unknown): string {
-	if (typeof baseUrl !== "string" || !baseUrl.trim()) return "github.com";
-	try {
-		const host = new URL(baseUrl.trim()).host.toLowerCase();
-		return host === "api.github.com" ? "github.com" : host;
-	} catch {
-		return "github.com";
-	}
-}
+export { hostFromGithubBaseUrl } from "@prismalens/contracts/schemas";
 
 /** The keys a saved credential may keep its token under; `apiKey` is what 0.5.0 GitHub token rows store. */
 export const TOKEN_KEYS = [
@@ -271,16 +263,18 @@ export class GitCredential {
 	readonly effectiveUrl?: string;
 	#token?: string;
 	#host?: string;
+	#apiUsername?: string;
 
 	constructor(
 		display: GitCredentialDisplay,
 		token?: string,
-		opts: { effectiveUrl?: string; host?: string } = {},
+		opts: { effectiveUrl?: string; host?: string; apiUsername?: string } = {},
 	) {
 		this.display = display;
 		if (opts.effectiveUrl) this.effectiveUrl = opts.effectiveUrl;
 		this.#token = token;
 		this.#host = opts.host;
+		this.#apiUsername = opts.apiUsername;
 	}
 
 	/** The Authorization value for an https URL on the token's own host, else undefined: `Basic` for git, `Bearer` for a host's REST API. */
@@ -315,7 +309,10 @@ export class GitCredential {
 		const kind = publicGitHostKind(this.#host);
 		const apiHost = kind ? new URL(GIT_HOSTS[kind].apiBase).host : undefined;
 		const ok = api === this.#host || api === apiHost;
-		return ok ? `Bearer ${this.#token}` : undefined;
+		if (!ok) return undefined;
+		if (this.#apiUsername && gitHostApiUsernameField(this.#host))
+			return `Basic ${Buffer.from(`${this.#apiUsername}:${this.#token}`).toString("base64")}`;
+		return `Bearer ${this.#token}`;
 	}
 
 	/** `Authorization: Basic …` for an https URL on the token's own host, else undefined. */

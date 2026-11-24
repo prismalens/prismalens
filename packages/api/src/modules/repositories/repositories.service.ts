@@ -101,6 +101,14 @@ export class RepositoriesService {
 			throw new BadRequestException((err as Error).message);
 		}
 		let { kind, source } = classified;
+		const pick = input.credentialConnectionId;
+		if (
+			pick &&
+			(kind !== "url" || !(await this.gitCredentials.tokenFor(source, pick)))
+		)
+			throw new BadRequestException(
+				"That connection is not a git host token for this repository's host",
+			);
 		// A folder is saved as the disk names it, so an alias is the same project (#1020).
 		if (kind === "folder")
 			try {
@@ -138,7 +146,7 @@ export class RepositoriesService {
 			sync = await this.validateUrl(
 				source,
 				existing?.connectionId ?? null,
-				pickOf(existing?.metadata),
+				pick ?? pickOf(existing?.metadata),
 			);
 		}
 
@@ -167,13 +175,22 @@ export class RepositoriesService {
 				where: { url: source, subPath: own },
 			});
 			const name = displayNameFor(kind, source);
+			const data = pick
+				? {
+						...fields,
+						metadata: JSON.stringify({
+							...parseMetadata(sameRoot?.metadata ?? null),
+							credentialConnectionId: pick,
+						}),
+					}
+				: fields;
 			const repo = sameRoot
 				? await tx.repository.update({
 						where: { id: sameRoot.id },
-						data: fields,
+						data,
 					})
 				: await tx.repository.create({
-						data: { ...fields, fullName: own ? `${name}/${own}` : name },
+						data: { ...data, fullName: own ? `${name}/${own}` : name },
 					});
 			// A project on its own has no service to link (#1020).
 			if (!serviceId) return repo;

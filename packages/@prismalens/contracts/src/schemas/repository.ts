@@ -214,6 +214,7 @@ export const AddRepositorySourceSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		serviceId: z.string().uuid().optional(),
 		source: z.string().trim().min(1),
+		credentialConnectionId: z.string().uuid().optional(),
 		subPath: SubPathSchema.optional(),
 	}),
 );

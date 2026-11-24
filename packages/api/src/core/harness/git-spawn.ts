@@ -3,7 +3,9 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtemp, rm } from "node:fs/promises";
+import { devNull, tmpdir } from "node:os";
+import { join } from "node:path";
 import { type GitEnvInput, gitEnv } from "./git-env.js";
 import { scrubGitStderr } from "./git-failure.js";
 
@@ -25,6 +27,41 @@ export interface SpawnGitOptions {
 	onStdoutLine?: (line: string) => void;
 	/** Keep stdout as bytes in `bytes`, undecoded; `stdout` is then "". */
 	raw?: boolean;
+}
+
+/** Keep explicit credential probes independent of local Git config and URL rewrites. */
+export async function probeHttpsRemote(
+	url: string,
+	input: GitEnvInput,
+): Promise<GitOutput> {
+	const base = tmpdir();
+	const cwd = await mkdtemp(join(base, "prismalens-git-probe-"));
+	try {
+		return await spawnGit(
+			[
+				"-c",
+				"http.followRedirects=false",
+				"ls-remote",
+				"--exit-code",
+				"--heads",
+				"--",
+				url,
+			],
+			{
+				cwd,
+				env: {
+					...gitEnv(input),
+					GIT_ALLOW_PROTOCOL: "https",
+					GIT_CONFIG_NOSYSTEM: "1",
+					GIT_CONFIG_GLOBAL: devNull,
+					GIT_CEILING_DIRECTORIES: base,
+				},
+				timeoutMs: GIT_LS_REMOTE_TIMEOUT_MS,
+			},
+		);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
 }
 
 export interface GitOutput {

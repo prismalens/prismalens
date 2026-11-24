@@ -12,6 +12,7 @@ import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
 import {
 	type ParsedSourceCredential,
 	parseSourceCredential,
+	validGitHostApiUsername,
 } from "@prismalens/contracts/schemas";
 import type {
 	Connection,
@@ -46,6 +47,7 @@ import {
 	effectiveGitUrl,
 	GIT_LS_REMOTE_TIMEOUT_MS,
 	GitSpawnError,
+	probeHttpsRemote,
 	remoteGitEnv,
 	spawnGit,
 } from "../../core/harness/git-spawn.js";
@@ -136,7 +138,16 @@ function normalizedConfig(
 	if (templateId !== "git-host-token" || !config) return config;
 	const host = normalizeGitHost(config.host ?? "");
 	if (!host) throw new BadRequestException(GIT_HOST_RULE);
-	return { ...config, host };
+	const apiUsername = config.apiUsername?.trim() ?? "";
+	if (!validGitHostApiUsername(host, apiUsername))
+		throw new BadRequestException(
+			"Enter a valid API account email for this git host.",
+		);
+	return {
+		...config,
+		host,
+		...(config.apiUsername !== undefined ? { apiUsername } : {}),
+	};
 }
 
 @Injectable()
@@ -529,9 +540,11 @@ export class IntegrationsService implements OnModuleInit {
 	/** A git host connection's host and fingerprint, for Settings; null for any other connection. */
 	gitHostInfo(
 		conn: ConnectionWithIntegration,
-	): { host: string; fingerprint: string } | null {
+	): { host: string; fingerprint: string; apiUsername?: string } | null {
 		const t = readHostToken(conn, this.credentialsService);
-		return t ? { host: t.host, fingerprint: t.fingerprint } : null;
+		return t
+			? { host: t.host, fingerprint: t.fingerprint, apiUsername: t.apiUsername }
+			: null;
 	}
 
 	/**
@@ -821,22 +834,16 @@ export class IntegrationsService implements OnModuleInit {
 				...(await Promise.all(
 					batch.map(async (url) => {
 						try {
-							await spawnGit(
-								[
-									...(repositoryUrl
-										? ["-c", "http.followRedirects=false"]
-										: []),
-									"ls-remote",
-									"--exit-code",
-									"--heads",
-									"--",
-									url,
-								],
-								{
-									env: await remoteGitEnv(cred.envInput(url)),
-									timeoutMs: GIT_LS_REMOTE_TIMEOUT_MS,
-								},
-							);
+							const input = cred.envInput(url);
+							if (repositoryUrl) await probeHttpsRemote(url, input);
+							else
+								await spawnGit(
+									["ls-remote", "--exit-code", "--heads", "--", url],
+									{
+										env: await remoteGitEnv(input),
+										timeoutMs: GIT_LS_REMOTE_TIMEOUT_MS,
+									},
+								);
 							return `ok ${repoPath(url)}`;
 						} catch (err) {
 							// --exit-code answers 2 for a reachable repository with no branches yet.

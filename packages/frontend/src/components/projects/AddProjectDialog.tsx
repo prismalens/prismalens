@@ -58,7 +58,7 @@ export function AddProjectDialog({
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	onChoose: (source: string) => void;
+	onChoose: (source: string, credentialConnectionId?: string) => void;
 	title?: string;
 	submitLabel?: string;
 	/** A place on disk, not a project: no URL and no kind. */
@@ -98,10 +98,11 @@ export function AddProjectDialog({
 	const recent = typed ? [] : recentSources();
 	const source = sourceOf(typed);
 
-	const choose = (s: string) => {
+	const choose = (s: string, credentialConnectionId?: string) => {
 		if (!s || pending) return;
 		rememberSource(s);
-		onChoose(s);
+		if (credentialConnectionId) onChoose(s, credentialConnectionId);
+		else onChoose(s);
 	};
 	const onSubmit = (e: FormEvent) => {
 		e.preventDefault();

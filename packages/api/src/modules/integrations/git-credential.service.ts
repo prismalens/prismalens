@@ -371,6 +371,7 @@ export class GitCredentialService {
 		return new GitCredential(r.display, r.token?.token ?? r.env?.token, {
 			effectiveUrl: r.effectiveUrl,
 			host: r.token?.host ?? r.env?.host,
+			apiUsername: r.token?.apiUsername,
 		});
 	}
 

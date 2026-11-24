@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
+import type { TemplateField } from "./integration.js";
 import { PreRunSourceSchema } from "./investigation.js";
 import {
 	SOURCE_CREDENTIAL_KINDS,
@@ -552,6 +553,16 @@ export const GIT_HOSTS = {
 		scope: "workspace",
 		apiBase: "https://api.bitbucket.org/2.0",
 		gitUsername: "x-token-auth",
+		apiUsernameField: {
+			name: "apiUsername",
+			label: "Atlassian account email",
+			type: "string",
+			required: false,
+			placeholder: "you@example.com",
+			pattern: "^[^\\s:@]+@[^\\s:@]+\\.[^\\s:@]+$",
+			description:
+				"Required for personal API tokens. Leave blank for repository, project, or workspace access tokens.",
+		} satisfies TemplateField,
 	},
 } as const;
 
@@ -560,6 +571,35 @@ export type GitHostKind = keyof typeof GIT_HOSTS;
 export function publicGitHostKind(host: string): GitHostKind | undefined {
 	return (Object.keys(GIT_HOSTS) as GitHostKind[]).find(
 		(kind) => GIT_HOSTS[kind].host === host.toLowerCase(),
+	);
+}
+
+/** The git host a saved GitHub token belongs to: `api.github.com` → `github.com`, `https://h/api/v3` → `h`. */
+export function hostFromGithubBaseUrl(baseUrl: unknown): string {
+	if (typeof baseUrl !== "string" || !baseUrl.trim()) return "github.com";
+	try {
+		const host = new URL(baseUrl.trim()).host.toLowerCase();
+		return host === "api.github.com" ? "github.com" : host;
+	} catch {
+		return "github.com";
+	}
+}
+
+export function gitHostApiUsernameField(
+	host: string,
+): TemplateField | undefined {
+	const kind = publicGitHostKind(host);
+	const entry = kind && GIT_HOSTS[kind];
+	return entry && "apiUsernameField" in entry
+		? entry.apiUsernameField
+		: undefined;
+}
+
+export function validGitHostApiUsername(host: string, value: string): boolean {
+	const pattern = gitHostApiUsernameField(host)?.pattern;
+	return (
+		!value ||
+		(!!pattern && value.length <= 254 && new RegExp(pattern).test(value))
 	);
 }
 
@@ -619,6 +659,7 @@ export const SourceDraftSchema = /* @__PURE__ */ lazySchema(() =>
 		/** Take the token or URL from the variable the api detected. */
 		useDetected: z.boolean().optional(),
 		gitTarget: GitProbeTargetSchema.optional(),
+		gitApiUsername: z.string().trim().max(254).optional(),
 		serviceLabel: z.string().trim().min(1).optional(),
 		label: z.string().trim().min(1).optional(),
 		/** A vendor MCP connection's name (`CONNECTION_NAME`) and one-line description. */
@@ -724,6 +765,7 @@ export const HostRepositoriesInputSchema = /* @__PURE__ */ lazySchema(() =>
 		/** A git host's name as `GET /sources/git-hosts` lists it, e.g. `github.com`. */
 		host: z.string().trim().min(1).max(253),
 		workspace: z.string().trim().max(100).regex(GIT_HOST_SLUG).optional(),
+		credentialConnectionId: z.string().uuid().optional(),
 		search: z.string().trim().max(200).optional(),
 		page: z.coerce.number().int().min(1).max(100).optional(),
 	}),

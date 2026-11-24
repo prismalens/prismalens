@@ -31,6 +31,7 @@ export class HostRepositoriesService {
 	async list(input: {
 		host: string;
 		workspace?: string;
+		credentialConnectionId?: string;
 		search?: string;
 		page?: number;
 	}): Promise<HostRepositories> {
@@ -39,19 +40,16 @@ export class HostRepositoriesService {
 			throw new HostListingError(`${input.host} isn't a git host name.`);
 		const probe = `https://${host}/_/_`;
 		const ref = { sourceKind: "url" as const, url: probe, connectionId: null };
-		let cred: Awaited<ReturnType<GitCredentialService["resolveForUse"]>>;
-		try {
-			cred = await this.credentials.resolveForUse({ ...ref, pick: null });
-		} catch (error) {
-			// Two saved tokens for one host: list with the first, as Add project has no repo to pin yet.
-			if (!(error instanceof GitCredentialAmbiguousError)) throw error;
-			const [first] = await this.credentials.candidates(probe);
-			if (!first) throw error;
-			cred = await this.credentials.resolveForUse({
-				...ref,
-				pick: first.connectionId,
+		const pick = input.credentialConnectionId ?? null;
+		if (pick && !(await this.credentials.tokenFor(probe, pick)))
+			throw new HostListingError(`Choose a saved token for ${host}.`);
+		const cred = await this.credentials
+			.resolveForUse({ ...ref, pick })
+			.catch((error: unknown) => {
+				if (error instanceof GitCredentialAmbiguousError)
+					throw new HostListingError(`Choose a saved token for ${host}.`);
+				throw error;
 			});
-		}
 		const kind = gitHostKind(host);
 		if (GIT_HOSTS[kind].scope === "workspace" && !input.workspace)
 			throw new HostListingError("Enter a Bitbucket workspace slug.");

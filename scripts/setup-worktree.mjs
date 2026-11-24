@@ -82,6 +82,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
 			PRISMALENS_SIM_PREBUILT: "1",
 			PRISMALENS_WORKSPACE_DIR: join(sim, "workspace"),
 			PRISMALENS_HOST: "127.0.0.1",
+			PRISMALENS_PROTOCOL: "http",
 		};
 		for (const name of [
 			"PRISMALENS_PORT",

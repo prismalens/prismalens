@@ -9,12 +9,19 @@ import {
 	publicGitHostKind,
 } from "@prismalens/contracts/schemas";
 import { Lock } from "lucide-react";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useId, useState } from "react";
 import { SourceConnectDialog } from "@/components/settings/SourceConnectDialog";
 import { ProjectMark } from "@/components/shared/ProjectMark";
 import { Loading, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { useHostRepositories } from "@/lib/api/hooks/use-app-settings-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { shortAge } from "@/lib/incident-board";
@@ -24,6 +31,7 @@ export interface HostChoice {
 	label: string;
 	/** A credential PrismaLens can use is stored, in the environment or on the machine. */
 	connected: boolean;
+	stored?: GitHostView["stored"];
 }
 
 export function hostChoices(hosts: readonly GitHostView[]): HostChoice[] {
@@ -36,6 +44,7 @@ export function hostChoices(hosts: readonly GitHostView[]): HostChoice[] {
 			host: h.host,
 			label: choices.get(h.host)?.label ?? h.host,
 			connected: h.stored.length > 0 || !!h.env || !!h.machine,
+			stored: h.stored,
 		});
 	}
 	return Array.from(choices.values());
@@ -53,22 +62,32 @@ export function HostRepoPicker({
 	pending,
 }: {
 	choice: HostChoice;
-	onChoose: (url: string) => void;
+	onChoose: (url: string, credentialConnectionId?: string) => void;
 	onPasteUrl: () => void;
 	pending: boolean;
 }) {
 	const [search, setSearch] = useState("");
 	const [workspace, setWorkspace] = useState("");
+	const workspaceId = useId();
+	const [picked, setPicked] = useState("");
+	const stored = choice.stored ?? [];
+	const credential =
+		stored.length === 1
+			? stored[0]
+			: stored.find((token) => token.connectionId === picked);
+	const needsCredential = stored.length > 1 && !credential;
 	const kind = connectKindFor(choice.host);
 	const workspaceRequired = GIT_HOSTS[kind].scope === "workspace";
 	const scope = useDeferredValue(workspace.trim());
 	const ready =
-		!workspaceRequired || (scope.length <= 100 && GIT_HOST_SLUG.test(scope));
+		!needsCredential &&
+		(!workspaceRequired || (scope.length <= 100 && GIT_HOST_SLUG.test(scope)));
 	const [connecting, setConnecting] = useState(false);
 	const list = useHostRepositories(
 		ready && choice.connected ? choice.host : null,
 		useDeferredValue(search.trim()),
 		workspaceRequired ? scope : undefined,
+		credential?.connectionId,
 	);
 	const repos = list.data?.repositories ?? [];
 
@@ -112,16 +131,34 @@ export function HostRepoPicker({
 
 	return (
 		<div className="grid gap-2" data-testid="host-repos">
+			{stored.length > 1 && (
+				<Select
+					value={credential?.connectionId ?? ""}
+					onValueChange={setPicked}
+				>
+					<SelectTrigger aria-label="Saved token">
+						<SelectValue placeholder="Choose a saved token" />
+					</SelectTrigger>
+					<SelectContent>
+						{stored.map((token) => (
+							<SelectItem key={token.connectionId} value={token.connectionId}>
+								{token.label} ({token.fingerprint})
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			)}
 			{workspaceRequired && (
-				<label className="grid gap-1 text-body">
-					Bitbucket workspace
+				<div className="grid gap-1 text-body">
+					<label htmlFor={workspaceId}>{choice.label} workspace</label>
 					<Input
+						id={workspaceId}
 						autoFocus
 						value={workspace}
 						maxLength={100}
 						onChange={(e) => setWorkspace(e.target.value)}
 					/>
-				</label>
+				</div>
 			)}
 			{!ready ? (
 				<Button variant="text" onClick={onPasteUrl}>
@@ -167,7 +204,11 @@ export function HostRepoPicker({
 									key={r.url}
 									repo={r}
 									disabled={pending}
-									onPick={() => onChoose(r.url)}
+									onPick={() =>
+										credential
+											? onChoose(r.url, credential.connectionId)
+											: onChoose(r.url)
+									}
 								/>
 							))}
 							{list.data?.hasMore && (

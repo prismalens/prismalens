@@ -16,6 +16,7 @@ export interface HostToken {
 	label: string;
 	templateId: string;
 	host: string;
+	apiUsername?: string;
 	token: string;
 	fingerprint: string;
 	status: string;
@@ -60,6 +61,9 @@ export function readHostToken(
 		label: conn.label || conn.integration.label,
 		templateId: conn.integration.templateId,
 		host,
+		...(typeof config.apiUsername === "string" && config.apiUsername
+			? { apiUsername: config.apiUsername }
+			: {}),
 		token,
 		fingerprint: credentials.getVault().hmacHex(`${host}:${token}`).slice(0, 8),
 		status: conn.status,

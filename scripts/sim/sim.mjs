@@ -81,7 +81,7 @@ function pairCommand() {
 		const directory = SIM.replaceAll("'", "''");
 		return `$env:PRISMALENS_SIM_DIR = '${directory}'; pnpm sim pair`;
 	}
-	const directory = SIM.replaceAll("'", "'" + String.fromCharCode(92) + "''");
+	const directory = SIM.replaceAll("'", "'\\''");
 	return `PRISMALENS_SIM_DIR='${directory}' pnpm sim pair`;
 }
 

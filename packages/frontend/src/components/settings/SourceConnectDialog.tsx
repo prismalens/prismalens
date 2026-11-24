@@ -6,6 +6,7 @@ import {
 	CREDENTIAL_KIND_LABELS,
 	GIT_HOST_SLUG,
 	GIT_HOSTS,
+	gitHostApiUsernameField,
 	isGitProbeRepository,
 	type ProbeReport,
 	publicGitHostKind,
@@ -278,7 +279,6 @@ export function SourceConnectDialog({
 	const credId = useId();
 	const kind = SOURCE_KINDS.find((k) => k.id === kindId) ?? SOURCE_KINDS[0];
 	const effectiveKind: SourceCredentialKind = kind.git ? "bearer" : credKind;
-	const fields = CREDENTIAL_KIND_FIELDS[effectiveKind];
 
 	// Reset only when the dialog opens; the mutations reset with it.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset and initialKind are all it reads.
@@ -304,6 +304,12 @@ export function SourceConnectDialog({
 
 	const host = hostOfUrl(url);
 	const hostKind = host ? publicGitHostKind(host) : undefined;
+	const apiUsernameField =
+		kind.git && host ? gitHostApiUsernameField(host) : undefined;
+	const baseFields = CREDENTIAL_KIND_FIELDS[effectiveKind];
+	const fields = apiUsernameField
+		? [...baseFields, apiUsernameField]
+		: baseFields;
 	const workspaceRequired =
 		!!hostKind && GIT_HOSTS[hostKind].scope === "workspace";
 	const target =
@@ -319,7 +325,12 @@ export function SourceConnectDialog({
 	const draft = (saveUntested?: boolean): SourceDraft => ({
 		type: kind.type,
 		url: url.trim(),
-		credential: { kind: effectiveKind, ...values },
+		credential: kind.git
+			? { kind: "bearer", token: values.token ?? "" }
+			: { kind: effectiveKind, ...values },
+		...(apiUsernameField && values.apiUsername?.trim()
+			? { gitApiUsername: values.apiUsername.trim() }
+			: {}),
 		...(target ? { gitTarget: target } : {}),
 		...(name.trim() ? { label: name.trim() } : {}),
 		...(saveUntested ? { saveUntested: true } : {}),
