@@ -140,12 +140,12 @@ const said = (words: string) => new RegExp(`^, ${words}`);
 /** Stop sits in the box while the agent works (RunStrip: "Stop lives in the composer"). */
 const stop = (page: Page) => page.getByTestId("composer-stop");
 
-/** Each agent's mark in the model chip: OpenCode's logo, the others' letter tiles (#1101). */
+/** Each agent's logo in the model chip, by its brand id (#1101). */
 const MARK: Record<string, string> = {
-	OpenCode: '[data-testid="agent-logo"]',
-	"Claude Code": '[data-letters="CC"]',
-	Codex: '[data-letters="CX"]',
-	Gemini: '[data-letters="GE"]',
+	OpenCode: '[data-brand="opencode"]',
+	"Claude Code": '[data-brand="claude-code"]',
+	Codex: '[data-brand="codex"]',
+	Gemini: '[data-brand="gemini"]',
 };
 
 /** The box's model chip shows `agent`'s mark and a model by name. */

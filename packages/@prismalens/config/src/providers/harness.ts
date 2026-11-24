@@ -186,8 +186,8 @@ interface ProductFacts {
 	ownSettingsNote?: (checked: CheckedModes) => string | null;
 	/** One line on how a level becomes its permission rules (#673 w21). */
 	permissionRulesNote?: string;
-	/** How the UI draws it: its owner's published logo, or a lettered tile (#1101). */
-	mark: AgentMarkFact;
+	/** A lettered tile, only where the agent has no published logo (#1101). */
+	mark?: AgentMarkFact;
 	/** The provider that makes and bills its models, by its models.dev id (`providerFacts`). */
 	vendor?: string;
 	/** Where its fallback model list comes from in the models.dev snapshot (`catalogue-sources.json`). */
@@ -196,26 +196,8 @@ interface ProductFacts {
 	usageReports?: readonly ("cache" | "cost" | "limits")[];
 }
 
-/**
- * An agent's owner's logo as published, drawn in its own inks for each theme at no less
- * than its stated minimum, or two letters where the owner's terms rule the logo out.
- * `source` and `terms` are the pages read before the entry was added (#1101).
- */
-export type AgentMarkFact =
-	| {
-			logo: {
-				viewBox: string;
-				/** The smallest size its terms allow, in px. */
-				min: { width: number; height: number };
-				/** The outline's path, then the inner shade's, drawn at `shade` opacity. */
-				paths: { ink: string; shade?: string };
-				ink: { light: string; dark: string };
-				shade: { light: number; dark: number };
-			};
-			source: string;
-			terms: string;
-	  }
-	| { letters: string; withheld: string; terms?: string };
+/** Two letters for an agent with no published logo; one with a logo has its art in `assets/brands.ts`. */
+export type AgentMarkFact = { letters: string };
 
 export interface CatalogueSource {
 	providers: readonly string[];
@@ -268,22 +250,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["opencode", "opencode-v2"],
-		mark: {
-			logo: {
-				viewBox: "0 0 240 300",
-				min: { width: 16, height: 20 },
-				paths: {
-					ink: "M180 60H60V240H180V60ZM240 300H0V0H240V300Z",
-					shade: "M180 240H60V120H180V240Z",
-				},
-				ink: { light: "#1F1F1F", dark: "#EEEEEE" },
-				shade: { light: 0.2, dark: 0.28 },
-			},
-			source:
-				"https://opencode.ai/brand/files/opencode-logo-transparent-light.svg",
-			// "Plugins, providers and tools that work with OpenCode … can say so"; its own inks, at least 16 × 20px.
-			terms: "https://opencode.ai/brand",
-		},
+		// Its own published logo in both themes: opencode.ai/brand (assets/brands.ts).
 		usageReports: [],
 		settingsFile: "~/.config/opencode/opencode.json",
 		noLevelReason: "OpenCode has per-tool rules, not one permission level.",
@@ -327,12 +294,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		compactTakesFocus: true,
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["claude-acp"],
-		mark: {
-			letters: "CC",
-			// "No alterations of our trademarks (changes to color, font, proportion, or otherwise) are permitted."
-			withheld: "Its logo needs written permission and may not be recoloured.",
-			terms: "https://www.anthropic.com/legal/trademark-guidelines",
-		},
+		// Its own published mark in its owner's colours: lobehub/lobe-icons (assets/brands.ts).
 		vendor: "anthropic",
 		usageReports: ["cache", "cost", "limits"],
 		modelWindow: { alias: "[1m]", base: "200k", large: "1M" },
@@ -377,13 +339,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		compactTakesFocus: false,
 		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
 		acpRegistryIds: ["codex-acp"],
-		mark: {
-			letters: "CX",
-			// Search excerpts of its brand page (403 to every fetch): "DON'T add any colors to the Blossom"; no Codex mark is published.
-			withheld:
-				"Its owner's brand page forbids altering its logo, and no Codex logo is published.",
-			terms: "https://openai.com/brand",
-		},
+		// Its own published mark in its owner's colours: lobehub/lobe-icons (assets/brands.ts).
 		vendor: "openai",
 		usageReports: ["cache"],
 		settingsFile: "~/.codex/config.toml",
@@ -428,14 +384,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["gemini"],
-		mark: {
-			letters: "GE",
-			// "Don't remove, distort, or alter any element of a Google Brand Feature."; "Use only Google-approved artwork".
-			withheld:
-				"Its owner allows only approved artwork, unaltered, so no theme-coloured mark.",
-			terms:
-				"https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/",
-		},
+		// Its own published mark in its owner's colours: lobehub/lobe-icons (assets/brands.ts).
 		vendor: "google",
 		usageReports: [],
 		settingsFile: "~/.gemini/settings.json",
@@ -471,12 +420,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
 		harnessToolSearch: true,
 		acpRegistryIds: ["deepagents"],
-		mark: {
-			letters: "DA",
-			// "Use the light and dark variants as provided, rather than recoloring"; "Pair each mark with its own wordmark".
-			withheld: "Its mark may only appear unrecoloured beside its wordmark.",
-			terms: "https://www.langchain.com/brand-assets",
-		},
+		// Its own published tile: langchain-ai/deepagents .github/images (assets/brands.ts).
 		picksOwnModel: true,
 		install: installCommand(DEEPAGENTS_CHANNEL),
 		channel: DEEPAGENTS_CHANNEL,
@@ -493,10 +437,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		compactCommand: null,
 		compactTakesFocus: false,
 		commandSetByUser: true,
-		mark: {
-			letters: "LA",
-			withheld: "An agent of the user's own, with no owner's logo.",
-		},
+		// An agent of the user's own has no owner's logo, so it takes letters.
+		mark: { letters: "LA" },
 		install: "Add it under Settings → Agents → Add agent → Local ACP command.",
 		lines: noModeLines("Local agent"),
 		loginHint: "It signs in on its own.",
