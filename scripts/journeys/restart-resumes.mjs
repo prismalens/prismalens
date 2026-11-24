@@ -28,6 +28,15 @@ const callIds = (/** @type {any[]} */ events) =>
 				: [],
 	);
 
+/** Tool calls among the events past `baseline` that the baseline already holds, so replayed. */
+export const replayedCalls = (
+	/** @type {any[]} */ baseline,
+	/** @type {any[]} */ after,
+) => {
+	const already = new Set(callIds(baseline));
+	return callIds(after.slice(baseline.length)).filter((c) => already.has(c));
+};
+
 /**
  * A run PrismaLens's stop cuts off is taken up again in the same agent session, told once
  * what happened, and does not redo what it already did. Walks #981.
@@ -63,7 +72,7 @@ export const restartResumes = {
 		const id = started.id;
 
 		// Cut the run where it has done work, so the restart interrupts a turn with a tool call in it.
-		const before = await eventually(
+		await eventually(
 			() => eventsOf(target, id),
 			(events) => events.some((e) => e.kind === "tool_result"),
 			"the run to reach its first tool result",
@@ -82,6 +91,8 @@ export const restartResumes = {
 
 		const cut = await target.api(`/investigations/${id}`);
 		assert.equal(cut.status, "pending");
+		// Nothing runs while the run is pending, so this holds every event the run had when it was cut.
+		const baseline = await eventsOf(target, id);
 		const listed = await target.api("/restart");
 		assert.ok(
 			listed.resumed
@@ -123,12 +134,14 @@ export const restartResumes = {
 
 		const key = (/** @type {any} */ e) =>
 			`${e.kind}:${"seq" in e ? e.seq : ""}`;
-		assert.deepEqual(after.slice(0, before.length).map(key), before.map(key));
-		const added = after.slice(before.length);
-		assert.ok(added.length > 0, "the resumed run added no event");
-		const already = new Set(callIds(before));
 		assert.deepEqual(
-			callIds(added).filter((c) => already.has(c)),
+			after.slice(0, baseline.length).map(key),
+			baseline.map(key),
+		);
+		const added = after.slice(baseline.length);
+		assert.ok(added.length > 0, "the resumed run added no event");
+		assert.deepEqual(
+			replayedCalls(baseline, after),
 			[],
 			"the resumed run replayed tool calls from before the stop",
 		);

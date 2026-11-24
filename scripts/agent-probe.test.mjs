@@ -8,11 +8,11 @@ import {
 	channelPackage,
 	factsFor,
 	keyless,
-	PIN_CONSTRAINTS,
 	PROBE_FILES,
 	plan,
 	run,
 	shown,
+	uvInstallArgs,
 	verdict,
 } from "./agent-probe.mjs";
 
@@ -205,8 +205,46 @@ test("native process arguments keep requirement operators literal on Windows", (
 	);
 });
 
-test("a pinned Deep Agents installs under the ACP cap its channel leaves off (#1204)", () => {
-	assert.deepEqual(PIN_CONSTRAINTS, {
-		"deepagents-code": ["agent-client-protocol<1"],
-	});
+test("a probe at the pinned Deep Agents version installs under the ACP cap its channel leaves off, whatever its label (#1204)", () => {
+	const channel = { uv: ["deepagents-code", "extra-pkg"] };
+	const pins = { "deepagents-code": "0.2.1" };
+	const args = (version, label) =>
+		uvInstallArgs({ channel, version, label }, "py", pins);
+	const capped = [
+		"pip",
+		"install",
+		"--quiet",
+		"--python",
+		"py",
+		"deepagents-code==0.2.1",
+		"extra-pkg",
+		"agent-client-protocol<1",
+	];
+	assert.deepEqual(args("0.2.1", "pin"), capped);
+	assert.deepEqual(args("0.2.1", "latest, pin"), capped);
+	assert.deepEqual(args("0.2.2", "latest"), [
+		"pip",
+		"install",
+		"--quiet",
+		"--python",
+		"py",
+		"deepagents-code==0.2.2",
+		"extra-pkg",
+	]);
+	assert.deepEqual(
+		uvInstallArgs(
+			{ channel, version: "0.2.2", label: "latest, pin" },
+			"py",
+			{},
+		),
+		[
+			"pip",
+			"install",
+			"--quiet",
+			"--python",
+			"py",
+			"deepagents-code==0.2.2",
+			"extra-pkg",
+		],
+	);
 });

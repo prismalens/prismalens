@@ -94,9 +94,13 @@ test("red with only a closed issue reopens it with the run url, then rewrites it
 		"--comment",
 		`Red again: ${RUN}`,
 	]);
+	const editIndex = calls.findIndex((c) => c[1] === "edit");
+	assert.equal(editIndex > calls.indexOf(reopen), true);
+	const edit = calls[editIndex];
+	assert.deepEqual(edit.slice(0, 5), ["issue", "edit", "3", "-R", "o/r"]);
 	assert.equal(
-		calls.findIndex((c) => c[1] === "edit") > calls.indexOf(reopen),
-		true,
+		readFileSync(edit[edit.indexOf("--body-file") + 1], "utf8"),
+		"x",
 	);
 });
 

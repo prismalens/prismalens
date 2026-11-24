@@ -34,11 +34,26 @@ test("findTags returns the file, line and text of each tag in features and specs
 		"specs/c.spec.ts": 'test("z", () => {});\n',
 	});
 	assert.deepEqual(
-		findTags(root)
-			.map(({ file, line }) => `${file}:${line}`)
-			.sort(),
-		["features/a.feature:2", "specs/b.spec.ts:1"],
+		findTags(root).sort((a, b) => a.file.localeCompare(b.file)),
+		[
+			{ file: "features/a.feature", line: 2, text: "  @quarantine #5" },
+			{
+				file: "specs/b.spec.ts",
+				line: 1,
+				text: 'test("y", { tag: "@quarantine" }, () => {}); // #6',
+			},
+		],
 	);
+});
+
+test("a feature comment that mentions @quarantine is not a tag, and the tag after it still is", () => {
+	const root = fixture({
+		"a.feature":
+			"Feature: a\n  # Remove @quarantine after repair\n  @quarantine #123\n  Scenario: x\n",
+	});
+	assert.deepEqual(findTags(root), [
+		{ file: "a.feature", line: 3, text: "  @quarantine #123" },
+	]);
 });
 
 test("six tags fail on the cap and name the count", () => {

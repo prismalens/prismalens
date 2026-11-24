@@ -100,6 +100,24 @@ export const PIN_CONSTRAINTS = {
 	"deepagents-code": ["agent-client-protocol<1"],
 };
 
+/**
+ * The `uv pip install` arguments for a probe's Python CLI. The cap goes to any probe whose version is the
+ * pin, a combined "latest, pin" one included, never to a version that is not (#1204).
+ */
+export function uvInstallArgs(probe, python, pins = PINS) {
+	const [cli, ...extras] = probe.channel.uv;
+	return [
+		"pip",
+		"install",
+		"--quiet",
+		"--python",
+		python,
+		`${cli}==${probe.version}`,
+		...extras,
+		...(probe.version === pins[cli] ? (PIN_CONSTRAINTS[cli] ?? []) : []),
+	];
+}
+
 /** One entry per version: a latest that is also the pin runs once. */
 function atLatestAndPin(latest, pin, make) {
 	if (!pin || pin === latest) return [make(latest, "latest, pin")];
@@ -200,17 +218,7 @@ async function install(built, row, probe, dir) {
 	const venv = join(dir, "venv");
 	run("uv", ["venv", "--quiet", "--python", "3.14", venv]);
 	const bin = join(venv, WINDOWS ? "Scripts" : "bin");
-	const [cli, ...extras] = channel.uv;
-	run("uv", [
-		"pip",
-		"install",
-		"--quiet",
-		"--python",
-		join(bin, WINDOWS ? "python.exe" : "python"),
-		`${cli}==${probe.version}`,
-		...extras,
-		...(probe.label === "pin" ? (PIN_CONSTRAINTS[cli] ?? []) : []),
-	]);
+	run("uv", uvInstallArgs(probe, join(bin, WINDOWS ? "python.exe" : "python")));
 	return { bin };
 }
 

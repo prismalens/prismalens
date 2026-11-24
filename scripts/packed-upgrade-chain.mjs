@@ -48,7 +48,12 @@ import {
 	tarballVersion,
 } from "./lib/launcher-mirror.mjs";
 import { startLocalRegistry } from "./lib/local-registry.mjs";
-import { candidateVersion, hops, releasesFrom } from "./lib/upgrade-chain.mjs";
+import {
+	candidateVersion,
+	draftPlan,
+	hops,
+	releasesFrom,
+} from "./lib/upgrade-chain.mjs";
 
 const WIN = process.platform === "win32";
 const BASE_PORT = Number(process.env.PACKED_CHAIN_PORT ?? "3107");
@@ -361,8 +366,12 @@ async function main() {
 	const published = JSON.parse(
 		npm(["view", "prismalens", "versions", "--json"], { capture: true }),
 	);
-	const releases = releasesFrom(published);
-	const candidate = candidateVersion(own, published);
+	const { candidate, releases } = draft
+		? draftPlan(own, published)
+		: {
+				candidate: candidateVersion(own, published),
+				releases: releasesFrom(published),
+			};
 	console.log(
 		`[upgrade-chain] tarball ${own}${candidate === own ? "" : `, published locally as ${candidate}`}; releases from npm: ${releases.join(", ") || "none"}`,
 	);
@@ -370,10 +379,6 @@ async function main() {
 		throw new Error("npm lists no release to upgrade from");
 	const plan = hops(releases, candidate);
 	const nightly = nightlyAfter(candidate);
-	if (draft && candidate !== own)
-		throw new Error(
-			`${own} is already on npm; a release proof needs an unpublished one`,
-		);
 	const mirror = draft
 		? prepareDraftRelease({
 				...draft,

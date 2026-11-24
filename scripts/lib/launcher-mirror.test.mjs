@@ -214,6 +214,77 @@ test("a published archive download is tried again after a 5xx or a network error
 	);
 });
 
+test("a published archive whose body fails mid-download is fetched again, but a changed digest or a 404 is not", async () => {
+	const root = join(work, "body-retry-mirror");
+	mkdirSync(root, { recursive: true });
+	const bytes = Buffer.from("release archive bytes");
+	const digest = createHash("sha256").update(bytes).digest("hex");
+	const cutOff = () =>
+		new Response(
+			new ReadableStream({
+				start: (c) => c.error(new TypeError("terminated")),
+			}),
+		);
+	const opts = { base: "https://releases.test", target: "linux-x64" };
+	let calls = 0;
+	const answers = [cutOff, () => new Response(bytes)];
+	await mirrorPublished(
+		root,
+		{ version: "0.5.6", sha256: { "linux-x64": digest } },
+		{ ...opts, fetchImpl: async () => answers[calls++]() },
+	);
+	assert.equal(calls, 2);
+	assert.deepEqual(
+		readFileSync(join(root, "v0.5.6", "prismalens-0.5.6-linux-x64.tar.gz")),
+		bytes,
+	);
+	calls = 0;
+	await assert.rejects(
+		mirrorPublished(
+			root,
+			{ version: "0.5.7", sha256: { "linux-x64": "0".repeat(64) } },
+			{
+				...opts,
+				fetchImpl: async () => {
+					calls++;
+					return new Response(bytes);
+				},
+			},
+		),
+		{
+			message: `https://releases.test/v0.5.7/prismalens-0.5.7-linux-x64.tar.gz has sha256 ${digest}; the launcher pins ${"0".repeat(64)}`,
+		},
+	);
+	assert.equal(calls, 1);
+	calls = 0;
+	await assert.rejects(
+		mirrorPublished(
+			root,
+			{ version: "0.5.8", sha256: { "linux-x64": digest } },
+			{
+				...opts,
+				fetchImpl: async () => {
+					calls++;
+					return new Response("", { status: 404 });
+				},
+			},
+		),
+		{
+			message:
+				"https://releases.test/v0.5.8/prismalens-0.5.8-linux-x64.tar.gz answered 404",
+		},
+	);
+	assert.equal(calls, 1);
+	await assert.rejects(
+		mirrorPublished(
+			root,
+			{ version: "0.5.9", sha256: { "linux-x64": digest } },
+			{ ...opts, tries: 2, fetchImpl: async () => cutOff() },
+		),
+		{ message: "terminated" },
+	);
+});
+
 const digestOf = (file) =>
 	createHash("sha256").update(readFileSync(file)).digest("hex");
 
@@ -350,10 +421,11 @@ test("a launcher and an archive of two releases, or of another target, are refus
 			"the launcher is 9.9.8 and the archive 9.9.7; they are not one release",
 	});
 	const archive = join(dir, archiveFile("9.9.8"));
+	const another = TARGETS.find((t) => t !== ownTarget());
 	assert.throws(
-		() => assertPinnedArchive(launcherPins(launcher), archive, "linux-arm64"),
+		() => assertPinnedArchive(launcherPins(launcher), archive, another),
 		{
-			message: `${archive} is not ${archiveFile("9.9.8", "linux-arm64")}, the archive of 9.9.8 for linux-arm64`,
+			message: `${archive} is not ${archiveFile("9.9.8", another)}, the archive of 9.9.8 for ${another}`,
 		},
 	);
 	assert.throws(

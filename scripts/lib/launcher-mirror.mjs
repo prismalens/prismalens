@@ -263,17 +263,21 @@ export async function mirrorPublished(
 		throw new Error(`prismalens@${version} pins no archive for ${target}`);
 	const url = `${base}/v${version}/${name}`;
 	let bytes;
-	// A network error or a 5xx is tried again; any other answer is the release's.
+	// A network error (reading the body included) or a 5xx is tried again; any other answer is the release's.
 	for (let attempt = 1; !bytes; attempt++) {
-		const res = await fetchImpl(url, {
-			signal: AbortSignal.timeout(300_000),
-		}).catch((e) => {
+		let status = 0;
+		try {
+			const res = await fetchImpl(url, {
+				signal: AbortSignal.timeout(300_000),
+			});
+			if (res.ok) bytes = Buffer.from(await res.arrayBuffer());
+			else status = res.status;
+		} catch (e) {
 			if (attempt >= tries) throw e;
-			return null;
-		});
-		if (res && !res.ok && (res.status < 500 || attempt >= tries))
-			throw new Error(`${url} answered ${res.status}`);
-		if (res?.ok) bytes = Buffer.from(await res.arrayBuffer());
+			continue;
+		}
+		if (status && (status < 500 || attempt >= tries))
+			throw new Error(`${url} answered ${status}`);
 	}
 	const digest = createHash("sha256").update(bytes).digest("hex");
 	if (digest !== pinned)
