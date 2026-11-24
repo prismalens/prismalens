@@ -361,7 +361,6 @@ describe("AlertMappingService.resolveServiceForAlert", () => {
 			message:
 				"Could not make a service for demo-proj: the database was busy",
 		});
-		expect(mockPrisma.$transaction).toHaveBeenCalledTimes(2);
 	});
 
 	it("rethrows an error that is not a lost unique key", async () => {

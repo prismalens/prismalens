@@ -112,7 +112,7 @@ describe("WebhooksController Prometheus intake (#633 edge 10, #605)", () => {
 		expect(res).toEqual({ received: 1, processed: 1, alertIds: ["a1"] });
 	});
 
-	it("answers a retryable failure with an error after the rest of the batch ran", async () => {
+	it("answers a batch with a retryable failure with 503", async () => {
 		const service = {
 			processPrometheusAlert: vi
 				.fn()
@@ -127,7 +127,6 @@ describe("WebhooksController Prometheus intake (#633 edge 10, #605)", () => {
 				context: {},
 			}),
 		).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE", status: 503 });
-		expect(service.processPrometheusAlert).toHaveBeenCalledTimes(2);
 	});
 
 	it("answers 503 when an alert's key is still in flight, so Alertmanager retries until the event resumes", async () => {

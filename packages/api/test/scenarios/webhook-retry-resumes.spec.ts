@@ -37,28 +37,35 @@ function gitFolder(name: string): string {
 const KEY = "am-delivery-1";
 const FINGERPRINT = "fp-retry-1";
 
-const deliver = () =>
+const firing = (service: string, fingerprint: string, alertname = "CheckoutDown") => ({
+	status: "firing",
+	labels: { alertname, service, severity: "critical" },
+	annotations: { summary: "Checkout is down" },
+	startsAt: "2026-11-25T10:00:00Z",
+	fingerprint,
+});
+
+const post = (key: string, alerts: ReturnType<typeof firing>[]) =>
 	fetch(pl.webhookUrl, {
 		method: "POST",
 		headers: {
 			"content-type": "application/json",
 			authorization: `Bearer ${pl.webhookToken}`,
-			"x-idempotency-key": KEY,
+			"x-idempotency-key": key,
 		},
-		body: JSON.stringify({
-			version: "4",
-			status: "firing",
-			alerts: [
-				{
-					status: "firing",
-					labels: { alertname: "CheckoutDown", service: "retry-shop", severity: "critical" },
-					annotations: { summary: "Checkout is down" },
-					startsAt: "2026-11-25T10:00:00Z",
-					fingerprint: FINGERPRINT,
-				},
-			],
-		}),
+		body: JSON.stringify({ version: "4", status: "firing", alerts }),
 	});
+
+const deliver = () => post(KEY, [firing("retry-shop", FINGERPRINT)]);
+
+const failNextServiceWrite = async () => {
+	const mapping = await pl.alertMapping();
+	const busy = Object.assign(new Error("Transaction API error"), { code: "P2028" });
+	vi.spyOn(
+		mapping as unknown as { makeLinkedService: () => Promise<never> },
+		"makeLinkedService",
+	).mockRejectedValueOnce(busy);
+};
 
 describe("A Prometheus delivery whose first try fails is retried with its key until it lands", () => {
 	it("Given a project's first alert whose service write cannot start, When Alertmanager retries the same key before and after the 30 s grace, Then it gets 503 twice and the stored event then resumes into one alert", async () => {
@@ -66,12 +73,7 @@ describe("A Prometheus delivery whose first try fails is retried with its key un
 			method: "POST",
 			body: { source: gitFolder("retry-shop") },
 		});
-		const mapping = await pl.alertMapping();
-		const busy = Object.assign(new Error("Transaction API error"), { code: "P2028" });
-		vi.spyOn(
-			mapping as unknown as { makeLinkedService: () => Promise<never> },
-			"makeLinkedService",
-		).mockRejectedValueOnce(busy);
+		await failNextServiceWrite();
 		const prisma = await pl.prisma();
 		const eventsFor = () =>
 			prisma.event.findMany({
@@ -103,5 +105,32 @@ describe("A Prometheus delivery whose first try fails is retried with its key un
 			title: "CheckoutDown",
 			service: { name: "retry-shop" },
 		});
+		expect(
+			await prisma.alert.count({ where: { service: { name: "retry-shop" } } }),
+		).toBe(1);
+	}, 60_000);
+
+	it("Given a two-alert delivery whose first alert's service write cannot start, When Alertmanager posts it, Then it gets 503 and the second alert is still stored", async () => {
+		for (const name of ["batch-first", "batch-second"])
+			await pl.api("/repositories/source", {
+				method: "POST",
+				body: { source: gitFolder(name) },
+			});
+		await failNextServiceWrite();
+		const prisma = await pl.prisma();
+
+		const res = await post("am-batch-1", [
+			firing("batch-first", "fp-batch-1", "FirstDown"),
+			firing("batch-second", "fp-batch-2", "SecondDown"),
+		]);
+
+		expect(res.status).toBe(503);
+		const stored = await prisma.alert.findMany({
+			where: { service: { name: { in: ["batch-first", "batch-second"] } } },
+			select: { title: true, service: { select: { name: true } } },
+		});
+		expect(stored).toEqual([
+			{ title: "SecondDown", service: { name: "batch-second" } },
+		]);
 	}, 60_000);
 });

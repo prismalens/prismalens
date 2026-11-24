@@ -356,21 +356,19 @@ export class RepoSourceService {
 	): Promise<SourceCheck> {
 		const ref = preferBranch?.trim() || "HEAD";
 		let branch: string | null = null;
+		let at = ref;
 		try {
 			const { stdout } = await this.git(
-				[
-					"symbolic-ref",
-					"--short",
-					ref === "HEAD" ? "HEAD" : `refs/heads/${ref}`,
-				],
+				["symbolic-ref", ref === "HEAD" ? "HEAD" : `refs/heads/${ref}`],
 				cwd,
 			);
-			branch = stdout.trim() || null;
+			const full = stdout.trim();
+			branch = full.replace(/^refs\/heads\//, "") || null;
+			// The commit comes from the exact ref just read: a checkout between the calls can't pair them wrong.
+			if (ref === "HEAD" && full) at = full;
 		} catch {
 			branch = ref === "HEAD" ? null : ref;
 		}
-		// The commit comes from the branch just read: a checkout between the calls can't pair them wrong.
-		const at = ref === "HEAD" && branch ? `refs/heads/${branch}` : ref;
 		const { stdout: head } = await this.git(["rev-parse", at], cwd);
 		return { branch, head: head.trim() };
 	}

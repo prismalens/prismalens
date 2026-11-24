@@ -626,6 +626,25 @@ describe("repo-source.service", () => {
 			});
 		});
 
+		it("checkFolder() reads the branch, not a tag of the same name, when both are called main", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			git(["tag", "main"], src);
+			writeFileSync(join(src, "a.txt"), "v2");
+			git(
+				["-c", "user.email=test@test.local", "-c", "user.name=Test", "commit", "-q", "-am", "v2"],
+				src,
+			);
+			const tip = headOf(src);
+
+			const check = await new RepoSourceService().checkFolder(src);
+
+			expect({ branch: check.branch, head: check.head }).toEqual({
+				branch: "main",
+				head: tip,
+			});
+		});
+
 		it("checkFolder() tells a plain folder, a file and a repo with no commit apart (#1020)", async () => {
 			const service = new RepoSourceService();
 			const plain = tmp("pl-plain-");
