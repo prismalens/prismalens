@@ -14,7 +14,7 @@ const SCRIPT = fileURLToPath(new URL("./check-artifact.mjs", import.meta.url));
 const MIGRATION =
 	"node_modules/@prismalens/database/dist/prisma/sqlite/schema/20261007135949_investigation_kind_agent_mode/migration.sql";
 
-test("the Scoop model of the standalone archive puts the deepest migration 212 of 220 characters deep", () => {
+test("the Scoop model of the standalone archive matches the CONTRIBUTING worked example", () => {
 	const top = "prismalens-0.5.3-win32-x64";
 	const models = pathModels({ kind: "standalone", version: "0.5.3", top }, [
 		`${top}/app/${MIGRATION}`,

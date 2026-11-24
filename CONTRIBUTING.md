@@ -47,4 +47,4 @@ Every Markdown file here has a word budget and may name only paths and scripts t
 
 ## License
 
-[Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). New source files open with the two-line SPDX header their neighbours carry; `scripts/spdx-headers.test.mjs` checks it.
+[Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). New source files open with the two-line SPDX header their neighbours carry; `scripts/spdx-headers.test.mjs` checks it under `packages/`.

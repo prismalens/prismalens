@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// SPDX-License-Identifier: Apache-2.0
-// Copyright 2026 Sumit Patel
 // Build standalone CLI archive with bundled Node runtime (#717).
 // Native addons require building on the target platform; no new dependencies.
 

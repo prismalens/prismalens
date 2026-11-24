@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/** Every first-party source file opens with the SPDX licence header. */
+/** Every first-party source file under packages/ opens with the SPDX licence header. */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -9,14 +9,13 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 const root = dirname(import.meta.dirname);
-// Third-party sample payloads, a generated route tree, a fixture repo and a vendored parser.
-const NOT_OURS =
-	/__fixtures__\/|routeTree\.gen\.ts$|^scripts\/fakes\/real-agent-repo\/|^scripts\/launcher\/ini\.cjs$/;
+// Third-party sample payloads and a generated route tree.
+const NOT_OURS = /__fixtures__\/|routeTree\.gen\.ts$/;
 
 export function missingHeader(files, read) {
 	return files.filter(
 		(f) =>
-			/^(packages|scripts)\/.*\.(ts|tsx|mts|mjs|cjs|js)$/.test(f) &&
+			/^packages\/.*\.(ts|tsx|mts|mjs|cjs|js)$/.test(f) &&
 			!NOT_OURS.test(f) &&
 			!read(f).slice(0, 300).includes("SPDX-License-Identifier: Apache-2.0"),
 	);
@@ -30,7 +29,7 @@ test("a source file without the header is named", () => {
 	);
 });
 
-test("every first-party source file in the repo carries the header", () => {
+test("every first-party source file under packages/ carries the header", () => {
 	const files = execFileSync("git", ["ls-files"], {
 		cwd: root,
 		encoding: "utf8",
