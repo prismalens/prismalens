@@ -127,3 +127,17 @@ describe("an agent whose model the check could not name", () => {
 		expect(agentState(listed)).toEqual({ text: "Ready", tone: "ok" });
 	});
 });
+
+describe("an agent that is not on PATH but has a remembered check", () => {
+	const gone = {
+		...base,
+		installed: false,
+		checked: { ...base.checked, outcome: "sign-in-needed" },
+	} as HarnessStatus;
+
+	it("reads Not installed, never Sign-in needed, in Settings and in the composer", () => {
+		expect(agentState(gone)).toEqual({ text: "Not installed", tone: "warn" });
+		expect(agentReadiness(gone)).toBe("missing");
+		expect(unreadyReason(gone)).toBeNull();
+	});
+});

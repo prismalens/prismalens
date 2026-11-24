@@ -25,10 +25,13 @@ export function AddProjectFlow({
 			}}
 			onChoose={(source) => {
 				setError(null);
-				add
-					.mutateAsync({ source })
-					.then((repo) => onAdded(repo.id))
-					.catch((err) => setError(getErrorMessage(err)));
+				return add.mutateAsync({ source }).then(
+					(repo) => onAdded(repo.id),
+					(err) => {
+						setError(getErrorMessage(err));
+						throw err;
+					},
+				);
 			}}
 			pending={add.isPending}
 			error={error}
