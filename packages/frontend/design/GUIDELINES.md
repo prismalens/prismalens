@@ -31,7 +31,7 @@ Run before a UI PR: `pnpm ui:check:static` (seconds), and `pnpm ui:check` when y
 14. **Edges are hairlines, not borders.** Structure comes from surface steps and a one-pixel `after:` hairline. [check: Biome plugin `hairline-edges`; `lint-look.sh` for stylesheets]
 15. **One spinner: the ring** (`shared/Ring`, site rules 11 and 12; `shared/RingTick` when the work ends in a tick or a cross), and every async surface has a loading, content and empty or failed state. [check: Biome plugin `one-spinner`]
 16. **Reduced motion shows the final state** (site rule 14). [check: design matrix frame `frames-live-reduced`]
-17. **Accessibility floor** (site rule 15, plus): AA contrast, a visible focus ring on every control, targets at least 24 px (48 px on the phone strip), no sideways scroll at 390 px except a row marked `data-scroll-x`. [check: design matrix via `ui-budget.json`]
+17. **Accessibility floor** (site rule 15, plus): AA contrast, a visible focus ring on every control, targets at least 24 px, no sideways scroll at 390 px except a row marked `data-scroll-x`. On touch every control is a 48 px tap area: a button draws 36 px and its `::after` carries the rest (`styles/tokens.css`), so neighbouring controls sit 12 px apart. [check: design matrix via `ui-budget.json`, `smallTargets` and `tapOverlaps`]
 
 Where the app differs from the site: no glow or translucent header (a work surface, not a showcase), and the copy budget is five words for empty and status strings rather than the site's hero budget.
 
