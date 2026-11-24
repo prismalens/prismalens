@@ -11,10 +11,12 @@ $ProgressPreference = "SilentlyContinue"
 
 $repo = "prismalens/prismalens"
 $api = "https://api.github.com/repos/$repo"
-# Mirror first (it keeps the newest releases only), GitHub second; a set base is the only one.
+# Archives: mirror first (it keeps the newest releases only), GitHub second; a set base is the only one.
+# SHA256SUMS: from the last base only (GitHub, or the set one), so a mirror can't vouch for its own bytes.
 $mirrorBase = "https://downloads.prismalens.io"
 $githubBase = "https://github.com/prismalens/prismalens/releases/download"
-$bases = if ($env:PRISMALENS_RELEASE_BASE_URL) { @($env:PRISMALENS_RELEASE_BASE_URL.TrimEnd('/')) } else { @($mirrorBase, $githubBase) }
+[string[]]$bases = if ($env:PRISMALENS_RELEASE_BASE_URL) { @($env:PRISMALENS_RELEASE_BASE_URL.TrimEnd('/')) } else { @($mirrorBase, $githubBase) }
+$sumsBase = $bases[$bases.Count - 1]
 $localAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE "AppData\Local" }
 $dataRoot = if ($env:PRISMALENS_HOME) { $env:PRISMALENS_HOME } else { Join-Path $localAppData "prismalens" }
 $runtimeRoot = Join-Path $dataRoot "runtime"
@@ -45,7 +47,8 @@ Environment:
   PRISMALENS_HOME                Where the runtime and receipt go (default %LOCALAPPDATA%\prismalens).
   PRISMALENS_INSTALL_BIN_DIR     Where pl goes (default %PRISMALENS_HOME%\bin).
   PRISMALENS_RELEASE_BASE_URL    Download only from this base, as <base>/v<version>/<file>.
-                                 Default: downloads.prismalens.io, then GitHub releases.
+                                 Default: archives from downloads.prismalens.io, then GitHub releases;
+                                 SHA256SUMS always from GitHub (or that base).
   NO_COLOR                       Plain output.
 "@
 	return
@@ -98,7 +101,8 @@ function Fail([string]$m) { [Console]::Error.WriteLine("  ${errC}${cross}${r} $m
 $curl = Join-Path $env:SystemRoot "System32\curl.exe"
 if (-not (Test-Path $curl)) { $curl = $null }
 
-function Fetch([string]$Url, [string]$OutFile, [switch]$Progress) {
+# -Stall: seconds without a byte before curl gives up, so a silent mirror can't hold the install.
+function Fetch([string]$Url, [string]$OutFile, [switch]$Progress, [int]$Stall = 0) {
 	if ($Url.StartsWith("file://")) {
 		$p = $Url.Substring(7)
 		if ($p -match '^/([a-zA-Z]:/.*)') { $p = $matches[1] }
@@ -109,6 +113,7 @@ function Fetch([string]$Url, [string]$OutFile, [switch]$Progress) {
 	}
 	if ($curl) {
 		[string[]]$flags = if ($Progress) { @("--progress-bar") } else { @("-s") }
+		if ($Stall -gt 0) { $flags += @("--speed-limit", "1024", "--speed-time", "$Stall") }
 		& $curl -f -L --retry 2 --connect-timeout 20 -A "prismalens-installer" @flags -o $OutFile $Url
 		if ($LASTEXITCODE -ne 0) { Remove-Item $OutFile -Force -ErrorAction SilentlyContinue; return $false }
 		return $true
@@ -137,13 +142,8 @@ function Get-Size([string]$Url) {
 function Base-Host([string]$Base) { if ($Base.StartsWith("file:")) { "disk" } else { ([uri]$Base).Host } }
 function Hosts-Tried { ($bases | ForEach-Object { Base-Host $_ }) -join ", " }
 
-# Fetches v<version>/SHA256SUMS from the first base at or after $From that has it; returns its index, or -1.
-function Fetch-Sums([string]$Ver, [string]$OutFile, [int]$From = 0) {
-	for ($i = $From; $i -lt $bases.Count; $i++) {
-		if (Fetch "$($bases[$i])/v$Ver/SHA256SUMS" $OutFile) { return $i }
-	}
-	return -1
-}
+# Fetches v<version>/SHA256SUMS from $sumsBase, the only place checksums come from.
+function Fetch-Sums([string]$Ver, [string]$OutFile) { Fetch "$sumsBase/v$Ver/SHA256SUMS" $OutFile }
 
 function Read-Receipt {
 	$h = @{}
@@ -204,8 +204,7 @@ try {
 	# about 20 minutes after a release publishes, so fall back to the one before.
 	# 30 releases, because up to 10 nightly prereleases sit among them (nightly.yml prunes the rest).
 	if ($Version) {
-		$sumsAt = Fetch-Sums $Version $sums
-		if ($sumsAt -lt 0) { Fail "PrismaLens $Version has no installer archives on $(Hosts-Tried)" }
+		if (-not (Fetch-Sums $Version $sums)) { Fail "Couldn't fetch SHA256SUMS for $Version from $(Base-Host $sumsBase), the only source of checksums, so nothing was installed. Check the version and your connection." }
 	} else {
 		Step "Finding the newest release"
 		$relFile = Join-Path $staging "releases.json"
@@ -216,8 +215,7 @@ try {
 			Where-Object { $_ -match '^\d+\.\d+\.\d+$' })
 		$newest = $tags | Select-Object -First 1
 		foreach ($t in $tags) {
-			$at = Fetch-Sums $t $sums
-			if ($at -ge 0) { $Version = $t; $sumsAt = $at; break }
+			if (Fetch-Sums $t $sums) { $Version = $t; break }
 		}
 		if (-not $Version) { Fail "No release has installer archives yet; use npm install -g prismalens" }
 		if ($Version -ne $newest) { Warn "$newest is still being built, so this installs $Version. Run the installer again in a few minutes for $newest." }
@@ -235,25 +233,27 @@ try {
 
 	$archive = "prismalens-$Version-$target.zip"
 	$archiveFile = Join-Path $staging $archive
-	# SHA256SUMS and the archive come from one base; when either fails there, both are asked of the next.
+	# The checksum is the release's own; the archive may come from any base and is verified against it.
+	$expected = ""
+	foreach ($line in Get-Content $sums) {
+		$parts = $line.Trim() -split '\s+'
+		if ($parts.Length -ge 2 -and ($parts[1] -eq $archive -or $parts[1] -eq "*$archive")) { $expected = $parts[0].ToLower(); break }
+	}
+	if (-not $expected) { Fail "$archive isn't listed in SHA256SUMS on $(Base-Host $sumsBase); nothing was installed." }
 	$tried = @()
 	$verified = $false
-	for ($i = $sumsAt; $i -lt $bases.Count -and -not $verified; $i++) {
-		$h = Base-Host $bases[$i]
-		if ($i -ne $sumsAt -and -not (Fetch "$($bases[$i])/v$Version/SHA256SUMS" $sums)) { $tried += "${h}: no SHA256SUMS"; continue }
-		$url = "$($bases[$i])/v$Version/$archive"
+	foreach ($base in $bases) {
+		if ($verified) { break }
+		$h = Base-Host $base
+		# A base with a successor is dropped after 30 s without a byte.
+		$stall = if ($base -eq $sumsBase) { 0 } else { 30 }
+		$url = "$base/v$Version/$archive"
 		$bytes = Get-Size $url
 		$size = if ($bytes) { " ({0:N0} MB)" -f ($bytes / 1MB) } else { "" }
 		Step "Downloading PrismaLens $Version for $target$size from $h"
-		if (-not (Fetch $url $archiveFile -Progress)) { $tried += "${h}: download failed"; continue }
+		if (-not (Fetch $url $archiveFile -Progress -Stall $stall)) { $tried += "${h}: download failed"; continue }
 		$mb = "{0:N1} MB" -f ((Get-Item $archiveFile).Length / 1MB)
-		Step "Verifying $mb against SHA256SUMS"
-		$expected = ""
-		foreach ($line in Get-Content $sums) {
-			$parts = $line.Trim() -split '\s+'
-			if ($parts.Length -ge 2 -and ($parts[1] -eq $archive -or $parts[1] -eq "*$archive")) { $expected = $parts[0].ToLower(); break }
-		}
-		if (-not $expected) { $tried += "${h}: $archive isn't listed in SHA256SUMS"; continue }
+		Step "Verifying $mb against SHA256SUMS from $(Base-Host $sumsBase)"
 		$actual = (Get-FileHash -Path $archiveFile -Algorithm SHA256).Hash.ToLower()
 		if ($actual -ne $expected) { $tried += "${h}: Checksum mismatch"; continue }
 		$verified = $true

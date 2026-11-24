@@ -38,3 +38,26 @@ for (const [file, rel, expected] of [
 		assert.deepEqual(urls(read(rel)), expected);
 	});
 }
+
+// The checksum is the release's own: no installer fetches SHA256SUMS from the base an archive loop
+// is trying, only from the last base (GitHub, or the one PRISMALENS_RELEASE_BASE_URL names).
+test("install.sh reads SHA256SUMS from its trusted base only", () => {
+	const text = read("./install.sh");
+	assert.match(text, /fetch "\$sums_base\/v\$1\/SHA256SUMS"/);
+	assert.deepEqual(text.match(/"\$b\/v[^"]*SHA256SUMS"/g) ?? [], []);
+});
+
+test("install.ps1 reads SHA256SUMS from its trusted base only", () => {
+	const text = read("./install.ps1");
+	assert.match(text, /Fetch "\$sumsBase\/v\$Ver\/SHA256SUMS"/);
+	assert.deepEqual(text.match(/"\$\(\$?base[^"]*SHA256SUMS"/gi) ?? [], []);
+});
+
+test("the launcher reads SHA256SUMS from its last base only", () => {
+	const text = read("../launcher/launcher.mjs");
+	assert.match(text, /expectedDigest\(want, bases\.at\(-1\), archive\)/);
+	assert.deepEqual(
+		text.match(/\$\{b\.base\}\/\$\{want\.tag\}\/SHA256SUMS/g) ?? [],
+		[],
+	);
+});
