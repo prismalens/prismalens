@@ -3,10 +3,10 @@
 // Copyright 2026 Sumit Patel
 
 import { textDoc } from "@prismalens/contracts";
-import { QueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithApp } from "@/test/render";
 import { ConflictLine } from "./chips";
 import { draftUseTheirs } from "./draft.actions";
 import { draftConflict } from "./draft.surface";
@@ -54,23 +54,8 @@ vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
 	useDraftAttachments: () => ({ data: undefined }),
 }));
 
-(
-	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
-let container: HTMLDivElement;
-let root: Root;
-
 beforeEach(() => {
 	window.localStorage.clear();
-	container = document.createElement("div");
-	document.body.appendChild(container);
-	root = createRoot(container);
-});
-
-afterEach(async () => {
-	await act(async () => root.unmount());
-	container.remove();
 });
 
 describe("Draft conflict UI (#1024)", () => {
@@ -79,11 +64,9 @@ describe("Draft conflict UI (#1024)", () => {
 		const onKeepMine = vi.fn();
 		const onUseTheirs = vi.fn();
 
-		await act(async () => {
-			root.render(
-				<ConflictLine onKeepMine={onKeepMine} onUseTheirs={onUseTheirs} />,
-			);
-		});
+		const { container } = await renderWithApp(
+			<ConflictLine onKeepMine={onKeepMine} onUseTheirs={onUseTheirs} />,
+		);
 
 		const line = container.querySelector('[data-testid="composer-conflict"]');
 		expect(line?.textContent).toContain("Draft edited on another device");
@@ -125,20 +108,18 @@ describe("Draft conflict UI (#1024)", () => {
 
 		let draftState!: ReturnType<typeof useComposerDraft>;
 		const onRestore = vi.fn();
-		const client = new QueryClient();
+		const app = await renderWithApp(<span />);
 
-		await act(async () => {
-			root.render(
-				<TestHarness
-					client={client}
-					scope={scope}
-					onRestore={onRestore}
-					onState={(s) => {
-						draftState = s;
-					}}
-				/>,
-			);
-		});
+		await app.rerender(
+			<TestHarness
+				client={app.queryClient}
+				scope={scope}
+				onRestore={onRestore}
+				onState={(s) => {
+					draftState = s;
+				}}
+			/>,
+		);
 
 		expect(draftState.conflict).not.toBeNull();
 		expect(draftState.conflict?.theirs.text).toBe("theirs");
