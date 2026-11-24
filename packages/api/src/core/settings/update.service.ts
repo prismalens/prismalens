@@ -504,7 +504,10 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 		const blocked = autoInstallBlockedBy({
 			preference: prefs.autoInstall,
 			channel: installChannel(this.env),
-			available: latest !== null && isNewer(latest, this.version),
+			available:
+				latest !== null &&
+				this.about.build !== null &&
+				isNewer(latest, this.version),
 			checkDisabled:
 				!prefs.checkForUpdates || updateCheckDisabledBy(this.env) !== null,
 			live: false,

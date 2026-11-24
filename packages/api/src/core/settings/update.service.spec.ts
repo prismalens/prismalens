@@ -98,6 +98,7 @@ function service(opts: {
 	const drain = vi.fn();
 	admission.attach({ drain, running: () => 0 });
 	const about = new AboutService();
+	about.build = "abc1234";
 	const env: NodeJS.ProcessEnv = {
 		...(opts.channel === "npm" ? {} : { PRISMALENS_INSTALL: "standalone" }),
 		LOCALAPPDATA: workspace,
