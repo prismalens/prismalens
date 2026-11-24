@@ -124,22 +124,33 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		dialog.remove();
 	});
 
-	it("a letter typed into an open list before the shortcuts mounted stays the list's, never New incident (#1154)", async () => {
-		new Function(EARLY_KEYS_SCRIPT)();
+	const openList = () => {
 		const list = document.createElement("div");
 		list.setAttribute("role", "listbox");
 		const option = document.createElement("div");
 		option.setAttribute("role", "option");
 		list.append(option);
 		document.body.append(list);
-		option.dispatchEvent(
-			new KeyboardEvent("keydown", { key: "c", bubbles: true }),
-		);
-		expect(win.__plEarlyKeys).toEqual([]);
-		// The same key recorded from outside the list, with the list open at replay, is dropped too.
-		win.__plEarlyKeys = [early("c")];
+		return { option, close: () => list.remove() };
+	};
+	const press = (target: Element, key: string) =>
+		target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+
+	it("a letter typed into an open list before the shortcuts mounted stays the list's, never New incident (#1154)", async () => {
+		new Function(EARLY_KEYS_SCRIPT)();
+		const list = openList();
+		press(list.option, "c");
+		list.close();
 		await act(async () => root.render(createElement(Probe)));
-		list.remove();
+		expect(onNew).not.toHaveBeenCalled();
+	});
+
+	it("a letter typed outside a list is dropped at replay when a list is open by then (#1154)", async () => {
+		new Function(EARLY_KEYS_SCRIPT)();
+		press(document.body, "c");
+		const list = openList();
+		await act(async () => root.render(createElement(Probe)));
+		list.close();
 		expect(onNew).not.toHaveBeenCalled();
 	});
 
