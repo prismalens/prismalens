@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * An incident thread's address. With a run it opens on the latest run's
  * transcript, the summary above it (#1020); with none, the overview. Redirecting

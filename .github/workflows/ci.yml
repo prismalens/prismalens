@@ -446,11 +446,6 @@ jobs:
       - name: Script tests
         run: node --test --test-timeout=300000 'scripts/**/*.test.mjs'
 
-  # The `gate-scripts` job that stood here tested `.github/scripts/` — the
-  # merge-gate publisher, the high-risk path matcher, and their producer-transport
-  # guards. All of it was deleted with the `review-evidence` gate in #415, so the
-  # directory is gone and there is nothing left for this job to run.
-
   # Playwright (e2e-browser.yml, called here so `CI gate` can wait on it): only when the app or the UI changed.
   e2e:
     name: E2E

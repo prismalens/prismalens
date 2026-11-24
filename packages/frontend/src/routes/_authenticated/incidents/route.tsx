@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * The incidents frame (#523, #811): a fixed viewport beside the sidebar; the
  * inbox, All incidents, Analytics or the open incident fills it. Nothing here
