@@ -353,6 +353,56 @@ describe("SchedulesService (#979)", () => {
 		expect((await ticks(fall.id)).map((t) => t.scheduledFor.toISOString())).toEqual(["2026-11-01T05:30:00.000Z"]);
 	});
 
+	it("checks readiness for the schedule's own model, on a tick and on run now", async () => {
+		// Signed in only for the schedule's model; the agent's global model is signed out.
+		ready.mockImplementation((async (_id: string, model?: string | null) =>
+			model === "google/gemini-4-neon"
+				? { ready: true }
+				: { ready: false, reason: "signed out for the global model" }) as never);
+		const s = scheduler();
+		const created = await s.create(
+			input({ model: "google/gemini-4-neon" }),
+			"host",
+			new Date("2026-06-30T08:00:00Z"),
+		);
+		await s.evaluate(new Date("2026-06-30T09:00:05Z"));
+		await prisma.investigation.updateMany({ where: { scheduleId: created.id }, data: { status: "completed" } });
+		await s.runNow(created.id, "host", new Date("2026-06-30T09:10:00Z"));
+
+		expect((await ticks(created.id)).map((t) => t.outcome)).toEqual([
+			"started",
+			"run_now",
+		]);
+		expect((ready.mock.calls as unknown as [string, string | null][]).map((c) => c[1])).toEqual([
+			"google/gemini-4-neon",
+			"google/gemini-4-neon",
+		]);
+	});
+
+	it("refuses a tick and run now whose own model is signed out while the global model is signed in", async () => {
+		ready.mockImplementation((async (_id: string, model?: string | null) =>
+			model
+				? { ready: false, reason: "signed out for the schedule's model" }
+				: { ready: true }) as never);
+		const s = scheduler();
+		const created = await s.create(
+			input({ model: "google/gemini-4-neon" }),
+			"host",
+			new Date("2026-07-01T08:00:00Z"),
+		);
+		await s.evaluate(new Date("2026-07-01T09:00:05Z"));
+		await expect(
+			s.runNow(created.id, "host", new Date("2026-07-01T09:10:00Z")),
+		).rejects.toMatchObject({
+			code: "PRECONDITION_FAILED",
+			message: "signed out for the schedule's model",
+		});
+
+		expect((await ticks(created.id)).map((t) => [t.outcome, t.reason])).toEqual([
+			["skipped_agent_not_ready", "signed out for the schedule's model"],
+		]);
+	});
+
 	it("records a miss past the catch-up window, and skips an agent that cannot run", async () => {
 		const s = scheduler();
 		const created = await s.create(input(), "host", new Date("2026-06-07T08:00:00Z"));
