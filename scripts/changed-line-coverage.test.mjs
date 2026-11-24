@@ -20,8 +20,9 @@ const DIFF = [
 	"+one",
 	"+two",
 	"+three",
-	"@@ -20 +23 @@",
+	"@@ -20 +23,2 @@",
 	"+changed",
+	"+// a comment line: added, but lcov has no DA record for it",
 	"diff --git a/packages/api/src/gone.ts b/packages/api/src/gone.ts",
 	"--- a/packages/api/src/gone.ts",
 	"+++ /dev/null",
@@ -51,7 +52,7 @@ test("added lines come from each hunk's new side; a deleted file adds none", () 
 	assert.deepEqual(
 		[...addedLines(DIFF)],
 		[
-			["packages/api/src/a.ts", [11, 12, 13, 23]],
+			["packages/api/src/a.ts", [11, 12, 13, 23, 24]],
 			["packages/frontend/src/b.tsx", [2]],
 		],
 	);

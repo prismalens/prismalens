@@ -356,11 +356,18 @@ test("a push whose tree already passed runs nothing and names the commit", () =>
 });
 
 test("a release PR and the full-ci label run every tier", () => {
+	// A frontend-only change with turbo's answer in hand is not everything, so only the override can make it so.
+	const own = {
+		files: ["packages/frontend/a.tsx"],
+		packages: PACKAGES,
+		affected: ["@prismalens/frontend"],
+	};
+	assert.notDeepEqual(tiers(pr(own)), EVERYTHING);
 	for (const over of [
 		{ headRef: "release-please--branches--main" },
 		{ labels: ["full-ci"] },
 	]) {
-		const p = pr({ files: ["packages/frontend/a.tsx"], ...over });
+		const p = pr({ ...own, ...over });
 		assert.deepEqual(tiers(p), EVERYTHING);
 	}
 });

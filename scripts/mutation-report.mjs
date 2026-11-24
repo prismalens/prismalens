@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-// The tracking-issue body for a mutation run (#1154): survived mutants from the shards' HTML reports, shards
+// The tracking-issue body for a mutation run (#1154): survived mutants from the shards' JSON reports, shards
 // whose Stryker step failed, and shards that never ran it to an end (runner lost, timed out) as infra.
 // Usage: mutation-report.mjs <reports-dir> <jobs.json> <run-url> > batch.json
 import { readdirSync, readFileSync } from "node:fs";
@@ -24,15 +24,15 @@ export function classify(jobs) {
 	return { red, infra };
 }
 
-/** Survived mutants out of one Stryker HTML report: the report JSON sits in a script as `.report = {...}`. */
-export function survivors(html) {
-	const start = html.indexOf(".report = ");
-	if (start < 0) throw new Error("no embedded report in the mutation HTML");
-	const end = html.indexOf(";</script>", start);
-	const report = JSON.parse(
-		html.slice(start + ".report = ".length, end < 0 ? undefined : end),
-	);
-	return Object.entries(report.files ?? {}).flatMap(([file, data]) =>
+/**
+ * Survived mutants out of one Stryker JSON report (`reports/mutation/mutation.json`). Its HTML report holds
+ * the same data inside a script that also runs code and splits strings, so it is not parsed (#1154).
+ */
+export function survivors(json) {
+	const report = JSON.parse(json);
+	if (!report?.files)
+		throw new Error("not a Stryker JSON report: it has no files");
+	return Object.entries(report.files).flatMap(([file, data]) =>
 		(data.mutants ?? [])
 			.filter((m) => m.status === "Survived")
 			.map((m) => ({
@@ -43,13 +43,13 @@ export function survivors(html) {
 	);
 }
 
-function htmlReports(dir) {
+function jsonReports(dir) {
 	const found = [];
 	for (const entry of readdirSync(dir, {
 		withFileTypes: true,
 		recursive: true,
 	})) {
-		if (entry.isFile() && entry.name === "index.html")
+		if (entry.isFile() && entry.name === "mutation.json")
 			found.push(join(entry.parentPath, entry.name));
 	}
 	return found;
@@ -97,7 +97,7 @@ export function main([reportsDir, jobsFile, runUrl]) {
 	const parsed = JSON.parse(readFileSync(jobsFile, "utf8"));
 	const jobs = Array.isArray(parsed) ? parsed : parsed.jobs;
 	const { red, infra } = classify(jobs);
-	const reports = htmlReports(reportsDir);
+	const reports = jsonReports(reportsDir);
 	const survived = reports.flatMap((file) =>
 		survivors(readFileSync(file, "utf8")),
 	);

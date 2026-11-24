@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -22,8 +22,7 @@ const job = (name, conclusion, stryker) => ({
 		? [{ name: "Run Stryker", conclusion: stryker }]
 		: [{ name: "Set up job", conclusion: "success" }],
 });
-const html = (files) =>
-	`<html><script>document.querySelector("x").report = ${JSON.stringify({ files })};</script></html>`;
+const report = (files) => JSON.stringify({ schemaVersion: "1.0", files });
 const mutant = (status, line) => ({
 	status,
 	mutatorName: "ConditionalExpression",
@@ -50,7 +49,7 @@ test("a failed Stryker step is a red shard; a failure with no Stryker step is in
 
 test("survivors reads only Survived mutants, with file and line", () => {
 	const found = survivors(
-		html({
+		report({
 			"src/a.ts": { mutants: [mutant("Killed", 1), mutant("Survived", 7)] },
 			"src/b.ts": { mutants: [mutant("Survived", 3)] },
 		}),
@@ -61,8 +60,40 @@ test("survivors reads only Survived mutants, with file and line", () => {
 	]);
 });
 
-test("a report with no embedded JSON throws", () => {
-	assert.throws(() => survivors("<html></html>"), /no embedded report/);
+// Written by Stryker 10.1.1's own json reporter over a file with `a <` + ` b` and `x > 0 && x < 10`.
+test("survivors reads a report Stryker 10.1.1 wrote, mutants of a comparison and a split string included", () => {
+	const real = readFileSync(
+		new URL("./fixtures/stryker-10.1.1-mutation.json", import.meta.url),
+		"utf8",
+	);
+	const found = survivors(real);
+	assert.equal(found.length, 18);
+	assert.deepEqual(found[3], {
+		file: "src/a.js",
+		line: 1,
+		mutator: "EqualityOperator",
+	});
+	assert.deepEqual(found.at(-1), {
+		file: "src/a.js",
+		line: 2,
+		mutator: "EqualityOperator",
+	});
+});
+
+test("a file that is not a Stryker JSON report throws", () => {
+	assert.throws(() => survivors("{}"), /not a Stryker JSON report/);
+});
+
+test("every stryker config writes the JSON report the summary reads, where it is uploaded from", () => {
+	const root = new URL("../packages/", import.meta.url);
+	for (const pkg of ["@prismalens/auth", "@prismalens/engine", "api"]) {
+		const config = readFileSync(
+			new URL(`${pkg}/stryker.config.mjs`, root),
+			"utf8",
+		);
+		assert.match(config, /reporters: \[[^\]]*"json"/, pkg);
+		assert.doesNotMatch(config, /jsonReporter/, pkg);
+	}
 });
 
 test("a clean run is ok; a survivor, a red shard or an infra loss is not", () => {
@@ -108,13 +139,16 @@ test("main joins the jobs file and the shards' reports", () => {
 	const dir = mkdtempSync(join(tmpdir(), "mut-"));
 	mkdirSync(join(dir, "reports", "mutation-0"), { recursive: true });
 	writeFileSync(
-		join(dir, "reports", "mutation-0", "index.html"),
-		html({ "src/a.ts": { mutants: [mutant("Survived", 9)] } }),
+		join(dir, "reports", "mutation-0", "mutation.json"),
+		report({ "src/a.ts": { mutants: [mutant("Survived", 9)] } }),
 	);
 	writeFileSync(
 		join(dir, "jobs.json"),
 		JSON.stringify({
-			jobs: [job("stryker (@prismalens/api, x)", "success", "success")],
+			jobs: [
+				job("stryker (@prismalens/api, x)", "success", "success"),
+				job("stryker (@prismalens/auth)", "failure", "failure"),
+			],
 		}),
 	);
 	const [{ body, ok }] = main([

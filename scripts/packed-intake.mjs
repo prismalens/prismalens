@@ -34,19 +34,13 @@ import {
 	openPackedTarget,
 	packedConfig,
 } from "./journeys/targets/packed.mjs";
+import { targetGuard } from "./lib/target-guard.mjs";
 
 const log = (/** @type {string} */ message) =>
 	console.log(`[packed-intake] ${message}`);
 
-/** @type {{ cleanup(): Promise<void> } | undefined} */
-let target;
-let cleaned = false;
-async function cleanup(/** @type {number} */ exitCode) {
-	if (cleaned) return;
-	cleaned = true;
-	process.exitCode = exitCode;
-	await target?.cleanup();
-}
+const guard = targetGuard();
+const cleanup = guard.cleanup;
 process.on("SIGINT", () => void cleanup(130));
 process.on("SIGTERM", () => void cleanup(143));
 
@@ -79,8 +73,9 @@ async function main() {
 		);
 	}
 	const tgz = findTarball(process.argv[2], process.env);
-	const app = await openPackedTarget({ ...config, tgz }, log);
-	target = app;
+	const app = await guard.adopt(
+		await openPackedTarget({ ...config, tgz }, log),
+	);
 	/** @type {Map<string, string[]>} */
 	const ran = new Map();
 	let failure;
