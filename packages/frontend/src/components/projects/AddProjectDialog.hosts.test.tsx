@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AddProjectDialog } from "./AddProjectDialog";
 
 let mockGitHosts: GitHostView[] | undefined = [];
+let mockHostsError = false;
+const mockHostsRefetch = vi.fn();
 const mockHostRepos = {
 	credential: "resolved",
 	repositories: [
@@ -24,7 +26,11 @@ const mockHostRepos = {
 };
 
 vi.mock("@/lib/api/hooks/use-app-settings-orpc", () => ({
-	useGitHosts: () => ({ data: mockGitHosts }),
+	useGitHosts: () => ({
+		data: mockGitHosts,
+		isError: mockHostsError,
+		refetch: mockHostsRefetch,
+	}),
 	useHostRepositories: () => ({
 		data: mockHostRepos,
 		isLoading: false,
@@ -82,6 +88,8 @@ beforeEach(() => {
 	document.body.appendChild(container);
 	root = createRoot(container);
 	mockGitHosts = [];
+	mockHostsError = false;
+	mockHostsRefetch.mockReset();
 	mockBridge = null;
 });
 
@@ -213,15 +221,181 @@ describe("AddProjectDialog (git hosts)", () => {
 		const input = document.body.querySelector<HTMLInputElement>(
 			'[data-testid="add-project-url"]',
 		);
-		await act(async () => {
-			const set = Object.getOwnPropertyDescriptor(
-				HTMLInputElement.prototype,
-				"value",
-			)?.set;
-			set?.call(input, "https://github.com/prismalens/frontend.git");
-			input?.dispatchEvent(new Event("input", { bubbles: true }));
-		});
+		const type = async (value: string) =>
+			act(async () => {
+				const set = Object.getOwnPropertyDescriptor(
+					HTMLInputElement.prototype,
+					"value",
+				)?.set;
+				set?.call(input, value);
+				input?.dispatchEvent(new Event("input", { bubbles: true }));
+			});
+		await type("not-a-repository-url");
+		expect(submit()?.disabled).toBe(true);
+		await type("https://github.com/prismalens/frontend.git");
 		expect(submit()?.disabled).toBe(false);
+	});
+
+	it("keeps the paste row apart from a connected host that is named url", async () => {
+		mockGitHosts = [hostView("url")];
+		await render();
+		await act(async () => {
+			document.body
+				.querySelector<HTMLButtonElement>('[data-testid="add-project-row-url"]')
+				?.click();
+		});
+		expect(
+			document.body.querySelector('[data-testid="add-project-url"]'),
+		).not.toBeNull();
+		expect(
+			document.body.querySelector('[data-testid="host-repos"]'),
+		).toBeNull();
+	});
+
+	it("names the host in each Connect and Browse button", async () => {
+		mockGitHosts = [hostView("gitlab.com")];
+		await render();
+		const names = Array.from(
+			document.body.querySelectorAll(
+				'[data-testid="add-project-from"] li > button:not([aria-pressed])',
+			),
+		).map((b) => b.getAttribute("aria-label"));
+		expect(names).toEqual([
+			"Connect GitHub",
+			"Browse GitLab",
+			"Connect Bitbucket",
+		]);
+	});
+
+	it("says the code hosts did not load, retries, and keeps Local folder and the URL row usable", async () => {
+		mockGitHosts = undefined;
+		mockHostsError = true;
+		await render();
+		expect(rows().slice(0, 2)).toEqual([
+			"Local folder",
+			"Paste repository URL",
+		]);
+		expect(
+			document.body.querySelector('[data-testid="state-problem"]')?.textContent,
+		).toContain("Code hosts did not load.");
+		expect(
+			document.body.querySelector('[data-testid="add-project-row-github"]'),
+		).toBeNull();
+		await act(async () => {
+			document.body
+				.querySelector<HTMLButtonElement>(
+					'[data-testid="state-problem"] button',
+				)
+				?.click();
+		});
+		expect(mockHostsRefetch).toHaveBeenCalledTimes(1);
+		expect(
+			document.body.querySelector<HTMLButtonElement>(
+				'[data-testid="add-project-row-url"]',
+			)?.disabled,
+		).toBe(false);
+	});
+
+	it("shows loading rows, not disabled host rows, while the code hosts load", async () => {
+		mockGitHosts = undefined;
+		await render();
+		expect(
+			document.body.querySelector('[data-testid="state-loading"]'),
+		).not.toBeNull();
+		expect(
+			document.body.querySelector('[data-testid="add-project-row-github"]'),
+		).toBeNull();
+	});
+
+	it("locks the source rows while the computer's folder dialog is open", async () => {
+		let answer: (v: unknown) => void = () => undefined;
+		mockBridge = {
+			pickFolder: () => new Promise((resolve) => (answer = resolve)),
+		};
+		await render();
+		await act(async () => {
+			document.body
+				.querySelector<HTMLButtonElement>(
+					'[data-testid="add-project-pick-folder"]',
+				)
+				?.click();
+		});
+		const locked = (id: string) =>
+			document.body.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)
+				?.disabled;
+		expect(locked("add-project-row-url")).toBe(true);
+		expect(locked("add-project-pick-folder")).toBe(true);
+		await act(async () => answer({ path: null }));
+		expect(locked("add-project-row-url")).toBe(false);
+	});
+
+	it("adds nothing when the dialog closed before the folder dialog answered", async () => {
+		let answer: (v: unknown) => void = () => undefined;
+		mockBridge = {
+			pickFolder: () => new Promise((resolve) => (answer = resolve)),
+		};
+		const onChoose = vi.fn();
+		const view = (open: boolean) => (
+			<AddProjectDialog
+				open={open}
+				onOpenChange={vi.fn()}
+				onChoose={onChoose}
+			/>
+		);
+		await act(async () => root.render(view(true)));
+		await act(async () => {
+			document.body
+				.querySelector<HTMLButtonElement>(
+					'[data-testid="add-project-pick-folder"]',
+				)
+				?.click();
+		});
+		await act(async () => root.render(view(false)));
+		await act(async () => answer({ path: "/work" }));
+		expect(onChoose).not.toHaveBeenCalled();
+	});
+
+	it("adds the folder the computer's dialog picked while the dialog is still on Local folder", async () => {
+		mockBridge = { pickFolder: async () => ({ path: "/work" }) };
+		const onChoose = vi.fn();
+		await act(async () => {
+			root.render(
+				<AddProjectDialog open onOpenChange={vi.fn()} onChoose={onChoose} />,
+			);
+		});
+		await act(async () => {
+			document.body
+				.querySelector<HTMLButtonElement>(
+					'[data-testid="add-project-pick-folder"]',
+				)
+				?.click();
+		});
+		expect(onChoose).toHaveBeenCalledExactlyOnceWith("/work");
+	});
+
+	it("says so, and keeps Browse, when the folder dialog failed on the way", async () => {
+		mockBridge = {
+			pickFolder: async () => {
+				throw new TypeError("Failed to fetch");
+			},
+		};
+		await render();
+		await act(async () => {
+			document.body
+				.querySelector<HTMLButtonElement>(
+					'[data-testid="add-project-pick-folder"]',
+				)
+				?.click();
+		});
+		expect(
+			document.body.querySelector('[data-testid="add-project-pick-failed"]')
+				?.textContent,
+		).toBe("The folder dialog did not open. Try again.");
+		expect(
+			document.body.querySelector<HTMLButtonElement>(
+				'[data-testid="add-project-pick-folder"]',
+			)?.disabled,
+		).toBe(false);
 	});
 
 	it("shows GitHub repositories once Browse is pressed on a connected GitHub", async () => {

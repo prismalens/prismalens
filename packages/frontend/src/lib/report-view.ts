@@ -220,23 +220,35 @@ export function culpritOf(
 	if (!c) return null;
 	const ref = c.changeRef?.trim().toLowerCase();
 	if (!ref) return c;
-	const mentions = (texts: string[]) =>
-		texts.some((t) => t.toLowerCase().includes(ref));
-	const text = (h: InvestigationReport["hypotheses"][number]) => [
-		h.statement,
-		...h.evidence.flatMap((e) => [e.observation, e.source]),
-	];
+	// A whole identifier: `a9469cc2` is another change than `9469cc2`.
+	const named = new RegExp(
+		`(?<![0-9a-z])${ref.replace(/\W/g, "\\$&")}(?![0-9a-z])`,
+		"i",
+	);
+	const mentions = (texts: string[]) => texts.some((t) => named.test(t));
+	type Evidence = InvestigationReport["hypotheses"][number]["evidence"][number];
+	const words = (e: Evidence) => [e.observation, e.source];
 	const standing = report.hypotheses.filter((h) => h.status !== "refuted");
-	const against = [
-		...report.hypotheses.filter((h) => h.status === "refuted"),
-	].flatMap(text);
-	const ruled = report.ruledOut.flatMap((r) => [
-		r.statement,
-		r.why,
-		...r.evidence.flatMap((e) => [e.observation, e.source]),
+	// Only a standing hypothesis's own words and its supporting evidence keep the change.
+	const keeps = standing.flatMap((h) => [
+		h.statement,
+		...h.evidence.filter((e) => e.direction !== "contradicts").flatMap(words),
 	]);
-	if (mentions(standing.flatMap(text))) return c;
-	return mentions([...against, ...ruled]) ? { ...c, changeRef: null } : c;
+	const clears = [
+		...standing.flatMap((h) =>
+			h.evidence.filter((e) => e.direction === "contradicts").flatMap(words),
+		),
+		...report.hypotheses
+			.filter((h) => h.status === "refuted")
+			.flatMap((h) => [h.statement, ...h.evidence.flatMap(words)]),
+		...report.ruledOut.flatMap((r) => [
+			r.statement,
+			r.why,
+			...r.evidence.flatMap(words),
+		]),
+	];
+	if (mentions(keeps)) return c;
+	return mentions(clears) ? { ...c, changeRef: null } : c;
 }
 
 export interface FixBriefInput {

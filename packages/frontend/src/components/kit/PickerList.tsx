@@ -238,12 +238,12 @@ function Rail({
 						toSearch();
 					}
 				}}
-				className="flex flex-col items-center gap-1 rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent max-md:gap-3 pointer-coarse:gap-3"
+				className="flex min-h-0 flex-col items-center gap-1 overflow-y-auto rounded-control outline-none focus-visible:ring-2 focus-visible:ring-accent max-md:gap-3 pointer-coarse:gap-3"
 				data-testid="picker-rail"
 			>
 				{shows.map((t) => tab(t, t.id === rail.value))}
 			</div>
-			<div className="mt-auto flex flex-col items-center">
+			<div className="mt-auto flex shrink-0 flex-col items-center">
 				{actions.map((t) => action(t))}
 			</div>
 		</div>

@@ -24,6 +24,8 @@ export type AppCommand =
 	| "sendTestAlert";
 
 const handlers = new Map<AppCommand, () => void>();
+/** What blocks a mounted command right now, read when its action is listed. */
+const blockers = new Map<AppCommand, () => Record<string, boolean>>();
 
 /** Commands a key may ask for before the page can run them: a pane key pressed while the thread loads. */
 const HELD: ReadonlySet<AppCommand> = new Set<AppCommand>([
@@ -55,26 +57,46 @@ export function keyAppCommand(id: AppCommand): boolean {
 	return true;
 }
 
-/** Which commands can run now: the facts an `app.*` action's `when` reads. */
-export const appFacts = (): { is: Partial<Record<AppCommand, boolean>> } => ({
-	is: Object.fromEntries(Array.from(handlers.keys(), (k) => [k, true])),
+/**
+ * Which commands can run now, and what blocks the ones that name it: the facts an `app.*`
+ * action's `when` and `disabled` read.
+ */
+export const appFacts = (): { is: Record<string, boolean> } => ({
+	is: {
+		...Object.assign({}, ...Array.from(blockers.values(), (b) => b())),
+		...Object.fromEntries(Array.from(handlers.keys(), (k) => [k, true])),
+	},
 });
 
-/** Handles one app command while the calling component is mounted; the latest `run` wins. */
-export function useAppCommand(id: AppCommand, run: () => void, enabled = true) {
+/**
+ * Handles one app command while the calling component is mounted; the latest `run` wins.
+ * `blocked` names the facts that stop it for now, so the palette lists it as the page does.
+ */
+export function useAppCommand(
+	id: AppCommand,
+	run: () => void,
+	enabled = true,
+	blocked?: Record<string, boolean>,
+) {
 	const latest = useRef(run);
 	latest.current = run;
+	const facts = useRef(blocked);
+	facts.current = blocked;
 	useEffect(() => {
 		if (!enabled) return;
 		const call = () => latest.current();
 		handlers.set(id, call);
+		blockers.set(id, () => facts.current ?? {});
 		if (held?.id === id) {
 			const fresh = Date.now() - held.at < HOLD_MS && held.path === here();
 			held = null;
 			if (fresh) call();
 		}
 		return () => {
-			if (handlers.get(id) === call) handlers.delete(id);
+			if (handlers.get(id) === call) {
+				handlers.delete(id);
+				blockers.delete(id);
+			}
 		};
 	}, [id, enabled]);
 }

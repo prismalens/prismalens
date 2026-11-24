@@ -82,8 +82,10 @@ describe("useFolderPicker (#1216)", () => {
 		expect(apiPick).toHaveBeenCalledExactlyOnceWith({});
 	});
 
-	it("takes a refused or failed API call as unavailable and stops offering", async () => {
-		apiPick.mockRejectedValue(new Error("403"));
+	it("takes a refused API call as unavailable and stops offering", async () => {
+		apiPick.mockRejectedValue(
+			Object.assign(new Error("403"), { code: "FORBIDDEN" }),
+		);
 		await mount(true);
 		let got: unknown;
 		await act(async () => {
@@ -91,6 +93,19 @@ describe("useFolderPicker (#1216)", () => {
 		});
 		expect(got).toEqual({ status: "unavailable" });
 		expect(seat.available).toBe(false);
+	});
+
+	it("takes a dropped connection as a failed pick and keeps offering Browse for another try", async () => {
+		apiPick.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+		apiPick.mockResolvedValueOnce({ status: "picked", path: "/work" });
+		await mount(true);
+		let got: unknown;
+		await act(async () => {
+			got = await seat.pick();
+		});
+		expect(got).toEqual({ status: "failed" });
+		expect(seat.available).toBe(true);
+		expect(await seat.pick()).toEqual({ status: "picked", path: "/work" });
 	});
 
 	it("uses the desktop bridge when there is one, without asking the API", async () => {

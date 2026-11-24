@@ -91,6 +91,14 @@ describe("an agent that answers ACP but holds no login for its model's provider"
 		expect(providerState(base, "google/gemini-4-neon")).toBe("signed-out");
 		expect(unreadyReason(base, "ollama-cloud/qwen")).toBeNull();
 	});
+
+	it("reads a folded model id as the agent's own pick, so a signed-out provider still gates the run", () => {
+		const out = withLogin("signed-out");
+		expect(providerState(out, "default")).toBe("signed-out");
+		expect(unreadyReason(out, "default")).toBe(
+			"OpenCode is not signed in to Google. Sign in with its own CLI, then retry.",
+		);
+	});
 });
 
 describe("an agent whose model the check could not name", () => {

@@ -13,7 +13,7 @@ function firstWords(error: string | null | undefined): string {
 		.split("\n")
 		.map((l) => l.trim())
 		.filter((l) => /[A-Za-z0-9À-￿]/.test(l));
-	return lines.find((l) => !/^(error|exception)\W*$/i.test(l)) ?? "";
+	return lines.find((l) => !/^(error|exception)[\s:]*$/i.test(l)) ?? "";
 }
 
 const cut = (line: string) =>

@@ -8,6 +8,7 @@ import {
 	onlyProject,
 	rememberSubject,
 	serviceIsProject,
+	serviceOfProject,
 	subjectMenu,
 } from "./last-subject";
 
@@ -100,5 +101,24 @@ describe("onlyProject", () => {
 		expect(onlyProject([{ id: "r1" }], { none: true })).toBeUndefined();
 		expect(onlyProject([{ id: "r1" }], { project: "r9" })).toBeUndefined();
 		expect(onlyProject([{ id: "r1" }], { service: "s1" })).toBeUndefined();
+	});
+	it("names none when an incident was asked for, so the request is not turned into a plain thread", () => {
+		expect(onlyProject([{ id: "r1" }], { incident: true })).toBeUndefined();
+	});
+});
+
+describe("serviceOfProject", () => {
+	const repos = [
+		{ id: "r1", fullName: "acme/shop" },
+		{ id: "r2", fullName: "acme/api" },
+	];
+	const shop = { id: "s1", name: "shop", repositories: [{ repositoryId: "r1" }] };
+	const checkout = { id: "s2", name: "checkout", repositories: [{ repositoryId: "r2" }] };
+	it("returns the service folded into the project, so an incident can still start from its entry", () => {
+		expect(serviceOfProject([checkout, shop], repos, "r1")).toBe(shop);
+	});
+	it("returns none for a project with no folded service, a service of its own name, or no project", () => {
+		expect(serviceOfProject([checkout, shop], repos, "r2")).toBeUndefined();
+		expect(serviceOfProject([shop], repos, undefined)).toBeUndefined();
 	});
 });

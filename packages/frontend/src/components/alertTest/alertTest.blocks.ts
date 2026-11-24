@@ -29,6 +29,6 @@ export function genericCurl(url: string, serviceName: string): string {
 		`curl -X POST ${url}`,
 		`  -H "Authorization: Bearer <TOKEN>"`,
 		`  -H "Content-Type: application/json"`,
-		`  -d '${body}'`,
+		`  -d '${body.replaceAll("'", "'\\''")}'`,
 	].join(" \\\n");
 }

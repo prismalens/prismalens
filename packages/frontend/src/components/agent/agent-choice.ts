@@ -262,7 +262,7 @@ export function providerState(
 	h: HarnessStatus,
 	model?: string | null,
 ): NonNullable<HarnessStatus["providerSignIn"]> {
-	return model
+	return model && !isFoldedId(h, model)
 		? providerSignIn(h.id as HarnessId, h.checked, model)
 		: (h.providerSignIn ??
 				providerSignIn(
@@ -280,7 +280,10 @@ export function unreadyReason(
 	if (!h.installed || !h.checked) return null;
 	if (h.checked.outcome === "answers-acp")
 		return providerState(h, model) === "signed-out"
-			? providerSignedOutLine(h.id as HarnessId, model || h.checked.servedModel)
+			? providerSignedOutLine(
+					h.id as HarnessId,
+					model && !isFoldedId(h, model) ? model : h.checked.servedModel,
+				)
 			: null;
 	// The same words a run that fails on sign-in shows (#831 w7-3).
 	if (h.checked.outcome === "sign-in-needed")

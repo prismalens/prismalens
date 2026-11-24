@@ -151,7 +151,7 @@ export function AlertIntakeSettings() {
 			<SettingGroup
 				title="Send a test alert"
 				testId="alert-intake-test"
-				description="A sample alert for one of your projects, sent the way a real alert source sends it. It opens an incident and starts an investigation."
+				description="A sample alert for one of your projects, sent the way a real alert source sends it. It opens an incident and starts a run."
 			>
 				<Pool>
 					<div className="px-3.5 py-3">

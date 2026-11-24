@@ -119,6 +119,65 @@ describe("culpritOf", () => {
 		expect(culpritOf(kept)?.changeRef).toBe("9469cc2");
 	});
 
+	it("drops a change that only contradicting evidence names, even on a supported hypothesis", () => {
+		const contradicted = report({
+			culprit: { service: "api", changeRef: "9469cc2", mechanism: null },
+			hypotheses: [
+				{
+					statement: "The handler divides by a count that can be zero",
+					status: "supported",
+					evidence: [
+						{ observation: "9469cc2 did not touch the handler", source: "git show 9469cc2", direction: "contradicts", status: "verified" },
+						{ observation: "count is zero at 14:03", source: "logs", direction: "supports", status: "verified" },
+					],
+				},
+			],
+		});
+		expect(culpritOf(contradicted)?.changeRef).toBeNull();
+	});
+
+	it("keeps a change a supporting entry names even when another entry contradicts it", () => {
+		const both = report({
+			culprit: { service: "api", changeRef: "9469cc2", mechanism: null },
+			hypotheses: [
+				{
+					statement: "The handler divides by a count that can be zero",
+					status: "supported",
+					evidence: [
+						{ observation: "9469cc2 removed the guard", source: "git show 9469cc2", direction: "supports", status: "verified" },
+						{ observation: "9469cc2 is older than the first error", source: "logs", direction: "contradicts", status: "verified" },
+					],
+				},
+			],
+		});
+		expect(culpritOf(both)?.changeRef).toBe("9469cc2");
+	});
+
+	it("matches a whole identifier: another change that ends the same does not clear it", () => {
+		const other = report({
+			culprit: { service: "api", changeRef: "9469cc2", mechanism: null },
+			hypotheses: [
+				{
+					statement: "Commit a9469cc2 introduced the division",
+					status: "refuted",
+					evidence: [],
+				},
+			],
+		});
+		expect(culpritOf(other)?.changeRef).toBe("9469cc2");
+		const same = report({
+			culprit: { service: "api", changeRef: "9469CC2", mechanism: null },
+			hypotheses: [
+				{
+					statement: "Not the commit (9469cc2).",
+					status: "refuted",
+					evidence: [],
+				},
+			],
+		});
+		expect(culpritOf(same)?.changeRef).toBeNull();
+	});
+
 	it("keeps a change nothing in the report disputes", () => {
 		expect(culpritOf(report())?.changeRef).toBe("7f3c2a1");
 	});

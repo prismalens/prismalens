@@ -56,6 +56,9 @@ describe("ProjectList with no projects", () => {
 		expect(
 			host.querySelector('[data-testid="projects-none"] h2')?.textContent,
 		).toBe("Add your first project");
+		expect(
+			host.querySelector('[data-testid="projects-none"] p')?.textContent,
+		).toBe("Give each thread its code.");
 		expect(adds()).toHaveLength(1);
 		expect(host.querySelector("header [data-testid='add-project']")).toBeNull();
 		act(() => (adds()[0] as HTMLButtonElement).click());

@@ -6,11 +6,15 @@ import { useState } from "react";
 import { client, orpc } from "@/lib/api/orpc-client";
 import { desktopBridge } from "@/lib/desktop";
 
-/** A pick: the folder, a cancel (nothing changes), or this computer cannot open a dialog. */
+/**
+ * A pick: the folder, a cancel (nothing changes), this computer cannot open a dialog, or the
+ * call failed on the way (a dropped connection: worth another try).
+ */
 export type FolderPick =
 	| { status: "picked"; path: string }
 	| { status: "cancelled" }
-	| { status: "unavailable" };
+	| { status: "unavailable" }
+	| { status: "failed" };
 
 export interface FolderPicker {
 	/** The desktop app picks in its own window; there the in-page folder list stays hidden. */
@@ -37,11 +41,16 @@ export function useFolderPicker(host: boolean): FolderPicker {
 	const available =
 		!refused && host && (bridge ? true : asked.data?.available === true);
 	const pick = async (): Promise<FolderPick> => {
-		// A refusal (403) or a dead API ends the offer rather than showing an error.
+		// Only a refusal (403) ends the offer; any other failure keeps Browse for another try.
 		const answer = await (bridge
 			? bridge().then(fromBridge)
 			: client.repositories.pickFolder({})
-		).catch((): FolderPick => ({ status: "unavailable" }));
+		).catch(
+			(e: unknown): FolderPick =>
+				(e as { code?: string } | null)?.code === "FORBIDDEN"
+					? { status: "unavailable" }
+					: { status: "failed" },
+		);
 		if (answer.status === "unavailable") setRefused(true);
 		return answer;
 	};

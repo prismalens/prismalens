@@ -37,6 +37,7 @@ import {
 	lastSubject,
 	onlyProject,
 	serviceIsProject,
+	serviceOfProject,
 	subjectMenu,
 } from "@/lib/last-subject";
 import { lazyPart } from "@/lib/lazy";
@@ -121,13 +122,18 @@ export function HomeComposer({
 	useEffect(() => {
 		if (onlyId) set({ project: onlyId });
 	}, [onlyId]);
-	const subject = subjectOf(picked);
 	const repo = repos.find((r) => r.id === picked.project);
-	const service = services.find((s) => s.id === picked.service);
+	// A project that an alert reached lists once, and its same-name service carries the incident.
+	const folded = serviceOfProject(services, repos, picked.project);
+	const service = services.find((s) => s.id === picked.service) ?? folded;
 	// An incident carries a service, not a project (the contract has no repositoryId): #1020.
-	const incidentOff = !!picked.project;
+	const incidentOff = !!picked.project && !folded;
 	const incident =
 		search.incident && !incidentOff ? (search.severity ?? "high") : null;
+	const subject =
+		incident && folded
+			? ({ kind: "service", serviceId: folded.id } as const)
+			: subjectOf(picked);
 	const pick = (v: string) => {
 		const [kind, id] = v.split(":");
 		set({

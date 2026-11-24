@@ -17,4 +17,12 @@ describe("alertTest.curl", () => {
 			].join("\n"),
 		);
 	});
+
+	it("closes and reopens the single quote around an apostrophe in the service name", () => {
+		const text = genericCurl("http://localhost:3000/api/webhooks/generic", "O'Brien");
+
+		expect(text.split("\n").at(-1)).toBe(
+			`  -d '{"title":"Checkout is failing","severity":"high","serviceName":"O'\\''Brien"}'`,
+		);
+	});
 });

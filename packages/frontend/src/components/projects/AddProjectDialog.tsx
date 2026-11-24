@@ -8,11 +8,13 @@ import {
 	useDeferredValue,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { SourceConnectDialog } from "@/components/settings/SourceConnectDialog";
 import { KindIcon } from "@/components/settings/source-words";
 import { PathTail } from "@/components/shared/PathTail";
+import { Loading, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import {
 	DIALOG_WIDTH,
@@ -41,8 +43,9 @@ import {
 import { cn } from "@/lib/utils";
 import { type HostChoice, HostRepoPicker, hostChoices } from "./HostRepoPicker";
 
-const FOLDER = "folder";
-const URL_ROW = "url";
+// Whitespace, so no host name (which never has any) can equal a source row.
+const FOLDER = "source folder";
+const URL_ROW = "source url";
 
 /**
  * One dialog for "folder or git URL" (#1020), or a pick from a git host's repositories (#1024). The host browses its own folders (folders
@@ -116,11 +119,20 @@ export function AddProjectDialog({
 		e.preventDefault();
 		choose(source);
 	};
+	// What the dialog shows when a pick resolves, not when it was clicked.
+	const now = useRef({ open, from, choose });
+	now.current = { open, from, choose };
+	const [picking, setPicking] = useState(false);
+	const [pickFailed, setPickFailed] = useState(false);
 	const pickNative = async () => {
-		const got = await folders.pick();
+		setPicking(true);
+		setPickFailed(false);
+		const got = await folders.pick().finally(() => setPicking(false));
+		if (got.status === "failed") setPickFailed(true);
 		if (got.status !== "picked") return;
+		if (!now.current.open || now.current.from !== FOLDER) return;
 		setTyped(got.path);
-		choose(got.path);
+		now.current.choose(got.path);
 	};
 	const sep = at?.ok && at.path.includes("\\") ? "\\" : "/";
 	const into = (path: string) =>
@@ -141,6 +153,9 @@ export function AddProjectDialog({
 							from={from}
 							choices={choices}
 							ready={!!hosts.data}
+							failed={hosts.isError && !hosts.data}
+							locked={picking}
+							onRetry={() => void hosts.refetch()}
 							onPick={setPicked}
 							onConnect={setConnecting}
 						/>
@@ -205,6 +220,7 @@ export function AddProjectDialog({
 										<Button
 											type="button"
 											variant="secondary"
+											disabled={picking}
 											onClick={() => void pickNative()}
 											data-testid="add-project-pick-folder"
 										>
@@ -213,6 +229,15 @@ export function AddProjectDialog({
 										</Button>
 									)}
 								</div>
+							)}
+							{pickFailed && (
+								<p
+									className="text-meta text-danger"
+									role="alert"
+									data-testid="add-project-pick-failed"
+								>
+									The folder dialog did not open. Try again.
+								</p>
 							)}
 							{!pasting && KindIcon && kind && (
 								<span
@@ -354,12 +379,19 @@ function SourceList({
 	from,
 	choices,
 	ready,
+	failed,
+	locked,
+	onRetry,
 	onPick,
 	onConnect,
 }: {
 	from: string;
 	choices: readonly HostChoice[];
 	ready: boolean;
+	failed: boolean;
+	/** A folder pick is open: the source cannot change under it. */
+	locked: boolean;
+	onRetry: () => void;
 	onPick: (row: string) => void;
 	onConnect: (choice: HostChoice) => void;
 }) {
@@ -379,6 +411,7 @@ function SourceList({
 				<button
 					type="button"
 					aria-pressed={from === FOLDER}
+					disabled={locked}
 					onClick={() => onPick(FOLDER)}
 					className={pickClass}
 					data-testid="add-project-row-folder"
@@ -391,6 +424,7 @@ function SourceList({
 				<button
 					type="button"
 					aria-pressed={from === URL_ROW}
+					disabled={locked}
 					onClick={() => onPick(URL_ROW)}
 					className={pickClass}
 					data-testid="add-project-row-url"
@@ -399,35 +433,47 @@ function SourceList({
 					Paste repository URL
 				</button>
 			</li>
-			{choices.map((c) => (
-				<li key={c.host} className={rowClass(from === c.host)}>
-					<button
-						type="button"
-						aria-pressed={from === c.host}
-						disabled={!c.connected}
-						onClick={() => onPick(c.host)}
-						className={cn(pickClass, "disabled:cursor-default")}
-						data-testid={`add-project-row-${c.kindId}`}
-					>
-						<KindIcon kind={c.kindId} />
-						{c.label}
-						{ready && c.connected && (
-							<span className="text-meta text-text-3">Connected</span>
-						)}
-					</button>
-					{ready && (
-						<Button
-							type="button"
-							variant="text"
-							size="sm"
-							onClick={() => (c.connected ? onPick(c.host) : onConnect(c))}
-							data-testid={`add-project-${c.connected ? "browse" : "connect"}-${c.kindId}`}
-						>
-							{c.connected ? "Browse" : "Connect"}
-						</Button>
+			{!ready && (
+				<li className="px-2 py-1.5">
+					{failed ? (
+						<Problem text="Code hosts did not load." onRetry={onRetry} />
+					) : (
+						<Loading rows={1} />
 					)}
 				</li>
-			))}
+			)}
+			{ready &&
+				choices.map((c) => (
+					<li key={c.host} className={rowClass(from === c.host)}>
+						<button
+							type="button"
+							aria-pressed={from === c.host}
+							disabled={!c.connected || locked}
+							onClick={() => onPick(c.host)}
+							className={cn(pickClass, "disabled:cursor-default")}
+							data-testid={`add-project-row-${c.kindId}`}
+						>
+							<KindIcon kind={c.kindId} />
+							{c.label}
+							{ready && c.connected && (
+								<span className="text-meta text-text-3">Connected</span>
+							)}
+						</button>
+						{ready && (
+							<Button
+								type="button"
+								variant="text"
+								size="sm"
+								disabled={locked}
+								aria-label={`${c.connected ? "Browse" : "Connect"} ${c.label}`}
+								onClick={() => (c.connected ? onPick(c.host) : onConnect(c))}
+								data-testid={`add-project-${c.connected ? "browse" : "connect"}-${c.kindId}`}
+							>
+								{c.connected ? "Browse" : "Connect"}
+							</Button>
+						)}
+					</li>
+				))}
 		</ul>
 	);
 }

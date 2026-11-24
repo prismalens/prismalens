@@ -335,19 +335,26 @@ export function Palette({
 		// The app's registered actions that can run here, Find in the thread among them (#1101 19.4).
 		...surfaceEntries("app", "more", { facts: appFacts() }).flatMap(
 			(e): Item[] =>
-				"separator" in e || e.disabled || e.id === "search" || !named(e.label)
+				"separator" in e ||
+				(e.disabled && !e.why) ||
+				e.id === "search" ||
+				!named(e.label)
 					? []
 					: [
 							{
 								key: `action-app-${e.id}`,
 								tab: "actions",
 								label: e.label,
+								// A blocked action stays listed with its reason and runs nothing.
+								...(e.disabled ? { sub: e.why } : {}),
 								icon: e.icon ?? SquarePen,
 								...(e.keys ? { keys: keyText(e.keys).split("+") } : {}),
 								// Here, Find in every thread is this palette's Messages tab.
 								...(e.id === "findMessages"
 									? { run: () => setTab("messages"), stay: true }
-									: { run: e.onSelect }),
+									: e.disabled
+										? { run: () => undefined, stay: true }
+										: { run: e.onSelect }),
 								testId: `thread-search-action-${e.id}`,
 							},
 						],

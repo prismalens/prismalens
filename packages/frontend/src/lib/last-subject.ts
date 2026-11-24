@@ -77,15 +77,41 @@ export function serviceIsProject(
 	);
 }
 
+/**
+ * The service the subject menu folds into project `projectId`, so the project's entry can still
+ * open an incident, which only a service carries.
+ */
+export function serviceOfProject<
+	S extends { name: string; repositories?: { repositoryId: string }[] },
+>(
+	services: S[],
+	projects: { id: string; fullName: string }[],
+	projectId: string | undefined,
+): S | undefined {
+	return projectId
+		? services.find(
+				(s) =>
+					serviceIsProject(s, projects) &&
+					s.repositories?.[0]?.repositoryId === projectId,
+			)
+		: undefined;
+}
+
 /** With one project and no subject chosen, that project: nothing else could be meant. */
 export function onlyProject<T extends { id: string }>(
 	projects: T[],
-	chosen: { project?: string; service?: string; none?: boolean },
+	chosen: {
+		project?: string;
+		service?: string;
+		none?: boolean;
+		incident?: boolean;
+	},
 ): T | undefined {
 	return projects.length === 1 &&
 		!chosen.project &&
 		!chosen.service &&
-		!chosen.none
+		!chosen.none &&
+		!chosen.incident
 		? projects[0]
 		: undefined;
 }

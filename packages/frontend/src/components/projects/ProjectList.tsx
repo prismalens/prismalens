@@ -76,8 +76,7 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 							className="pt-[12vh]"
 						>
 							<p className="-mt-2 text-body text-text-2">
-								A folder or repository your agents work in. Each thread gets its
-								own copy.
+								Give each thread its code.
 							</p>
 							<Button onClick={() => setOpen(true)} data-testid="add-project">
 								<Plus />

@@ -5,6 +5,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Block } from "@/components/kit/Block";
 import { entryOf } from "@/components/kit/registry";
+import { Loading, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -64,15 +65,23 @@ export function SendTestAlert({ project }: { project?: ProjectChoice }) {
 		);
 	};
 	// The palette runs it too, while this is mounted.
-	useAppCommand("sendTestAlert", sendNow);
+	const blocked = {
+		noProject: !chosen,
+		gitless: !!chosen?.plain,
+		sending: send.isPending,
+	};
+	useAppCommand("sendTestAlert", sendNow, true, blocked);
+	if (!project && repos.isError && !repos.data)
+		return (
+			<Problem
+				text="Projects did not load."
+				onRetry={() => void repos.refetch()}
+			/>
+		);
+	if (!project && repos.isPending) return <Loading rows={2} />;
 	const entry = entryOf("app.sendTestAlert", {
 		facts: {
-			is: {
-				sendTestAlert: true,
-				noProject: !chosen,
-				gitless: !!chosen?.plain,
-				sending: send.isPending,
-			},
+			is: { sendTestAlert: true, ...blocked },
 		},
 	});
 	const row = entry && !("separator" in entry) ? entry : null;
@@ -139,8 +148,8 @@ export function SendTestAlert({ project }: { project?: ProjectChoice }) {
 					</code>
 				</Block>
 				<p className="mt-1 text-meta text-text-3">
-					Replace <span className="font-mono">&lt;TOKEN&gt;</span> with the
-					token above.
+					Replace <span className="font-mono">&lt;TOKEN&gt;</span> with a token
+					from Settings, Alert intake.
 				</p>
 			</details>
 		</div>

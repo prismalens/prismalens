@@ -17,6 +17,14 @@ describe("failureStatusLine", () => {
 		});
 	});
 
+	it("keeps a heading's non-English message, and says no reason only for a bare heading or braces", () => {
+		expect(failureStatusLine("Codex", "Error: 权限不足")).toBe(
+			'Codex answered "Error: 权限不足".',
+		);
+		expect(failureSentence("Codex", "Error:").words).toBeNull();
+		expect(failureSentence("Codex", "{}\n}").words).toBeNull();
+	});
+
 	it("keeps an agent's own words as they are", () => {
 		expect(failureStatusLine("Codex", "disk full")).toBe(
 			'Codex answered "disk full".',

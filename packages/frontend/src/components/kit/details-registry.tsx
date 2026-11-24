@@ -225,12 +225,23 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			priority: 1,
 			icon: GitBranch,
 			label: d.branch ?? (
-				<Hint label="No branch yet. Commits here can't be pushed until one is made.">
-					<span className="truncate" data-testid="details-detached">
+				<Hint
+					label={
+						d.from
+							? `Run copy of ${d.from} at ${d.detached}`
+							: `Detached at ${d.detached}`
+					}
+					meta="No branch yet. Commits here can't be pushed until one is made."
+				>
+					<button
+						type="button"
+						className="min-w-0 cursor-default truncate text-left"
+						data-testid="details-detached"
+					>
 						{d.from
 							? `Run copy of ${d.from} at ${d.detached}`
 							: `Detached at ${d.detached}`}
-					</span>
+					</button>
 				</Hint>
 			),
 			mono: true,
