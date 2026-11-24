@@ -36,15 +36,14 @@ Every release goes out on all of these at once:
 
 There is no release-candidate track: release-please publishes straight to
 `latest`, and each release is validated against the packed tarball
-(`pnpm run pack`) first. There is no nightly channel either. Migrations are
-append-only, so a nightly would ship every merged migration to real databases,
-and a stable build refuses a database a nightly has migrated past it.
+(`pnpm run pack`) first. A nightly prerelease is opt-in
+(`pl upgrade --channel nightly`, [RELEASING.md](RELEASING.md#nightly)); it is
+never on npm, and a stable build refuses a database a nightly has migrated past it.
 
 docs.prismalens.io describes the version `latest` installs: docs merged ahead
 of a release go live when that release publishes.
 
 ## 1.0.0
 
-`1.0.0` is a deliberate stability promise, not just the number after `0.9`. Its
-criteria get set when Phase 5 ("The Team Release") is in sight — not before.
-Until then, treat every `0.x` as free to change.
+`1.0.0` is a deliberate stability promise, not just the number after `0.9`. Until its
+criteria are set, treat every `0.x` as free to change.
