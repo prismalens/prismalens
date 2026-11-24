@@ -3,8 +3,10 @@
 
 import { createServer, request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { webhooksContract } from "@prismalens/contracts";
 import express from "express";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { WEBHOOK_RUNTIME_PATH_PREFIX } from "../shared/constants/routes.js";
 import { createCrossSiteMiddleware } from "./cross-site.middleware.js";
 
 let server: Server;
@@ -33,7 +35,7 @@ beforeAll(async () => {
 	app.use(
 		createCrossSiteMiddleware({
 			cookieName: () => "pl_dev",
-			exemptPathPrefixes: ["/api/webhooks/"],
+			exemptPathPrefixes: [WEBHOOK_RUNTIME_PATH_PREFIX],
 		}),
 	);
 	app.use((_req, res) => {
@@ -119,5 +121,26 @@ describe("cross-site middleware", () => {
 				"/api/webhooks/abc",
 			),
 		).toBe(200);
+	});
+
+	it("refuses a same-site multipart post with the device cookie to the owner-only test alert", async () => {
+		const route = (
+			webhooksContract.sendTest as unknown as {
+				"~orpc": { route: { path: string } };
+			}
+		)["~orpc"].route.path;
+		expect(route).toBe("/alerts/test");
+		expect(`/api${route}`.startsWith(WEBHOOK_RUNTIME_PATH_PREFIX)).toBe(false);
+		expect(
+			await send(
+				{
+					"content-type": "multipart/form-data; boundary=x",
+					cookie: "pl_dev=token",
+					"sec-fetch-site": "same-site",
+				},
+				"POST",
+				`/api${route}`,
+			),
+		).toBe(403);
 	});
 });

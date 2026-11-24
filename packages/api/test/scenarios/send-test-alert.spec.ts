@@ -45,7 +45,7 @@ describe("Send a test alert", () => {
 			body: { source: dir },
 		});
 
-		const sent = await pl.api<Sent>("/webhooks/test", {
+		const sent = await pl.api<Sent>("/alerts/test", {
 			method: "POST",
 			body: { serviceName: "demo-proj" },
 		});
@@ -69,11 +69,11 @@ describe("Send a test alert", () => {
 	}, 60_000);
 
 	it("When the same test alert is sent again while its incident is open, Then it joins that incident and starts no second run", async () => {
-		const first = await pl.api<Sent>("/webhooks/test", {
+		const first = await pl.api<Sent>("/alerts/test", {
 			method: "POST",
 			body: { serviceName: "demo-proj" },
 		});
-		const again = await pl.api<Sent>("/webhooks/test", {
+		const again = await pl.api<Sent>("/alerts/test", {
 			method: "POST",
 			body: { serviceName: "demo-proj" },
 		});
@@ -86,7 +86,7 @@ describe("Send a test alert", () => {
 	}, 60_000);
 
 	it("When a test alert names a project that does not exist, Then its incident has no service and no investigation starts", async () => {
-		const sent = await pl.api<Sent>("/webhooks/test", {
+		const sent = await pl.api<Sent>("/alerts/test", {
 			method: "POST",
 			body: { serviceName: "no-such-project" },
 		});

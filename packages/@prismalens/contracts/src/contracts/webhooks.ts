@@ -146,12 +146,12 @@ export const webhooksContract = {
 	/**
 	 * A sample alert through the generic webhook's own path, so a first-time
 	 * user sees an incident start. The operator's only: it may start a run.
-	 * POST /webhooks/test
+	 * POST /alerts/test
 	 */
 	sendTest: oc
 		.route({
 			method: "POST",
-			path: "/webhooks/test",
+			path: "/alerts/test",
 			summary: "Send a sample alert for a project",
 			tags: ["webhooks"],
 		})
