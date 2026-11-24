@@ -17,6 +17,8 @@ import net from "node:net";
 import { join, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { after, test } from "node:test";
+import tls from "node:tls";
+import { pathToFileURL } from "node:url";
 import {
 	HOST,
 	httpsServer,
@@ -31,10 +33,15 @@ import {
 	workdir,
 } from "./fixtures.mjs";
 import {
+	archiveName,
 	breakLock,
+	DEFAULT_BASE,
 	detectTarget,
+	ensureRuntime,
 	holds,
 	lockHolder,
+	MIRROR_BASE,
+	makeNet,
 	ownerRecord,
 	parseBase,
 	prune,
@@ -904,4 +911,185 @@ test("finding 6: a reused pid holds nothing once its owner's heartbeat stops", a
 		holds({ ...ownerRecord(), host: "another-machine" }, Date.now() - 120_000),
 		false,
 	);
+});
+
+// --- mirror first, GitHub second -------------------------------------------------------------
+
+const fallbackSetup = (...migrationSets) => {
+	const dir = workdir();
+	const mirrors = migrationSets.map((migrations, i) => {
+		const mirror = join(dir, `mirror-${i}`);
+		mkdirSync(mirror);
+		if (migrations) release(mirror, "0.5.6", { migrations });
+		return mirror;
+	});
+	const logs = [];
+	const net = makeNet({
+		env: {},
+		log: (m) => logs.push(m),
+		defaultBases: mirrors.map((m) => pathToFileURL(m).href),
+	});
+	const want = { version: "0.5.6", tag: "v0.5.6", target: HOST };
+	const archiveIn = (i) =>
+		join(mirrors[i], "v0.5.6", archiveName("0.5.6", HOST));
+	return {
+		dir,
+		mirrors,
+		logs,
+		net,
+		want,
+		cache: join(dir, "cache"),
+		archiveIn,
+	};
+};
+
+test("without PRISMALENS_RELEASE_BASE_URL the bases are the mirror, then GitHub; a set one is the only one", () => {
+	assert.deepEqual(
+		makeNet({ env: {} }).bases.map((b) => b.base),
+		[MIRROR_BASE, DEFAULT_BASE],
+	);
+	const set = makeNet({
+		env: { PRISMALENS_RELEASE_BASE_URL: "https://corp.example/pl" },
+	});
+	assert.deepEqual(
+		set.bases.map((b) => b.base),
+		["https://corp.example/pl"],
+	);
+});
+
+test("a base without the release hands over to the next, and SHA256SUMS comes from the last base only", async () => {
+	const { mirrors, logs, net, want, cache, archiveIn } = fallbackSetup(null, [
+		"20260901000000_init",
+	]);
+	const got = await ensureRuntime(cache, want, net);
+	assert.equal(got.sha256, sha256(readFileSync(archiveIn(1))));
+	assert.deepEqual(logs, [
+		`${pathToFileURL(mirrors[0]).href}/v0.5.6/${archiveName("0.5.6", HOST)} does not exist; trying disk`,
+	]);
+});
+
+test("an archive and a SHA256SUMS that agree on a mirror are refused when the last base's SHA256SUMS disagrees", async () => {
+	const { logs, net, want, cache, archiveIn } = fallbackSetup(
+		["20260901000000_init", "20260902000000_altered"],
+		["20260901000000_init"],
+	);
+	const genuine = sha256(readFileSync(archiveIn(1)));
+	const altered = sha256(readFileSync(archiveIn(0)));
+	assert.notEqual(altered, genuine);
+	const got = await ensureRuntime(cache, want, net);
+	assert.equal(got.sha256, genuine);
+	assert.deepEqual(logs, [
+		`checksum mismatch for ${archiveName("0.5.6", HOST)} (SHA256SUMS says ${genuine}, the download is ${altered}); nothing was installed; trying disk`,
+	]);
+});
+
+test("when the last base has no SHA256SUMS the install fails closed, even though the mirror has the archive and its own sums", async () => {
+	const { mirrors, net, want, cache } = fallbackSetup(
+		["20260901000000_init"],
+		null,
+	);
+	await assert.rejects(ensureRuntime(cache, want, net), {
+		message: `v0.5.6's SHA256SUMS is not on disk, the only source of checksums; nothing was installed (${pathToFileURL(mirrors[1]).href}/v0.5.6/SHA256SUMS does not exist)`,
+	});
+	assert.deepEqual(
+		existsSync(cache)
+			? readdirSync(cache).filter((n) => !n.startsWith(".lock"))
+			: [],
+		[],
+	);
+});
+
+test("when the archive is on no base, the error names every base tried", async () => {
+	const { mirrors, net, want, cache } = fallbackSetup(
+		["20260901000000_init"],
+		["20260901000000_init"],
+	);
+	const archive = archiveName("0.5.6", HOST);
+	for (const m of mirrors) rmSync(join(m, "v0.5.6", archive));
+	const missing = mirrors.map(
+		(m) => `${pathToFileURL(m).href}/v0.5.6/${archive} does not exist`,
+	);
+	await assert.rejects(ensureRuntime(cache, want, net), {
+		message: `could not download ${archive} from any of disk, disk:\n${missing.join("\n")}`,
+	});
+});
+
+// --- a mirror that breaks mid-body or stalls hands over to GitHub ------------------------------
+
+/** A mirror (https, in this process) whose archive breaks `how`, and a good last base that serves the same release. */
+async function brokenMirror(how) {
+	tls.setDefaultCACertificates([
+		...tls.getCACertificates("default"),
+		readFileSync(tlsCert().file, "utf8"),
+	]);
+	const dir = workdir();
+	const good = join(dir, "good");
+	release(good, "0.5.6");
+	const archive = archiveName("0.5.6", HOST);
+	const bytes = readFileSync(join(good, "v0.5.6", archive));
+	const mirror = await httpsServer((req, res) => {
+		if (!req.url.endsWith(archive)) return serveDir(good)(req, res);
+		if (how === "headers") return;
+		res.writeHead(200, { "content-length": bytes.length });
+		res.write(bytes.subarray(0, Math.floor(bytes.length / 2)));
+		if (how === "close") setTimeout(() => res.destroy(), 20);
+	});
+	const github = await httpsServer(serveDir(good));
+	servers.push(mirror.server, github.server);
+	const logs = [];
+	const net = makeNet({
+		env: {},
+		log: (m) => logs.push(m),
+		defaultBases: [mirror.url, github.url],
+		deadlineMs: 20_000,
+		stallMs: 400,
+	});
+	const want = { version: "0.5.6", tag: "v0.5.6", target: HOST };
+	return {
+		net,
+		want,
+		logs,
+		mirror,
+		github,
+		genuine: sha256(bytes),
+		cache: join(dir, "cache"),
+		archive,
+	};
+}
+
+test("a mirror that closes its 200 response mid-body is replaced by GitHub's archive", async () => {
+	const { net, want, logs, cache, genuine, github, archive } =
+		await brokenMirror("close");
+	const got = await ensureRuntime(cache, want, net);
+	assert.equal(got.sha256, genuine);
+	assert.equal(logs.length, 1);
+	assert.match(
+		logs[0],
+		/^the download of 0\.5\.6 from 127\.0\.0\.1:\d+ broke \(terminated\); trying 127\.0\.0\.1:\d+$/,
+	);
+	assert.equal(github.hits.get(`/v0.5.6/${archive}`), 1);
+});
+
+test("a mirror that stalls mid-body is dropped after its idle timeout, well inside the shared budget", async () => {
+	const { net, want, logs, cache, genuine } = await brokenMirror("stall");
+	const started = Date.now();
+	const got = await ensureRuntime(cache, want, net);
+	assert.equal(got.sha256, genuine);
+	assert.ok(Date.now() - started < 10_000, `took ${Date.now() - started} ms`);
+	assert.deepEqual(
+		logs.map((m) => m.replace(/:\d+/g, ":port")),
+		[
+			"the download of 0.5.6 from 127.0.0.1:port stalled for 400 ms; trying 127.0.0.1:port",
+		],
+	);
+});
+
+test("a mirror that never answers is dropped after its idle timeout, not after the shared budget", async () => {
+	const { net, want, logs, cache, genuine } = await brokenMirror("headers");
+	const started = Date.now();
+	const got = await ensureRuntime(cache, want, net);
+	assert.equal(got.sha256, genuine);
+	assert.ok(Date.now() - started < 10_000, `took ${Date.now() - started} ms`);
+	assert.equal(logs.length, 1);
+	assert.match(logs[0], /^couldn't reach 127\.0\.0\.1:\d+ /);
 });

@@ -11,9 +11,14 @@ $ProgressPreference = "SilentlyContinue"
 
 $repo = "prismalens/prismalens"
 $api = "https://api.github.com/repos/$repo"
-$baseUrl = if ($env:PRISMALENS_RELEASE_BASE_URL) { $env:PRISMALENS_RELEASE_BASE_URL } else { "https://github.com/$repo/releases/download" }
+# Archives: mirror first (it keeps the newest releases only), GitHub second; a set base is the only one.
+# SHA256SUMS: from the last base only (GitHub, or the set one), so a mirror can't vouch for its own bytes.
+$mirrorBase = "https://downloads.prismalens.io"
+$githubBase = "https://github.com/prismalens/prismalens/releases/download"
+[string[]]$bases = if ($env:PRISMALENS_RELEASE_BASE_URL) { @($env:PRISMALENS_RELEASE_BASE_URL.TrimEnd('/')) } else { @($mirrorBase, $githubBase) }
+$sumsBase = $bases[$bases.Count - 1]
 $localAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE "AppData\Local" }
-$dataRoot = Join-Path $localAppData "prismalens"
+$dataRoot = if ($env:PRISMALENS_HOME) { $env:PRISMALENS_HOME } else { Join-Path $localAppData "prismalens" }
 $runtimeRoot = Join-Path $dataRoot "runtime"
 $receipt = Join-Path $dataRoot "receipt"
 $binDir = if ($env:PRISMALENS_INSTALL_BIN_DIR) { $env:PRISMALENS_INSTALL_BIN_DIR } else { Join-Path $dataRoot "bin" }
@@ -39,8 +44,11 @@ Options:
 Environment:
   PRISMALENS_VERSION, PRISMALENS_NO_MODIFY_PATH=1   Same as the options.
   PRISMALENS_ALLOW_DOWNGRADE=1   Allow an older version than the one installed.
-  PRISMALENS_INSTALL_BIN_DIR     Where pl goes (default %LOCALAPPDATA%\prismalens\bin).
-  PRISMALENS_RELEASE_BASE_URL    Mirror for the release downloads.
+  PRISMALENS_HOME                Where the runtime and receipt go (default %LOCALAPPDATA%\prismalens).
+  PRISMALENS_INSTALL_BIN_DIR     Where pl goes (default %PRISMALENS_HOME%\bin).
+  PRISMALENS_RELEASE_BASE_URL    Download only from this base, as <base>/v<version>/<file>.
+                                 Default: archives from downloads.prismalens.io, then GitHub releases;
+                                 SHA256SUMS always from GitHub (or that base).
   NO_COLOR                       Plain output.
 "@
 	return
@@ -88,7 +96,13 @@ function Fail([string]$m) { [Console]::Error.WriteLine("  ${errC}${cross}${r} $m
 
 # --- helpers ----------------------------------------------------------------
 
-function Fetch([string]$Url, [string]$OutFile) {
+# System32's curl.exe (Windows 10 and later) shows a progress bar and is far faster than
+# Invoke-WebRequest in Windows PowerShell 5.1, which draws none here.
+$curl = Join-Path $env:SystemRoot "System32\curl.exe"
+if (-not (Test-Path $curl)) { $curl = $null }
+
+# -Stall: seconds without a byte before curl gives up, so a silent mirror can't hold the install.
+function Fetch([string]$Url, [string]$OutFile, [switch]$Progress, [int]$Stall = 0) {
 	if ($Url.StartsWith("file://")) {
 		$p = $Url.Substring(7)
 		if ($p -match '^/([a-zA-Z]:/.*)') { $p = $matches[1] }
@@ -97,12 +111,39 @@ function Fetch([string]$Url, [string]$OutFile) {
 		Copy-Item -Path $p -Destination $OutFile -Force
 		return $true
 	}
+	if ($curl) {
+		[string[]]$flags = if ($Progress) { @("--progress-bar") } else { @("-s") }
+		if ($Stall -gt 0) { $flags += @("--speed-limit", "1024", "--speed-time", "$Stall") }
+		& $curl -f -L --retry 2 --connect-timeout 20 -A "prismalens-installer" @flags -o $OutFile $Url
+		if ($LASTEXITCODE -ne 0) { Remove-Item $OutFile -Force -ErrorAction SilentlyContinue; return $false }
+		return $true
+	}
 	try {
 		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 		Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -Headers @{ "User-Agent" = "prismalens-installer" }
 		return $true
 	} catch { return $false }
 }
+
+# The archive's size in bytes, or $null when the server doesn't say.
+function Get-Size([string]$Url) {
+	if ($Url.StartsWith("file://")) { return $null }
+	try {
+		if ($curl) {
+			return & $curl -s -I -L --connect-timeout 20 -A "prismalens-installer" $Url |
+				ForEach-Object { if ($_ -match '^(?i)content-length:\s*(\d+)') { [long]$matches[1] } } | Select-Object -Last 1
+		}
+		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+		$h = Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing -Headers @{ "User-Agent" = "prismalens-installer" }
+		return [long]$h.Headers["Content-Length"]
+	} catch { return $null }
+}
+
+function Base-Host([string]$Base) { if ($Base.StartsWith("file:")) { "disk" } else { ([uri]$Base).Host } }
+function Hosts-Tried { ($bases | ForEach-Object { Base-Host $_ }) -join ", " }
+
+# Fetches v<version>/SHA256SUMS from $sumsBase, the only place checksums come from.
+function Fetch-Sums([string]$Ver, [string]$OutFile) { Fetch "$sumsBase/v$Ver/SHA256SUMS" $OutFile }
 
 function Read-Receipt {
 	$h = @{}
@@ -163,7 +204,7 @@ try {
 	# about 20 minutes after a release publishes, so fall back to the one before.
 	# 30 releases, because up to 10 nightly prereleases sit among them (nightly.yml prunes the rest).
 	if ($Version) {
-		if (-not (Fetch "$baseUrl/v$Version/SHA256SUMS" $sums)) { Fail "PrismaLens $Version has no installer archives" }
+		if (-not (Fetch-Sums $Version $sums)) { Fail "Couldn't fetch SHA256SUMS for $Version from $(Base-Host $sumsBase), the only source of checksums, so nothing was installed. Check the version and your connection." }
 	} else {
 		Step "Finding the newest release"
 		$relFile = Join-Path $staging "releases.json"
@@ -174,7 +215,7 @@ try {
 			Where-Object { $_ -match '^\d+\.\d+\.\d+$' })
 		$newest = $tags | Select-Object -First 1
 		foreach ($t in $tags) {
-			if (Fetch "$baseUrl/v$t/SHA256SUMS" $sums) { $Version = $t; break }
+			if (Fetch-Sums $t $sums) { $Version = $t; break }
 		}
 		if (-not $Version) { Fail "No release has installer archives yet; use npm install -g prismalens" }
 		if ($Version -ne $newest) { Warn "$newest is still being built, so this installs $Version. Run the installer again in a few minutes for $newest." }
@@ -192,19 +233,32 @@ try {
 
 	$archive = "prismalens-$Version-$target.zip"
 	$archiveFile = Join-Path $staging $archive
-	Step "Downloading PrismaLens $Version for $target"
-	if (-not (Fetch "$baseUrl/v$Version/$archive" $archiveFile)) { Fail "Couldn't download $archive" }
-
-	$mb = "{0:N1} MB" -f ((Get-Item $archiveFile).Length / 1MB)
-	Step "Verifying $mb against SHA256SUMS"
+	# The checksum is the release's own; the archive may come from any base and is verified against it.
 	$expected = ""
 	foreach ($line in Get-Content $sums) {
 		$parts = $line.Trim() -split '\s+'
 		if ($parts.Length -ge 2 -and ($parts[1] -eq $archive -or $parts[1] -eq "*$archive")) { $expected = $parts[0].ToLower(); break }
 	}
-	if (-not $expected) { Fail "$archive isn't listed in SHA256SUMS" }
-	$actual = (Get-FileHash -Path $archiveFile -Algorithm SHA256).Hash.ToLower()
-	if ($actual -ne $expected) { Fail "Checksum mismatch for $archive; nothing was installed" }
+	if (-not $expected) { Fail "$archive isn't listed in SHA256SUMS on $(Base-Host $sumsBase); nothing was installed." }
+	$tried = @()
+	$verified = $false
+	foreach ($base in $bases) {
+		if ($verified) { break }
+		$h = Base-Host $base
+		# A base with a successor is dropped after 30 s without a byte.
+		$stall = if ($base -eq $sumsBase) { 0 } else { 30 }
+		$url = "$base/v$Version/$archive"
+		$bytes = Get-Size $url
+		$size = if ($bytes) { " ({0:N0} MB)" -f ($bytes / 1MB) } else { "" }
+		Step "Downloading PrismaLens $Version for $target$size from $h"
+		if (-not (Fetch $url $archiveFile -Progress -Stall $stall)) { $tried += "${h}: download failed"; continue }
+		$mb = "{0:N1} MB" -f ((Get-Item $archiveFile).Length / 1MB)
+		Step "Verifying $mb against SHA256SUMS from $(Base-Host $sumsBase)"
+		$actual = (Get-FileHash -Path $archiveFile -Algorithm SHA256).Hash.ToLower()
+		if ($actual -ne $expected) { $tried += "${h}: Checksum mismatch"; continue }
+		$verified = $true
+	}
+	if (-not $verified) { Fail "Couldn't install $archive from $(Hosts-Tried); nothing was installed. $($tried -join '; ')" }
 
 	$dest = Join-Path $runtimeRoot $Version
 	Step "Installing to $dest"

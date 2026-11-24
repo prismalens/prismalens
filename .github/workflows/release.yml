@@ -162,6 +162,16 @@ jobs:
           TAG: ${{ needs.draft.outputs.tag }}
         run: gh release upload "$TAG" assets/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
 
+  # After publishing, so an R2 outage never holds a release: until the mirror has it, clients fall back to GitHub.
+  mirror:
+    needs: [draft, publish-release]
+    uses: ./.github/workflows/mirror-release.yml
+    with:
+      tag: ${{ needs.draft.outputs.tag }}
+    secrets:
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+
   # The release publishes first: npm's launcher downloads from it, and a draft's assets are not public (#717).
   publish-release:
     name: Publish the release

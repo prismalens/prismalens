@@ -558,6 +558,22 @@
 	},
 	{
 		"file": "release.yml",
+		"job": "mirror",
+		"call": {
+			"uses": "./.github/workflows/mirror-release.yml",
+			"with": {
+				"tag": "${{ needs.draft.outputs.tag }}"
+			},
+			"secrets": {
+				"R2_ACCESS_KEY_ID": "${{ secrets.R2_ACCESS_KEY_ID }}",
+				"R2_SECRET_ACCESS_KEY": "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+			},
+			"permissions": null
+		},
+		"steps": []
+	},
+	{
+		"file": "release.yml",
 		"job": "npm",
 		"call": null,
 		"steps": [
