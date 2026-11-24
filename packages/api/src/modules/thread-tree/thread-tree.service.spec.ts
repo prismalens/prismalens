@@ -1258,6 +1258,7 @@ describe("records follow their threads, and nothing waits forever (#1024 spec F)
 		try {
 			await actions.deliverOutcomes();
 			expect(sent.some((m) => m.id === running.id && m.text.includes('"fresh"'))).toBe(true);
+			expect(dispatch.resumeInvestigation.mock.calls.map((c) => c[0])).toEqual([ended.id]);
 			for (let i = 0; i < 70; i++) await actions.deliverOutcomes();
 			tries = dispatch.resumeInvestigation.mock.calls.length;
 		} finally {
@@ -1268,8 +1269,9 @@ describe("records follow their threads, and nothing waits forever (#1024 spec F)
 				return true;
 			});
 		}
-		// 50 per batch at most, 30 tries each, then they wait for the caller's next run.
-		expect(tries).toBeLessThanOrEqual(51 * 30);
+		// One reopen per pass for the caller, not one per row: 30 passes give up the first 50
+		// (one batch), 30 more give up the 51st, and the last 11 passes ask nobody.
+		expect(tries).toBe(60);
 		expect(await prisma.pendingAction.count({ where: { callerId: ended.id, deliveredAt: null } })).toBe(51);
 		dispatch.resumeInvestigation.mockClear();
 		await actions.deliverOutcomes();
