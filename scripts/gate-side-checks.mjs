@@ -43,8 +43,10 @@
  * systemd and is reported N/A elsewhere; `lock` on Windows ends the holder outright,
  * since Windows has no SIGTERM, and expects the next boot to take the stale lock.
  *
- * Usage: gate-side-checks.mjs [--tarball <path>] [--only telemetry,lock,...] [--no-skip]
- *   With no --tarball, packs the built CLI (`pack-cli.mjs --skip-build`).
+ * Usage: gate-side-checks.mjs [--tarball <path> | --archive <path> [--launcher <path>]] [--only telemetry,lock,...] [--no-skip]
+ *   With neither, packs the built CLI (`pack-cli.mjs --skip-build`). --archive: a release's own
+ *   archive for this OS, served as it is (a draft's, before it is public); --launcher: the pinned
+ *   launcher packed once for that release, installed instead of one packed here (#1154).
  *   --no-skip makes a SKIP a failure: the CI jobs on all three OSes pass it.
  */
 import { execFile, execFileSync, spawn } from "node:child_process";
@@ -78,7 +80,13 @@ import {
 	systemDirs,
 } from "./lib/gate-portable.mjs";
 import { isolateService, UNIT } from "./lib/gate-service-sandbox.mjs";
-import { prepareLauncher, tarballVersion } from "./lib/launcher-mirror.mjs";
+import {
+	archiveVersion,
+	assertPinnedArchive,
+	launcherPins,
+	prepareLauncher,
+	tarballVersion,
+} from "./lib/launcher-mirror.mjs";
 import { freePort, startLocalRegistry } from "./lib/local-registry.mjs";
 import { installWithRetry } from "./lib/npm-install-retry.mjs";
 
@@ -104,14 +112,17 @@ const WIN = process.platform === "win32";
 const { values: opts } = parseArgs({
 	options: {
 		tarball: { type: "string" },
+		archive: { type: "string" },
+		launcher: { type: "string" },
 		only: { type: "string" },
 		"no-skip": { type: "boolean" },
 		help: { type: "boolean", short: "h" },
 	},
 });
 if (opts.help) {
-	console.log(`Usage: gate-side-checks.mjs [--tarball <path>] [--only telemetry,update,lock,reset,hosts,upgrade,rollback] [--no-skip]
-  With no --tarball, packs the built CLI (pack-cli.mjs --skip-build).
+	console.log(`Usage: gate-side-checks.mjs [--tarball <path> | --archive <path> [--launcher <path>]] [--only telemetry,update,lock,reset,hosts,upgrade,rollback] [--no-skip]
+  With neither, packs the built CLI (pack-cli.mjs --skip-build).
+  --archive is a release's own archive for this OS; --launcher the launcher pinned to that release.
   --no-skip fails the run when a check SKIPs. rollback is N/A off Linux.`);
 	process.exit(0);
 }
@@ -128,6 +139,21 @@ function assert(cond, msg) {
 }
 
 // ---------- setup: tarball, install, stub, preload ----------
+
+/** The app the checks run, `{ tgz }` or a release's own `{ archive }`, and its version. */
+function appSource() {
+	if (opts.archive) {
+		if (opts.tarball) throw new Error("--archive and --tarball are exclusive");
+		const archive = resolve(opts.archive);
+		const version = archiveVersion(archive);
+		if (opts.launcher)
+			assertPinnedArchive(launcherPins(resolve(opts.launcher)), archive);
+		return { source: { archive }, version };
+	}
+	if (opts.launcher) throw new Error("--launcher goes with --archive");
+	const tgz = findOrPackTarball();
+	return { source: { tgz }, version: tarballVersion(tgz) };
+}
 
 function findOrPackTarball() {
 	if (opts.tarball) return resolve(opts.tarball);
@@ -913,7 +939,7 @@ async function startRegistry(sb) {
  * refuses to start `up`, leaking a pairing token in its reason.
  */
 function publishCopies(sb, npmEnv, { broken, token = "G".repeat(43) }) {
-	const current = tarballVersion(ctx.tarball);
+	const current = ctx.version;
 	const [ma, mi, pa] = current.split(".").map(Number);
 	const next = `${ma}.${mi}.${pa + 1}`;
 	const refuseUp = `if (process.argv.includes("up")) {
@@ -924,10 +950,10 @@ function publishCopies(sb, npmEnv, { broken, token = "G".repeat(43) }) {
 console.log("${next}");
 `;
 	const release = prepareLauncher({
-		tgz: ctx.tarball,
+		...ctx.source,
 		work: join(sb.dir, "release"),
 		releases: [
-			{ version: current, launcher: true },
+			{ version: current, launcher: ctx.launcher ?? true },
 			{ version: next, launcher: true, ...(broken ? { app: refuseUp } : {}) },
 		],
 	});
@@ -1181,12 +1207,12 @@ async function main() {
 	const runnable = checksFor(wanted);
 	if (runnable.length === 0) return printResults();
 	root = mkdtempSync(join(tmpdir(), "pl-gate-side-"));
-	const tarball = findOrPackTarball();
-	const version = tarballVersion(tarball);
+	const { source, version } = appSource();
+	const launcher = opts.launcher && resolve(opts.launcher);
 	const release = prepareLauncher({
-		tgz: tarball,
+		...source,
 		work: join(root, "release"),
-		releases: [{ version, launcher: true }],
+		releases: [{ version, launcher: launcher ?? true }],
 	});
 	const prefix = join(root, "prefix");
 	log(
@@ -1195,7 +1221,9 @@ async function main() {
 	npmInstall(prefix, release.launchers[version]);
 	const pty = await import("@lydell/node-pty");
 	ctx = {
-		tarball,
+		source,
+		version,
+		launcher,
 		cli: cliOf(join(prefix, "node_modules", "prismalens")),
 		launcherEnv: {
 			PRISMALENS_RELEASE_BASE_URL: release.baseUrl,

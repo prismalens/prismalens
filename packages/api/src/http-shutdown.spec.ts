@@ -52,7 +52,8 @@ function readForceCloseOptionFromMain(): boolean {
 }
 
 describe("shutdown with a browser holding an event stream open (walk f20)", () => {
-	it("hangs without forceCloseConnections — the bug", async () => {
+	// Proving a hang means waiting out closeWithOpenStream's 2 s window.
+	it("hangs without forceCloseConnections — the bug", { timeout: 10_000 }, async () => {
 		expect(await closeWithOpenStream(false)).toBe("hung");
 	});
 

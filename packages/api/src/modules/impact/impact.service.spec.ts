@@ -63,7 +63,15 @@ describe("ImpactService", () => {
 				return send(res, { groups: [{ rules: fake.rules(url.searchParams.get("rule_name[]") ?? "") }] });
 			if (url.pathname.endsWith("/api/v1/query_range")) {
 				const out = fake.range(q);
-				if (out === "slow") return void (await new Promise((r) => setTimeout(r, 2000)));
+				// Ends when the client gives up, so the next test does not wait out the 2 s.
+				if (out === "slow")
+					return void (await new Promise<void>((r) => {
+						const t = setTimeout(r, 2000);
+						res.on("close", () => {
+							clearTimeout(t);
+							r();
+						});
+					}));
 				if (out === "garbled") return void res.writeHead(200).end("sentinel-credential {");
 				if (out === "huge")
 					return send(res, { result: [{ metric: { pad: "x".repeat(3 * 1024 * 1024) }, values: [] }] });

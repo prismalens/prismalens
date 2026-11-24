@@ -1,0 +1,44 @@
+name: Report failure
+description: Open or update one issue by exact title when red; comment and close it when green.
+inputs:
+  title:
+    description: Exact issue title. Ignored when `batch` is set.
+    default: ""
+  body:
+    description: Markdown body, rewritten on every red run.
+    default: ""
+  body-file:
+    description: Path of a file holding the body, instead of `body`.
+    default: ""
+  labels:
+    description: Comma-separated labels; ones the repository lacks are skipped.
+    default: ""
+  ok:
+    description: "true closes the issue, false opens or updates it."
+    required: true
+  batch:
+    description: Path of a JSON array of {title, body, labels, ok}, one entry per issue, instead of the single-issue inputs.
+    default: ""
+  dry-run:
+    description: "true prints the gh calls and runs none."
+    default: "false"
+  token:
+    description: "Token with issues: write."
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - name: Open, update or close the issue
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ github.repository }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        TITLE: ${{ inputs.title }}
+        BODY: ${{ inputs.body }}
+        BODY_FILE: ${{ inputs.body-file }}
+        LABELS: ${{ inputs.labels }}
+        OK: ${{ inputs.ok }}
+        BATCH_FILE: ${{ inputs.batch }}
+        DRY_RUN: ${{ inputs.dry-run }}
+      run: node "$GITHUB_ACTION_PATH/../../../scripts/report-failure.mjs"

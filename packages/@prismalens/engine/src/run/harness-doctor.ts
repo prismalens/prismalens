@@ -43,6 +43,8 @@ export { versionOf };
 
 const execFileAsync = promisify(execFile);
 const RUN_DIR_PREFIX = "pl-doctor-";
+/** A run folder is named with the epoch ms it was made at, so its age is read off the clock that made it. */
+const STAMPED_RUN_DIR = /^pl-doctor-(\d{13})-/;
 const STALE_RUN_DIR_MS = 24 * 60 * 60 * 1000;
 /** claude-agent-acp pushes its sign-in after `initialize` from a CLI probe it never waits on. */
 const AUTH_STATUS_WAIT_MS = 3_000;
@@ -206,7 +208,11 @@ export function removeRunDir(dir: string): void {
 	}
 }
 
-/** Removes run folders a crashed or Windows-locked check left in `root` over a day ago (#1013). */
+/**
+ * Removes run folders a crashed or Windows-locked check left in `root` over a day ago (#1013). Another
+ * process's live folder shares `root`, so the age comes from the stamp in the name, never from the file
+ * system's mtime: a clock running ahead of the file system would read that live folder as old.
+ */
 export function sweepStaleRunDirs(root = tmpdir(), now = Date.now()): void {
 	let names: string[];
 	try {
@@ -218,7 +224,9 @@ export function sweepStaleRunDirs(root = tmpdir(), now = Date.now()): void {
 		if (!name.startsWith(RUN_DIR_PREFIX)) continue;
 		const dir = join(root, name);
 		try {
-			if (now - statSync(dir).mtimeMs > STALE_RUN_DIR_MS) removeRunDir(dir);
+			const stamp = STAMPED_RUN_DIR.exec(name)?.[1];
+			const madeAt = stamp ? Number(stamp) : statSync(dir).mtimeMs;
+			if (now - madeAt > STALE_RUN_DIR_MS) removeRunDir(dir);
 		} catch {
 			// Gone already.
 		}
@@ -263,7 +271,7 @@ export async function probeHarness(
 		swept = true;
 		sweepStaleRunDirs();
 	}
-	const runDir = mkdtempSync(join(tmpdir(), RUN_DIR_PREFIX));
+	const runDir = mkdtempSync(join(tmpdir(), `${RUN_DIR_PREFIX}${Date.now()}-`));
 	const cwd = join(runDir, "workspace");
 	mkdirSync(cwd, { recursive: true });
 
