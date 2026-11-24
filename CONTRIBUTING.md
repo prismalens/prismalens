@@ -461,6 +461,10 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
    files are exempt until touched. Fix the implementation, not the test,
    unless the test is wrong. A frontend unit test that reaches the API fails
    (`src/test-setup.ts`): mock the hook or give the component the data it reads.
+   On CI, an api or frontend test that spends over 40% of its timeout fails
+   (`scripts/lib/timeout-budget-reporter.mjs`), and the api's tests run again
+   with the clock 40 days ahead: use fake timers or a measured timeout, never
+   today's date.
 3. Make sure `pnpm typecheck`, `pnpm build`, `pnpm test`, and
    `pnpm format-and-lint` all pass.
 4. **Commit** using [Conventional Commits](https://www.conventionalcommits.org/):

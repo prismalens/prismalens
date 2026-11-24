@@ -223,7 +223,7 @@ export async function mirrorPublished(
 }
 
 /** The npm package at `version`, packed by the same script release.yml publishes with. */
-export function packLauncherAt(version, outDir) {
+export function packLauncherAt(version, outDir, extra = []) {
 	mkdirSync(outDir, { recursive: true });
 	execFileSync(
 		process.execPath,
@@ -233,6 +233,7 @@ export function packLauncherAt(version, outDir) {
 			outDir,
 			"--version",
 			version,
+			...extra,
 		],
 		{ cwd: ROOT, stdio: ["ignore", "ignore", "inherit"] },
 	);

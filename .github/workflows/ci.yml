@@ -117,8 +117,7 @@ jobs:
       - name: publint (publishable packages)
         run: pnpm publint
 
-  # Node is .nvmrc's, the engines.node floor `pl doctor` enforces (#673 s6). macOS runs nightly
-  # and on a release PR (`proofs.yml`), because its PR runs flaked (#959).
+  # Node is .nvmrc's, the engines.node floor `pl doctor` enforces (#673 s6). macOS runs in `proofs.yml`.
   test:
     name: Unit tests (ubuntu-latest)
     needs: build
@@ -148,10 +147,56 @@ jobs:
 
       # Coverage floors (#58) run here: cli and database `test` already pass --coverage,
       # and the api's floor only evaluates under `test:cov`.
+      # A test over 40% of its timeout here times out on a slower runner (#1085).
       - name: Test with coverage thresholds
+        env:
+          VITEST_TIMEOUT_BUDGET: "0.4"
         run: |
           pnpm turbo run test --filter='!@prismalens/api'
           pnpm turbo run test:cov --filter=@prismalens/api
+
+  # The api's tests with the clock 40 days ahead: a test written against today's date fails
+  # here on its PR, not on the day it expires (#1085; the cron.spec 7-day bomb from #1088).
+  test-later:
+    name: Unit tests, clock 40 days ahead (api)
+    needs: [changes, build]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore the build from the build job
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .turbo-cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+
+      - run: pnpm turbo run build --filter=@prismalens/api...
+
+      - name: Install libfaketime
+        run: sudo apt-get install -y --no-install-recommends faketime
+
+      # Outside turbo, so no cached result of the real-clock run stands in for this one.
+      - name: Test
+        working-directory: packages/api
+        env:
+          FAKETIME: "+40d"
+          FAKETIME_DONT_FAKE_MONOTONIC: "1"
+        run: LD_PRELOAD="$(dpkg -L libfaketime | grep 'libfaketime.so.1$')" pnpm exec vitest run
 
   # Packed-artifact smoke (work-005 R0.d): pack the single published tarball
   # (prismalens — the @prismalens/* closure is bundled into it, issue #193) and
@@ -359,7 +404,7 @@ jobs:
 
       # These read scripts and workflows only, so a CI-only change is proven here without a build.
       - name: Script tests
-        run: node --test --test-timeout=300000 scripts/launcher/launcher.test.mjs scripts/launcher/runtime.test.mjs scripts/launcher/review.test.mjs scripts/prune-nightlies.test.mjs scripts/lib/launcher-mirror.test.mjs scripts/lib/service-stops.test.mjs scripts/release-workflows.test.mjs scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/ci-gate-report.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-facts.test.mjs scripts/agent-adapter-sdk.test.mjs scripts/workflow-pins.test.mjs scripts/nightly-version.test.mjs scripts/setup-worktree.test.mjs scripts/sim/lib.test.mjs
+        run: node --test --test-timeout=300000 scripts/launcher/launcher.test.mjs scripts/launcher/runtime.test.mjs scripts/launcher/review.test.mjs scripts/prune-nightlies.test.mjs scripts/lib/launcher-mirror.test.mjs scripts/lib/service-stops.test.mjs scripts/release-workflows.test.mjs scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/timeout-budget-reporter.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/ci-gate-report.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-facts.test.mjs scripts/agent-adapter-sdk.test.mjs scripts/workflow-pins.test.mjs scripts/nightly-version.test.mjs scripts/setup-worktree.test.mjs scripts/sim/lib.test.mjs
 
   # The `gate-scripts` job that stood here tested `.github/scripts/` — the
   # merge-gate publisher, the high-risk path matcher, and their producer-transport
@@ -377,13 +422,14 @@ jobs:
   proofs:
     name: Proofs
     needs: changes
-    if: needs.changes.outputs.full == 'true' || needs.changes.outputs.agents == 'true'
+    if: needs.changes.outputs.full == 'true' || needs.changes.outputs.agents == 'true' || needs.changes.outputs.code == 'true'
     permissions:
       contents: read
     uses: ./.github/workflows/proofs.yml
     with:
       full: ${{ needs.changes.outputs.full == 'true' }}
       agents: ${{ needs.changes.outputs.agents == 'true' }}
+      code: ${{ needs.changes.outputs.code == 'true' }}
 
   # The single aggregating required status check. The branch ruleset requires
   # THIS context instead of enumerating every job above, so adding, renaming, or
@@ -405,6 +451,7 @@ jobs:
       - changes
       - build
       - test
+      - test-later
       - pack
       - packed-smoke
       - packed-intake
@@ -445,7 +492,8 @@ jobs:
                 elif . == "packed-intake" or . == "packed-upgrade-smoke" then $p.intake
                 elif . == "e2e" then $p.e2e
                 elif . == "lint" then (if $p.skip == "true" then "false" else "true" end)
-                elif . == "proofs" then (if $p.full == "false" and $p.agents == "false" then "false" else "true" end)
+                elif . == "proofs" then (if $p.full == "false" and $p.agents == "false" and $p.code == "false" then "false" else "true" end)
+                elif . == "test-later" then $p.code
                 else "true" end;
             to_entries
             | map(select(.value.result != "success"

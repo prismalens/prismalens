@@ -17,6 +17,8 @@
  *
  * Usage: packed-upgrade-chain.mjs <dir-with-tarball>
  *   PRISMALENS_TARBALL overrides with an exact path. Env: PACKED_CHAIN_PORT (default 3107).
+ *   PACKED_CHAIN_RELEASE_BASE: the candidate is a public release there; its launcher is packed
+ *   pinned, as npm will carry it, and fetches that release's own archive (#1085).
  *   An old `pl` with no `upgrade` command is moved by `npm install -g`, and the hop says so.
  */
 import { execFile, execFileSync, spawn } from "node:child_process";
@@ -37,6 +39,7 @@ import { baseEnv, homeDirs, killTree } from "./lib/gate-portable.mjs";
 import {
 	mirrorPublished,
 	nightlyAfter,
+	packLauncherAt,
 	prepareLauncher,
 } from "./lib/launcher-mirror.mjs";
 import { startLocalRegistry } from "./lib/local-registry.mjs";
@@ -346,11 +349,42 @@ async function main() {
 		throw new Error("npm lists no release to upgrade from");
 	const plan = hops(releases, candidate);
 	const nightly = nightlyAfter(candidate);
+	const releaseBase = process.env.PACKED_CHAIN_RELEASE_BASE;
+	if (releaseBase && candidate !== own)
+		throw new Error(
+			`${own} is already on npm; a release proof needs an unpublished one`,
+		);
 	const mirror = prepareLauncher({
 		tgz,
 		work: join(work, "release"),
-		releases: [{ version: candidate, launcher: true }, { version: nightly }],
+		releases: [
+			...(releaseBase ? [] : [{ version: candidate, launcher: true }]),
+			{ version: nightly },
+		],
 	});
+	if (releaseBase) {
+		const tgzPinned = packLauncherAt(
+			candidate,
+			join(work, "release", "pinned"),
+			["--pin", "--release-base", releaseBase],
+		);
+		const { sha256 } = JSON.parse(
+			execFileSync(
+				"tar",
+				["-xzOf", basename(tgzPinned), "package/package.json"],
+				{
+					cwd: dirname(tgzPinned),
+					encoding: "utf8",
+				},
+			),
+		).prismalens.release;
+		await mirrorPublished(
+			mirror.root,
+			{ version: candidate, sha256 },
+			{ base: releaseBase },
+		);
+		mirror.launchers[candidate] = tgzPinned;
+	}
 	const launchers = [];
 	for (const version of releases) {
 		const pins = JSON.parse(
@@ -363,7 +397,7 @@ async function main() {
 		launchers.push(version);
 	}
 	console.log(
-		`[upgrade-chain] mirror ${mirror.baseUrl}: ${candidate} (launcher and archive), ${nightly} (archive), published ${launchers.join(", ") || "none"} (release archives)`,
+		`[upgrade-chain] mirror ${mirror.baseUrl}: ${candidate} (${releaseBase ? "pinned launcher, release archive" : "launcher and archive"}), ${nightly} (archive), published ${launchers.join(", ") || "none"} (release archives)`,
 	);
 
 	const registry = await startLocalRegistry({

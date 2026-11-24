@@ -240,3 +240,22 @@ test("two overlapping releases leave npm's latest on the newer one", async () =>
 		);
 	}
 });
+
+test("npm publishes a release only after every published release upgrades to it, pinned as npm carries it (#1085)", () => {
+	const { jobs } = workflow("release.yml");
+	assert.deepEqual(jobs.npm.needs, [
+		"draft",
+		"publish-release",
+		"upgrade-chain",
+	]);
+	assert.deepEqual(jobs["upgrade-chain"].needs, ["draft", "publish-release"]);
+	const chain = jobs["upgrade-chain"].steps.at(-1);
+	assert.equal(
+		chain.run,
+		"node scripts/packed-upgrade-chain.mjs /tmp/tarballs",
+	);
+	assert.equal(
+		chain.env.PACKED_CHAIN_RELEASE_BASE,
+		"https://github.com/${{ github.repository }}/releases/download",
+	);
+});

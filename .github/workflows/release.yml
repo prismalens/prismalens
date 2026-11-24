@@ -201,9 +201,35 @@ jobs:
           LATEST: ${{ steps.latest.outputs.latest }}
         run: gh release edit "$TAG" --draft=false "--latest=$LATEST" --repo "$GITHUB_REPOSITORY"
 
+  # The release as npm will carry it: its launcher pinned to this public release, fetching its
+  # own archive, upgraded to from every release on npm. npm waits on it (#1085).
+  upgrade-chain:
+    name: Every published release upgrades to this one
+    needs: [draft, publish-release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.draft.outputs.tag }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: mkdir -p /tmp/tarballs && node scripts/pack-cli.mjs --out /tmp/tarballs
+      - env:
+          PACKED_CHAIN_RELEASE_BASE: https://github.com/${{ github.repository }}/releases/download
+          GH_TOKEN: ""
+        run: node scripts/packed-upgrade-chain.mjs /tmp/tarballs
+
   npm:
     name: Publish to npm
-    needs: [draft, publish-release]
+    needs: [draft, publish-release, upgrade-chain]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # One npm publish at a time across every ref, from reading npm's `latest` to publishing,

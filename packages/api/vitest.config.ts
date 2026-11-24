@@ -57,6 +57,15 @@ export default defineConfig({
 		}),
 	],
 	test: {
+		// CI fails a test that spends over VITEST_TIMEOUT_BUDGET of its timeout here (#1085).
+		...(process.env.VITEST_TIMEOUT_BUDGET
+			? {
+					reporters: [
+						"default",
+						"../../scripts/lib/timeout-budget-reporter.mjs",
+					],
+				}
+			: {}),
 		globals: true,
 		environment: "node",
 		root: "./",
