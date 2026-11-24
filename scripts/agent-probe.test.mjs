@@ -66,7 +66,13 @@ test("rows run at the channel's latest and pin, the next major's latest, and the
 			id: "opencode",
 			channel: npm("opencode-ai"),
 			version: "1.19.5",
-			label: "latest, pin",
+			label: "latest",
+		},
+		{
+			id: "opencode",
+			channel: npm("opencode-ai"),
+			version: "1.19.5",
+			label: "pin",
 		},
 		{
 			id: "opencode",
@@ -181,7 +187,7 @@ test("the next major is held to its own recorded differences, the pin and latest
 		facts: { directories: fact(false), images: fact(true) },
 		nextFacts: { directories: true },
 	};
-	assert.equal(factsFor(row, { label: "latest, pin" }), row.facts);
+	assert.equal(factsFor(row, { label: "pin" }), row.facts);
 	assert.deepEqual(factsFor(row, { next: true }), {
 		directories: fact(true),
 		images: fact(true),
@@ -218,10 +224,6 @@ test("a pinned Python agent resolves its dependencies as of its upload plus the 
 test("only a pin installs from npm as of its soak; latest installs what users get today (#1085)", () => {
 	assert.deepEqual(
 		npmPinFlags({ label: "latest" }, "opencode-ai", "1.19.6"),
-		[],
-	);
-	assert.deepEqual(
-		npmPinFlags({ label: "latest, pin" }, "opencode-ai", "1.19.6"),
 		[],
 	);
 });

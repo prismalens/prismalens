@@ -129,9 +129,10 @@ export const npmPinFlags = (probe, pkg, version) =>
 		? ["--before", resolvedAsOf(npmPublishedAt(pkg, version))]
 		: [];
 
-/** One entry per version: a latest that is also the pin runs once. */
+/** A latest leg and a pin leg, even when they name the same version. */
 function atLatestAndPin(latest, pin, make) {
-	if (!pin || pin === latest) return [make(latest, "latest, pin")];
+	// The same version still runs twice: the pin installs as CI does, latest as users do.
+	if (!pin) return [make(latest, "latest")];
 	return [make(latest, "latest"), make(pin, "pin")];
 }
 
