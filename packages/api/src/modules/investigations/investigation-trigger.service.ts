@@ -300,8 +300,12 @@ export class InvestigationTriggerService {
 			alertUse ? { harness: alertUse.harness } : {},
 		);
 		if (selection.runnable) {
+			// The model the run will start with: the alert run's own, only on its own agent.
 			const readiness = await this.harnessService.ensureReady(
 				selection.harness,
+				alertUse && selection.harness === alertUse.harness
+					? alertUse.model
+					: undefined,
 			);
 			if (!readiness.ready) {
 				this.logger.log(

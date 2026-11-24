@@ -341,6 +341,46 @@ describe("InvestigationTriggerService", () => {
 			);
 		});
 
+		it("checks readiness for the alert run's own model, and skips when that model is signed out", async () => {
+			mockHarnessService.getSettings.mockResolvedValue({
+				harness: "auto",
+				useDefaults: { alert: { harness: "opencode", model: "google/gemini-4-neon" } },
+			});
+			mockHarnessService.resolveSelection.mockResolvedValue({
+				runnable: true,
+				harness: "opencode",
+			});
+			mockHarnessService.ensureReady.mockImplementation((async (
+				_id: string,
+				model?: string | null,
+			) =>
+				model === "google/gemini-4-neon"
+					? { ready: false, reason: "OpenCode: not signed in for google" }
+					: { ready: true }) as never);
+
+			await service.triggerInvestigation(incident, decision);
+
+			expect(mockHarnessService.ensureReady).toHaveBeenCalledWith(
+				"opencode",
+				"google/gemini-4-neon",
+			);
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+			expect(mockTimelineService.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					title: "Auto-investigation skipped: OpenCode: not signed in for google",
+				}),
+			);
+		});
+
+		it("checks the global model when the alert run names no model of its own", async () => {
+			await service.triggerInvestigation(incident, decision);
+
+			expect(mockHarnessService.ensureReady).toHaveBeenCalledWith(
+				"codex",
+				undefined,
+			);
+		});
+
 		it("does not enqueue when an investigation is already in progress", async () => {
 			mockInvestigationsService.startOrGet.mockResolvedValue({ investigation: { id: "inv-running" }, created: false });
 
