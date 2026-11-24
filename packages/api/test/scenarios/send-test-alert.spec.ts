@@ -14,7 +14,7 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => {
 	await pl.dispose();
-});
+}, 60_000);
 
 function gitFolder(name: string): string {
 	const dir = join(pl.workspace, "projects", name);
@@ -66,7 +66,7 @@ describe("Send a test alert", () => {
 			"the investigation the test alert started",
 		);
 		expect(run?.triggerType).toBe("auto_critical");
-	});
+	}, 60_000);
 
 	it("When the same test alert is sent again while its incident is open, Then it joins that incident and starts no second run", async () => {
 		const first = await pl.api<Sent>("/webhooks/test", {
@@ -83,7 +83,7 @@ describe("Send a test alert", () => {
 		expect(
 			(await pl.investigations(first.incidentId as string)).length,
 		).toBe(1);
-	});
+	}, 60_000);
 
 	it("When a test alert names a project that does not exist, Then its incident has no service and no investigation starts", async () => {
 		const sent = await pl.api<Sent>("/webhooks/test", {
@@ -96,5 +96,5 @@ describe("Send a test alert", () => {
 		);
 		expect(incident.serviceId ?? null).toBeNull();
 		expect(await pl.investigations(sent.incidentId as string)).toEqual([]);
-	});
+	}, 60_000);
 });

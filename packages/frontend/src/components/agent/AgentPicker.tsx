@@ -326,12 +326,15 @@ export function ModelChip({
 	}, [isLoading, agentId, model, shown, emptyName, asDefault]);
 	const markId = harness?.id ?? early?.agent;
 	// The chip shows who makes the model it names, as its row does; the agent only while none is named.
-	const chipMark =
-		harness && current && modelState(harness) !== "own" ? (
-			<MakerMark maker={makerOf(harness, current)} className="size-3.5" />
-		) : markId ? (
-			<AgentMark id={markId} className="size-3.5" />
-		) : null;
+	const maker =
+		harness && current && modelState(harness) !== "own"
+			? makerOf(harness, current)
+			: null;
+	const chipMark = maker ? (
+		<MakerMark maker={maker} className="size-3.5" />
+	) : markId ? (
+		<AgentMark id={markId} className="size-3.5" />
+	) : null;
 	return (
 		<>
 			<Picker

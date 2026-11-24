@@ -73,4 +73,20 @@ describe("ModelChip", () => {
 		);
 		expect(host.querySelector("[data-testid=agent-logo]")).toBeNull();
 	});
+
+	it("shows the OpenCode logo when the model names no maker", () => {
+		const host = document.createElement("div");
+		document.body.appendChild(host);
+		act(() =>
+			createRoot(host).render(
+				<ModelChip
+					harness={opencode}
+					model="fixture-current"
+					onPick={vi.fn()}
+				/>,
+			),
+		);
+		expect(host.querySelectorAll("[data-testid=agent-logo]")).toHaveLength(1);
+		expect(host.querySelector("[data-testid=maker-lettermark]")).toBeNull();
+	});
 });
