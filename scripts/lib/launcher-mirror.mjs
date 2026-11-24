@@ -4,7 +4,7 @@
 // What the release proofs install (#717): the packed launcher, plus this runner's standalone
 // archive of each version in a release-shaped mirror (<root>/v<version>/{archive,SHA256SUMS})
 // that the launcher reads through PRISMALENS_RELEASE_BASE_URL.
-//   node scripts/lib/launcher-mirror.mjs --tarball <app.tgz> --out <dir> --release <v>[:launcher]...
+//   node scripts/lib/launcher-mirror.mjs --tarball <app.tgz> | --archive <release archive> --out <dir> --release <v>[:launcher]...
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -16,6 +16,7 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	renameSync,
 	rmSync,
 	statSync,
 	writeFileSync,
@@ -33,6 +34,20 @@ export const ownTarget = (platform = process.platform, arch = process.arch) =>
 
 export const archiveFile = (version, target = ownTarget()) =>
 	`prismalens-${version}-${target}.${target.startsWith("win32") ? "zip" : "tar.gz"}`;
+
+/** The standalone archive a release attaches, as opposed to the app tarball it is built from. */
+export const isArchive = (file) => /\.(tar\.gz|zip)$/.test(file);
+
+const ARCHIVE_NAME =
+	/^prismalens-(.+)-((?:darwin|linux|win32)-(?:x64|arm64))\.(?:tar\.gz|zip)$/;
+
+function parseArchive(archive) {
+	const m = ARCHIVE_NAME.exec(basename(archive));
+	if (!m) throw new Error(`${archive} is not a prismalens standalone archive`);
+	return { version: m[1], target: m[2] };
+}
+
+export const archiveVersion = (archive) => parseArchive(archive).version;
 
 const sha256 = (file) =>
 	createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -53,6 +68,29 @@ function extractCopy(tgz, cwd, members = []) {
 	} finally {
 		rmSync(copy, { force: true });
 	}
+}
+
+/** The tar that reads and writes a .zip: Windows ships it, and Git Bash's own cannot. */
+const bsdtar = () =>
+	WIN
+		? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
+		: "tar";
+
+/** Extracts a release archive (tar.gz or zip) into `cwd`, or only its `members`. */
+function extractArchive(archive, cwd, members = []) {
+	const copy = join(cwd, basename(archive));
+	copyFileSync(archive, copy);
+	try {
+		execFileSync(bsdtar(), ["-xf", basename(archive), ...members], { cwd });
+	} finally {
+		rmSync(copy, { force: true });
+	}
+}
+
+/** Writes `archive` from the folder `top` under `stage`: a zip for a .zip name, else a tar.gz. */
+function packArchive(stage, top, archive) {
+	const flag = archive.endsWith(".zip") ? "-a" : "-z";
+	execFileSync(bsdtar(), [flag, "-cf", archive, top], { cwd: stage });
 }
 
 export const tarballVersion = (tgz) =>
@@ -80,6 +118,27 @@ export function retagTarball(tgz, version, dir) {
 	);
 	rmSync(work, { recursive: true, force: true });
 	return join(dir, out.trim().split("\n").at(-1).trim());
+}
+
+/**
+ * A copy of a release's own archive under another version: the same node and app bytes, with the
+ * folder and `app/package.json` renamed, as retagTarball does for the app tarball.
+ */
+export function retagArchive(archive, version, dir) {
+	const { version: from, target } = parseArchive(archive);
+	const stage = mkdtempSync(join(dir, "retag-archive-"));
+	extractArchive(archive, stage);
+	const top = `prismalens-${version}-${target}`;
+	renameSync(join(stage, `prismalens-${from}-${target}`), join(stage, top));
+	const manifest = join(stage, top, "app", "package.json");
+	const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+	pkg.version = version;
+	writeFileSync(manifest, JSON.stringify(pkg, null, 2));
+	const out = join(dir, archiveFile(version, target));
+	rmSync(out, { force: true });
+	packArchive(stage, top, out);
+	rmSync(stage, { recursive: true, force: true });
+	return out;
 }
 
 /** scripts/build-standalone.mjs for this runner's target, kept per tarball digest across runs. */
@@ -131,8 +190,14 @@ export function fakeArchive({ version, app, outDir, schemaFrom }) {
 	);
 	if (schemaFrom) {
 		const unpack = mkdtempSync(join(outDir, "schema-"));
-		extractCopy(schemaFrom, unpack, [`package/${SCHEMA}`]);
-		cpSync(join(unpack, "package", SCHEMA), join(stage, top, "app", SCHEMA), {
+		// An app tarball holds the migrations under package/, a release archive under its app/.
+		let root = "package";
+		if (isArchive(schemaFrom)) {
+			const own = parseArchive(schemaFrom);
+			root = `prismalens-${own.version}-${own.target}/app`;
+			extractArchive(schemaFrom, unpack, [`${root}/${SCHEMA}`]);
+		} else extractCopy(schemaFrom, unpack, [`${root}/${SCHEMA}`]);
+		cpSync(join(unpack, root, SCHEMA), join(stage, top, "app", SCHEMA), {
 			recursive: true,
 		});
 		rmSync(unpack, { recursive: true, force: true });
@@ -144,10 +209,7 @@ export function fakeArchive({ version, app, outDir, schemaFrom }) {
 	copyFileSync(process.execPath, node);
 	if (!WIN) chmodSync(node, 0o755);
 	const archive = join(outDir, archiveFile(version));
-	const tar = WIN
-		? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
-		: "tar";
-	execFileSync(tar, [WIN ? "-a" : "-z", "-cf", archive, top], { cwd: stage });
+	packArchive(stage, top, archive);
 	rmSync(stage, { recursive: true, force: true });
 	return archive;
 }
@@ -176,8 +238,114 @@ export function publishToMirror(root, archive, version) {
 	writeFileSync(sums, mergeSums(before, name, sha256(archive)));
 }
 
+export const RELEASES_URL =
+	"https://github.com/prismalens/prismalens/releases/download";
+
+/**
+ * A published launcher fetches its own release's archive and refuses any other digest, so the
+ * mirror must carry that exact archive, not one built here (#1154).
+ * @param {string} root the mirror
+ * @param {{ version: string, sha256: Record<string, string> }} release a published launcher's pins
+ */
+export async function mirrorPublished(
+	root,
+	{ version, sha256 },
+	{
+		base = RELEASES_URL,
+		fetchImpl = fetch,
+		target = ownTarget(),
+		tries = 3,
+	} = {},
+) {
+	const name = archiveFile(version, target);
+	const pinned = sha256[target];
+	if (!pinned)
+		throw new Error(`prismalens@${version} pins no archive for ${target}`);
+	const url = `${base}/v${version}/${name}`;
+	let bytes;
+	// A network error (reading the body included) or a 5xx is tried again; any other answer is the release's.
+	for (let attempt = 1; !bytes; attempt++) {
+		let status = 0;
+		try {
+			const res = await fetchImpl(url, {
+				signal: AbortSignal.timeout(300_000),
+			});
+			if (res.ok) bytes = Buffer.from(await res.arrayBuffer());
+			else status = res.status;
+		} catch (e) {
+			if (attempt >= tries) throw e;
+			continue;
+		}
+		if (status && (status < 500 || attempt >= tries))
+			throw new Error(`${url} answered ${status}`);
+	}
+	const digest = createHash("sha256").update(bytes).digest("hex");
+	if (digest !== pinned)
+		throw new Error(`${url} has sha256 ${digest}; the launcher pins ${pinned}`);
+	const staged = join(mkdtempSync(join(root, "..", "published-")), name);
+	writeFileSync(staged, bytes);
+	publishToMirror(root, staged, version);
+	rmSync(dirname(staged), { recursive: true, force: true });
+}
+
+/** Throws unless `archive` is the release's archive for `target` and has the digest its launcher pins. */
+export function assertPinnedArchive(
+	{ version, sha256: pins },
+	archive,
+	target = ownTarget(),
+) {
+	const pinned = pins[target];
+	if (!pinned)
+		throw new Error(`prismalens@${version} pins no archive for ${target}`);
+	if (basename(archive) !== archiveFile(version, target))
+		throw new Error(
+			`${archive} is not ${archiveFile(version, target)}, the archive of ${version} for ${target}`,
+		);
+	const digest = sha256(archive);
+	if (digest !== pinned)
+		throw new Error(
+			`${archive} has sha256 ${digest}; the launcher pins ${pinned}`,
+		);
+}
+
+/** The release a packed launcher is pinned to: its version and each target's archive digest. */
+export function launcherPins(launcher) {
+	const manifest = JSON.parse(
+		tarIn(launcher, ["-xzOf", "package/package.json"]),
+	);
+	return {
+		version: manifest.version,
+		sha256: manifest.prismalens?.release?.sha256 ?? {},
+	};
+}
+
+/**
+ * The mirror for a release before it is public: the draft's own archive for this runner, served as
+ * it is, and the launcher npm will carry, packed once and pinned to the draft's digests.
+ * @param {{ archive: string, launcher: string, work: string, releases?: { version: string }[] }} options
+ */
+export function prepareDraftRelease({
+	archive,
+	launcher,
+	work,
+	releases = [],
+}) {
+	const pins = launcherPins(launcher);
+	const version = archiveVersion(archive);
+	if (pins.version !== version)
+		throw new Error(
+			`the launcher is ${pins.version} and the archive ${version}; they are not one release`,
+		);
+	assertPinnedArchive(pins, archive);
+	return prepareLauncher({
+		archive,
+		work,
+		releases: [{ version, launcher }, ...releases],
+	});
+}
+
 /** The npm package at `version`, packed by the same script release.yml publishes with. */
-export function packLauncherAt(version, outDir) {
+export function packLauncherAt(version, outDir, extra = []) {
 	mkdirSync(outDir, { recursive: true });
 	execFileSync(
 		process.execPath,
@@ -187,6 +355,7 @@ export function packLauncherAt(version, outDir) {
 			outDir,
 			"--version",
 			version,
+			...extra,
 		],
 		{ cwd: ROOT, stdio: ["ignore", "ignore", "inherit"] },
 	);
@@ -197,29 +366,41 @@ export function packLauncherAt(version, outDir) {
 }
 
 /**
- * The mirror and launchers for `releases`, built from the app tarball `tgz`.
- * @param {{ tgz: string, work: string, releases: { version: string, launcher?: boolean, app?: string }[] }} options
+ * The mirror and launchers for `releases`, built from the app tarball `tgz`, or from a release's
+ * own archive `archive` (its version and this runner's target), whose bytes are served as they are.
+ * A release's `launcher` is packed here, or is the path of a launcher packed already.
+ * @param {{ tgz?: string, archive?: string, work: string, releases: { version: string, launcher?: boolean | string, app?: string }[] }} options
  */
-export function prepareLauncher({ tgz, work, releases }) {
+export function prepareLauncher({ tgz, archive: source, work, releases }) {
+	if (!tgz === !source)
+		throw new Error(
+			"prepareLauncher takes an app tarball or a release archive",
+		);
 	const root = join(work, "mirror");
 	const launchers = {};
 	const archives = {};
 	mkdirSync(root, { recursive: true });
-	const own = tarballVersion(tgz);
+	const own = tgz ? tarballVersion(tgz) : archiveVersion(source);
 	for (const r of releases) {
-		const archive = r.app
-			? fakeArchive({
-					version: r.version,
-					app: r.app,
-					outDir: work,
-					schemaFrom: tgz,
-				})
-			: buildArchive(
-					r.version === own ? tgz : retagTarball(tgz, r.version, work),
-				);
+		let archive;
+		if (r.app)
+			archive = fakeArchive({
+				version: r.version,
+				app: r.app,
+				outDir: work,
+				schemaFrom: tgz ?? source,
+			});
+		else if (source)
+			archive =
+				r.version === own ? source : retagArchive(source, r.version, work);
+		else
+			archive = buildArchive(
+				r.version === own ? tgz : retagTarball(tgz, r.version, work),
+			);
 		publishToMirror(root, archive, r.version);
 		archives[r.version] = archive;
-		if (r.launcher)
+		if (typeof r.launcher === "string") launchers[r.version] = r.launcher;
+		else if (r.launcher)
 			launchers[r.version] = packLauncherAt(
 				r.version,
 				join(work, "launcher", r.version),
@@ -258,26 +439,38 @@ if (
 	const { values } = parseArgs({
 		options: {
 			tarball: { type: "string" },
+			archive: { type: "string" },
+			launcher: { type: "string" },
 			out: { type: "string" },
 			release: { type: "string", multiple: true },
 		},
 	});
-	if (!values.tarball || !values.out) {
+	if (!values.out || !values.tarball === !values.archive) {
 		console.error(
-			"usage: launcher-mirror.mjs --tarball <app.tgz> --out <dir> [--release <v>[:launcher]]...",
+			"usage: launcher-mirror.mjs (--tarball <app.tgz> | --archive <release archive> [--launcher <pinned launcher.tgz>]) --out <dir> [--release <v>[:launcher]]...",
 		);
 		process.exit(2);
 	}
-	const tgz = resolve(values.tarball);
 	const work = resolve(values.out);
 	mkdirSync(work, { recursive: true });
-	const releases = (values.release ?? [`${tarballVersion(tgz)}:launcher`]).map(
-		(r) => {
+	let result;
+	if (values.archive && values.launcher) {
+		result = prepareDraftRelease({
+			archive: resolve(values.archive),
+			launcher: resolve(values.launcher),
+			work,
+			releases: (values.release ?? []).map((version) => ({ version })),
+		});
+	} else {
+		const tgz = values.tarball && resolve(values.tarball);
+		const archive = values.archive && resolve(values.archive);
+		const own = tgz ? tarballVersion(tgz) : archiveVersion(archive);
+		const releases = (values.release ?? [`${own}:launcher`]).map((r) => {
 			const [version, kind] = r.split(":");
 			return { version, launcher: kind === "launcher" };
-		},
-	);
-	const result = prepareLauncher({ tgz, work, releases });
+		});
+		result = prepareLauncher({ tgz, archive, work, releases });
+	}
 	writeFileSync(join(work, "mirror.json"), JSON.stringify(result, null, 2));
 	console.log(JSON.stringify(result));
 }

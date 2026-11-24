@@ -38,10 +38,13 @@ type TreeEventBody = TreeEvent extends infer E
 		: never
 	: never;
 
-/** Where a delivery stands: taken by the agent, to retry later, or kept for the thread's next run. */
+/**
+ * Where a delivery stands: taken by the agent, to retry later, or kept for the thread's next run.
+ * `refused`: the thread will not be reopened now, whatever is sent, unlike a busy or racing one.
+ */
 export type Delivery =
 	| { state: "delivered"; messageId: string }
-	| { state: "later" }
+	| { state: "later"; refused?: true }
 	| { state: "parked" };
 
 const logger = new Logger({ context: "ThreadTree" });
@@ -142,7 +145,7 @@ export class TreeIo {
 		} catch (e) {
 			if (e instanceof FollowUpRefused) {
 				logger.info(`Could not reopen ${threadId} for the tree: ${e.message}`);
-				return { state: "later" };
+				return { state: "later", refused: true };
 			}
 			throw e;
 		}

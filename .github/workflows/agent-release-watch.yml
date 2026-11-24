@@ -162,57 +162,39 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      contents: read
       issues: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions
+            scripts
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: probe-failures-*
           path: failures
           merge-multiple: true
 
-      # One open issue per agent and OS, found by its exact title; a red night rewrites its body.
-      # A red leg with no row to file fails this job, so a lost artifact is never a green report.
-      # Artifact fields are data: names are allowlisted, and none is ever spliced into code.
-      - name: Open or update the issue for each failing agent
+      # One open issue per agent and OS, found by its exact title; a red night rewrites its body and a green
+      # one closes it. Artifact fields are data: scripts/agent-report-rows.mjs allowlists them, and the
+      # action passes them to gh as arguments, never through a shell.
+      - name: Build one report per failing agent
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           PROBE_RESULT: ${{ needs.probe.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          set -euo pipefail
-          shopt -s nullglob
-          name_ok='^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$'
-          row_ok='^[A-Za-z0-9@/._ (),-]{1,120}$'
-          bodies=$(mktemp -d)
-          for file in failures/probe-failures-*.tsv; do
-            os=$(basename "$file" .tsv); os=${os#probe-failures-}
-            [[ $os =~ $name_ok ]] || { echo "::error::refusing OS name from the artifact"; exit 1; }
-            while IFS=$'\t' read -r agent what text; do
-              [[ $agent =~ $name_ok && $what =~ $row_ok ]] || { echo "::error::refusing a row from the artifact"; exit 1; }
-              out="$bodies/$agent@$os"
-              [ -e "$out" ] || printf 'Failing rows in the last red run:\n\n' > "$out"
-              printf -- '- %s: %s\n' "$what" "$text" >> "$out"
-            done < "$file"
-          done
-          filed=0
-          for out in "$bodies"/*; do
-            key=$(basename "$out"); agent=${key%@*}; os=${key#*@}
-            title="Agent probe failing: $agent on $os"
-            printf '\n%s\n\nPosted by the agent-release-watch workflow.\n' "$RUN_URL" >> "$out"
-            number=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number,title \
-              | jq -r --arg t "$title" '.[] | select(.title == $t) | .number' | head -n1)
-            if [ -n "$number" ]; then
-              gh issue edit "$number" -R "$GITHUB_REPOSITORY" --body-file "$out"
-            else
-              gh issue create -R "$GITHUB_REPOSITORY" --title "$title" --body-file "$out"
-            fi
-            filed=$((filed + 1))
-          done
-          echo "filed or updated $filed issue(s); probe result: $PROBE_RESULT"
-          if [ "$PROBE_RESULT" != success ] && [ "$filed" -eq 0 ]; then
-            echo "::error::a probe leg was $PROBE_RESULT but no failing row reached this job"
-            exit 1
-          fi
+          mkdir -p failures
+          node scripts/agent-report-rows.mjs failures "$PROBE_RESULT" "$RUN_URL" > "$RUNNER_TEMP/batch.json"
+
+      - uses: ./.github/actions/report-failure
+        with:
+          ok: "false"
+          batch: ${{ runner.temp }}/batch.json
 
   bump:
     name: Pin bump

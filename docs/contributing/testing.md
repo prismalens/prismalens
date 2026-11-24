@@ -4,25 +4,37 @@ The rules every test is held to are in `AGENTS.md` → *Invariants*. This page i
 
 ## When to write which test
 
-Work test-first: new code ships with tests written at its public seams and at least 80% per-metric coverage. Vitest enforces it through per-glob `coverage.thresholds` (`packages/cli/vitest.config.ts`): when you add a module, add it or its directory to that map, since a new source file with no threshold entry is a missing test. Files that predate the map are exempt until touched.
+Test behaviour once its shape settles. The app changes weekly, so a test pins what a user or caller sees, not how the code does it today.
+
+- A bug fix starts with a test that fails on the bug, at the highest seam that shows it (a journey, a route, a service's public method), then the fix.
+- A feature may start as a spike. Before its PR is ready it has tests at its public seam, or a journey, for the behaviour it ships. A test that breaks on a refactor with no change in behaviour is testing the wrong thing, so write no tests first for internals the next change will move.
+- Coverage shows a reviewer what is untested; it is not a target. Each package's floor in its `vitest.config.ts` is a ratchet: raise it, never lower it. A new module needs no per-file entry. On a PR, the *Unit tests* job lists the added lines no test runs, in its summary and as notices on the diff (`scripts/changed-line-coverage.mjs`); it never fails. CodeRabbit reviews tests against the test rules in `AGENTS.md`.
 
 A frontend unit test that reaches the API fails (`packages/frontend/src/test-setup.ts`): mock the hook or give the component the data it reads. Every PR touching `packages/frontend` ships or extends a spec covering its changed surface.
 
+## Time and timeouts
+
+On CI, an api or frontend test that spends over 40% of its timeout fails (`VITEST_TIMEOUT_BUDGET`, read by `scripts/lib/timeout-budget-reporter.mjs`; each turbo test task passes the variable through). A test that uses that much of its timeout on a fast runner times out on a slow one.
+
+`test-later` in `ci.yml` runs the api's tests again with the clock 40 days ahead (libfaketime). It runs every api test but `test/scenarios/agent-browser.spec.ts`, because a real browser has no coherent clock under libfaketime. A test written against today's date fails there on its PR, not on the day it expires: use fake timers or a measured timeout, never today's date.
+
 ## Journeys and scenarios
 
-Journeys (`packages/frontend/e2e/features/*.feature`) and the API lifecycle scenarios (`packages/api/test/scenarios/`) make every precondition through the product: an alert from the fake Alertmanager through the real webhook, a run by the fake ACP agent, an operator's click or API call. Nothing is seeded or written to the database by hand; the e2e stack's demo seed is only for screens that read. A walk finding is fixed together with the journey or scenario that would have caught it. How to write one, run the suite and read its reports: `packages/frontend/e2e/README.md`.
+The core loop's journeys are written once and run on every target: [journeys.md](journeys.md). Journeys (`packages/frontend/e2e/features/*.feature`) and the API lifecycle scenarios (`packages/api/test/scenarios/`) make every precondition through the product: an alert from the fake Alertmanager through the real webhook, a run by the fake ACP agent, an operator's click or API call. Nothing is seeded or written to the database by hand; the e2e stack's demo seed is only for screens that read. A walk finding is fixed together with the journey or scenario that would have caught it. How to write one, run the suite and read its reports: `packages/frontend/e2e/README.md`.
 
 ## Flaky e2e tests
 
-A test that passes only on a retry is quarantined, not left to retry. Tag it `@quarantine` with a comment naming its open `bug` issue, one issue per test:
+A test that passes only on a retry is quarantined, not left to retry. Tag it `@quarantine` with its open `bug` issue's number on the same line as the tag, one issue per test:
 
 ```gherkin
   # Quarantined: #891 - the inbox's new-alert-row journey passes on its first attempt
-  @quarantine
+  @quarantine #891
   Scenario: A new alert's row appears without a reload
 ```
 
-It then runs in the non-blocking `chromium-quarantine` and `journeys-quarantine` projects, and the issue closes only when the tag comes off. Every run lists its flaky and failed tests in the job summary.
+It then runs in the non-blocking `chromium-quarantine` and `journeys-quarantine` projects, and the issue closes only when the tag comes off. Every run lists its flaky and failed tests in the job summary, and on the default branch a failing one opens or updates the `Quarantined e2e tests failing` issue.
+
+`pnpm quarantine:check` (`scripts/quarantine-check.mjs`) runs in `pnpm format-and-lint`, so in the `lint` job, and reads issue state through `gh`. It fails when a tag names no open issue on its own line, when more than 5 tags exist, or when a named issue is 14 or more days old. It names every offender. Past the limit, fix the test or delete it; do not tag a sixth.
 
 ## The agent loop
 

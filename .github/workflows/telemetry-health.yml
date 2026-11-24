@@ -26,3 +26,32 @@ jobs:
     secrets:
       REVIEW_TELEMETRY_URL: ${{ secrets.REVIEW_TELEMETRY_URL }}
       REVIEW_TELEMETRY_TOKEN: ${{ secrets.REVIEW_TELEMETRY_TOKEN }}
+
+  # The issue for a red report, outside the managed stub above (#1154).
+  report:
+    name: Report the health run
+    needs: health
+    if: always() && needs.health.result != 'cancelled' && github.repository == 'prismalens/prismalens'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions
+            scripts
+          sparse-checkout-cone-mode: false
+
+      - uses: ./.github/actions/report-failure
+        with:
+          title: "Telemetry health failing"
+          labels: bug
+          ok: ${{ needs.health.result == 'success' }}
+          body: |
+            The weekly telemetry health run ended `${{ needs.health.result }}`: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            This issue closes itself on the next green run.

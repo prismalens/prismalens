@@ -233,7 +233,7 @@ jobs:
   report:
     name: Nightly tracking issue
     needs: [proofs, nightly-draft, nightly-standalone, nightly-sums, publish, live-pack, packed-intake-live, harness-admission-live]
-    if: always() && (github.event_name == 'workflow_dispatch' || vars.NIGHTLY_ENABLED == 'true')
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
@@ -244,6 +244,13 @@ jobs:
       issues: write
       actions: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions
+            scripts
+          sparse-checkout-cone-mode: false
       # The first failed or cancelled publication stage is the publish result; else publish's own.
       - name: Publication result
         id: publication
@@ -255,7 +262,20 @@ jobs:
             case "$stage" in failure | cancelled) PUBLISH=$stage; break ;; esac
           done
           echo "result=$PUBLISH" >> "$GITHUB_OUTPUT"
-      - name: Open, update or close the tracking issue
+      # Without NIGHTLY_ENABLED the scheduled run skips every job; say so instead of reading it as a red night.
+      - name: Was the night skipped
+        id: gate
+        env:
+          ENABLED: ${{ vars.NIGHTLY_ENABLED }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != workflow_dispatch ] && [ "$ENABLED" != true ]; then
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            echo "The nightly was skipped: the repository variable NIGHTLY_ENABLED is \"${ENABLED:-unset}\", not \"true\". No issue was touched." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Describe the night
+        id: night
+        if: steps.gate.outputs.skipped != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -264,47 +284,33 @@ jobs:
           PROOFS: ${{ needs.proofs.result }}
           PUBLISH: ${{ steps.publication.outputs.result }}
           LIVE: ${{ needs.live-pack.result }} ${{ needs.packed-intake-live.result }} ${{ needs.harness-admission-live.result }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.report != true }}
         run: |
           set -eu
-          # A dry run says what it would do, in the job summary, and touches no issue.
-          act() {
-            if [ "$DRY_RUN" = true ]; then
-              { echo "Dry run, would run: $*"; [ ! -f "$body" ] || cat "$body"; } | tee -a "$GITHUB_STEP_SUMMARY"
-            else
-              "$@"
-            fi
-          }
-          body="$RUNNER_TEMP/nightly-body.md"
-          title="Nightly CI failing"
-          found=$(gh issue list -R "$REPO" --state all --limit 100 --search "\"$title\" in:title" --json number,title,state)
-          open=$(echo "$found" | jq -r --arg t "$title" '[.[] | select(.title == $t and .state == "OPEN")][0].number // empty')
-          closed=$(echo "$found" | jq -r --arg t "$title" '[.[] | select(.title == $t and .state == "CLOSED")][0].number // empty')
           live_red=false
           for job in $LIVE; do case "$job" in failure | cancelled) live_red=true ;; esac; done
-          if [ "$PROOFS" = success ] && [ "$PUBLISH" != failure ] && [ "$PUBLISH" != cancelled ] && [ "$live_red" = false ]; then
-            if [ -n "$open" ]; then
-              act gh issue close "$open" -R "$REPO" --comment "The nightly proofs passed: $RUN_URL"
-            fi
-            exit 0
-          fi
+          ok=false
+          if [ "$PROOFS" = success ] && [ "$PUBLISH" != failure ] && [ "$PUBLISH" != cancelled ] && [ "$live_red" = false ]; then ok=true; fi
           failed=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate --jq '.jobs[] | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped" and .name != "Nightly tracking issue") | "- \(.name): \(.conclusion) \(.html_url)"')
+          bt='`'
           {
-            echo "The nightly proofs ended \`$PROOFS\`, its publish \`$PUBLISH\` and the live checks \`$LIVE\`: $RUN_URL"
+            echo "ok=$ok"
+            echo "body<<NIGHTLY_BODY_EOF"
+            echo "The nightly proofs ended $bt$PROOFS$bt, its publish $bt$PUBLISH$bt and the live checks $bt$LIVE$bt: $RUN_URL"
             echo
             echo "Red jobs:"
             echo "${failed:-- none listed; the run was cancelled or a job never started}"
             echo
             echo "These run outside pull requests and never block one. This issue closes itself on the next green night."
-          } > "$body"
-          if [ -n "$open" ]; then
-            act gh issue edit "$open" -R "$REPO" --body-file "$body"
-          elif [ -n "$closed" ]; then
-            act gh issue reopen "$closed" -R "$REPO" --comment "Red again: $RUN_URL"
-            act gh issue edit "$closed" -R "$REPO" --body-file "$body"
-          else
-            act gh issue create -R "$REPO" --title "$title" --body-file "$body"
-          fi
+            echo "NIGHTLY_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/report-failure
+        if: steps.gate.outputs.skipped != 'true'
+        with:
+          title: Nightly CI failing
+          body: ${{ steps.night.outputs.body }}
+          ok: ${{ steps.night.outputs.ok }}
+          # A dry run says what it would do, in the job summary, and touches no issue.
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.report != true }}
 
   # The live agent check (#884): the real pinned agent on its free model, every scheduled night and on
   # dispatch with `live` (#1085). Release gate: dispatch with `ref` set to the release PR's base SHA (README.md).
@@ -381,9 +387,10 @@ jobs:
           passed=0
           for n in 1 2 3; do
             echo "::group::attempt $n"
-            if PACKED_INTAKE_EVENTS_OUT="$PWD/events/attempt-$n.json" \
+            if PACKED_INTAKE_JOURNEYS=alert-to-report \
+              PACKED_INTAKE_EVENTS_OUT="$PWD/events/attempt-$n.json" \
               PACKED_INTAKE_PORT=$((3102 + n)) \
-              timeout 20m node scripts/packed-intake.mjs tarballs; then
+              timeout 18m node scripts/packed-intake.mjs tarballs; then
               passed=$((passed + 1))
               echo "attempt $n: valid report" >> "$GITHUB_STEP_SUMMARY"
             else
@@ -396,6 +403,11 @@ jobs:
             echo "::error::only $passed of 3 attempts completed with a valid report; 2 are needed"
             exit 1
           fi
+          # One run cut off by a restart and taken up again; the 75-minute job fits 3 x 18 + 15.
+          echo "::group::restart-resumes"
+          PACKED_INTAKE_JOURNEYS=restart-resumes PACKED_INTAKE_PORT=3106 \
+            timeout 15m node scripts/packed-intake.mjs tarballs
+          echo "::endgroup::"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

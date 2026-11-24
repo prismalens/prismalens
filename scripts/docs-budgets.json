@@ -15,6 +15,7 @@
 		"RELEASING.md": 1200,
 		"SECURITY.md": 730,
 		"VERSIONING.md": 310,
+		"docs/contributing/journeys.md": 200,
 		"docs/contributing/migrations.md": 520,
 		"docs/contributing/release-pipeline.md": 1400,
 		"docs/contributing/testing.md": 1000,

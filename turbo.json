@@ -51,10 +51,12 @@
 			"dependsOn": ["^build", "registry:gen"]
 		},
 		"test": {
+			"env": ["VITEST_TIMEOUT_BUDGET"],
 			"dependsOn": ["^build", "registry:gen"],
 			"outputs": ["coverage/**", "*.xml"]
 		},
 		"test:cov": {
+			"env": ["VITEST_TIMEOUT_BUDGET"],
 			"dependsOn": ["^build"],
 			"outputs": ["coverage/**"]
 		},
@@ -74,6 +76,7 @@
 			"dependsOn": ["^build", "db:generate"]
 		},
 		"@prismalens/database#test": {
+			"env": ["VITEST_TIMEOUT_BUDGET"],
 			"dependsOn": ["^build", "db:generate"],
 			"outputs": ["coverage/**", "*.xml"]
 		},
