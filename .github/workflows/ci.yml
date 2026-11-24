@@ -22,6 +22,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
+  # The merge queue builds each entry on its own commit and waits for `CI gate` there; the plan runs everything.
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
@@ -56,16 +59,34 @@ jobs:
       defer: ${{ steps.plan.outputs.defer }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
+      # Turbo reads the history to list the packages a PR changes; blobs come on demand.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          sparse-checkout: scripts/ci-plan.mjs
-          sparse-checkout-cone-mode: false
+          fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
+
+      - name: Setup pnpm
+        if: github.event_name == 'pull_request'
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node
+        if: github.event_name == 'pull_request'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Turbo is the root package's own dependency; the graph needs no other install.
+      - name: Install turbo
+        if: github.event_name == 'pull_request'
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter prismalens-monorepo
 
       - name: Plan
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
           EVENT_NAME: ${{ github.event_name }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -392,8 +413,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Biome reads source only — no build or Prisma generate required.
+      # Biome reads source only — no build or Prisma generate required. `quarantine:check`, chained into
+      # `format-and-lint`, reads issue state through `gh`.
       - name: Biome check (format + lint)
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: pnpm format-and-lint
 
       # With `format-and-lint` above (Biome and the stylesheet look rules) this is the static UI checks
@@ -403,8 +427,9 @@ jobs:
         run: bash packages/frontend/scripts/ui-gates.sh "origin/${{ github.base_ref }}"
 
       # These read scripts and workflows only, so a CI-only change is proven here without a build.
+      # Found by glob, so a new `*.test.mjs` runs without a line here.
       - name: Script tests
-        run: node --test --test-timeout=300000 scripts/launcher/launcher.test.mjs scripts/launcher/runtime.test.mjs scripts/launcher/review.test.mjs scripts/prune-nightlies.test.mjs scripts/lib/launcher-mirror.test.mjs scripts/lib/service-stops.test.mjs scripts/release-workflows.test.mjs scripts/pack-cli.test.mjs scripts/install/package-manifests.test.mjs scripts/lib/gate-service-sandbox.test.mjs scripts/gate-side-checks.test.mjs scripts/lib/gate-portable.test.mjs scripts/lib/upgrade-chain.test.mjs scripts/lib/timeout-budget-reporter.test.mjs scripts/lib/app-boot-retry.test.mjs scripts/ci-plan.test.mjs scripts/ci-gate-report.test.mjs scripts/agent-probe.test.mjs scripts/check-artifact.test.mjs scripts/install/encoding.test.mjs scripts/lib/npm-install-retry.test.mjs scripts/agent-tested.test.mjs scripts/agent-facts.test.mjs scripts/agent-adapter-sdk.test.mjs scripts/workflow-pins.test.mjs scripts/nightly-version.test.mjs scripts/setup-worktree.test.mjs scripts/sim/lib.test.mjs
+        run: node --test --test-timeout=300000 'scripts/**/*.test.mjs'
 
   # The `gate-scripts` job that stood here tested `.github/scripts/` — the
   # merge-gate publisher, the high-risk path matcher, and their producer-transport
@@ -416,6 +441,10 @@ jobs:
     name: E2E
     needs: [build, changes]
     if: needs.changes.outputs.e2e == 'true'
+    # `issues: write` is for the quarantine report step in e2e-browser.yml; a called workflow cannot exceed it.
+    permissions:
+      contents: read
+      issues: write
     uses: ./.github/workflows/e2e-browser.yml
 
   # The proofs a release PR, or a change to what they read, needs on its own commit (proofs.yml, #1052).

@@ -21,6 +21,9 @@ on:
       - reopened
       - edited
       - synchronize
+  # The merge queue waits for this check on its own commit, which has no PR title: the job runs and passes.
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   pull-requests: read
@@ -46,4 +49,6 @@ jobs:
     steps:
       # validation logic lives in canon; the job/check name must stay stable
       # (pinned as a required check in the ruleset).
-      - uses: prismalens/gh-workflows/actions/pr-title@86342cb105815ce2ed6887fdcf23dd668643ab9e # main
+      # The PR was validated when it entered the queue; a merge group has no title to read.
+      - if: github.event_name != 'merge_group'
+        uses: prismalens/gh-workflows/actions/pr-title@86342cb105815ce2ed6887fdcf23dd668643ab9e # main

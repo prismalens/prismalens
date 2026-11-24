@@ -21,10 +21,12 @@ live ruleset, are what to trust.
 | `CI gate`                                  | `ci.yml` → job `ci-gate`; when red it labels each job `failed`, `timed out`, `never started` (cancelled before a runner took it) or `cancelled mid-run`, with the step and a link, and says when `gh run rerun --failed` is enough. Any run, red or green, lists jobs that waited 10 minutes or more for a runner | check run |
 | `Validate PR title (conventional commits)` | `pr-title.yml` → job `validate` (single check run; step-level event split)                         | check run |
 
-There is no merge queue: it left the ruleset in #1023 after flakes kept ejecting PRs from it (#989, #1018).
-Both required contexts report on `pull_request` events only, and a PR can merge without a run on top of
-current `main`. The push run on `main` is the backstop for two PRs that are each green and break `main`
-together.
+There is no merge queue in the ruleset: it left in #1023 after flakes kept ejecting PRs from it (#989, #1018).
+Both required contexts also report on `merge_group`, so the queue can be switched on without editing a workflow:
+`ci.yml` plans everything for a merge group and `CI gate` must pass on it, and `pr-title.yml` passes there with
+its title step skipped, since a merge group has no title. Until the queue is on, a PR can merge without a run on
+top of current `main`, and the push run on `main` is the backstop for two PRs that are each green and break
+`main` together.
 
 The third blocker is not a check at all: `required_review_thread_resolution: true`
 on the same ruleset. An unresolved review thread blocks the merge button natively,
@@ -69,16 +71,18 @@ required context and accepts a skipped job only when that plan says `false` for 
 | Plan | Set when | Effect |
 | --- | --- | --- |
 | `skip` | the PR head tree equals the tree of an earlier passing `CI` run on that branch (a merge or rebase that leaves the tree unchanged; not `git merge -s ours` while `main` has other changes, see CONTRIBUTING.md, Landing a stack), or the PR changes only root `*.md` files, or the PR is marked ready for review and a `CI` run on exactly that head commit already passed | only `changes` and `CI gate` run |
-| `code` | `false` when every changed path is CI-only: Markdown, `docs/`, repo metadata, workflows other than `ci.yml` and `e2e-browser.yml`, and the scripts the nightly proofs own | `build`, `test`, `pack`, `packed-smoke` are skipped; `lint` and its script tests still run |
-| `e2e` | `true` unless every changed path is CI-only or under `packages/desktop/` | the browser suite |
-| `intake` | `true` unless every changed path is CI-only or under `packages/frontend/` or `packages/desktop/` | `packed-intake` and `packed-upgrade-smoke` |
-| `full` | a release-please PR, the `full-ci` label, or a change to packaging or the gate scripts (`pack-cli`, `check-artifact`, `gate-side-checks`, the upgrade scripts, `scripts/install/`, `scripts/lib/`) or to the CLI commands they drive (`service`, `upgrade`, `update-notice`, `reset`, `instance-check`, `up`) or to `ci.yml`, `proofs.yml`, `nightly.yml` | `proofs` runs the tarball, macOS and release-side proofs |
-| `agents` | a release PR or the `full-ci` label, or a PR touching any path not on `SAFE_FOR_AGENTS` (metadata, tests, `packages/{frontend,desktop,api,cli}`, `auth`, `database`, `logger`, workflows other than `ci.yml`, and the `ci-*`, `gate-side-checks`, upgrade and `workflow-pins` scripts) | `proofs` runs the five `Agent qualification` legs |
+| `code` | `false` when every changed path is CI-only: Markdown, `docs/`, repo metadata, workflows other than `ci.yml` and `e2e-browser.yml`, and the scripts the nightly proofs own; `true` when turbo lists any package as affected | `build`, `test`, `pack`, `packed-smoke` are skipped; `lint` and its script tests still run |
+| `e2e` | `@prismalens/frontend` or `@prismalens/api` is affected (changed, or a package it depends on changed), or a path outside the packages needs it | the browser suite |
+| `intake` | `prismalens` (the packed tarball) is affected, or a path outside the packages needs it | `packed-intake` and `packed-upgrade-smoke` |
+| `full` | a release-please PR, the `full-ci` label, a merge group, a change to the CLI's own sources (`packages/cli/`, tests and Markdown aside), or any path outside the packages that is not named as not reading the proofs (Markdown, `docs/`, repo metadata, the lockfile and root manifests, workflows other than `ci.yml`, `proofs.yml` and `nightly.yml`, and the CI-only scripts in `OUTSIDE`) | `proofs` runs the tarball, macOS and release-side proofs |
+| `agents` | a release PR, the `full-ci` label or a merge group, or `@prismalens/engine`, `@prismalens/agent-host` or `@prismalens/agent-adapters` is affected (changed, or a dependency of the engine changed), or a path outside the packages needs it (`scripts/agent-*`, `admission-fake`, the pins, the lockfile, `proofs.yml`, `ci.yml`) | `proofs` runs the five `Agent qualification` legs |
 | `defer` | a release-please PR that is a draft | nothing runs; `CI gate` is red on purpose until the PR is marked ready, which starts the run |
 
 A renamed file counts under both its names, so moving a source file into a skipped path still runs its proofs.
 A push to `main` runs the PR checks (`code`, `e2e`, `intake`); the `proofs` jobs run in `nightly.yml`.
-A path on no list turns its tier on, so a new package runs it until it is listed.
+Package paths are decided by turbo's graph (`turbo ls --affected` against `origin/<base>`), so a new package needs no list.
+A path outside every package that `OUTSIDE` in `scripts/ci-plan.mjs` does not name turns every tier on, and so does a failed
+turbo call or a package turbo does not list although the PR changed its files. A merge group runs every tier.
 The `full-ci` label is read at the next push or re-run; adding it does not start a run. To run the proofs on a branch
 without a release PR: `gh workflow run nightly.yml --ref <branch>`.
 

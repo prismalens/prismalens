@@ -82,7 +82,10 @@
 			"uses": "./.github/workflows/e2e-browser.yml",
 			"with": null,
 			"secrets": null,
-			"permissions": null
+			"permissions": {
+				"contents": "read",
+				"issues": "write"
+			}
 		},
 		"steps": []
 	},
