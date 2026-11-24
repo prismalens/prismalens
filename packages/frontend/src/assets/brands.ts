@@ -9,7 +9,7 @@
  */
 const FILES = import.meta.glob<string>("./brands/*.svg", {
 	eager: true,
-	query: "?url",
+	query: "?no-inline",
 	import: "default",
 });
 
