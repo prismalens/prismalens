@@ -634,5 +634,320 @@
 			"permissions": null
 		},
 		"steps": []
+	},
+	{
+		"file": "agent-release-watch.yml",
+		"job": "report",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"persist-credentials": false,
+					"sparse-checkout": ".github/actions\nscripts\n",
+					"sparse-checkout-cone-mode": false
+				},
+				"env": null
+			},
+			{
+				"uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+				"with": {
+					"pattern": "probe-failures-*",
+					"path": "failures",
+					"merge-multiple": true
+				},
+				"env": null
+			},
+			{
+				"run": "mkdir -p failures\nnode scripts/agent-report-rows.mjs failures \"$PROBE_RESULT\" \"$RUN_URL\" > \"$RUNNER_TEMP/batch.json\"",
+				"cwd": ".",
+				"env": {
+					"GH_TOKEN": "${{ github.token }}",
+					"PROBE_RESULT": "${{ needs.probe.result }}",
+					"RUN_URL": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+				}
+			},
+			{
+				"uses": "./.github/actions/report-failure",
+				"with": {
+					"ok": "false",
+					"batch": "${{ runner.temp }}/batch.json"
+				},
+				"env": null
+			}
+		]
+	},
+	{
+		"file": "dependency-audit.yml",
+		"job": "report",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"persist-credentials": false,
+					"sparse-checkout": ".github/actions\nscripts\n",
+					"sparse-checkout-cone-mode": false
+				},
+				"env": null
+			},
+			{
+				"uses": "./.github/actions/report-failure",
+				"with": {
+					"title": "Dependency audit failing",
+					"labels": "dependencies",
+					"ok": "${{ needs.audit.result == 'success' }}",
+					"body": "The weekly `pnpm audit --audit-level=high` ended `${{ needs.audit.result }}`: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nDependabot opens the fix PRs. This issue closes itself on the next green audit.\n"
+				},
+				"env": null
+			}
+		]
+	},
+	{
+		"file": "e2e-browser-mobile.yml",
+		"job": "report",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"persist-credentials": false,
+					"sparse-checkout": ".github/actions\nscripts\n",
+					"sparse-checkout-cone-mode": false
+				},
+				"env": null
+			},
+			{
+				"uses": "./.github/actions/report-failure",
+				"with": {
+					"title": "Phone and tablet e2e failing",
+					"labels": "bug",
+					"ok": "${{ needs.responsive.result == 'success' }}",
+					"body": "The nightly @responsive journeys (Pixel 7, iPad) ended `${{ needs.responsive.result }}`: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nThe `playwright-report-responsive` artifact holds the report. This issue closes itself on the next green night.\n"
+				},
+				"env": null
+			}
+		]
+	},
+	{
+		"file": "e2e-browser.yml",
+		"job": "e2e",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": null,
+				"env": null
+			},
+			{
+				"uses": "pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115",
+				"with": null,
+				"env": null
+			},
+			{
+				"uses": "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
+				"with": {
+					"node-version-file": ".nvmrc",
+					"cache": "pnpm"
+				},
+				"env": null
+			},
+			{
+				"run": "pnpm install --frozen-lockfile",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"uses": "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+				"with": {
+					"path": ".turbo-cache",
+					"key": "turbo-${{ runner.os }}-${{ github.sha }}",
+					"restore-keys": "turbo-${{ runner.os }}-"
+				},
+				"env": null
+			},
+			{
+				"run": "pnpm build",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "pnpm exec playwright install chromium\nif ! node -e \"require('@playwright/test').chromium.launch().then((b) => b.close())\"; then\n  pnpm exec playwright install-deps chromium\nfi",
+				"cwd": "packages/frontend",
+				"env": null
+			},
+			{
+				"run": "pnpm --filter @prismalens/frontend test:e2e --project=chromium --project=journeys --shard=${{ matrix.shard }}/4",
+				"cwd": ".",
+				"env": {
+					"PLAYWRIGHT_JSON_OUTPUT_NAME": "${{ runner.temp }}/playwright-main.json"
+				}
+			},
+			{
+				"run": "if [ -f \"$RUNNER_TEMP/playwright-main.json\" ]; then\n  sh scripts/playwright-summary.sh \"$RUNNER_TEMP/playwright-main.json\" \"Playwright E2E, shard ${{ matrix.shard }}/4\" | tee -a \"$GITHUB_STEP_SUMMARY\"\nfi",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "pnpm --filter @prismalens/frontend test:e2e --project=chromium-reset --project=journeys-reset --workers=1",
+				"cwd": ".",
+				"env": {
+					"PLAYWRIGHT_HTML_OUTPUT_DIR": "${{ github.workspace }}/packages/frontend/playwright-report-reset"
+				}
+			},
+			{
+				"run": "pnpm --filter @prismalens/frontend test:e2e --project=chromium-quarantine --project=journeys-quarantine",
+				"cwd": ".",
+				"env": {
+					"PLAYWRIGHT_JSON_OUTPUT_NAME": "${{ runner.temp }}/playwright-quarantine.json",
+					"PLAYWRIGHT_HTML_OUTPUT_DIR": "${{ github.workspace }}/packages/frontend/playwright-report-quarantine"
+				}
+			},
+			{
+				"run": "if [ -f \"$RUNNER_TEMP/playwright-quarantine.json\" ]; then\n  sh scripts/playwright-summary.sh \"$RUNNER_TEMP/playwright-quarantine.json\" \"Playwright E2E, quarantined (non-blocking)\" | tee -a \"$GITHUB_STEP_SUMMARY\" \"$RUNNER_TEMP/quarantine-summary.md\"\nfi",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"uses": "./.github/actions/report-failure",
+				"with": {
+					"title": "Quarantined e2e tests failing",
+					"labels": "bug",
+					"ok": "${{ steps.quarantine.outcome == 'success' }}",
+					"body-file": "${{ runner.temp }}/quarantine-summary.md"
+				},
+				"env": null
+			},
+			{
+				"uses": "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+				"with": {
+					"name": "playwright-report-${{ matrix.shard }}",
+					"path": "packages/frontend/playwright-report/\npackages/frontend/playwright-report-quarantine/\npackages/frontend/test-results/\n",
+					"retention-days": 7
+				},
+				"env": null
+			}
+		]
+	},
+	{
+		"file": "mutation.yml",
+		"job": "report",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"persist-credentials": false,
+					"sparse-checkout": ".github/actions\nscripts\n",
+					"sparse-checkout-cone-mode": false
+				},
+				"env": null
+			},
+			{
+				"uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+				"with": {
+					"pattern": "mutation-*",
+					"path": "reports"
+				},
+				"env": null
+			},
+			{
+				"run": "mkdir -p reports\ngh api \"repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs\" --paginate             | jq -s '{jobs: [.[].jobs[] | {name, conclusion, html_url, steps: [.steps[] | {name, conclusion}]}]}' > \"$RUNNER_TEMP/jobs.json\"\nnode scripts/mutation-report.mjs reports \"$RUNNER_TEMP/jobs.json\" \"$RUN_URL\" > \"$RUNNER_TEMP/batch.json\"",
+				"cwd": ".",
+				"env": {
+					"GH_TOKEN": "${{ github.token }}",
+					"RUN_URL": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+				}
+			},
+			{
+				"uses": "./.github/actions/report-failure",
+				"with": {
+					"ok": "false",
+					"batch": "${{ runner.temp }}/batch.json"
+				},
+				"env": null
+			}
+		]
+	},
+	{
+		"file": "nightly.yml",
+		"job": "report",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"persist-credentials": false,
+					"sparse-checkout": ".github/actions\nscripts\n",
+					"sparse-checkout-cone-mode": false
+				},
+				"env": null
+			},
+			{
+				"run": "for stage in $STAGES; do\n  case \"$stage\" in failure | cancelled) PUBLISH=$stage; break ;; esac\ndone\necho \"result=$PUBLISH\" >> \"$GITHUB_OUTPUT\"",
+				"cwd": ".",
+				"env": {
+					"STAGES": "${{ needs.nightly-draft.result }} ${{ needs.nightly-standalone.result }} ${{ needs.nightly-sums.result }}",
+					"PUBLISH": "${{ needs.publish.result }}"
+				}
+			},
+			{
+				"run": "if [ \"$EVENT\" != workflow_dispatch ] && [ \"$ENABLED\" != true ]; then\n  echo \"skipped=true\" >> \"$GITHUB_OUTPUT\"\n  echo \"The nightly was skipped: the repository variable NIGHTLY_ENABLED is \\\"${ENABLED:-unset}\\\", not \\\"true\\\". No issue was touched.\" | tee -a \"$GITHUB_STEP_SUMMARY\"\nfi",
+				"cwd": ".",
+				"env": {
+					"ENABLED": "${{ vars.NIGHTLY_ENABLED }}",
+					"EVENT": "${{ github.event_name }}"
+				}
+			},
+			{
+				"run": "set -eu\nlive_red=false\nfor job in $LIVE; do case \"$job\" in failure | cancelled) live_red=true ;; esac; done\nok=false\nif [ \"$PROOFS\" = success ] && [ \"$PUBLISH\" != failure ] && [ \"$PUBLISH\" != cancelled ] && [ \"$live_red\" = false ]; then ok=true; fi\nfailed=$(gh api \"repos/$REPO/actions/runs/$RUN_ID/jobs\" --paginate --jq '.jobs[] | select(.conclusion != null and .conclusion != \"success\" and .conclusion != \"skipped\" and .name != \"Nightly tracking issue\") | \"- \\(.name): \\(.conclusion) \\(.html_url)\"')\nbt='`'\n{\n  echo \"ok=$ok\"\n  echo \"body<<NIGHTLY_BODY_EOF\"\n  echo \"The nightly proofs ended $bt$PROOFS$bt, its publish $bt$PUBLISH$bt and the live checks $bt$LIVE$bt: $RUN_URL\"\n  echo\n  echo \"Red jobs:\"\n  echo \"${failed:-- none listed; the run was cancelled or a job never started}\"\n  echo\n  echo \"These run outside pull requests and never block one. This issue closes itself on the next green night.\"\n  echo \"NIGHTLY_BODY_EOF\"\n} >> \"$GITHUB_OUTPUT\"",
+				"cwd": ".",
+				"env": {
+					"GH_TOKEN": "${{ github.token }}",
+					"REPO": "${{ github.repository }}",
+					"RUN_URL": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+					"RUN_ID": "${{ github.run_id }}",
+					"PROOFS": "${{ needs.proofs.result }}",
+					"PUBLISH": "${{ steps.publication.outputs.result }}",
+					"LIVE": "${{ needs.live-pack.result }} ${{ needs.packed-intake-live.result }} ${{ needs.harness-admission-live.result }}"
+				}
+			},
+			{
+				"uses": "./.github/actions/report-failure",
+				"with": {
+					"title": "Nightly CI failing",
+					"body": "${{ steps.night.outputs.body }}",
+					"ok": "${{ steps.night.outputs.ok }}",
+					"dry-run": "${{ github.event_name == 'workflow_dispatch' && inputs.report != true }}"
+				},
+				"env": null
+			}
+		]
+	},
+	{
+		"file": "telemetry-health.yml",
+		"job": "report",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"persist-credentials": false,
+					"sparse-checkout": ".github/actions\nscripts\n",
+					"sparse-checkout-cone-mode": false
+				},
+				"env": null
+			},
+			{
+				"uses": "./.github/actions/report-failure",
+				"with": {
+					"title": "Telemetry health failing",
+					"labels": "bug",
+					"ok": "${{ needs.health.result == 'success' }}",
+					"body": "The weekly telemetry health run ended `${{ needs.health.result }}`: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nThis issue closes itself on the next green run.\n"
+				},
+				"env": null
+			}
+		]
 	}
 ]
