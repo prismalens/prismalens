@@ -39,9 +39,11 @@ export async function runJourneys(
 			});
 		} catch (error) {
 			await explainStall(target, investigations, log);
-			throw new Error(`journey ${journey.name} failed on ${target.name}`, {
-				cause: error,
-			});
+			const why = error instanceof Error ? error.message : String(error);
+			throw new Error(
+				`journey ${journey.name} failed on ${target.name}: ${why}`,
+				{ cause: error },
+			);
 		}
 		log(`[journey] ${journey.name} OK`);
 	}
