@@ -26,6 +26,7 @@ import {
 	WorkspaceRemovalSchema,
 } from "@prismalens/contracts";
 import { z } from "zod";
+import * as clock from "../../core/clock.js";
 import {
 	defaultMirrorRoot,
 	setMirrorLocations,
@@ -108,7 +109,7 @@ export class RunWorkspacesService implements OnModuleInit, OnModuleDestroy {
 				)?.id ?? null,
 			record: (removals) => this.record(removals),
 		});
-		this.timer = setInterval(() => void this.sweep(), HOUR_MS);
+		this.timer = clock.setInterval(() => void this.sweep(), HOUR_MS);
 		this.timer.unref();
 		return this.ready();
 	}

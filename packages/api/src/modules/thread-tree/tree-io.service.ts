@@ -6,6 +6,7 @@ import { Injectable, Optional } from "@nestjs/common";
 import { type CanonicalEvent, isWorkflowTerminal } from "@prismalens/contracts";
 import { Prisma } from "@prismalens/database";
 import { Logger } from "@prismalens/logger";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	DispatchService,
@@ -15,7 +16,6 @@ import { InvestigationsService } from "../investigations/investigations.service.
 import { StreamRelayService } from "../investigations/stream-relay.service.js";
 import { isSettled } from "../threads/settled.js";
 import { InboxService } from "../wakes/inbox.service.js";
-
 import { TREE_BRANCH } from "./tree-text.js";
 
 export { TREE_BRANCH };
@@ -73,7 +73,7 @@ export class TreeIo {
 					runId: threadId,
 					branchId: TREE_BRANCH,
 					path: [],
-					ts: new Date().toISOString(),
+					ts: clock.date().toISOString(),
 					seq,
 				} as CanonicalEvent;
 				const { inserted } = await this.investigations.appendEvents(threadId, [

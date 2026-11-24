@@ -16,6 +16,7 @@ import {
 	type NextStep,
 	NextStepSchema,
 } from "@prismalens/contracts/schemas";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { ImpactService } from "../impact/impact.service.js";
@@ -80,7 +81,7 @@ export class FixesService {
 			await this.prisma.$transaction([
 				this.prisma.recommendation.update({
 					where: { id: stepId },
-					data: { status: "completed", implementedAt: new Date() },
+					data: { status: "completed", implementedAt: clock.date() },
 				}),
 				this.prisma.timelineEntry.create({
 					data: {
@@ -132,7 +133,7 @@ export class FixesService {
 				message: "Mark the option applied before checking it.",
 			});
 		const outcome = await this.impact.check(run.incidentId);
-		const checkedAt = new Date();
+		const checkedAt = clock.date();
 		await this.prisma.timelineEntry.create({
 			data: {
 				incidentId: run.incidentId,

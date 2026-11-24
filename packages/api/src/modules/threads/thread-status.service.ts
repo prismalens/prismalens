@@ -24,6 +24,7 @@ import {
 	threadStatus,
 	type WaitingOn,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { AsksService } from "../asks/asks.service.js";
 import { isSettled } from "./settled.js";
@@ -57,7 +58,7 @@ export class ThreadStatusService {
 
 	async statuses(
 		rows: StatusRow[],
-		now = new Date(),
+		now = clock.date(),
 	): Promise<Map<string, ThreadStatusInfo>> {
 		const ids = rows.map((r) => r.id);
 		const [askKinds, stops, hosts, waiting, pickups] = await Promise.all([
@@ -316,7 +317,7 @@ export class ThreadStatusService {
 	}
 
 	/** Each named thread's status, for surfaces outside the list (#1101 category 2). */
-	async byIds(ids: string[], now = new Date()) {
+	async byIds(ids: string[], now = clock.date()) {
 		const rows = await this.prisma.investigation.findMany({
 			where: { id: { in: ids } },
 			select: {
@@ -383,7 +384,7 @@ export class ThreadStatusService {
 		// A run that ended inside its ask (its agent died, or it was stopped) leaves that ask
 		// unanswered: the row shows it as ended, for the last run, until settled (#1101 cat 8 item 5).
 		const listed = new Set(out.map((a) => a.ask.threadId));
-		const since = new Date(Date.now() - ENDED_ASK_MS);
+		const since = new Date(clock.now() - ENDED_ASK_MS);
 		const endedRuns = (
 			await this.prisma.investigation.findMany({
 				where: {

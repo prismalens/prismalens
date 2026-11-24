@@ -9,6 +9,7 @@ import {
 	TerminalClientFrameSchema,
 } from "@prismalens/contracts";
 import { type WebSocket, WebSocketServer } from "ws";
+import * as clock from "../../core/clock.js";
 import type { PtyFactory } from "./pty.js";
 import type { GateDevice, TerminalGate } from "./terminal-gate.js";
 
@@ -137,7 +138,7 @@ export class TerminalSocketServer {
 				cutOff();
 			}
 		};
-		const recheck = setInterval(async () => {
+		const recheck = clock.setInterval(async () => {
 			const device = await this.options.authenticate(req).catch(() => null);
 			if (!device || device.id !== deviceId) cutOff();
 		}, this.options.recheckMs ?? 15_000);
@@ -150,7 +151,7 @@ export class TerminalSocketServer {
 			if (!paused && unacked > high) {
 				paused = true;
 				guarded(() => pty.pause());
-				stall = setTimeout(cutOff, this.options.stallMs ?? 30_000);
+				stall = clock.setTimeout(cutOff, this.options.stallMs ?? 30_000);
 			}
 		});
 		pty.onExit(({ exitCode }) => {

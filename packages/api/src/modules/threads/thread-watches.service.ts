@@ -4,6 +4,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import type { PullRequest } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	EVENT_BUS,
@@ -60,7 +61,7 @@ export class ThreadWatchesService implements WatchesData {
 			};
 		const replaced =
 			(await this.wakes.latest(runId, "agent"))?.state === "pending";
-		const at = new Date(Date.now() + delaySeconds * 1000);
+		const at = new Date(clock.now() + delaySeconds * 1000);
 		// The agent hears this as a message when it wakes; the event keeps its own words.
 		const said = `The wake you scheduled (pl_wakeup_schedule) is due: ${reason}`;
 		await this.wakes.schedule(runId, "agent", at, said, {
@@ -109,7 +110,7 @@ export class ThreadWatchesService implements WatchesData {
 			where: {
 				investigationId: runId,
 				kind: { in: ["agent", "pr_watch"] },
-				createdAt: { gte: new Date(Date.now() - DAY_MS) },
+				createdAt: { gte: new Date(clock.now() - DAY_MS) },
 			},
 		});
 		return recent >= WAKES_PER_DAY;

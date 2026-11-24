@@ -3,6 +3,7 @@
 
 import type { ReferenceHit, ReferenceWhy } from "@prismalens/contracts";
 import fuzzysort from "fuzzysort";
+import * as clock from "../../core/clock.js";
 import type { ReferenceCandidate } from "./reference-provider.js";
 
 /** Frecency halves every 7 days (#1024). */
@@ -103,7 +104,7 @@ export function rank(
 	candidates: ReferenceCandidate[],
 	q: string,
 	boosts: RankBoosts,
-	now = new Date(),
+	now = clock.date(),
 ): ReferenceHit[] {
 	const scored: {
 		hit: ReferenceHit;

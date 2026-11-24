@@ -15,6 +15,7 @@ import {
 	RunChoiceSchema,
 } from "@prismalens/contracts";
 import { buildFreshSummary, type Handoff } from "@prismalens/engine";
+import * as clock from "../../core/clock.js";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
@@ -99,7 +100,7 @@ export class ThreadMenuService {
 		field: "pinnedAt" | "archivedAt",
 		on: boolean,
 	) {
-		const at = on ? new Date() : null;
+		const at = on ? clock.date() : null;
 		// The row's own updatedAt orders the list; a flag never moves it (#1020).
 		const row = await this.prisma.investigation.findUnique({
 			where: { id },

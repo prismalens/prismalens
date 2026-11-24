@@ -23,6 +23,7 @@ import {
 	type StartFixThreadInput,
 	type ThreadLink,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { shownRepoUrl } from "../../core/harness/git-credential.js";
 import { settingsFor } from "../../core/harness/run-worktree.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -532,7 +533,7 @@ export class FixThreadsService {
 			}));
 			if (!admitted) {
 				const young =
-					Date.now() - c.createdAt.getTime() < STARTING_MS &&
+					clock.now() - c.createdAt.getTime() < STARTING_MS &&
 					c.status !== "failed";
 				if (!young) {
 					stale.push(c.id);

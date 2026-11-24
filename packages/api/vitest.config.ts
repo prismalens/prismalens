@@ -145,9 +145,6 @@ const LEGACY_MEDIUM = [
 	"src/modules/usage/usage.service.spec.ts",
 	"src/modules/wakes/inbox.service.spec.ts",
 	"src/modules/wakes/wakes.service.spec.ts",
-	// Their retries sleep on node:timers/promises until the modules read the clock (the next change).
-	"src/modules/investigations/investigations-cancel.controller.spec.ts",
-	"src/modules/investigations/investigations-message.controller.spec.ts",
 ];
 
 // NestJS relies on `emitDecoratorMetadata` for constructor injection. Vitest's

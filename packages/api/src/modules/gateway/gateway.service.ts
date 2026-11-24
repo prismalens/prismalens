@@ -40,6 +40,7 @@ import {
 	servedTo,
 } from "@prismalens/integrations/harness";
 import { Logger } from "@prismalens/logger";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
@@ -448,7 +449,7 @@ export class GatewayService {
 								state.waiters.delete(done);
 								resolve(ok);
 							};
-							const timer = setTimeout(() => done(false), ms);
+							const timer = clock.setTimeout(() => done(false), ms);
 							state.waiters.add(done);
 						}),
 		};
@@ -598,7 +599,7 @@ export class GatewayService {
 				server.off?.("listening", done);
 				resolve();
 			};
-			const timer = setTimeout(done, waitMs);
+			const timer = clock.setTimeout(done, waitMs);
 			timer.unref?.();
 			server.once?.("listening", done);
 		});
@@ -777,7 +778,7 @@ export class GatewayService {
 				const artifact: Artifact = {
 					id: `a${state.artifacts.length + 1}`,
 					...page,
-					at: new Date().toISOString(),
+					at: clock.date().toISOString(),
 				};
 				state.artifacts.push(artifact);
 				for (const listener of [...state.published]) listener(artifact);
@@ -798,7 +799,7 @@ export class GatewayService {
 				const r = state.ledger.addEvidence(
 					input,
 					file,
-					new Date().toISOString(),
+					clock.date().toISOString(),
 				);
 				if (!("error" in r)) this.recorded(state, { type: "evidence", ...r });
 				return r;
@@ -809,7 +810,7 @@ export class GatewayService {
 				if (!(await this.loadHistory(state))) return { error: NO_HISTORY };
 				if (this.runs.get(runId) !== state || !state.recording)
 					return { error: NOT_LIVE };
-				const r = state.ledger.addHypothesis(input, new Date().toISOString());
+				const r = state.ledger.addHypothesis(input, clock.date().toISOString());
 				if (!("error" in r)) this.recorded(state, { type: "hypothesis", ...r });
 				return r;
 			},
@@ -1606,7 +1607,7 @@ export class GatewayService {
 						Math.round(
 							(clockStart.getTime() +
 								INVESTIGATION_DEFAULTS.harnessWallClockMs -
-								Date.now()) /
+								clock.now()) /
 								1000,
 						),
 					)
@@ -1668,7 +1669,7 @@ export class GatewayService {
 						serviceId: { in: serviceIds },
 						timestamp: {
 							gte: new Date(row.triggeredAt.getTime() - CHANGES_BEFORE_MS),
-							lte: new Date(),
+							lte: clock.date(),
 						},
 					},
 					orderBy: { timestamp: "desc" },

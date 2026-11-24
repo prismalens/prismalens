@@ -10,6 +10,7 @@ import {
 	type PriorIncidentFact,
 	type UnavailableFamily,
 } from "@prismalens/contracts/schemas";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { computeWindow } from "../overlay/overlay.logic.js";
@@ -121,7 +122,7 @@ export class ContextPackService {
 
 		const window = computeWindow(
 			incident.alerts.map((a) => a.triggeredAt),
-			new Date(),
+			clock.date(),
 		);
 
 		const unavailable: UnavailableFamily[] = [];
@@ -169,7 +170,7 @@ export class ContextPackService {
 			neighbors,
 			priorIncidents,
 			unavailable,
-			assembledAt: new Date().toISOString(),
+			assembledAt: clock.date().toISOString(),
 		};
 	}
 
@@ -178,7 +179,7 @@ export class ContextPackService {
 	 * last day, and no prior incidents, since no incident is being investigated (#979).
 	 */
 	async assembleForService(serviceId: string): Promise<ContextPack> {
-		const window = computeWindow([], new Date());
+		const window = computeWindow([], clock.date());
 		const unavailable: UnavailableFamily[] = [];
 		let changes: ChangeFact[] = [];
 		try {
@@ -207,7 +208,7 @@ export class ContextPackService {
 			neighbors,
 			priorIncidents: [],
 			unavailable,
-			assembledAt: new Date().toISOString(),
+			assembledAt: clock.date().toISOString(),
 		};
 	}
 

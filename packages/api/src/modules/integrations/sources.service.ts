@@ -35,6 +35,7 @@ import {
 
 export { redactAddress, sourceErrorText };
 
+import * as clock from "../../core/clock.js";
 import { sourceRequestFn } from "./source-request.js";
 import { writeStored } from "./stored-credential.js";
 import { envVars, originOf } from "./telemetry-snapshot.service.js";
@@ -117,7 +118,7 @@ export class SourcesService {
 				const expired =
 					row.status === "ACTIVE" &&
 					!!row.tokenExpiresAt &&
-					row.tokenExpiresAt < new Date();
+					row.tokenExpiresAt < clock.date();
 				const lastError = shownError(row.lastErrorMessage, {
 					address: storedUrl,
 				});
@@ -219,7 +220,7 @@ export class SourcesService {
 		if (report.ok)
 			await this.prisma.connection.update({
 				where: { id: connection.id },
-				data: { testedAt: new Date() },
+				data: { testedAt: clock.date() },
 			});
 		return { connectionId: connection.id, report };
 	}
