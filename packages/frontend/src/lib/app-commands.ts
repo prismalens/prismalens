@@ -20,7 +20,8 @@ export type AppCommand =
 	| "paneKind"
 	| "panelExpand"
 	| "transcriptView"
-	| "expandAll";
+	| "expandAll"
+	| "sendTestAlert";
 
 const handlers = new Map<AppCommand, () => void>();
 

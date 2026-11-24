@@ -645,6 +645,22 @@ export class WebhooksService {
 		};
 	}
 
+	/**
+	 * A sample alert for a project, through the same path a generic webhook
+	 * takes: high severity, routed by `serviceName`. Its fixed title joins an
+	 * incident still open from an earlier test instead of starting another run.
+	 */
+	async sendTestAlert(serviceName: string): Promise<WebhookResult> {
+		return this.processGenericWebhook({
+			title: `Test alert: ${serviceName} is failing`,
+			description: `A sample alert sent from PrismaLens to see ${serviceName} investigated. Nothing is actually wrong.`,
+			severity: Severity.high,
+			source: "prismalens-test",
+			serviceName,
+			labels: { origin: "test" },
+		} as GenericWebhookDto);
+	}
+
 	async processRenderWebhook(
 		dto: RenderWebhookDto,
 		idempotencyKey?: string,

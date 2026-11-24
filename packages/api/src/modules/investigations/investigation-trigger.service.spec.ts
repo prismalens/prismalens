@@ -15,6 +15,7 @@ import { InvestigationsService } from "./investigations.service.js";
 import {
 	InvestigationTriggerService,
 	NO_SERVICE_REASON,
+	plainFolderReason,
 	readTriggerPolicy,
 	type TriggerDecision,
 } from "./investigation-trigger.service.js";
@@ -39,6 +40,9 @@ describe("InvestigationTriggerService", () => {
 		},
 		incident: {
 			findUnique: vi.fn(),
+		},
+		repository: {
+			findMany: vi.fn(),
 		},
 	};
 
@@ -226,6 +230,22 @@ describe("InvestigationTriggerService", () => {
 			expect(mockTimelineService.create).toHaveBeenCalledTimes(1);
 			expect(mockTimelineService.create.mock.calls[0][0].description).toBe(
 				NO_SERVICE_REASON,
+			);
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+		});
+
+		it("says a no-git folder named by the alert's service label has no code history", async () => {
+			mockPrisma.repository.findMany.mockResolvedValue([{ fullName: "notes" }]);
+			const incident = { ...withService("always"), service: null };
+
+			await service.onAlertCorrelated(
+				{ id: "a1", labels: JSON.stringify({ service: "Notes" }) } as unknown as Alert,
+				incident,
+				true,
+			);
+
+			expect(mockTimelineService.create.mock.calls[0][0].description).toBe(
+				plainFolderReason("notes"),
 			);
 			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
 		});

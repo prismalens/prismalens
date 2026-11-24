@@ -19,6 +19,7 @@ export const appSurface = define.surface({
 			"app.findMessages",
 			"app.transcriptView",
 			"app.expandAll",
+			"app.sendTestAlert",
 			"app.paneDetails",
 			"app.paneChanges",
 			"app.paneFiles",

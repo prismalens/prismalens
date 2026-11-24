@@ -11,6 +11,7 @@ import {
 	Server,
 } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { SendTestAlert } from "@/components/alertTest/SendTestAlert";
 import { TickDot } from "@/components/schedules/TickDot";
 import { ProjectMark } from "@/components/shared/ProjectMark";
 import { Empty, Loading, NotFound, Problem } from "@/components/shared/State";
@@ -140,6 +141,16 @@ export function ProjectPage({ id }: { id: string }) {
 								))}
 							</ul>
 						)}
+					</section>
+					<section aria-label="Send a test alert" className="grid gap-2">
+						<h2 className="ml-1 text-heading text-text-2">Try an alert</h2>
+						<SendTestAlert
+							project={{
+								id,
+								fullName: p.fullName,
+								plain: kind === "folder" && p.plain,
+							}}
+						/>
 					</section>
 					{kind === "folder" ? (
 						<p
