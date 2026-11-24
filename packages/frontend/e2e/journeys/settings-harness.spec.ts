@@ -818,7 +818,7 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 			"Used by the next run",
 		);
 		await openModels(page);
-		await expect(mark(page, '[data-letters="CC"]')).toHaveCount(1);
+		await expect(mark(page, '[data-brand="claude-code"]')).toHaveCount(1);
 	});
 
 	test("states plainly when no harness is available, with the server's reason", async ({
