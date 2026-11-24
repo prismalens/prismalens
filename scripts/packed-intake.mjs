@@ -27,6 +27,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { journeys, runJourneys } from "./journeys/index.mjs";
 import { eventsOf } from "./journeys/lib.mjs";
 import {
@@ -38,11 +39,6 @@ import { targetGuard } from "./lib/target-guard.mjs";
 
 const log = (/** @type {string} */ message) =>
 	console.log(`[packed-intake] ${message}`);
-
-const guard = targetGuard();
-const cleanup = guard.cleanup;
-process.on("SIGINT", () => void cleanup(130));
-process.on("SIGTERM", () => void cleanup(143));
 
 /** The event stream to PACKED_INTAKE_EVENTS_OUT (#533); throws so a completed attempt without its recording fails. */
 async function saveEvents(
@@ -62,8 +58,18 @@ async function saveEvents(
 	}
 }
 
-async function main() {
-	const config = packedConfig(process.env);
+/**
+ * The whole run, with its collaborators passed in so a test can cancel during boot.
+ * @param {{ guard: ReturnType<typeof targetGuard>, openTarget?: typeof openPackedTarget, run?: typeof runJourneys, env?: NodeJS.ProcessEnv, argv?: string[] }} deps
+ */
+export async function main({
+	guard,
+	openTarget = openPackedTarget,
+	run = runJourneys,
+	env = process.env,
+	argv = process.argv,
+}) {
+	const config = packedConfig(env);
 	const known = journeys.map((j) => j.name);
 	const wanted = config.journeys ?? known;
 	const unknown = wanted.filter((name) => !known.includes(name));
@@ -72,15 +78,13 @@ async function main() {
 			`PACKED_INTAKE_JOURNEYS names no journey ${unknown.join(", ")}; known: ${known.join(", ")}`,
 		);
 	}
-	const tgz = findTarball(process.argv[2], process.env);
-	const app = await guard.adopt(
-		await openPackedTarget({ ...config, tgz }, log),
-	);
+	const tgz = findTarball(argv[2], env);
+	const app = await guard.adopt(await openTarget({ ...config, tgz }, log));
 	/** @type {Map<string, string[]>} */
 	const ran = new Map();
 	let failure;
 	try {
-		await runJourneys(
+		await run(
 			app,
 			journeys.filter((j) => wanted.includes(j.name)),
 			log,
@@ -102,9 +106,17 @@ async function main() {
 	console.log("PACKED INTAKE OK");
 }
 
-main()
-	.then(() => cleanup(0))
-	.catch((error) => {
-		console.error(`INTAKE FAIL: ${error?.stack ?? error}`);
-		return cleanup(1);
-	});
+if (
+	process.argv[1] &&
+	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+	const guard = targetGuard();
+	process.on("SIGINT", () => void guard.cleanup(130));
+	process.on("SIGTERM", () => void guard.cleanup(143));
+	main({ guard })
+		.then(() => guard.cleanup(0))
+		.catch((error) => {
+			console.error(`INTAKE FAIL: ${error?.stack ?? error}`);
+			return guard.cleanup(1);
+		});
+}

@@ -70,6 +70,21 @@ test("a spec comment that mentions @quarantine is not a tag, and the tag after i
 	]);
 });
 
+test("a tag after a leading block comment is still a tag; the comment's own words are not", () => {
+	const code = 'test("x", { tag: "@quarantine" }, () => {}); // #6';
+	const root = fixture({
+		"c.spec.ts": `/* flaky */ ${code}
+/* a */ /* b */ ${code}
+/* @quarantine */ test("n", () => {});
+/* @quarantine */ // @quarantine
+`,
+	});
+	assert.deepEqual(findTags(root), [
+		{ file: "c.spec.ts", line: 1, text: `/* flaky */ ${code}` },
+		{ file: "c.spec.ts", line: 2, text: `/* a */ /* b */ ${code}` },
+	]);
+});
+
 test("six tags fail on the cap and name the count", () => {
 	const tags = findTags(fixture({ "a.feature": tagLines(6) }));
 	assert.deepEqual(check(tags, { issue: openIssue, now: NOW }), [

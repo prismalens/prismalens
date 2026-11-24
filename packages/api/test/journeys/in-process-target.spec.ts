@@ -4,6 +4,7 @@
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { ScenarioApp } from "../scenarios/support/scenario-app.js";
 import { inProcessTarget } from "./in-process-target.js";
 
 const attempted = vi.hoisted(() => ({ journeysDir: "" }));
@@ -26,8 +27,17 @@ vi.mock("node:fs", async (importOriginal) => {
 
 describe("The in-process target", () => {
 	it("Given setup fails after the app is listening, When the target is opened, Then the error surfaces, the app is stopped and its workspace removed", async () => {
+		const boot = ScenarioApp.prototype.boot;
+		let listeningAt = "";
+		vi.spyOn(ScenarioApp.prototype, "boot").mockImplementation(async function (this: ScenarioApp) {
+			await boot.call(this);
+			listeningAt = this.url;
+		});
+
 		await expect(inProcessTarget()).rejects.toThrow("disk full");
 
+		expect(listeningAt).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+		await expect(fetch(`${listeningAt}/api/health`)).rejects.toThrow("fetch failed");
 		expect(existsSync(dirname(attempted.journeysDir))).toBe(false);
 	}, 60_000);
 });
