@@ -7,7 +7,7 @@
 import "@/components/kit/MenuImpl";
 import "@/components/kit/PopoverImpl";
 import "@/components/kit/SurfaceMenus";
-import { beforeAll } from "vitest";
+import { afterEach, beforeAll } from "vitest";
 import * as registry from "@/components/kit/registry";
 import { primeRegistry } from "@/components/kit/registry-load";
 import { primeHintTip } from "@/components/shared/Hint";
@@ -31,3 +31,23 @@ beforeAll(async () => {
 		// A file that mocks React whole draws no dialog; its load fails harmlessly.
 	}
 });
+
+// A unit test has no API: a request to the page's origin fails the test that made it (#1154).
+if (typeof window !== "undefined") {
+	const strays: string[] = [];
+	const passThrough = globalThis.fetch;
+	globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+		const url = input instanceof Request ? input.url : String(input);
+		if (!url.startsWith(window.location.origin))
+			return passThrough(input, init);
+		strays.push(url);
+		return Promise.reject(new TypeError(`unit tests have no API: ${url}`));
+	}) as typeof fetch;
+	afterEach(() => {
+		const seen = strays.splice(0);
+		if (seen.length)
+			throw new Error(
+				`The test asked the API, which a unit test must mock: ${seen.join(", ")}`,
+			);
+	});
+}

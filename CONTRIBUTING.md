@@ -459,7 +459,8 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
    you add a module, add it (or its directory) to that map; reviewers treat a
    new source file with no threshold entry as a missing test. Pre-existing
    files are exempt until touched. Fix the implementation, not the test,
-   unless the test is wrong.
+   unless the test is wrong. A frontend unit test that reaches the API fails
+   (`src/test-setup.ts`): mock the hook or give the component the data it reads.
 3. Make sure `pnpm typecheck`, `pnpm build`, `pnpm test`, and
    `pnpm format-and-lint` all pass.
 4. **Commit** using [Conventional Commits](https://www.conventionalcommits.org/):

@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	PrCheckLog,
-	PrCheckRun,
-	PullRequest,
-	ThreadLink,
-} from "@prismalens/contracts";
+import type { PrCheckLog, PrCheckRun, ThreadLink } from "@prismalens/contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -41,6 +36,27 @@ vi.mock("@/lib/api/hooks/use-app-settings-orpc", () => ({
 		isLoading: false,
 	}),
 }));
+
+vi.mock("@/lib/api/hooks/use-pr-subscriptions", async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import("@/lib/api/hooks/use-pr-subscriptions")
+	>()),
+	usePrSubscriptions: () => ({
+		data: { subscriptions: [] },
+		isPending: false,
+		isError: false,
+	}),
+}));
+
+/** A kept log for `runId`, so the open row reads no log from the API. */
+const keptLog = (runId: string, headSha: string | null = null): PrCheckLog => ({
+	runId,
+	headSha,
+	step: "Run it",
+	lines: ["failed"],
+	unavailable: null,
+	fetchedAt: "2026-11-18T00:00:00.000Z",
+});
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({
@@ -185,6 +201,7 @@ describe("PrView (#1176)", () => {
 			...basePr,
 			checks: { state: "failing", total: 1, failed: 1, pending: 0 },
 			checkRuns: [run],
+			checkLogs: [keptLog(run.id ?? "")],
 		};
 
 		await show(<PrView pr={pr} threadId="thread-1" />);
@@ -212,6 +229,7 @@ describe("PrView (#1176)", () => {
 			headSha: "sha123",
 			checks: { state: "failing", total: 1, failed: 1, pending: 0 },
 			checkRuns: [run],
+			checkLogs: [keptLog(run.id ?? "", "sha123")],
 		};
 		// Set covering fix thread link in mock
 		threadLinksState.links = [
@@ -274,6 +292,7 @@ describe("PrView (#1176)", () => {
 			...basePr,
 			checks: { state: "failing", total: 1, failed: 1, pending: 0 },
 			checkRuns: [run],
+			checkLogs: [keptLog(run.id ?? "")],
 		};
 
 		settingsState.rerunChecks = false;
