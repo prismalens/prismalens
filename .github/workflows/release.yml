@@ -166,9 +166,9 @@ jobs:
           TAG: ${{ needs.draft.outputs.tag }}
         run: gh release upload "$TAG" assets/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
 
-  # The installers and the launcher download from the mirror first, so it is filled before publishing.
+  # After publishing, so an R2 outage never holds a release: until the mirror has it, clients fall back to GitHub.
   mirror:
-    needs: [draft, sums]
+    needs: [draft, publish-release]
     uses: ./.github/workflows/mirror-release.yml
     with:
       tag: ${{ needs.draft.outputs.tag }}
@@ -179,7 +179,7 @@ jobs:
   # The release publishes first: npm's launcher downloads from it, and a draft's assets are not public (#717).
   publish-release:
     name: Publish the release
-    needs: [draft, sums, mirror]
+    needs: [draft, sums]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # One release promotes at a time across every ref, and `latest` is decided then, not when
