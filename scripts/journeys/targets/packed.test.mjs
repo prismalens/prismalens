@@ -40,10 +40,14 @@ test("on Windows the launcher path and each argument are quoted into one command
 		),
 		{
 			command:
-				'"C:/Users/a b/pl-intake/node_modules/.bin/pl.cmd" pair --workspace "C:/Users/a b/workspace"',
+				'"C:/Users/a b/pl-intake/node_modules/.bin/pl.cmd" "pair" "--workspace" "C:/Users/a b/workspace"',
 			args: [],
 			shell: true,
 		},
+	);
+	assert.equal(
+		launcherCommand("C:/Temp&Work/pl.cmd", ["up"], true).command,
+		'"C:/Temp&Work/pl.cmd" "up"',
 	);
 	assert.deepEqual(launcherCommand("/tmp/a b/pl", ["up"], false), {
 		command: "/tmp/a b/pl",
@@ -52,8 +56,8 @@ test("on Windows the launcher path and each argument are quoted into one command
 	});
 });
 
-test("a launcher whose path holds a space starts with each argument intact", () => {
-	const dir = join(scratch(), "with space");
+test("a launcher whose path holds a space or an & starts with each argument intact", () => {
+	const dir = join(scratch(), "with space&amp");
 	mkdirSync(dir);
 	const win = process.platform === "win32";
 	const bin = join(dir, win ? "pl.cmd" : "pl");
@@ -64,12 +68,13 @@ test("a launcher whose path holds a space starts with each argument intact", () 
 			: '#!/bin/sh\necho "first=$1"\necho "second=$2"\n',
 	);
 	chmodSync(bin, 0o755);
-	const workspace = join(dir, "work space");
+	const workspace = join(dir, "work space&more");
 	const lines = runLauncher(bin, ["--version", workspace])
 		.trim()
 		.split(/\r?\n/);
 	assert.deepEqual(lines, [
-		"first=--version",
+		// cmd hands a .cmd each argument with the quotes that kept it whole.
+		win ? 'first="--version"' : "first=--version",
 		win ? `second="${workspace}"` : `second=${workspace}`,
 	]);
 });

@@ -136,21 +136,22 @@ const sleep = (/** @type {number} */ ms) =>
 	new Promise((r) => setTimeout(r, ms));
 
 /**
+ * One cmd.exe command line from a program and its arguments. Every part is quoted, so a space or a
+ * shell character such as `&` in a path stays part of it; a .cmd shim reads each with `%~1`.
+ * @param {string[]} parts
+ */
+export const cmdLine = (parts) => parts.map((a) => `"${a}"`).join(" ");
+
+/**
  * How to start the `pl` launcher. On Windows it is a .cmd shim that only a shell starts, and a shell takes
- * one string, so the path and every argument are quoted into it; elsewhere it runs directly.
+ * one string (`cmdLine`); elsewhere it runs directly.
  * @param {string} bin
  * @param {string[]} args
  * @param {boolean} [win]
  */
 export function launcherCommand(bin, args, win = WIN) {
 	if (!win) return { command: bin, args, shell: false };
-	const quote = (/** @type {string} */ a) =>
-		a === "" || /\s/.test(a) ? `"${a}"` : a;
-	return {
-		command: [bin, ...args].map(quote).join(" "),
-		args: [],
-		shell: true,
-	};
+	return { command: cmdLine([bin, ...args]), args: [], shell: true };
 }
 
 /**
@@ -304,11 +305,7 @@ export async function openPackedTarget(config, log = console.log) {
 		];
 		// npm is a .cmd shim on Windows, which only a shell starts; a shell takes one string.
 		if (WIN)
-			installWithRetry(
-				["npm", ...install].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(" "),
-				[],
-				{ shell: true },
-			);
+			installWithRetry(cmdLine(["npm", ...install]), [], { shell: true });
 		else installWithRetry("npm", install);
 
 		const bin = join(prefix, "node_modules", ".bin", WIN ? "pl.cmd" : "pl");
