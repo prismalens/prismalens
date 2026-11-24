@@ -91,6 +91,9 @@ export class HarnessProbeService {
 					...(result.signInMethods
 						? { signInMethods: result.signInMethods }
 						: {}),
+					...(result.providers !== undefined
+						? { providers: result.providers }
+						: {}),
 				},
 				guard?.key,
 			);
@@ -104,6 +107,9 @@ export class HarnessProbeService {
 			...(result.models?.length ? { models: result.models } : {}),
 			account: result.account ?? null,
 			...(result.signInMethods ? { signInMethods: result.signInMethods } : {}),
+			...(result.providers !== undefined
+				? { providers: result.providers }
+				: {}),
 			...(result.outcome === "answers-acp"
 				? {
 						servedModel: result.servedModel ?? null,

@@ -187,6 +187,10 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 		windowsOnlyPath: z.string().nullable().default(null),
 		/** Installed, not off, and no failed last check (#907, #1171). Only these are pickable. */
 		runnable: z.boolean().default(false),
+		/** Whether the agent holds a login for its chosen model's provider; `unchecked` when no check has read its logins, `na` when it has none to check. */
+		providerSignIn: z
+			.enum(["signed-in", "signed-out", "unchecked", "na"])
+			.optional(),
 		/** Turned off in Settings: auto and new runs skip it (#1171). */
 		off: z.boolean().optional(),
 		/** Put through Add agent without passing; listed so it can be signed in (#1171). */
@@ -257,6 +261,8 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 				account: AgentAccountSchema.nullable().optional(),
 				/** The agent's own sign-in methods, by name, when it asked for one. */
 				signInMethods: z.array(z.string()).optional(),
+				/** The providers a multi-provider agent holds a login for, by its names; null when its list could not be read. */
+				providers: z.array(z.string()).nullable().optional(),
 				/** A later check that did not answer; the pass above stands (#1171). */
 				lastTry: z
 					.object({
@@ -558,6 +564,7 @@ export const HarnessProbeResultSchema = /* @__PURE__ */ lazySchema(() =>
 		protocol: AgentProtocolDriftSchema.nullable().optional(),
 		account: AgentAccountSchema.nullable().optional(),
 		signInMethods: z.array(z.string()).optional(),
+		providers: z.array(z.string()).nullable().optional(),
 	}),
 );
 export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;
