@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import * as clock from "../../core/clock.js";
+
 /**
  * JobStore — the durable claim record behind the in-process dispatch loop
  * (0005 §2: one API process, no worker, no reclaim). A `Job` row is claimed
@@ -183,7 +185,7 @@ export class PrismaJobStore implements JobStore {
 				select: { status: true },
 			});
 			if (live?.status !== "running") break;
-			await new Promise((r) => setTimeout(r, 100));
+			await clock.sleep(100);
 		}
 		const { count } = await this.jobs.updateMany({
 			where: {
@@ -198,7 +200,7 @@ export class PrismaJobStore implements JobStore {
 				startBy: input.startBy ?? null,
 				status: "pending",
 				attempts: 0,
-				runAt: input.runAt ?? new Date(),
+				runAt: input.runAt ?? clock.date(),
 				claimedBy: null,
 				claimedAt: null,
 				heartbeatAt: null,
@@ -222,7 +224,7 @@ export class PrismaJobStore implements JobStore {
 				priority: input.priority,
 				startBy: input.startBy ?? null,
 				status: "pending",
-				runAt: input.runAt ?? new Date(),
+				runAt: input.runAt ?? clock.date(),
 			},
 			select: { id: true },
 		});
@@ -232,7 +234,7 @@ export class PrismaJobStore implements JobStore {
 	async claim(
 		owner: string,
 		limit: number,
-		now: Date = new Date(),
+		now: Date = clock.date(),
 	): Promise<ClaimedJob[]> {
 		if (limit <= 0) return [];
 
@@ -302,7 +304,7 @@ export class PrismaJobStore implements JobStore {
 			data: {
 				status,
 				claimedBy: null,
-				finishedAt: new Date(),
+				finishedAt: clock.date(),
 				...(error !== undefined ? { lastError: error } : {}),
 			},
 		});
@@ -322,7 +324,7 @@ export class PrismaJobStore implements JobStore {
 			data: {
 				status: "cancelled",
 				claimedBy: null,
-				finishedAt: new Date(),
+				finishedAt: clock.date(),
 				lastError: "Cancelled before it was claimed",
 			},
 		});
@@ -335,7 +337,7 @@ export class PrismaJobStore implements JobStore {
 			data: {
 				status: "cancelled",
 				claimedBy: null,
-				finishedAt: new Date(),
+				finishedAt: clock.date(),
 				lastError: "Cancelled while no run held the claim",
 			},
 		});
@@ -354,7 +356,7 @@ export class PrismaJobStore implements JobStore {
 			data: {
 				status: "failed",
 				claimedBy: null,
-				finishedAt: new Date(),
+				finishedAt: clock.date(),
 				lastError: reason,
 			},
 		});
@@ -362,7 +364,7 @@ export class PrismaJobStore implements JobStore {
 	}
 
 	async scheduledPastDeadline(
-		now: Date = new Date(),
+		now: Date = clock.date(),
 	): Promise<Array<{ id: string; investigationId: string }>> {
 		const rows = await this.jobs.findMany({
 			where: { status: "pending", kind: SCHEDULED_KIND, startBy: { lt: now } },
@@ -376,7 +378,7 @@ export class PrismaJobStore implements JobStore {
 
 	async expireScheduledJob(
 		jobId: string,
-		now: Date = new Date(),
+		now: Date = clock.date(),
 	): Promise<boolean> {
 		// The guard repeats the read's filter, so a row re-armed since is left alone (adversary OBJ-012).
 		const { count } = await this.jobs.updateMany({
@@ -391,7 +393,7 @@ export class PrismaJobStore implements JobStore {
 		return count === 1;
 	}
 
-	async expireScheduled(now: Date = new Date()): Promise<string[]> {
+	async expireScheduled(now: Date = clock.date()): Promise<string[]> {
 		const expired: string[] = [];
 		for (const row of await this.scheduledPastDeadline(now))
 			if (await this.expireScheduledJob(row.id, now))

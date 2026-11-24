@@ -45,6 +45,7 @@ import type {
 	UpdateTelemetrySettings,
 } from "@prismalens/contracts";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
+import * as clock from "../clock.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
 const SETTING_KEY = "TELEMETRY";
@@ -377,7 +378,7 @@ export class TelemetryService
 	constructor(
 		private readonly prisma: PrismaService,
 		private readonly fetchImpl: typeof fetch = fetch,
-		private readonly now: () => Date = () => new Date(),
+		private readonly now: () => Date = () => clock.date(),
 		private readonly env: NodeJS.ProcessEnv = process.env,
 		private readonly version: string = resolveServiceVersion(),
 	) {
@@ -389,7 +390,7 @@ export class TelemetryService
 			this.logger.debug(`telemetry row skipped: ${String(e)}`),
 		);
 		await this.checkInstallActive();
-		this.activeInterval = setInterval(() => {
+		this.activeInterval = clock.setInterval(() => {
 			void this.checkInstallActive();
 		}, 60 * 60_000);
 		this.activeInterval.unref();
@@ -529,7 +530,7 @@ export class TelemetryService
 		await this.capture("investigation_finished", {
 			state,
 			duration_bucket: durationBucket(
-				startedAt ? Date.now() - startedAt : Number.NaN,
+				startedAt ? clock.now() - startedAt : Number.NaN,
 			),
 			error_class: classifyError(state, options.error),
 		});
@@ -559,7 +560,7 @@ export class TelemetryService
 
 	/** True the first time a key is seen; prunes by age on the way through. */
 	private once(key: string): boolean {
-		const now = Date.now();
+		const now = clock.now();
 		for (const [seen, at] of this.reported) {
 			if (now - at > DEDUP_TTL_MS) this.reported.delete(seen);
 		}

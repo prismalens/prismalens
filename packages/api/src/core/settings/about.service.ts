@@ -35,6 +35,7 @@ import {
 	resolveServiceBuild,
 	resolveServiceVersion,
 } from "../../shared/utils/service-version.js";
+import * as clock from "../clock.js";
 
 /** Where `pl up` writes its logs: `PRISMALENS_LOG_FILE_LOCATION`, else the workspace's `logs`. */
 export function resolveLogDir(
@@ -67,7 +68,7 @@ export class AboutService {
 	// Fields rather than constructor parameters: Nest would try to inject them. Tests set them.
 	env: NodeJS.ProcessEnv = process.env;
 	fetchImpl: typeof fetch = fetch;
-	now: () => number = Date.now;
+	now: () => number = clock.now;
 
 	/** Joins a pending refresh for `channel`; a pending one for the other channel is let finish first. */
 	private async refresh(

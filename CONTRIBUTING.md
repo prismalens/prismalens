@@ -477,6 +477,9 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
    - Coverage shows a reviewer what is untested; it is not a target. Each package's
      floor in `vitest.config.ts` is a ratchet: raise it, never lower it. A new module
      needs no per-file entry.
+   - API product code reads time and signals through `packages/api/src/core/clock.ts` and
+     `src/infrastructure/dispatch/process-signals.ts`, so a test can fake them. Biome forbids
+     a direct `Date.now()`, `new Date()`, `setTimeout`, `setInterval` or `process.kill` there.
 
    Fix the implementation, not the test, unless the test is wrong. A frontend unit test that reaches the API fails
    (`src/test-setup.ts`): mock the hook or give the component the data it reads.

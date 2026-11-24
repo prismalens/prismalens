@@ -6,6 +6,8 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import * as clock from "../../core/clock.js";
+import { isProcessAlive, signalProcess } from "./process-signals.js";
 
 /**
  * A run's harness pid on disk, so the next boot can prove the agent from before
@@ -60,7 +62,7 @@ export const SNAPSHOT_MS = 30_000;
 export function writeReceipt(
 	runDir: string,
 	pid: number,
-	now = Date.now(),
+	now = clock.now(),
 	seen?: Pick<Receipt, "rootCreated" | "tree"> & Stamp,
 ) {
 	writeFileSync(
@@ -173,7 +175,7 @@ export async function endLeftovers(
 		for (const m of left.members)
 			if (host.startOf(m.pid) === m.created)
 				try {
-					process.kill(m.pid, "SIGKILL");
+					signalProcess(m.pid, "SIGKILL");
 					ended++;
 				} catch {
 					// Already gone.
@@ -339,7 +341,7 @@ export function watchReceipt(
 		return () => {};
 	let busy = false;
 	let stopped = false;
-	const timer = setInterval(() => {
+	const timer = clock.setInterval(() => {
 		if (busy) return;
 		busy = true;
 		void snapshotReceipt(runDir, list, () => !stopped).finally(() => {
@@ -398,16 +400,11 @@ export function osHost(): ProcessHost {
 		platform: process.platform,
 		list: listWindowsProcessesAsync,
 		groupAlive: (pgid) => {
-			try {
-				process.kill(-pgid, 0);
-				return true;
-			} catch (e) {
-				return (e as NodeJS.ErrnoException).code === "EPERM";
-			}
+			return isProcessAlive(-pgid);
 		},
 		kill: (pid, group) => {
 			try {
-				if (group) process.kill(-pid, "SIGKILL");
+				if (group) signalProcess(-pid, "SIGKILL");
 				else
 					return promisify(execFile)("taskkill", ["/PID", String(pid), "/F"], {
 						windowsHide: true,
@@ -420,7 +417,7 @@ export function osHost(): ProcessHost {
 				// Already gone.
 			}
 		},
-		sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+		sleep: clock.sleep,
 		identity: () => ({ host: hostname(), boot: bootId() }),
 		startOf: process.platform === "linux" ? linuxStartOf : psStartOf,
 	};
