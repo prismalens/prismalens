@@ -10,36 +10,20 @@ import { Empty, Loading, Problem } from "@/components/shared/State";
 import { PlaceTabs } from "@/components/shell/PlaceTabs";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
-import {
-	useAddRepositorySource,
-	useRepositories,
-} from "@/lib/api/hooks/use-repositories-orpc";
+import { useRepositories } from "@/lib/api/hooks/use-repositories-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { KIND_ICON, KIND_WORD } from "@/lib/project-source";
-import { AddProjectDialog } from "./AddProjectDialog";
+import { AddProjectFlow } from "./AddProjectFlow";
 
 /** Every project: a folder or git URL, with or without a service (#1020). */
 export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 	usePageTitle("Projects");
 	const repos = useRepositories({ limit: 100 });
-	const add = useAddRepositorySource();
 	const navigate = useNavigate();
 	const [open, setOpen] = useState(openAtStart);
 	useEffect(() => {
 		if (openAtStart) setOpen(true);
 	}, [openAtStart]);
-	const [error, setError] = useState<string | null>(null);
-
-	const onAdd = async (source: string) => {
-		setError(null);
-		try {
-			const repo = await add.mutateAsync({ source });
-			setOpen(false);
-			await navigate({ to: "/projects/$id", params: { id: repo.id } });
-		} catch (err) {
-			setError(getErrorMessage(err));
-		}
-	};
 
 	const rows = repos.data?.data ?? [];
 	return (
@@ -59,17 +43,16 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 				</Button>
 			</header>
 			{open && (
-				<AddProjectDialog
-					open
+				<AddProjectFlow
 					onOpenChange={(o) => {
 						setOpen(o);
-						setError(null);
 						if (!o && openAtStart)
 							void navigate({ to: "/projects", search: {}, replace: true });
 					}}
-					onChoose={(s) => void onAdd(s)}
-					pending={add.isPending}
-					error={error}
+					onAdded={(id) => {
+						setOpen(false);
+						void navigate({ to: "/projects/$id", params: { id } });
+					}}
 				/>
 			)}
 			<div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">

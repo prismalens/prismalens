@@ -123,7 +123,7 @@ export interface DigestLine {
 	at: string;
 }
 
-/** Each changed thread once, led by its stop, else its finish, else its start; newest first. */
+/** Each changed thread once, at the event matching its status now; newest first. */
 export function digestLines(
 	data: AwayData,
 	skip?: ReadonlySet<string>,
@@ -132,7 +132,7 @@ export function digestLines(
 		.flatMap((g) => g.threads)
 		.filter(({ thread }) => !skip?.has(thread.id))
 		.flatMap(({ thread, events }) => {
-			const lead = leadEvent(events);
+			const lead = currentEvent(events, thread.status);
 			if (!lead) return [];
 			return [
 				{
@@ -334,9 +334,16 @@ export function AwayList({
 	);
 }
 
-/** The event a card leads with: a stop, else the finish, else the start. */
-function leadEvent(events: AttentionEvent[]): AttentionEvent | undefined {
+/**
+ * The one event a thread reads as: the one that matches where the thread is now, so a run
+ * that failed and then finished reads Done, never Failed. Else a stop, the finish, the start.
+ */
+export function currentEvent(
+	events: AttentionEvent[],
+	now: ThreadStatus | null,
+): AttentionEvent | undefined {
 	return (
+		events.find((e) => kindStatus(e.kind, now) === now) ??
 		events.find(
 			(e) =>
 				e.kind === "needs_you" ||
@@ -348,6 +355,11 @@ function leadEvent(events: AttentionEvent[]): AttentionEvent | undefined {
 		events.find((e) => e.kind === "started") ??
 		events[0]
 	);
+}
+
+/** Threads with an unread event: the one count the tab, the sidebar and the list agree on. */
+export function unreadThreadCount(events: AttentionEvent[]): number {
+	return new Set(events.filter((e) => !e.readAt).map((e) => e.threadId)).size;
 }
 
 /**
@@ -370,7 +382,7 @@ export function AwayCard({
 	const navigate = useNavigate();
 	const entry = ask[0];
 	const state = useRowAsk(entry);
-	const lead = leadEvent(events);
+	const lead = currentEvent(events, thread.status);
 	const words = lead ? eventWords(lead) : null;
 	const status = lead
 		? kindStatus(lead.kind, thread.status)

@@ -25,6 +25,7 @@ import {
 import { Mark } from "@/components/kit/Mark";
 import { markLook } from "@/components/kit/marks";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
+import { AddProjectFlow } from "@/components/projects/AddProjectFlow";
 import type { SchedulePrefill } from "@/components/schedules/ScheduleDialog";
 import { codeWhere } from "@/components/services/service-detail.utils";
 import { Hint } from "@/components/shared/Hint";
@@ -107,6 +108,7 @@ export function HomeComposer({
 	// Only the host saves a schedule, so only the host is offered Repeat… (#1020).
 	const canSchedule = useSchedules().data?.canEdit === true;
 	const [repeat, setRepeat] = useState<SchedulePrefill | null>(null);
+	const [adding, setAdding] = useState(false);
 	const picked = search;
 	const subject = subjectOf(picked);
 	const repo = repos.find((r) => r.id === picked.project);
@@ -143,18 +145,28 @@ export function HomeComposer({
 					name: s.displayName || s.name,
 				}))}
 				onPick={pick}
+				onAddProject={() => setAdding(true)}
 			/>
+			{adding && (
+				<AddProjectFlow
+					onOpenChange={setAdding}
+					onAdded={(id) => {
+						setAdding(false);
+						pick(`project:${id}`);
+					}}
+				/>
+			)}
 			{noSubjects && (
 				<Hint label="A project gives each thread its code, in its own worktree">
-					<Link
-						to="/projects"
-						search={{ add: true }}
+					<button
+						type="button"
+						onClick={() => setAdding(true)}
 						className={cn(CHIP, "gap-1.5 text-text-1")}
 						data-testid="composer-add-project"
 					>
 						<Plus aria-hidden className="size-3.5" />
 						Add a project
-					</Link>
+					</button>
 				</Hint>
 			)}
 			{service && !codeWhere(service) && (
@@ -287,11 +299,13 @@ function SubjectPicker({
 	projects,
 	services,
 	onPick,
+	onAddProject,
 }: {
 	value: string;
 	projects: { id: string; name: string }[];
 	services: { id: string; name: string }[];
 	onPick: (value: string) => void;
+	onAddProject: () => void;
 }) {
 	const navigate = useNavigate();
 	// Read when the menu renders, so a send in this tab shows up next time.
@@ -342,7 +356,7 @@ function SubjectPicker({
 					id: "add-project",
 					name: "Add project",
 					icon: Plus,
-					run: () => void navigate({ to: "/projects", search: { add: true } }),
+					run: onAddProject,
 				},
 				{
 					id: "add-service",

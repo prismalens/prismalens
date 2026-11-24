@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUp, FolderOpen, History } from "lucide-react";
+import { ArrowUp, FolderOpen, History, Link2 } from "lucide-react";
 import {
 	type FormEvent,
 	useDeferredValue,
@@ -10,7 +10,8 @@ import {
 	useMemo,
 	useState,
 } from "react";
-import { Segmented } from "@/components/shared/Segmented";
+import { SourceConnectDialog } from "@/components/settings/SourceConnectDialog";
+import { KindIcon } from "@/components/settings/source-words";
 import { Button } from "@/components/ui/button";
 import {
 	DIALOG_WIDTH,
@@ -37,9 +38,10 @@ import {
 	typedKind,
 } from "@/lib/project-source";
 import { cn } from "@/lib/utils";
-import { HostRepoPicker, hostChoices } from "./HostRepoPicker";
+import { type HostChoice, HostRepoPicker, hostChoices } from "./HostRepoPicker";
 
 const FOLDER = "folder";
+const URL_ROW = "url";
 
 /**
  * One dialog for "folder or git URL" (#1020), or a pick from a git host's repositories (#1024). The host browses its own folders (folders
@@ -75,18 +77,19 @@ export function AddProjectDialog({
 	const { managesPairing: host } = useOperator();
 	const hosts = useGitHosts(open && !folderOnly);
 	const choices = useMemo(() => hostChoices(hosts.data ?? []), [hosts.data]);
-	const [picked, setPicked] = useState<string | null>(null);
-	// The first connected host leads; with none, today's form does.
-	const from =
-		folderOnly || !hosts.data
-			? FOLDER
-			: (picked ?? choices.find((c) => c.connected)?.host ?? FOLDER);
-	const choice = choices.find((c) => c.host === from);
+	// Local folder leads and stays the default: the list never reorders with the tokens.
+	const [picked, setPicked] = useState(FOLDER);
+	const [connecting, setConnecting] = useState<HostChoice | null>(null);
+	const [pasted, setPasted] = useState("");
+	const from = folderOnly ? FOLDER : picked;
+	const choice = choices.find((c) => c.host === from && c.connected);
+	const pasting = from === URL_ROW;
 	const url = !folderOnly && isGitUrl(typed);
+	const usesNative = native && host;
 	const { dir, prefix } = splitTyped(useDeferredValue(typed));
 	const listing = useQuery({
 		...orpc.repositories.browseFolders.queryOptions({ input: { path: dir } }),
-		enabled: open && host && !url && !choice,
+		enabled: open && host && !url && !choice && !pasting && !usesNative,
 		staleTime: 5_000,
 		placeholderData: (prev) => prev,
 	});
@@ -94,7 +97,7 @@ export function AddProjectDialog({
 	const kind = folderOnly ? null : typedKind(typed, at, prefix);
 	const entries = at?.ok ? shownEntries(at.entries, prefix, hidden) : [];
 	const recent = typed ? [] : recentSources();
-	const source = sourceOf(typed);
+	const source = pasting ? pasted.trim() : sourceOf(typed);
 
 	const choose = (s: string) => {
 		if (!s || pending) return;
@@ -108,7 +111,10 @@ export function AddProjectDialog({
 	const pickNative = async () => {
 		const got = await desktopBridge()?.pickFolder?.();
 		if (!got || "unavailable" in got) return setNative(false);
-		if (got.path) setTyped(got.path);
+		if (got.path) {
+			setTyped(got.path);
+			choose(got.path);
+		}
 	};
 	const sep = at?.ok && at.path.includes("\\") ? "\\" : "/";
 	const into = (path: string) =>
@@ -118,21 +124,28 @@ export function AddProjectDialog({
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent
-				className={cn(DIALOG_WIDTH.sm, "grid gap-3")}
+				className={cn(DIALOG_WIDTH.sm, "grid grid-cols-[minmax(0,1fr)] gap-3")}
 				data-testid="add-project-dialog"
 			>
 				<DialogTitle>{title}</DialogTitle>
-				{!folderOnly && hosts.data && (
-					<Segmented
-						label="Add from"
-						value={from}
-						onChange={setPicked}
-						options={[
-							...choices.map((c) => ({ value: c.host, label: c.label })),
-							{ value: FOLDER, label: "Folder or URL" },
-						]}
-						className="max-w-full flex-wrap"
-						testId="add-project-from"
+				{!folderOnly && (
+					<SourceList
+						from={from}
+						choices={choices}
+						ready={!!hosts.data}
+						onPick={setPicked}
+						onConnect={setConnecting}
+					/>
+				)}
+				{connecting && (
+					<SourceConnectDialog
+						open
+						onOpenChange={(o) => {
+							if (o) return;
+							setConnecting(null);
+							void hosts.refetch();
+						}}
+						initialKind={connecting.kindId}
 					/>
 				)}
 				{choice ? (
@@ -141,7 +154,6 @@ export function AddProjectDialog({
 							key={choice.host}
 							choice={choice}
 							onChoose={choose}
-							onPasteUrl={() => setPicked(FOLDER)}
 							pending={pending}
 						/>
 						{error && (
@@ -164,30 +176,45 @@ export function AddProjectDialog({
 						</div>
 					</>
 				) : (
-					<form onSubmit={onSubmit} className="grid gap-2">
-						<div className="flex items-center gap-2">
+					<form
+						onSubmit={onSubmit}
+						className="grid grid-cols-[minmax(0,1fr)] gap-2"
+					>
+						{pasting ? (
 							<Input
 								autoFocus
-								value={typed}
-								onChange={(e) => setTyped(e.target.value)}
-								placeholder={folderOnly ? "Folder" : "Folder or git URL"}
-								aria-label={folderOnly ? "Folder" : "Folder or git URL"}
-								className="min-w-0 flex-1 font-mono"
-								data-testid="add-project-source"
+								value={pasted}
+								onChange={(e) => setPasted(e.target.value)}
+								placeholder="https://github.com/owner/repo.git"
+								aria-label="Repository URL"
+								className="min-w-0 font-mono"
+								data-testid="add-project-url"
 							/>
-							{native && host && (
-								<Button
-									type="button"
-									variant="secondary"
-									onClick={() => void pickNative()}
-									data-testid="add-project-native"
-								>
-									<FolderOpen />
-									Choose
-								</Button>
-							)}
-						</div>
-						{KindIcon && kind && (
+						) : (
+							<div className="flex items-center gap-2">
+								<Input
+									autoFocus
+									value={typed}
+									onChange={(e) => setTyped(e.target.value)}
+									placeholder={folderOnly ? "Folder" : "Folder path"}
+									aria-label={folderOnly ? "Folder" : "Folder path"}
+									className="min-w-0 flex-1 font-mono"
+									data-testid="add-project-source"
+								/>
+								{usesNative && (
+									<Button
+										type="button"
+										variant="secondary"
+										onClick={() => void pickNative()}
+										data-testid="add-project-native"
+									>
+										<FolderOpen />
+										Choose folder
+									</Button>
+								)}
+							</div>
+						)}
+						{!pasting && KindIcon && kind && (
 							<span
 								className="flex items-center gap-1.5 text-meta text-text-2"
 								data-testid="add-project-kind"
@@ -197,7 +224,7 @@ export function AddProjectDialog({
 								{KIND_WORD[kind]}
 							</span>
 						)}
-						{host && !url && (
+						{host && !url && !pasting && !usesNative && (
 							<div className="grid gap-1.5 rounded-surface bg-surface-1 p-2">
 								<div className="flex items-center gap-2">
 									<Button
@@ -249,7 +276,7 @@ export function AddProjectDialog({
 									</p>
 								) : (
 									<ul
-										className="grid max-h-56 gap-px overflow-y-auto"
+										className="grid max-h-44 gap-px overflow-y-auto"
 										aria-label="Folders"
 										data-testid="add-project-entries"
 									>
@@ -305,7 +332,7 @@ export function AddProjectDialog({
 							</Button>
 							<Button
 								type="submit"
-								disabled={!source || pending}
+								disabled={!source || pending || (pasting && !isGitUrl(source))}
 								data-testid="add-project-submit"
 							>
 								{submitLabel}
@@ -315,6 +342,88 @@ export function AddProjectDialog({
 				)}
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+function SourceList({
+	from,
+	choices,
+	ready,
+	onPick,
+	onConnect,
+}: {
+	from: string;
+	choices: readonly HostChoice[];
+	ready: boolean;
+	onPick: (row: string) => void;
+	onConnect: (choice: HostChoice) => void;
+}) {
+	const rowClass = (on: boolean) =>
+		cn(
+			"flex min-h-9 items-center gap-2 rounded-control px-2 text-body text-text-1",
+			on ? "bg-surface-3" : "hover:bg-surface-2",
+		);
+	const pickClass = "flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left";
+	return (
+		<ul
+			className="grid gap-px rounded-surface bg-surface-1 p-1"
+			aria-label="Add from"
+			data-testid="add-project-from"
+		>
+			<li className={rowClass(from === FOLDER)}>
+				<button
+					type="button"
+					aria-pressed={from === FOLDER}
+					onClick={() => onPick(FOLDER)}
+					className={pickClass}
+					data-testid="add-project-row-folder"
+				>
+					<FolderOpen className="size-4 shrink-0 text-text-3" aria-hidden />
+					Local folder
+				</button>
+			</li>
+			<li className={rowClass(from === URL_ROW)}>
+				<button
+					type="button"
+					aria-pressed={from === URL_ROW}
+					onClick={() => onPick(URL_ROW)}
+					className={pickClass}
+					data-testid="add-project-row-url"
+				>
+					<Link2 className="size-4 shrink-0 text-text-3" aria-hidden />
+					Paste repository URL
+				</button>
+			</li>
+			{choices.map((c) => (
+				<li key={c.host} className={rowClass(from === c.host)}>
+					<button
+						type="button"
+						aria-pressed={from === c.host}
+						disabled={!c.connected}
+						onClick={() => onPick(c.host)}
+						className={cn(pickClass, "disabled:cursor-default")}
+						data-testid={`add-project-row-${c.kindId}`}
+					>
+						<KindIcon kind={c.kindId} />
+						{c.label}
+						<span className="text-meta text-text-3">
+							{!ready ? "" : c.connected ? "Connected" : "Not connected"}
+						</span>
+					</button>
+					{ready && (
+						<Button
+							type="button"
+							variant="text"
+							size="sm"
+							onClick={() => (c.connected ? onPick(c.host) : onConnect(c))}
+							data-testid={`add-project-${c.connected ? "browse" : "connect"}-${c.kindId}`}
+						>
+							{c.connected ? "Browse" : "Connect"}
+						</Button>
+					)}
+				</li>
+			))}
+		</ul>
 	);
 }
 

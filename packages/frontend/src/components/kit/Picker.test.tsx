@@ -276,4 +276,33 @@ describe("Picker", () => {
 		await mount(9);
 		expect(document.activeElement).toBe(document.querySelector("[cmdk-input]"));
 	});
+
+	it("shows a grouped list of 8 rows whole, and caps only a searchable one at 320px", async () => {
+		const mount = async (n: number) => {
+			await act(async () => {
+				root.render(
+					<PickerList
+						label="Effort"
+						options={Array.from({ length: n }, (_, i) => ({
+							id: `o${i}`,
+							name: `Option ${i}`,
+							group: i < n - 2 ? "Effort" : "Context window",
+						}))}
+						groups={["Effort", "Context window"]}
+						values={[]}
+						emptyText="None"
+						pick={vi.fn()}
+					/>,
+				);
+			});
+			return document.querySelector("[cmdk-list]")?.className;
+		};
+		expect(await mount(8)).toBe("outline-none");
+		await act(async () => root.unmount());
+		document.body.innerHTML = "";
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		root = createRoot(container);
+		expect(await mount(9)).toBe("outline-none max-h-[320px] overflow-y-auto");
+	});
 });

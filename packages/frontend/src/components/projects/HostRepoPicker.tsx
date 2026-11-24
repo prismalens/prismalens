@@ -4,8 +4,10 @@
 import type { GitHostView, HostRepository } from "@prismalens/contracts";
 import { Lock } from "lucide-react";
 import { useDeferredValue, useState } from "react";
-import { SourceConnectDialog } from "@/components/settings/SourceConnectDialog";
-import { hostVendor } from "@/components/settings/source-words";
+import {
+	SOURCE_KINDS,
+	SourceConnectDialog,
+} from "@/components/settings/SourceConnectDialog";
 import { ProjectMark } from "@/components/shared/ProjectMark";
 import { Loading, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
@@ -17,53 +19,50 @@ import { shortAge } from "@/lib/incident-board";
 export interface HostChoice {
 	host: string;
 	label: string;
+	/** The Add source kind that connects it. */
+	kindId: string;
 	/** A credential PrismaLens can use is stored, in the environment or on the machine. */
 	connected: boolean;
 }
 
 /**
- * One entry per known git host, by name only. GitHub is always offered, so a
- * fresh install can connect it from here.
+ * Every git host Add source offers, in its order, then any other host with a
+ * credential by name. The order never depends on which token exists.
  */
 export function hostChoices(hosts: readonly GitHostView[]): HostChoice[] {
-	const seen = new Map<string, HostChoice>();
-	for (const h of hosts) {
-		const vendor = hostVendor(h.host);
-		seen.set(h.host, {
+	const byHost = new Map(hosts.map((h) => [h.host.toLowerCase(), h]));
+	const isConnected = (h?: GitHostView) =>
+		!!h && (h.stored.length > 0 || !!h.env || !!h.machine);
+	const declared = SOURCE_KINDS.filter((k) => k.git).map((k) => {
+		const host = new URL(k.url).host;
+		return {
+			host,
+			label: k.label,
+			kindId: k.id,
+			connected: isConnected(byHost.get(host)),
+		};
+	});
+	const known = new Set(declared.map((d) => d.host));
+	const extra = hosts
+		.filter((h) => !known.has(h.host.toLowerCase()))
+		.map((h) => ({
 			host: h.host,
-			label: vendor === "Git host" ? h.host : vendor,
-			connected: h.stored.length > 0 || !!h.env || !!h.machine,
-		});
-	}
-	if (!seen.has("github.com"))
-		seen.set("github.com", {
-			host: "github.com",
-			label: "GitHub",
-			connected: false,
-		});
-	return Array.from(seen.values()).sort(
-		(a, b) =>
-			Number(b.connected) - Number(a.connected) ||
-			a.label.localeCompare(b.label),
-	);
-}
-
-/** The Sources page a host's Connect opens on. */
-export function connectKindFor(host: string): string {
-	const v = hostVendor(host).toLowerCase();
-	return v === "git host" ? "github" : v;
+			label: h.host,
+			kindId: "gitlab",
+			connected: isConnected(h),
+		}))
+		.sort((a, b) => a.label.localeCompare(b.label));
+	return [...declared, ...extra];
 }
 
 /** A host's repositories, most recently pushed first; a pick hands back its clone URL. */
 export function HostRepoPicker({
 	choice,
 	onChoose,
-	onPasteUrl,
 	pending,
 }: {
 	choice: HostChoice;
 	onChoose: (url: string) => void;
-	onPasteUrl: () => void;
 	pending: boolean;
 }) {
 	const [search, setSearch] = useState("");
@@ -89,14 +88,6 @@ export function HostRepoPicker({
 					>
 						Connect {choice.label}
 					</Button>
-					<Button
-						type="button"
-						variant="text"
-						onClick={onPasteUrl}
-						data-testid="host-repos-paste"
-					>
-						Paste a URL instead
-					</Button>
 				</div>
 				{connecting && (
 					<SourceConnectDialog
@@ -105,7 +96,7 @@ export function HostRepoPicker({
 							setConnecting(o);
 							if (!o) void list.refetch();
 						}}
-						initialKind={connectKindFor(choice.host)}
+						initialKind={choice.kindId}
 					/>
 				)}
 			</div>

@@ -6,6 +6,7 @@ import { Check, TriangleAlert } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Hint } from "@/components/shared/Hint";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { cn } from "@/lib/utils";
 import { OptionIcon, type PickerOption } from "./Picker";
 
 /** Past this many rows the picker gets a search field. */
@@ -69,7 +70,11 @@ export function PickerList({
 			)}
 			<Command.List
 				tabIndex={-1}
-				className="max-h-[320px] overflow-y-auto outline-none"
+				// A short list shows whole and the popover scrolls at the room it has; only a searchable one caps itself.
+				className={cn(
+					"outline-none",
+					options.length >= SEARCH_FROM && "max-h-[320px] overflow-y-auto",
+				)}
 			>
 				<Command.Empty className="px-2 py-1.5 text-body text-text-3">
 					{emptyText}
