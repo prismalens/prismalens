@@ -1234,6 +1234,25 @@ describe("records follow their threads, and nothing waits forever (#1024 spec F)
 		expect(left.some((m) => m.requestId === "a-to-b")).toBe(true);
 	});
 
+	it("Given a reopen that loses a race, Then the caller's next outcome is still tried in the same pass", async () => {
+		const ended = await thread({ status: "completed" });
+		await prisma.pendingAction.createMany({
+			data: ["race-0", "race-1"].map((requestId) => ({
+				callerId: ended.id,
+				rootId: ended.id,
+				tool: "pl_thread_start",
+				args: "{}",
+				requestId,
+				state: "denied",
+			})),
+		});
+		dispatch.resumeInvestigation.mockClear();
+		dispatch.resumeInvestigation.mockImplementationOnce(async () => false);
+		await actions.deliverOutcomes();
+		expect(dispatch.resumeInvestigation).toHaveBeenCalledTimes(2);
+		expect(await prisma.pendingAction.count({ where: { callerId: ended.id, deliveredAt: null } })).toBe(1);
+	});
+
 	it("Given more refused outcomes than one batch, Then an outcome for a running caller still goes out, and refused ones stop retrying", async () => {
 		const ended = await thread({ status: "completed" });
 		await prisma.pendingAction.createMany({

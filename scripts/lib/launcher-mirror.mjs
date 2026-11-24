@@ -188,16 +188,31 @@ export const RELEASES_URL =
 export async function mirrorPublished(
 	root,
 	{ version, sha256 },
-	{ base = RELEASES_URL, fetchImpl = fetch, target = ownTarget() } = {},
+	{
+		base = RELEASES_URL,
+		fetchImpl = fetch,
+		target = ownTarget(),
+		tries = 3,
+	} = {},
 ) {
 	const name = archiveFile(version, target);
 	const pinned = sha256[target];
 	if (!pinned)
 		throw new Error(`prismalens@${version} pins no archive for ${target}`);
 	const url = `${base}/v${version}/${name}`;
-	const res = await fetchImpl(url);
-	if (!res.ok) throw new Error(`${url} answered ${res.status}`);
-	const bytes = Buffer.from(await res.arrayBuffer());
+	let bytes;
+	// A network error or a 5xx is tried again; any other answer is the release's.
+	for (let attempt = 1; !bytes; attempt++) {
+		const res = await fetchImpl(url, {
+			signal: AbortSignal.timeout(300_000),
+		}).catch((e) => {
+			if (attempt >= tries) throw e;
+			return null;
+		});
+		if (res && !res.ok && (res.status < 500 || attempt >= tries))
+			throw new Error(`${url} answered ${res.status}`);
+		if (res?.ok) bytes = Buffer.from(await res.arrayBuffer());
+	}
 	const digest = createHash("sha256").update(bytes).digest("hex");
 	if (digest !== pinned)
 		throw new Error(`${url} has sha256 ${digest}; the launcher pins ${pinned}`);

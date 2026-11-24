@@ -160,3 +160,46 @@ test("a published archive whose digest differs from the pin is refused, and a mi
 	);
 	assert.deepEqual(readdirSync(root), []);
 });
+
+test("a published archive download is tried again after a 5xx or a network error, up to its tries", async () => {
+	const root = join(work, "retry-mirror");
+	mkdirSync(root, { recursive: true });
+	const bytes = Buffer.from("release archive bytes");
+	const digest = createHash("sha256").update(bytes).digest("hex");
+	const answers = [
+		() => Promise.reject(new TypeError("fetch failed")),
+		() => Promise.resolve(new Response("", { status: 502 })),
+		() => Promise.resolve(new Response(bytes)),
+	];
+	let calls = 0;
+	await mirrorPublished(
+		root,
+		{ version: "0.5.6", sha256: { "linux-x64": digest } },
+		{
+			base: "https://releases.test",
+			target: "linux-x64",
+			fetchImpl: () => answers[calls++](),
+		},
+	);
+	assert.equal(calls, 3);
+	assert.deepEqual(
+		readFileSync(join(root, "v0.5.6", "prismalens-0.5.6-linux-x64.tar.gz")),
+		bytes,
+	);
+	await assert.rejects(
+		mirrorPublished(
+			root,
+			{ version: "0.5.7", sha256: { "linux-x64": digest } },
+			{
+				base: "https://releases.test",
+				target: "linux-x64",
+				tries: 2,
+				fetchImpl: async () => new Response("", { status: 503 }),
+			},
+		),
+		{
+			message:
+				"https://releases.test/v0.5.7/prismalens-0.5.7-linux-x64.tar.gz answered 503",
+		},
+	);
+});

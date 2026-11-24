@@ -7,7 +7,7 @@
 import "@/components/kit/MenuImpl";
 import "@/components/kit/PopoverImpl";
 import "@/components/kit/SurfaceMenus";
-import { afterEach, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll } from "vitest";
 import * as registry from "@/components/kit/registry";
 import { primeRegistry } from "@/components/kit/registry-load";
 import { primeHintTip } from "@/components/shared/Hint";
@@ -37,17 +37,21 @@ if (typeof window !== "undefined") {
 	const strays: string[] = [];
 	const passThrough = globalThis.fetch;
 	globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-		const url = input instanceof Request ? input.url : String(input);
-		if (!url.startsWith(window.location.origin))
-			return passThrough(input, init);
-		strays.push(url);
-		return Promise.reject(new TypeError(`unit tests have no API: ${url}`));
+		const url = new URL(
+			input instanceof Request ? input.url : String(input),
+			window.location.href,
+		);
+		if (url.origin !== window.location.origin) return passThrough(input, init);
+		strays.push(url.href);
+		return Promise.reject(new TypeError(`unit tests have no API: ${url.href}`));
 	}) as typeof fetch;
-	afterEach(() => {
+	const check = () => {
 		const seen = strays.splice(0);
 		if (seen.length)
 			throw new Error(
 				`The test asked the API, which a unit test must mock: ${seen.join(", ")}`,
 			);
-	});
+	};
+	afterEach(check);
+	afterAll(check);
 }
