@@ -40,7 +40,7 @@ import {
 	useHarnessSettings,
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
-import { failureLine, notSignedIn } from "@/lib/failure-words";
+import { notSignedIn, signInNext } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
 import { EnvVarNotes, envStateWord } from "./agent-env";
 import { SignInButton } from "./SignInButton";
@@ -187,7 +187,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 									? checked.detail
 									: checked.signInMethods?.length
 										? checked.signInMethods.join(", ")
-										: failureLine(notSignedIn(agent.label))}
+										: `${notSignedIn(agent.label).what} ${signInNext(agent, "Check")}`}
 							</p>
 						)}
 						{checked?.account && (

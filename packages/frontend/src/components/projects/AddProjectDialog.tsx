@@ -247,7 +247,7 @@ export function AddProjectDialog({
 											onCheckedChange={setHidden}
 											data-testid="add-project-hidden"
 										/>
-										Hidden
+										Show hidden
 									</label>
 								</div>
 								{recent.length > 0 && (
@@ -406,9 +406,9 @@ function SourceList({
 					>
 						<KindIcon kind={c.kindId} />
 						{c.label}
-						<span className="text-meta text-text-3">
-							{!ready ? "" : c.connected ? "Connected" : "Not connected"}
-						</span>
+						{ready && c.connected && (
+							<span className="text-meta text-text-3">Connected</span>
+						)}
 					</button>
 					{ready && (
 						<Button

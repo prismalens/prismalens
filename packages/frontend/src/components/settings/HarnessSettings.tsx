@@ -66,7 +66,7 @@ import {
 	useHarnessSettings,
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
-import { failureLine, notSignedIn } from "@/lib/failure-words";
+import { signInNext } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
 import { subagentsOnStop } from "./agent-threads.settings";
 import { StatePill } from "./source-words";
@@ -471,10 +471,12 @@ function AgentRow({
 	const account = harness.checked?.account;
 	const version = harness.installed ? versionText(harness) : null;
 
+	// The sign-in step sits under its own line, so a narrow row keeps the name readable.
+	const signIn = outcome === "sign-in-needed" && !harness.off;
 	const note = harness.windowsOnlyPath
 		? `Windows install at ${harness.windowsOnlyPath}; can't run in WSL`
-		: outcome === "sign-in-needed" && !harness.off
-			? failureLine(notSignedIn(harness.label))
+		: signIn
+			? signInNext(harness, "Check")
 			: inUse
 				? "Used by the next run"
 				: null;
@@ -524,13 +526,13 @@ function AgentRow({
 						{note && (
 							<span data-testid={`harness-note-${harness.id}`}>{note}</span>
 						)}
+						{signIn && <SignInButton agent={harness} className="max-w-full" />}
 						<MutationError error={checkHarness.error} />
 					</span>
 				)
 			}
 			trailing={
 				<span className="flex items-center gap-1">
-					{!harness.off && <SignInButton agent={harness} />}
 					{harness.installed && (
 						<Button
 							variant="secondary"

@@ -268,7 +268,7 @@ export function unreadyReason(
 			: null;
 	// The same words a run that fails on sign-in shows (#831 w7-3).
 	if (h.checked.outcome === "sign-in-needed")
-		return failureLine(notSignedIn(h.label));
+		return failureLine(notSignedIn(h.label, h.loginHint));
 	return `${h.label}: ${h.checked.detail}`;
 }
 

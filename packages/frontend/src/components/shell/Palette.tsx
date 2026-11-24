@@ -389,6 +389,8 @@ export function Palette({
 			),
 	].filter((i) => on(i.tab));
 	const current = items.find((i) => i.key === active) ?? items[0];
+	// With no thread among the results the preview could only repeat a label; the list takes the room.
+	const previews = items.some((i) => i.thread);
 	const go = (fn: () => void) => {
 		onDone();
 		fn();
@@ -519,7 +521,7 @@ export function Palette({
 					)}
 					{searchedNote(messages.data, tab)}
 				</CommandList>
-				{!phone && current && !actionsFor && (
+				{!phone && current && previews && !actionsFor && (
 					<aside
 						className="relative hidden w-60 shrink-0 p-3 before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-hairline min-[900px]:block"
 						aria-label="Preview"

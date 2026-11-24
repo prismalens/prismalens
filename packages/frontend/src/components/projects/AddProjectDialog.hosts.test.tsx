@@ -147,9 +147,9 @@ describe("AddProjectDialog (git hosts)", () => {
 		expect(rows()).toEqual([
 			"Local folder",
 			"Paste repository URL",
-			"GitHubNot connectedConnect",
-			"GitLabNot connectedConnect",
-			"BitbucketNot connectedConnect",
+			"GitHubConnect",
+			"GitLabConnect",
+			"BitbucketConnect",
 		]);
 		expect(
 			document.body.querySelector('[data-testid="add-project-source"]'),
@@ -162,9 +162,9 @@ describe("AddProjectDialog (git hosts)", () => {
 		expect(rows()).toEqual([
 			"Local folder",
 			"Paste repository URL",
-			"GitHubNot connectedConnect",
+			"GitHubConnect",
 			"GitLabConnectedBrowse",
-			"BitbucketNot connectedConnect",
+			"BitbucketConnect",
 		]);
 		expect(
 			document.body.querySelector('[data-testid="host-repos"]'),

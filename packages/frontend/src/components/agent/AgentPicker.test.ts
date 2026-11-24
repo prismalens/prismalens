@@ -114,6 +114,14 @@ describe("the box's chips (#673)", () => {
 			"Codex is not signed in to its model provider. Sign in with its own CLI, then retry.",
 		);
 		expect(
+			unreadyReason({
+				...codex,
+				loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
+			}),
+		).toBe(
+			"Codex is not signed in to its model provider. Run codex login in a terminal, then retry.",
+		);
+		expect(
 			unreadyReason(
 				claude({
 					checked: {

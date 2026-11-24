@@ -108,9 +108,9 @@ export function AlertIntakeSettings() {
 									{shown ? token.token : maskToken(token.token)}
 								</Mono>
 							) : tokenHidden ? (
-								"Shown only in a browser on the machine PrismaLens runs on"
+								<span>Shown only on the machine PrismaLens runs on</span>
 							) : (
-								" "
+								<span aria-hidden>{" "}</span>
 							)
 						}
 					>
@@ -138,7 +138,8 @@ export function AlertIntakeSettings() {
 									<span className="sr-only">. {accepted}</span>
 								</>
 							) : (
-								"Nothing has arrived yet"
+								// A node, not a string: a string description is the label's hint only.
+								<span>Nothing has arrived yet</span>
 							)
 						}
 					>

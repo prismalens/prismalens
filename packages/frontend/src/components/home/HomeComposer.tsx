@@ -405,16 +405,26 @@ export function AgentReady() {
 					(h.providerSignIn === "unchecked"
 						? `${h.label}: sign-in not checked`
 						: `${h.label} not checked`));
-	return <AgentReadyChip agent={h?.id ?? null} state={state} word={word} />;
+	return (
+		<AgentReadyChip
+			agent={h?.id ?? null}
+			name={h?.label}
+			state={state}
+			word={word}
+		/>
+	);
 }
 
 /** The chip alone, so the gallery can show each state from fixtures. */
 export function AgentReadyChip({
 	agent,
+	name,
 	state,
 	word,
 }: {
 	agent: string | null;
+	/** The agent's name beside its mark: a mark alone is not known on first use. */
+	name?: string;
 	state: "ready" | "signIn" | "missing";
 	word: string;
 }) {
@@ -435,28 +445,38 @@ export function AgentReadyChip({
 			</span>
 		</span>
 	);
+	const body = (
+		<>
+			{mark}
+			{name && (
+				<span aria-hidden className="max-w-32 truncate">
+					{name}
+				</span>
+			)}
+		</>
+	);
 	return (
 		<Hint label={word}>
 			{state === "ready" ? (
 				<span
 					role="img"
 					aria-label={label}
-					className={cn(CHIP, "px-2 hover:bg-transparent")}
+					className={cn(CHIP, "gap-2 px-2 hover:bg-transparent")}
 					data-testid="composer-agent-ready"
 					data-state={state}
 				>
-					{mark}
+					{body}
 				</span>
 			) : (
 				<Link
 					to="/settings"
 					search={{ tab: "agent" }}
 					aria-label={label}
-					className={cn(CHIP, "px-2")}
+					className={cn(CHIP, "gap-2 px-2")}
 					data-testid="composer-agent-ready"
 					data-state={state}
 				>
-					{mark}
+					{body}
 				</Link>
 			)}
 		</Hint>
