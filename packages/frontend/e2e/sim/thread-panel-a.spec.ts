@@ -911,11 +911,11 @@ test.describe
 			);
 			const rows = page.getByTestId("started-row");
 			await expect(rows.first()).toHaveAttribute("data-id", "s-fail");
-			// The agent's mark is its registry logo, drawn at a real size.
+			// The agent's mark is its owner's logo, drawn at a real size.
 			const mark = rows.first().getByTestId("agent-logo");
-			await expect(mark).toHaveAttribute("viewBox", "0 0 240 300");
+			await expect(mark).toHaveAttribute("data-brand", "opencode");
 			const box = await mark.boundingBox();
-			expect([box?.width, box?.height]).toEqual([16, 20]);
+			expect([box?.width, box?.height]).toEqual([14, 14]);
 			await expect(rows.first()).toHaveAttribute("data-state", "failed");
 			const toggle = page.getByTestId("started-finished-toggle");
 			await expect(toggle).toContainText("Finished");
