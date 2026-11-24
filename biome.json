@@ -9,7 +9,6 @@
 		"ignoreUnknown": false,
 		"includes": [
 			"**",
-			"!packages/frontend/src/assets/brands",
 			"!**/*.test.ts",
 			"!**/*.spec.ts",
 			"packages/frontend/e2e/**/*.spec.ts",
