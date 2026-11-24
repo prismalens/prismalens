@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * The alerts frame (#523, study-v3 §8): one area beside the sidebar, which
  * carries the alert list from 1280; there is no second list here. The
