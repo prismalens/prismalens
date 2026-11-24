@@ -12,6 +12,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { OnEvent } from "@nestjs/event-emitter";
 import { LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
 import type { Alert, Incident, Investigation } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { TimelineService } from "../timeline/timeline.service.js";
@@ -101,7 +102,7 @@ export class InvestigationUpdateService {
 		const recentAlerts = await this.prisma.alert.count({
 			where: {
 				incidentId: incident.id,
-				createdAt: { gt: new Date(Date.now() - 5 * 60 * 1000) }, // Last 5 minutes
+				createdAt: { gt: new Date(clock.now() - 5 * 60 * 1000) }, // Last 5 minutes
 			},
 		});
 

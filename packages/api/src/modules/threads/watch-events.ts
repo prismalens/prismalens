@@ -10,6 +10,7 @@ import type {
 	PrWatchUntil,
 	PullRequest,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	type EventBus,
@@ -76,7 +77,7 @@ export async function recordWatchEvent(
 					path: [],
 					seq: (_max.seq ?? -1) + 1,
 					label: null,
-					ts: new Date().toISOString(),
+					ts: clock.date().toISOString(),
 				} as unknown as CanonicalEvent;
 				await tx.investigationEvent.create({
 					data: {

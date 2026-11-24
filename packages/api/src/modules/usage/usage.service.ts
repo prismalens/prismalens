@@ -16,6 +16,7 @@ import {
 	type UsageSummary,
 	type UsageWindow,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
@@ -42,7 +43,7 @@ export class UsageService {
 
 	async summary(
 		query: UsageQuery,
-		now: Date = new Date(),
+		now: Date = clock.date(),
 	): Promise<UsageSummary> {
 		const span = RANGE_SPAN[query.range];
 		const since = new Date(now.getTime() - span.ms);

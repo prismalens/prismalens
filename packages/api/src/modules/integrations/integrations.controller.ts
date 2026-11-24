@@ -23,6 +23,7 @@ import {
 	isLegacyTemplateId,
 } from "@prismalens/integrations";
 import { requireOwner } from "../../core/auth/owner.js";
+import * as clock from "../../core/clock.js";
 import { AlertPullService } from "../alerts/alert-pull.service.js";
 import { ImagesService } from "../images/images.service.js";
 import { GitCredentialService } from "./git-credential.service.js";
@@ -546,7 +547,7 @@ export class IntegrationsController {
 		const expired =
 			serialized.status === "ACTIVE" &&
 			!!connection.tokenExpiresAt &&
-			connection.tokenExpiresAt < new Date();
+			connection.tokenExpiresAt < clock.date();
 
 		return {
 			...serialized,

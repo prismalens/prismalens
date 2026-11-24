@@ -25,6 +25,7 @@ import {
 	WORKTREE_FILE_MAX_BYTES,
 	WORKTREE_MAX_FILES,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { spawnGit } from "../../core/harness/git-spawn.js";
 import {
 	baseEnv,
@@ -425,9 +426,9 @@ export function nowSnapshot(store: SnapshotStore): Promise<Snapshot> {
 
 async function nowUnderLock(store: SnapshotStore): Promise<Snapshot> {
 	const hit = recent.get(store.gitDir);
-	if (hit && Date.now() - hit.at < COALESCE_MS) return hit.snap;
+	if (hit && clock.now() - hit.at < COALESCE_MS) return hit.snap;
 	const snap = await takeSnapshot(store);
-	recent.set(store.gitDir, { at: Date.now(), snap });
+	recent.set(store.gitDir, { at: clock.now(), snap });
 	return snap;
 }
 

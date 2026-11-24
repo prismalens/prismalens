@@ -12,6 +12,7 @@ import {
 	ThreadTreeSettingsSchema,
 } from "@prismalens/contracts";
 import type { Proposal as ProposalRow } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { RepositoriesService } from "../repositories/repositories.service.js";
 import {
@@ -191,7 +192,7 @@ export class ProposalsService implements OnApplicationBootstrap {
 	): Promise<Proposal> {
 		const { count } = await this.prisma.proposal.updateMany({
 			where: { id: row.id, state: from },
-			data: { state, outcome, decidedAt: new Date() },
+			data: { state, outcome, decidedAt: clock.date() },
 		});
 		if (!count)
 			throw new ORPCError("CONFLICT", {

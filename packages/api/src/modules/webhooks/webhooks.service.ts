@@ -5,6 +5,7 @@ import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import { httpUrlOrNull, type PrometheusAlert } from "@prismalens/contracts";
 import { Prisma } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { AlertStatus, Severity } from "../../shared/enums/index.js";
 import { AlertMappingService } from "../alert-mapping/alert-mapping.service.js";
 import type { Alert } from "../alerts/alerts.service.js";
@@ -191,7 +192,7 @@ export class WebhooksService {
 			}
 		}
 
-		const ageMs = Date.now() - existingEvent.receivedAt.getTime();
+		const ageMs = clock.now() - existingEvent.receivedAt.getTime();
 		if (ageMs < IN_FLIGHT_GRACE_MS) {
 			throw new ORPCError("CONFLICT", {
 				message:
@@ -401,7 +402,7 @@ export class WebhooksService {
 			eventType: EARLY_RESOLUTION_EVENT,
 			payload: { status: "resolved", fingerprint, ...episode },
 			eventTime: new Date(
-				Number.isNaN(endsAt) ? Date.now() : endsAt,
+				Number.isNaN(endsAt) ? clock.now() : endsAt,
 			).toISOString(),
 		});
 	}
@@ -422,7 +423,7 @@ export class WebhooksService {
 			sourceEventId: fingerprint,
 			eventType: EARLY_RESOLUTION_EVENT,
 			eventTimeFrom: started,
-			receivedSince: new Date(Date.now() - EARLY_RESOLUTION_TTL_MS),
+			receivedSince: new Date(clock.now() - EARLY_RESOLUTION_TTL_MS),
 		});
 	}
 
@@ -440,7 +441,7 @@ export class WebhooksService {
 			source: "prometheus",
 			sourceEventId: fingerprint,
 			eventType: EARLY_RESOLUTION_EVENT,
-			receivedSince: new Date(Date.now() - EARLY_RESOLUTION_TTL_MS),
+			receivedSince: new Date(clock.now() - EARLY_RESOLUTION_TTL_MS),
 		});
 		const started = Date.parse(startsAt);
 		if (Number.isNaN(started)) return null;

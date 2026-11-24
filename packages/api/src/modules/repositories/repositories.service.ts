@@ -15,6 +15,7 @@ import type {
 	ProjectScript,
 } from "@prismalens/contracts";
 import type { Repository, ServiceRepository } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { repoLabel, shownRepoName } from "../../core/harness/git-credential.js";
 import {
 	classifySource,
@@ -160,7 +161,7 @@ export class RepositoriesService {
 			subPath: own,
 			plain,
 			...sync,
-			syncedAt: new Date(),
+			syncedAt: clock.date(),
 		};
 		const repository = await this.prisma.$transaction(async (tx) => {
 			const sameRoot = await tx.repository.findFirst({
@@ -253,7 +254,7 @@ export class RepositoriesService {
 			this.logger.log(`Started git in project ${id}`);
 			return await this.prisma.repository.update({
 				where: { id },
-				data: { plain: false, ...sync, syncedAt: new Date() },
+				data: { plain: false, ...sync, syncedAt: clock.date() },
 			});
 		} finally {
 			release();
@@ -294,7 +295,7 @@ export class RepositoriesService {
 		);
 		return this.prisma.repository.update({
 			where: { id },
-			data: { ...sync, syncedAt: new Date() },
+			data: { ...sync, syncedAt: clock.date() },
 		});
 	}
 
