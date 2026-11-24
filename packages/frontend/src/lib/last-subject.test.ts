@@ -3,7 +3,13 @@
 // Copyright 2026 Sumit Patel
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { lastSubject, rememberSubject, subjectMenu } from "./last-subject";
+import {
+	lastSubject,
+	onlyProject,
+	rememberSubject,
+	serviceIsProject,
+	subjectMenu,
+} from "./last-subject";
 
 const projects = [
 	{ id: "p1", name: "acme/shop" },
@@ -55,5 +61,44 @@ describe("rememberSubject", () => {
 		expect(lastSubject()).toBe("service:s1");
 		rememberSubject({ kind: "project", repositoryId: "p2" });
 		expect(lastSubject()).toBe("project:p2");
+	});
+});
+
+describe("serviceIsProject", () => {
+	const repos = [
+		{ id: "r1", fullName: String.raw`C:\Users\sumit\repo` },
+		{ id: "r2", fullName: "acme/shop" },
+	];
+	it("is true for the service an alert made for a project: its name, linked only to it", () => {
+		expect(
+			serviceIsProject({ name: "repo", repositories: [{ repositoryId: "r1" }] }, repos),
+		).toBe(true);
+		expect(
+			serviceIsProject({ name: "Shop", repositories: [{ repositoryId: "r2" }] }, repos),
+		).toBe(true);
+	});
+	it("is false for a service with its own name, with no code, or with more than one project", () => {
+		expect(
+			serviceIsProject({ name: "Checkout", repositories: [{ repositoryId: "r2" }] }, repos),
+		).toBe(false);
+		expect(serviceIsProject({ name: "repo", repositories: [] }, repos)).toBe(false);
+		expect(
+			serviceIsProject(
+				{ name: "repo", repositories: [{ repositoryId: "r1" }, { repositoryId: "r2" }] },
+				repos,
+			),
+		).toBe(false);
+	});
+});
+
+describe("onlyProject", () => {
+	it("names the one project when no subject is chosen", () => {
+		expect(onlyProject([{ id: "r1" }], {})).toEqual({ id: "r1" });
+	});
+	it("names none with two projects, or once No project, a project or a service is chosen", () => {
+		expect(onlyProject([{ id: "r1" }, { id: "r2" }], {})).toBeUndefined();
+		expect(onlyProject([{ id: "r1" }], { none: true })).toBeUndefined();
+		expect(onlyProject([{ id: "r1" }], { project: "r9" })).toBeUndefined();
+		expect(onlyProject([{ id: "r1" }], { service: "s1" })).toBeUndefined();
 	});
 });

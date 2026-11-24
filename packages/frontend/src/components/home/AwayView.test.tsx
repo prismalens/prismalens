@@ -7,7 +7,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AwayFold } from "./AwayView";
+import { AwayFold, digestLines } from "./AwayView";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -64,5 +64,105 @@ describe("Home's folded away view (sheet §1, #1101 category 3)", () => {
 				?.click(),
 		);
 		expect(onOpen).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("Home's what changed reads an incident once", () => {
+	const event = (threadId: string, kind: string, at: string) => ({
+		id: `${threadId}-${kind}`,
+		threadId,
+		kind,
+		detail: null,
+		resetsAt: null,
+		at,
+		readAt: null,
+		thread: {
+			id: threadId,
+			incident: null,
+			cause: null,
+			answer: null,
+			error: null,
+		},
+	});
+	const entry = (
+		id: string,
+		title: string,
+		status: string,
+		events: ReturnType<typeof event>[],
+		incident: string | null,
+	) => ({
+		thread: {
+			id,
+			title,
+			status,
+			incident: incident ? { id: incident, number: 1, severity: "low" } : null,
+		},
+		events,
+	});
+	const away = (threads: ReturnType<typeof entry>[]) =>
+		({
+			since: null,
+			long: false,
+			groups: [{ root: { id: "r" }, threads }],
+		}) as unknown as AwayData;
+
+	it("shows one line for a failed run and its retry, titled and marked by the retry", () => {
+		const lines = digestLines(
+			away([
+				entry(
+					"t-failed",
+					"Test alert: repo is failing",
+					"failed",
+					[event("t-failed", "failed", "2026-11-24T10:00:00.000Z")],
+					"inc-1",
+				),
+				entry(
+					"t-retry",
+					"Test alert on demo repo",
+					"done",
+					[event("t-retry", "finished", "2026-11-24T10:03:00.000Z")],
+					"inc-1",
+				),
+			]),
+		);
+		expect(lines.map((l) => [l.id, l.title, l.status])).toEqual([
+			["t-retry", "Test alert on demo repo", "done"],
+		]);
+	});
+
+	it("keeps threads of different incidents, and threads with no incident, apart", () => {
+		const lines = digestLines(
+			away([
+				entry(
+					"a",
+					"A",
+					"done",
+					[event("a", "finished", "2026-11-24T10:00:00.000Z")],
+					"inc-1",
+				),
+				entry(
+					"b",
+					"B",
+					"done",
+					[event("b", "finished", "2026-11-24T10:01:00.000Z")],
+					"inc-2",
+				),
+				entry(
+					"c",
+					"C",
+					"done",
+					[event("c", "finished", "2026-11-24T10:02:00.000Z")],
+					null,
+				),
+				entry(
+					"d",
+					"D",
+					"done",
+					[event("d", "finished", "2026-11-24T10:03:00.000Z")],
+					null,
+				),
+			]),
+		);
+		expect(lines.map((l) => l.id)).toEqual(["d", "c", "b", "a"]);
 	});
 });

@@ -56,3 +56,36 @@ export function subjectMenu(
 		services: kind === "service" ? services.filter((s) => s !== hit) : services,
 	};
 }
+
+/** The folder name or repo name at the end of a project's full name. */
+const lastSegment = (fullName: string) =>
+	fullName.split(/[\\/]/).filter(Boolean).pop()?.toLowerCase() ?? "";
+
+/**
+ * A project that an alert reached got a service of the same name linked only to it. That
+ * service is the project, so the subject menu lists it once, under Projects.
+ */
+export function serviceIsProject(
+	service: { name: string; repositories?: { repositoryId: string }[] },
+	projects: { id: string; fullName: string }[],
+): boolean {
+	const links = service.repositories ?? [];
+	const only = links.length === 1 ? links[0] : undefined;
+	const project = only && projects.find((p) => p.id === only.repositoryId);
+	return (
+		!!project && lastSegment(project.fullName) === service.name.toLowerCase()
+	);
+}
+
+/** With one project and no subject chosen, that project: nothing else could be meant. */
+export function onlyProject<T extends { id: string }>(
+	projects: T[],
+	chosen: { project?: string; service?: string; none?: boolean },
+): T | undefined {
+	return projects.length === 1 &&
+		!chosen.project &&
+		!chosen.service &&
+		!chosen.none
+		? projects[0]
+		: undefined;
+}

@@ -33,7 +33,12 @@ import { RestartNotice } from "@/components/shell/RestartNotice";
 import { NewThread } from "@/components/thread/NewThread";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
-import { lastSubject, subjectMenu } from "@/lib/last-subject";
+import {
+	lastSubject,
+	onlyProject,
+	serviceIsProject,
+	subjectMenu,
+} from "@/lib/last-subject";
 import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import { HomeHandover as HomeHandoverView } from "./HomeHandover";
@@ -109,7 +114,8 @@ export function HomeComposer({
 	const canSchedule = useSchedules().data?.canEdit === true;
 	const [repeat, setRepeat] = useState<SchedulePrefill | null>(null);
 	const [adding, setAdding] = useState(false);
-	const picked = search;
+	const only = onlyProject(repos, search);
+	const picked = only ? { ...search, project: only.id } : search;
 	const subject = subjectOf(picked);
 	const repo = repos.find((r) => r.id === picked.project);
 	const service = services.find((s) => s.id === picked.service);
@@ -140,10 +146,12 @@ export function HomeComposer({
 							: "none"
 				}
 				projects={repos.map((r) => ({ id: r.id, name: r.fullName }))}
-				services={services.map((s) => ({
-					id: s.id,
-					name: s.displayName || s.name,
-				}))}
+				services={services
+					.filter((s) => !serviceIsProject(s, repos))
+					.map((s) => ({
+						id: s.id,
+						name: s.displayName || s.name,
+					}))}
 				onPick={pick}
 				onAddProject={() => setAdding(true)}
 			/>

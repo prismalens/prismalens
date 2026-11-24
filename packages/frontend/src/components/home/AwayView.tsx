@@ -67,18 +67,19 @@ export function AwayView({
 	const asks = useThreadAsks(!!away.data?.long);
 	const markRead = useMarkEventsRead();
 	const [open, setOpen] = useState(false);
+	const latest = away.data ? onePerIncident(away.data) : undefined;
 	const data =
-		away.data && skip
+		latest && skip
 			? {
-					...away.data,
-					groups: away.data.groups
+					...latest,
+					groups: latest.groups
 						.map((g) => ({
 							...g,
 							threads: g.threads.filter((t) => !skip.has(t.thread.id)),
 						}))
 						.filter((g) => g.threads.length > 0),
 				}
-			: away.data;
+			: latest;
 	if (!data || data.groups.length === 0) return null;
 	// Home stays a clean page (sheet §1): the list opens only when asked.
 	if (fold && !open)
@@ -123,13 +124,42 @@ export interface DigestLine {
 	at: string;
 }
 
+/**
+ * An incident whose run failed and was retried has two threads; it reads once, as the
+ * thread with the newest event. A thread with no incident is its own.
+ */
+export function onePerIncident(data: AwayData): AwayData {
+	const winner = new Map<string, string>();
+	const best = new Map<string, number>();
+	for (const { thread, events } of data.groups.flatMap((g) => g.threads)) {
+		const key = thread.incident?.id ?? thread.id;
+		const at = Math.max(...events.map((e) => Date.parse(e.at)), 0);
+		if (at >= (best.get(key) ?? -1)) {
+			best.set(key, at);
+			winner.set(key, thread.id);
+		}
+	}
+	return {
+		...data,
+		groups: data.groups
+			.map((g) => ({
+				...g,
+				threads: g.threads.filter(
+					(t) =>
+						winner.get(t.thread.incident?.id ?? t.thread.id) === t.thread.id,
+				),
+			}))
+			.filter((g) => g.threads.length > 0),
+	};
+}
+
 /** Each changed thread once, at the event matching its status now; newest first. */
 export function digestLines(
 	data: AwayData,
 	skip?: ReadonlySet<string>,
 ): DigestLine[] {
-	return data.groups
-		.flatMap((g) => g.threads)
+	return onePerIncident(data)
+		.groups.flatMap((g) => g.threads)
 		.filter(({ thread }) => !skip?.has(thread.id))
 		.flatMap(({ thread, events }) => {
 			const lead = currentEvent(events, thread.status);
