@@ -368,7 +368,7 @@ describe("Dispatcher", () => {
 			await dispatcher.tick();
 			await dispatcher.stop();
 			finish.get("job-1")?.({ outcome: "cancelled" });
-			await new Promise((r) => setTimeout(r, 10));
+			await vi.advanceTimersByTimeAsync(10);
 
 			expect(store.completed).toEqual([]);
 		});

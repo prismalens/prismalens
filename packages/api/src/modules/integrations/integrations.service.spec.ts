@@ -22,6 +22,11 @@ vi.mock("../../core/harness/git-spawn.js", async (importOriginal) => {
 	};
 });
 
+/** A token expiry always 30 days past the test's clock: a fixed date turns into "expired" as time passes. */
+const EXPIRES = new Date(Date.now() + 30 * 86_400_000);
+EXPIRES.setMilliseconds(0);
+const githubExpiry = (at: Date) => `${at.toISOString().slice(0, 10)} ${at.toISOString().slice(11, 19)} UTC`;
+
 describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 	let service: IntegrationsService;
 	let mockPrisma: any;
@@ -111,7 +116,7 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			globalThis.fetch = vi.fn(async () => {
 				return new Response(JSON.stringify({ login: "octocat" }), {
 					status: 200,
-					headers: { "github-authentication-token-expiration": "2026-10-17 09:30:00 UTC" },
+					headers: { "github-authentication-token-expiration": githubExpiry(EXPIRES) },
 				});
 			}) as any;
 
@@ -127,7 +132,7 @@ describe("IntegrationsService git credentials and legacy rows (#810)", () => {
 			expect(maxActiveCalls).toBeLessThanOrEqual(3);
 			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
 				where: { id: "conn-git-1" },
-				data: { tokenExpiresAt: new Date("2026-10-17T09:30:00.000Z") },
+				data: { tokenExpiresAt: EXPIRES },
 			});
 			expect(mockPrisma.connection.update).toHaveBeenCalledWith({
 				where: { id: "conn-git-1" },

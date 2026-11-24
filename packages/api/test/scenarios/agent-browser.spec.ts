@@ -63,7 +63,7 @@ beforeAll(async () => {
 afterAll(async () => {
 	await pl.dispose();
 	await new Promise((r) => site.close(r));
-});
+}, 120_000);
 
 describe("An agent drives PrismaLens's browser (#1061)", () => {
 	it("Given a page with a password field, When the agent opens and reads it, Then the snapshot has refs, hides the password and marks the text as data, and no card opened", async () => {
