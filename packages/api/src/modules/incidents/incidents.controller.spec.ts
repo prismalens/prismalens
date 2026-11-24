@@ -1113,7 +1113,7 @@ describe("IncidentsController - one-step Resolve (R1a)", () => {
 			.mockResolvedValueOnce({ ...base, status: "triggered" });
 		const first = h.call("update", { serviceId: svc, title: "A" });
 		const second = h.call("update", { serviceId: svc, title: "B" });
-		await new Promise((r) => setTimeout(r, 0));
+		await vi.advanceTimersByTimeAsync(0);
 		failFirst();
 		await expect(first).rejects.toThrow("relation");
 		await expect(second).resolves.toBeDefined();

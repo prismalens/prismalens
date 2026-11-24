@@ -480,6 +480,10 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
    - API product code reads time and signals through `packages/api/src/core/clock.ts` and
      `src/infrastructure/dispatch/process-signals.ts`, so a test can fake them. Biome forbids
      a direct `Date.now()`, `new Date()`, `setTimeout`, `setInterval` or `process.kill` there.
+   - An api test's size is its file name. `*.spec.ts` is small: no real database, process,
+     socket or git, a fake clock, and 1 s a test. `*.int.spec.ts` is medium: real SQLite,
+     localhost and git, real timers, and a `vi.setConfig({ testTimeout })` of 3x its slowest
+     test, at least 5 s.
 
    Fix the implementation, not the test, unless the test is wrong. A frontend unit test that reaches the API fails
    (`src/test-setup.ts`): mock the hook or give the component the data it reads.

@@ -1075,7 +1075,7 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect(updated.off).toEqual(["codex"]);
 
 		await svc.updateSettings({ off: { codex: false } });
-		await new Promise((r) => setTimeout(r, 10));
+		await vi.advanceTimersByTimeAsync(10);
 		expect(check).toHaveBeenCalledWith("codex", expect.anything(), expect.anything(), expect.anything());
 	});
 

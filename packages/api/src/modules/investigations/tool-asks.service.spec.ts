@@ -141,7 +141,7 @@ describe("pl_ask_user and pl_secret_request, their seams (#1024 spec B)", () => 
 			closers.get(id)?.({ ask: question, outcome, ...(outcome === "answered" ? { answer: { kind: "question", answers: { q1: { options: ["o1"] } } } } : {}), closedAt: "" });
 		return { svc, asks, dispatch, tx, prisma, close };
 	}
-	const settle = () => new Promise((r) => setTimeout(r, 0));
+	const settle = () => vi.advanceTimersByTimeAsync(0);
 
 	it("Given a question to a live run, Then its answer is queued as a message; a finished run is continued only for an answer", async () => {
 		const live = wired("running");

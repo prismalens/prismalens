@@ -9,7 +9,7 @@ import { sharedRead } from "./shared-read.js";
 describe("sharedRead (#1181)", () => {
 	it("single flight: two concurrent calls result in one run", async () => {
 		const run = vi.fn().mockImplementation(async () => {
-			await new Promise((r) => setTimeout(r, 10));
+			await vi.advanceTimersByTimeAsync(10);
 			return { data: "single-flight" };
 		});
 

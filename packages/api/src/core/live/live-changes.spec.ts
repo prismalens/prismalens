@@ -15,6 +15,7 @@ async function firstChange(live: LiveChanges, act: () => void) {
 	const stream = live.subscribe(controller.signal);
 	const next = stream.next();
 	act();
+	await vi.advanceTimersByTimeAsync(1_000);
 	const { value } = await next;
 	controller.abort();
 	await stream.return(undefined);
@@ -133,10 +134,11 @@ describe("LiveChanges (walk f27)", () => {
 		const stream = live.subscribe(controller.signal);
 		const first = stream.next();
 		live.noteWrite("Alert", "create");
+		await vi.advanceTimersByTimeAsync(5);
 		await first;
 		for (const model of ["Incident", "Alert", "Investigation", "Incident"]) {
 			live.noteWrite(model, "update");
-			await new Promise((r) => setTimeout(r, 5));
+			await vi.advanceTimersByTimeAsync(5);
 		}
 		const { value } = await stream.next();
 		expect(value && "topics" in value ? value.topics.sort() : []).toEqual([
@@ -165,10 +167,10 @@ describe("LiveChanges (walk f27)", () => {
 		).rejects.toThrow("rolled back");
 		await live.afterCommit(async () => {
 			live.noteWrite("Incident", "update");
-			await new Promise((r) => setTimeout(r, 20));
+			await vi.advanceTimersByTimeAsync(20);
 			expect(seen).toEqual([]);
 		});
-		await new Promise((r) => setTimeout(r, 20));
+		await vi.advanceTimersByTimeAsync(20);
 		expect(seen).toEqual([["incidents"]]);
 		controller.abort();
 		await reader;
@@ -187,7 +189,7 @@ describe("Investigation classification (#1181)", () => {
 			where: { id: "inv-1" },
 			data: { lastActivityAt: new Date(), updatedAt: new Date() },
 		});
-		await new Promise((r) => setTimeout(r, 50));
+		await vi.advanceTimersByTimeAsync(50);
 		controller.abort();
 		await reader;
 		expect(sent).toBe(false);
@@ -206,7 +208,7 @@ describe("Investigation classification (#1181)", () => {
 			where: { id: "inv-1" },
 			data: { lastVisitedAt: new Date() },
 		});
-		await new Promise((r) => setTimeout(r, 40));
+		await vi.advanceTimersByTimeAsync(40);
 		controller.abort();
 		await reader;
 		expect(seen.flat().sort()).toEqual(["schedules", "visits"]);
@@ -592,10 +594,10 @@ describe("Replay and cursors (#1181)", () => {
 		const reader = (async () => {
 			for await (const _ of live.subscribe(controller.signal, current)) got = true;
 		})();
-		await new Promise((r) => setTimeout(r, 40));
+		await vi.advanceTimersByTimeAsync(40);
 		expect(got).toBe(false);
 		live.noteTopic("alerts");
-		await new Promise((r) => setTimeout(r, 40));
+		await vi.advanceTimersByTimeAsync(40);
 		expect(got).toBe(true);
 		controller.abort();
 		await reader;
@@ -605,9 +607,9 @@ describe("Replay and cursors (#1181)", () => {
 		const live = new LiveChanges(5, 5);
 		const c0 = live.cursor();
 		live.noteTopic("alerts");
-		await new Promise((r) => setTimeout(r, 15));
+		await vi.advanceTimersByTimeAsync(15);
 		live.noteTopic("incidents");
-		await new Promise((r) => setTimeout(r, 15));
+		await vi.advanceTimersByTimeAsync(15);
 
 		const controller = new AbortController();
 		const stream = live.subscribe(controller.signal, c0);
@@ -645,7 +647,7 @@ describe("Replay and cursors (#1181)", () => {
 				if ("reset" in c) resetSeen = true;
 			}
 		})();
-		await new Promise((r) => setTimeout(r, 20));
+		await vi.advanceTimersByTimeAsync(20);
 		expect(resetSeen).toBe(false);
 		controller.abort();
 		await reader;
@@ -659,7 +661,7 @@ describe("Replay and cursors (#1181)", () => {
 
 		// Note write and flush before calling stream.next()
 		live.noteTopic("alerts");
-		await new Promise((r) => setTimeout(r, 20));
+		await vi.advanceTimersByTimeAsync(20);
 
 		const { value } = await stream.next();
 		expect(value && "topics" in value ? value.topics : []).toEqual(["alerts"]);
@@ -678,6 +680,7 @@ describe("Replay and cursors (#1181)", () => {
 
 		// Next is a frame
 		live.noteTopic("alerts");
+		await vi.advanceTimersByTimeAsync(5);
 		const r2 = await stream.next();
 		expect(sent.cursor).toBe((r2.value as { cursor: string }).cursor);
 
