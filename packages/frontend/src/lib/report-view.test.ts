@@ -11,6 +11,7 @@ import { refusalReason, refusalSentence } from "./refusal-sentence";
 import { formatClock } from "./format-time";
 import {
 	commandText,
+	culpritOf,
 	evidenceLabel,
 	fixBrief,
 	gapsOf,
@@ -70,6 +71,56 @@ describe("answerWord", () => {
 		const none = answerWord(report({ rootCause: null }));
 		expect(none.word).toBe("No cause found");
 		expect(none.basis).toBe("one finding is supported, but not as a cause");
+	});
+});
+
+describe("citation words", () => {
+	it("reads an alert's field path as plain words", () => {
+		expect(commandText("annotations.summary")).toBe("Alert summary");
+	});
+});
+
+describe("culpritOf", () => {
+	const refutedChange = report({
+		culprit: { service: "api", changeRef: "9469cc2", mechanism: "division by zero" },
+		hypotheses: [
+			{
+				statement: "A recent change (9469cc2) introduced the division",
+				status: "refuted",
+				evidence: [],
+			},
+			{
+				statement: "The handler divides by a count that can be zero",
+				status: "supported",
+				evidence: [],
+			},
+		],
+	});
+
+	it("drops a change that only a refuted hypothesis names, and keeps the rest", () => {
+		expect(culpritOf(refutedChange)).toEqual({
+			service: "api",
+			changeRef: null,
+			mechanism: "division by zero",
+		});
+	});
+
+	it("keeps a change a standing hypothesis names", () => {
+		const kept = report({
+			culprit: { service: "api", changeRef: "9469cc2", mechanism: null },
+			hypotheses: [
+				{
+					statement: "Commit 9469cc2 introduced the division",
+					status: "supported",
+					evidence: [],
+				},
+			],
+		});
+		expect(culpritOf(kept)?.changeRef).toBe("9469cc2");
+	});
+
+	it("keeps a change nothing in the report disputes", () => {
+		expect(culpritOf(report())?.changeRef).toBe("7f3c2a1");
 	});
 });
 

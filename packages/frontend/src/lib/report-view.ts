@@ -11,6 +11,7 @@ import { answerWord } from "./answer-word";
 import { formatClock } from "./format-time";
 import { fileVerb } from "./investigation-events";
 import { refusalReason } from "./refusal-sentence";
+import { sourceLabel } from "./source-label";
 
 /** The report's facts as pure data (study-v3 §3.2); the Report tab only lays them out. */
 
@@ -103,7 +104,8 @@ export function commandText(source: string, cwd?: string | null): string {
 			return `${verb} ${shortPath(path, cwd)}`;
 		}
 	}
-	return shortPath(name, cwd);
+	const word = sourceLabel(name);
+	return word === name ? shortPath(name, cwd) : word;
 }
 
 /** `name(args)` split where the rest parses as the args object; a name may span lines (#673 w8-11). */
@@ -206,6 +208,37 @@ export function workSentence(w: { commands: number; files: number }) {
 	return parts.length ? parts.join(" and ") : "ran nothing";
 }
 
+/**
+ * The report's culprit, without a change the report itself rules out: a
+ * `changeRef` that only refuted or ruled-out ideas mention is not what the
+ * report concluded, so the header must not name it.
+ */
+export function culpritOf(
+	report: Pick<InvestigationReport, "culprit" | "hypotheses" | "ruledOut">,
+): NonNullable<InvestigationReport["culprit"]> | null {
+	const c = report.culprit;
+	if (!c) return null;
+	const ref = c.changeRef?.trim().toLowerCase();
+	if (!ref) return c;
+	const mentions = (texts: string[]) =>
+		texts.some((t) => t.toLowerCase().includes(ref));
+	const text = (h: InvestigationReport["hypotheses"][number]) => [
+		h.statement,
+		...h.evidence.flatMap((e) => [e.observation, e.source]),
+	];
+	const standing = report.hypotheses.filter((h) => h.status !== "refuted");
+	const against = [
+		...report.hypotheses.filter((h) => h.status === "refuted"),
+	].flatMap(text);
+	const ruled = report.ruledOut.flatMap((r) => [
+		r.statement,
+		r.why,
+		...r.evidence.flatMap((e) => [e.observation, e.source]),
+	]);
+	if (mentions(standing.flatMap(text))) return c;
+	return mentions([...against, ...ruled]) ? { ...c, changeRef: null } : c;
+}
+
 export interface FixBriefInput {
 	incident: { number: number; title: string };
 	report: InvestigationReport;
@@ -225,7 +258,7 @@ export function fixBrief({ incident, report, steps, cwd }: FixBriefInput) {
 			? `Cause (${word}): ${report.rootCause}`
 			: "Cause: none found",
 	);
-	const c = report.culprit;
+	const c = culpritOf(report);
 	if (c?.service) lines.push(`Service: ${c.service}`);
 	if (c?.changeRef) lines.push(`Commit: ${c.changeRef}`);
 	if (c?.mechanism) lines.push(`Mechanism: ${c.mechanism}`);
