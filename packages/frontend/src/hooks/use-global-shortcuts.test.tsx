@@ -124,6 +124,25 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		dialog.remove();
 	});
 
+	it("a letter typed into an open list before the shortcuts mounted stays the list's, never New incident (#1154)", async () => {
+		new Function(EARLY_KEYS_SCRIPT)();
+		const list = document.createElement("div");
+		list.setAttribute("role", "listbox");
+		const option = document.createElement("div");
+		option.setAttribute("role", "option");
+		list.append(option);
+		document.body.append(list);
+		option.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "c", bubbles: true }),
+		);
+		expect(win.__plEarlyKeys).toEqual([]);
+		// The same key recorded from outside the list, with the list open at replay, is dropped too.
+		win.__plEarlyKeys = [early("c")];
+		await act(async () => root.render(createElement(Probe)));
+		list.remove();
+		expect(onNew).not.toHaveBeenCalled();
+	});
+
 	it("keys pressed after mounting are handled once, not replayed", async () => {
 		await act(async () => root.render(createElement(Probe)));
 		window.dispatchEvent(new KeyboardEvent("keydown", { key: "c" }));
