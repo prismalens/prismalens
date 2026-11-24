@@ -5,7 +5,12 @@ import type { HarnessStatus } from "@prismalens/contracts";
 import { describe, expect, it } from "vitest";
 import { agentReadiness } from "@/components/home/HomeComposer";
 import { agentState } from "@/components/settings/AgentDetail";
-import { providerState, unreadyLine, unreadyReason } from "./agent-choice";
+import {
+	defaultModel,
+	providerState,
+	unreadyLine,
+	unreadyReason,
+} from "./agent-choice";
 
 const base = {
 	id: "opencode",
@@ -85,5 +90,40 @@ describe("an agent that answers ACP but holds no login for its model's provider"
 		expect(providerState(base, "ollama-cloud/qwen")).toBe("signed-in");
 		expect(providerState(base, "google/gemini-4-neon")).toBe("signed-out");
 		expect(unreadyReason(base, "ollama-cloud/qwen")).toBeNull();
+	});
+});
+
+describe("an agent whose model the check could not name", () => {
+	const unnamed = {
+		...base,
+		providerSignIn: undefined,
+		checked: { ...base.checked, servedModel: null, providers: ["Ollama Cloud"] },
+	} as HarnessStatus;
+
+	it("reads Sign-in not checked, never Ready, when no model is known", () => {
+		expect(providerState(unnamed)).toBe("unchecked");
+		expect(agentState(unnamed)).toEqual({
+			text: "Sign-in not checked",
+			tone: "neutral",
+		});
+	});
+
+	it("reads from the model a run would take, a signed-in provider's over the agent's own", () => {
+		const listed = {
+			...unnamed,
+			checked: { ...unnamed.checked, servedModel: "google/gemini-4-neon" },
+			models: {
+				...unnamed.models,
+				entries: [
+					{ id: "google/gemini-4-neon", name: "Gemini 4 Neon" },
+					{ id: "ollama-cloud/qwen", name: "Qwen" },
+				],
+			},
+		} as HarnessStatus;
+		expect(defaultModel(listed, null)?.id).toBe("ollama-cloud/qwen");
+		expect(defaultModel(listed, "google/gemini-4-neon")?.id).toBe(
+			"google/gemini-4-neon",
+		);
+		expect(agentState(listed)).toEqual({ text: "Ready", tone: "ok" });
 	});
 });

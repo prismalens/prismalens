@@ -31,6 +31,7 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	isSafeGatewayUrl,
+	preferredModel,
 	providerSignedOutLine,
 	providerSignIn,
 	refuseModel,
@@ -636,6 +637,15 @@ export class HarnessService implements OnApplicationBootstrap {
 		return state === "na" || state === "signed-in";
 	}
 
+	/** The model a run on `id` takes when none is starred or asked: one whose provider is signed in. */
+	runModelOf(id: HarnessId): string | null {
+		return preferredModel(
+			id,
+			this.models.checked(id),
+			this.models.modelsFor(id, this.models.catalogue()).entries,
+		);
+	}
+
 	private checkPasses(id: HarnessId): boolean {
 		const c = this.models.checked(id);
 		return !c || c.outcome === "answers-acp";
@@ -833,7 +843,7 @@ export class HarnessService implements OnApplicationBootstrap {
 		if (check.outcome !== "answers-acp")
 			return { ready: false, reason: notReadyReason(id, check) };
 		const settings = await this.getSettings();
-		const chosen = model ?? settings.models?.[id] ?? check.servedModel;
+		const chosen = model ?? settings.models?.[id] ?? this.runModelOf(id);
 		if (providerSignIn(id, check, chosen) === "signed-out")
 			return { ready: false, reason: providerSignedOutLine(id, chosen) };
 		return { ready: true };
@@ -1314,7 +1324,7 @@ export class HarnessService implements OnApplicationBootstrap {
 					providerSignIn: providerSignIn(
 						h.id,
 						checked,
-						settings.models?.[h.id] ?? checked?.servedModel,
+						settings.models?.[h.id] ?? this.runModelOf(h.id),
 					),
 					off,
 					added: settings.added?.includes(h.id) ?? false,

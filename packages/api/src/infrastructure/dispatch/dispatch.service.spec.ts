@@ -303,8 +303,9 @@ describe("isCustomModel truth table (#673 w57)", () => {
 });
 
 describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w52)", () => {
-	function withSettings(settings: Row) {
+	function withSettings(settings: Row, runModel: string | null = null) {
 		const harnessService = {
+			runModelOf: vi.fn(() => runModel),
 			resolveSelection: vi.fn(async (asked: { harness?: string }) => ({
 				runnable: true,
 				harness: asked.harness ?? settings.harness,
@@ -338,6 +339,16 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 		efforts: { opencode: "low", codex: "medium" },
 		accessLevels: { codex: "auto" },
 	};
+
+	it("starts a run with no starred model on the model whose provider is signed in", async () => {
+		const { service } = withSettings(
+			{ harness: "opencode", models: {} },
+			"ollama-cloud/qwen",
+		);
+		await expect(service.resolveHarness()).resolves.toMatchObject({
+			model: "ollama-cloud/qwen",
+		});
+	});
 
 	it("reads Settings when the run names nothing (an alert's run)", async () => {
 		const { service, harnessService } = withSettings(settings);

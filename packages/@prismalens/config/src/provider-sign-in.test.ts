@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	preferredModel,
 	providerSignedOutLine,
 	providerSignIn,
 } from "./providers/harness.js";
@@ -40,5 +41,64 @@ describe("providerSignIn", () => {
 			"signed-in",
 		);
 		expect(providerSignIn("claude-code", null, "anthropic/claude-5")).toBe("na");
+	});
+});
+
+describe("an agent with a provider check and no model named", () => {
+	it("is unchecked, never na, so it is never reported ready", () => {
+		expect(providerSignIn("opencode", held, null)).toBe("unchecked");
+		expect(providerSignIn("opencode", held, undefined)).toBe("unchecked");
+		expect(providerSignIn("opencode", held, "gemini-4-neon")).toBe("unchecked");
+		expect(providerSignIn("claude-code", held, null)).toBe("na");
+	});
+});
+
+describe("preferredModel", () => {
+	const entries = [
+		{ id: "anthropic/claude-5" },
+		{ id: "ollama-cloud/qwen" },
+		{ id: "google/gemini-4-neon" },
+	];
+	it("keeps the agent's own model when its provider is signed in", () => {
+		expect(
+			preferredModel(
+				"opencode",
+				{ providers: ["Google"], servedModel: "google/gemini-4-neon" },
+				entries,
+			),
+		).toBe("google/gemini-4-neon");
+	});
+
+	it("moves to the first listed model whose provider is signed in when the agent's own is not", () => {
+		expect(
+			preferredModel(
+				"opencode",
+				{ providers: ["Ollama Cloud"], servedModel: "google/gemini-4-neon" },
+				entries,
+			),
+		).toBe("ollama-cloud/qwen");
+	});
+
+	it("keeps the agent's own model when its logins were not read", () => {
+		expect(
+			preferredModel(
+				"opencode",
+				{ providers: null, servedModel: "google/gemini-4-neon" },
+				entries,
+			),
+		).toBe("google/gemini-4-neon");
+	});
+
+	it("names none when no listed model is signed in, and none for an agent with no provider check", () => {
+		expect(
+			preferredModel(
+				"opencode",
+				{ providers: [], servedModel: "google/gemini-4-neon" },
+				entries,
+			),
+		).toBe("google/gemini-4-neon");
+		expect(
+			preferredModel("claude-code", { providers: [], servedModel: null }, entries),
+		).toBeNull();
 	});
 });

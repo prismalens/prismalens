@@ -6,6 +6,7 @@ import {
 	type AccessLevel,
 	type HarnessId,
 	modelProvider,
+	preferredModel,
 	providerName,
 	providerSignedOutLine,
 	providerSignIn,
@@ -150,8 +151,16 @@ export function defaultModel(
 ): NamedModel | null {
 	if (starred && !isFoldedId(h, starred))
 		return { id: starred, name: modelName(h, starred) ?? starred };
-	const current = agentCurrentModel(h);
-	if (current) return current;
+	const own = agentCurrentModel(h);
+	// The server's pick for a run with none starred: a signed-in provider's model over the agent's own.
+	const preferred = preferredModel(
+		h.id as HarnessId,
+		{ ...h.checked, servedModel: own?.id ?? null },
+		h.models.entries.filter((e) => !isAgentDefault(e)),
+	);
+	if (preferred && preferred !== own?.id)
+		return { id: preferred, name: modelName(h, preferred) ?? preferred };
+	if (own) return own;
 	const first = h.models.entries.find((e) => !isAgentDefault(e));
 	return first
 		? { id: first.id, name: modelName(h, first.id) ?? first.id }
@@ -253,7 +262,12 @@ export function providerState(
 ): NonNullable<HarnessStatus["providerSignIn"]> {
 	return model
 		? providerSignIn(h.id as HarnessId, h.checked, model)
-		: (h.providerSignIn ?? "na");
+		: (h.providerSignIn ??
+				providerSignIn(
+					h.id as HarnessId,
+					h.checked,
+					defaultModel(h, null)?.id,
+				));
 }
 
 /** Why an installed agent cannot take a run, in the gate's words; null when it can. */

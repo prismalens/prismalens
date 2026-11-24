@@ -39,6 +39,7 @@ import {
 } from "./ConversationSettings";
 import { RiskConfirm } from "./RiskConfirm";
 import { SignInButton } from "./SignInButton";
+import { accountLine, useForNewRuns } from "./use-for-new-runs";
 
 export { testedHint, versionText };
 
@@ -468,7 +469,8 @@ function AgentRow({
 	const checkHarness = useCheckHarness();
 	const checking = checkHarness.isPending;
 	const outcome = harness.checked?.outcome ?? null;
-	const account = harness.checked?.account;
+	const account = accountLine(harness);
+	const forNewRuns = useForNewRuns(harness);
 	const version = harness.installed ? versionText(harness) : null;
 
 	// The sign-in step sits under its own line, so a narrow row keeps the name readable.
@@ -533,6 +535,18 @@ function AgentRow({
 			}
 			trailing={
 				<span className="flex items-center gap-1">
+					{forNewRuns.canUse && (
+						<Button
+							variant="ghost"
+							size="sm"
+							className="relative z-10"
+							onClick={forNewRuns.use}
+							disabled={forNewRuns.pending}
+							data-testid={`harness-use-${harness.id}`}
+						>
+							Use for new runs
+						</Button>
+					)}
 					{harness.installed && (
 						<Button
 							variant="secondary"

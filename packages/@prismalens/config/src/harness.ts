@@ -35,6 +35,7 @@ export {
 	modeFidelity,
 	NO_MODE_KEY,
 	type PermissionFidelity,
+	preferredModel,
 	providerKey,
 	providerSignedOutLine,
 	providerSignIn,

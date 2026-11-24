@@ -45,6 +45,7 @@ import { cn } from "@/lib/utils";
 import { EnvVarNotes, envStateWord } from "./agent-env";
 import { SignInButton } from "./SignInButton";
 import { CredentialChip, StatePill, type Word } from "./source-words";
+import { accountLine, useForNewRuns } from "./use-for-new-runs";
 
 /**
  * The version the last check read beside the tested one, so neither reads as the
@@ -127,6 +128,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 	if (isLoading) return <Loading rows={5} />;
 	const checked = agent?.checked;
 	const rulesNote = agentFacts(id)?.permissionRulesNote;
+	const account = agent ? accountLine(agent) : null;
 	return (
 		<div data-testid="agent-detail">
 			<Link
@@ -190,13 +192,11 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 										: `${notSignedIn(agent.label).what} ${signInNext(agent, "Check")}`}
 							</p>
 						)}
-						{checked?.account && (
+						{account && (
 							<p data-testid="agent-detail-account">
-								<span className="text-text-1">{checked.account.label}</span>
-								{checked.account.email && (
-									<span className="ml-2 text-text-3">
-										{checked.account.email}
-									</span>
+								<span className="text-text-1">{account.label}</span>
+								{account.email && (
+									<span className="ml-2 text-text-3">{account.email}</span>
 								)}
 							</p>
 						)}
@@ -270,6 +270,7 @@ function UseGroup({ agent }: { agent: HarnessStatus }) {
 	const selected = useHarnesses().data?.selection?.harness;
 	// The effective selection keeps the row listed too, an env pin included.
 	const chosen = settings?.harness === id || selected === id;
+	const forNewRuns = useForNewRuns(agent);
 	const onlyAdded =
 		agent.added &&
 		!agent.installed &&
@@ -293,6 +294,27 @@ function UseGroup({ agent }: { agent: HarnessStatus }) {
 						data-testid="agent-detail-on"
 					/>
 				</SettingRow>
+				{agent.runnable && (
+					<SettingRow
+						label="Use for new runs"
+						description={
+							forNewRuns.pinned
+								? `New runs start on ${agent.label}.`
+								: "Every run you start takes this agent, until you pick another."
+						}
+						testId="agent-detail-default"
+					>
+						<Button
+							variant="secondary"
+							size="sm"
+							disabled={!forNewRuns.canUse || forNewRuns.pending}
+							onClick={forNewRuns.use}
+							data-testid="agent-detail-use-for-new-runs"
+						>
+							{forNewRuns.pinned ? "In use" : "Use for new runs"}
+						</Button>
+					</SettingRow>
+				)}
 				{onlyAdded && (
 					<SettingRow
 						label="Remove from list"

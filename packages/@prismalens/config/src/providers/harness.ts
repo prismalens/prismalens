@@ -572,13 +572,37 @@ export function providerSignIn(
 	modelId: string | null | undefined,
 ): "signed-in" | "signed-out" | "unchecked" | "na" {
 	const gate = HARNESS_REGISTRY[harness].providerAuth;
+	if (!gate) return "na";
 	const provider = modelId ? modelProvider(modelId) : null;
-	if (!gate || !provider) return "na";
+	// A model not known is a login not known: never ready.
+	if (!provider) return "unchecked";
 	if (gate.keyless.includes(provider)) return "signed-in";
 	if (!checked?.providers) return "unchecked";
 	return checked.providers.some((p) => providerKey(p) === providerKey(provider))
 		? "signed-in"
 		: "signed-out";
+}
+
+/**
+ * The model a run takes when none is starred: the agent's own when its provider is signed in,
+ * else the first listed one whose provider is. The agent's own when none is, or its logins were not read.
+ */
+export function preferredModel(
+	harness: HarnessId,
+	checked:
+		| { providers?: readonly string[] | null; servedModel?: string | null }
+		| null
+		| undefined,
+	entries: readonly { id: string }[],
+): string | null {
+	const own = checked?.servedModel ?? null;
+	if (!HARNESS_REGISTRY[harness].providerAuth || !checked?.providers)
+		return own;
+	if (own && providerSignIn(harness, checked, own) === "signed-in") return own;
+	const signedIn = entries.find(
+		(e) => providerSignIn(harness, checked, e.id) === "signed-in",
+	);
+	return signedIn?.id ?? own;
 }
 
 /** A model whose provider the agent holds no login for, in the words the box, the picker and the Timeline share. */

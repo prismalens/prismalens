@@ -1339,9 +1339,9 @@ describe("HarnessService provider sign-in (multi-provider agents)", () => {
 					.filter((h) => h.id === "opencode" || h.id === "codex")
 					.map((h) => [h.id, h.providerSignIn]),
 			);
-		expect(await status(["Ollama Cloud"])).toEqual({
+		expect(await status([])).toEqual({
 			codex: "na",
-			opencode: "signed-out",
+			opencode: "signed-in",
 		});
 		expect(await status(["Google"])).toEqual({
 			codex: "na",
@@ -1350,11 +1350,21 @@ describe("HarnessService provider sign-in (multi-provider agents)", () => {
 		expect(await status(null)).toEqual({ codex: "na", opencode: "unchecked" });
 	});
 
+	it("takes a listed model that needs no login or whose provider is signed in when its own default is not one", () => {
+		expect(seeded(["Ollama Cloud"]).runModelOf("opencode")).toBe(
+			"opencode/beam-free",
+		);
+		expect(seeded([]).runModelOf("opencode")).toBe("opencode/beam-free");
+		expect(seeded(["Google"]).runModelOf("opencode")).toBe(
+			"google/gemini-4-neon",
+		);
+	});
+
 	it("auto skips an agent that holds no login for its model and picks one known to be signed in", async () => {
 		const original = process.env.PATH;
 		process.env.PATH = pathWith("opencode", "codex-acp");
 		try {
-			expect(await seeded(["Ollama Cloud"]).resolveSelection()).toMatchObject({
+			expect(await seeded([]).resolveSelection()).toMatchObject({
 				runnable: true,
 				harness: "codex",
 				auto: true,

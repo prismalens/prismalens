@@ -876,7 +876,10 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const local = this.harnessService.localDefaultOf(h, runtime.env);
 		const model = resolveHarnessRunModel(
 			h,
-			pick(requested.model, settings.models?.[h]),
+			pick(
+				requested.model,
+				settings.models?.[h] ?? this.harnessService.runModelOf(h) ?? undefined,
+			),
 			runtime.env,
 		);
 		return {
