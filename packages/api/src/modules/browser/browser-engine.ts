@@ -15,6 +15,12 @@ export interface Engine {
 type Launch = { name: string; options: Record<string, unknown> };
 
 /**
+ * How long a browser gets to start. A cold start on a loaded host (CI under a shifted clock takes
+ * over 20 s) that times out reads as "no browser engine", and the agent is told it has none.
+ */
+export const LAUNCH_TIMEOUT_MS = 60_000;
+
+/**
  * Starts the host browser on the persistent profile (#1061): Playwright's own Chromium if
  * installed, else Chrome, else Edge. Nothing is downloaded; null when none starts.
  */
@@ -50,7 +56,7 @@ export async function launchEngine(profileDir: string): Promise<Engine | null> {
 				args: [
 					"--disable-features=PasswordManagerOnboarding,AutofillServerCommunication",
 				],
-				timeout: 20_000,
+				timeout: LAUNCH_TIMEOUT_MS,
 			});
 			return { context, name: t.name };
 		} catch {}
