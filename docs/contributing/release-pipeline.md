@@ -15,9 +15,11 @@ Three packages publish to npm: `prismalens` (the CLI), `@prismalens/agent-adapte
    1. release-please creates the tag and a draft release (`draft` and `force-tag-creation` in `release-please-config.json`; a draft has no tag without the forced one).
    2. `build-standalone-cli.yml` and `build-desktop-app.yml`, called with the tag, attach the archives, SBOM, `install.sh`, `install.ps1` and desktop zips to the draft.
    3. The `sums` job writes one `SHA256SUMS` over every asset and one build-provenance attestation over it, then uploads `SHA256SUMS`.
-   4. `publish-release` makes the release public, which makes it immutable.
-   5. `npm` packs the launcher with `scripts/pack-launcher.mjs`, which refuses unless the public release downloads anonymously, complete and matching its `SHA256SUMS`, then publishes it with npm trusted publishing (OIDC) and `NPM_CONFIG_PROVENANCE=true`, so a publish without provenance fails. It runs after the release is public because the in-app update notice reads `releases/latest`.
-   6. The Homebrew tap and Scoop bucket are updated from the published `SHA256SUMS`, failing when `PACKAGE_MANAGERS_TOKEN` is unset, then installed from on macOS and Windows runners.
+   4. `launcher` packs the npm launcher once, pinned to the draft's digests (`scripts/pack-launcher.mjs --assets`).
+   5. `upgrade-chain` and `release-side-checks` (Linux, macOS, Windows) run the draft's archive for their OS with that launcher. A red proof leaves the release a draft, and neither `publish-release` nor `npm` runs.
+   6. `publish-release` makes the release public, which makes it immutable.
+   7. `npm` publishes that same file (`pack-launcher.mjs --publish --tarball`), refusing unless the public release downloads anonymously and holds the digests it pins. It uses npm trusted publishing (OIDC) and `NPM_CONFIG_PROVENANCE=true`, so a publish without provenance fails. It runs after the release is public because the in-app update notice reads `releases/latest`.
+   8. The Homebrew tap and Scoop bucket are updated from the published `SHA256SUMS`, failing when `PACKAGE_MANAGERS_TOKEN` is unset, then installed from on macOS and Windows runners.
 3. Publishing the release with `RELEASE_PAT`, so the event reaches other workflows, also starts the registry-mode `cross-os-smoke` run against that version.
 
 A hand-run `gh workflow run release.yml -f tag=<tag>` refuses a release that is not a draft. A version older than the latest release goes to npm under the `previous` dist-tag, unmarked as latest, and leaves the tap and bucket alone.

@@ -32,6 +32,17 @@ import { checkFixMessage } from "./pr-fix";
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
+vi.mock("@/lib/api/hooks/use-thread-tree-orpc", () => ({
+	useThreadLinks: () => ({ data: { started: [] }, isLoading: false }),
+}));
+
+vi.mock("@/lib/api/hooks/use-app-settings-orpc", () => ({
+	useThreadContextSettings: () => ({
+		data: { rerunChecks: false },
+		isLoading: false,
+	}),
+}));
+
 let container: HTMLDivElement;
 let root: Root;
 

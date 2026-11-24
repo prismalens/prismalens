@@ -16,15 +16,16 @@ It also sets `required_review_thread_resolution: true`: an unresolved review thr
 - `CI gate` fails unless every job it `needs` succeeded, and accepts a skipped job only where `scripts/ci-plan.mjs` says `false` for that job's tier. When red, it labels each failed job `failed`, `timed out`, `never started` or `cancelled mid-run` (`scripts/ci-gate-report.mjs`), and says when `gh run rerun --failed` is enough.
 - A red gate means the code is wrong, never that a free model was slow or refused (#884): no job spends a model call (#914).
 - `strict_required_status_checks_policy` is `false`. With many PRs open, strict would make every merge invalidate the rest; the push run on `main` is the backstop for two green PRs that break `main` together.
-- There is no merge queue (#1023): a PR can merge without a run on top of current `main`.
+- There is no merge queue in the ruleset (#1023): a PR can merge without a run on top of current `main`. `ci.yml` and `pr-title.yml` also run on `merge_group`, so a queue can be switched on without a workflow edit. A merge group plans like a push to `main`: the PR tiers, not the network-bound proofs. `pr-title.yml` passes there with its title step skipped.
 - A check that must block a merge joins `CI gate`'s `needs`. A separate workflow file is advisory, because the ruleset requires only the two contexts above. Prefer a native GitHub rule to a workflow that emulates one.
 
 ## What a CI run runs
 
 The `changes` job runs `scripts/ci-plan.mjs`, whose header lists the tiers (`skip`, `code`, `e2e`, `intake`, `full`, `agents`, `defer`) and what turns each on. The tier outputs gate the jobs in `ci.yml`, and `proofs.yml` runs when `full` or `agents` is true; `CI gate` waits on all of them. `nightly.yml` calls `proofs.yml` with everything on.
 
-- A tier runs unless every changed path is on its safe list, so an unlisted path turns it on; a new package runs it until someone lists it. A renamed file counts under both its names.
-- A push to `main` runs the PR tiers; the `proofs` jobs run nightly.
+- Turbo's graph (`turbo ls --affected`) decides a package's tiers, so a new package needs no list. A path outside every package that `OUTSIDE` in `scripts/ci-plan.mjs` does not name turns every tier on, and so does a failed turbo call. A renamed file counts under both its names.
+- A push to `main` or a merge group runs the PR tiers; the `proofs` jobs run nightly.
+- `test-later` runs the api's tests with the clock 40 days ahead (`docs/contributing/testing.md`).
 - The `full-ci` label is read at the next push or re-run; adding it starts nothing. To run the proofs on a branch without a release PR: `gh workflow run nightly.yml --ref <branch>`.
 - A draft release PR plans `defer`: nothing runs and `CI gate` is red on purpose until the PR is marked ready, which starts the run.
 - A PR check shows the job's `name:`; `needs:` uses the job id. Every check that runs the packed tarball starts with `Tarball:`.
@@ -39,7 +40,7 @@ The suite runs as 4 shards, each on its own runner with its own stacks, within a
 
 - The schedule does nothing until the repository variable `NIGHTLY_ENABLED` is `true`. Publishing the nightly prerelease needs `NIGHTLY_PUBLISH` (RELEASING.md, "Nightly").
 - Its `report` job keeps one issue titled `Nightly CI failing`, found by that exact title: a red night opens or rewrites it, a recurrence reopens it, a green night closes it. A cancelled or skipped `proofs` run and a failed `Live:` job count as red. On dispatch `report` only prints what it would do unless its input is on.
-- The `Live:` jobs check that the pinned OpenCode and its own free model still complete an investigation, with no secret (#1085). The intake passes on 2 valid reports of 3. They run every scheduled night and on dispatch with `live`; the agent version is the pin in `scripts/agent-pins.json`, not the latest release (#639, #712).
+- The `Live:` jobs check that the pinned OpenCode and its own free model still complete an investigation, with no secret (#1085). The intake passes on 2 valid reports of 3, then one run cut off by a restart must resume. They run every scheduled night and on dispatch with `live`; the agent version is the pin in `scripts/agent-pins.json`, not the latest release (#639, #712).
 - Release gate: dispatch on `main`, not on a PR branch, with `ref` set to the release PR's base SHA, and link the run from the PR: `gh workflow run nightly.yml --ref main -f ref=<sha> -f live=true`.
 - Each packed-intake attempt uploads its event stream as `intake-events-attempt-<n>`, kept 30 days.
 - Agent qualification runs its 3 admissions one at a time, because each writes a probe file into the checkout. Its 3 behaviour matrices run at once on Linux only, where `/proc` lets the `cancel` row tell its own tool process from another run's (#885).

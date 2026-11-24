@@ -113,7 +113,7 @@ export function installCommand(channel: InstallChannel): string {
 }
 
 const DEEPAGENTS_CHANNEL = {
-	uv: ["deepagents-code", "deepagents-acp", "agent-client-protocol<1"],
+	uv: ["deepagents-code", "deepagents-acp"],
 } as const;
 
 /** What PrismaLens alone says and pins about an agent (#916). */

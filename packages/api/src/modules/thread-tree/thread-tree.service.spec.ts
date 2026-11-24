@@ -1234,6 +1234,25 @@ describe("records follow their threads, and nothing waits forever (#1024 spec F)
 		expect(left.some((m) => m.requestId === "a-to-b")).toBe(true);
 	});
 
+	it("Given a reopen that loses a race, Then the caller's next outcome is still tried in the same pass", async () => {
+		const ended = await thread({ status: "completed" });
+		await prisma.pendingAction.createMany({
+			data: ["race-0", "race-1"].map((requestId) => ({
+				callerId: ended.id,
+				rootId: ended.id,
+				tool: "pl_thread_start",
+				args: "{}",
+				requestId,
+				state: "denied",
+			})),
+		});
+		dispatch.resumeInvestigation.mockClear();
+		dispatch.resumeInvestigation.mockImplementationOnce(async () => false);
+		await actions.deliverOutcomes();
+		expect(dispatch.resumeInvestigation).toHaveBeenCalledTimes(2);
+		expect(await prisma.pendingAction.count({ where: { callerId: ended.id, deliveredAt: null } })).toBe(1);
+	});
+
 	it("Given more refused outcomes than one batch, Then an outcome for a running caller still goes out, and refused ones stop retrying", async () => {
 		const ended = await thread({ status: "completed" });
 		await prisma.pendingAction.createMany({
@@ -1258,6 +1277,7 @@ describe("records follow their threads, and nothing waits forever (#1024 spec F)
 		try {
 			await actions.deliverOutcomes();
 			expect(sent.some((m) => m.id === running.id && m.text.includes('"fresh"'))).toBe(true);
+			expect(dispatch.resumeInvestigation.mock.calls.map((c) => c[0])).toEqual([ended.id]);
 			for (let i = 0; i < 70; i++) await actions.deliverOutcomes();
 			tries = dispatch.resumeInvestigation.mock.calls.length;
 		} finally {
@@ -1268,8 +1288,9 @@ describe("records follow their threads, and nothing waits forever (#1024 spec F)
 				return true;
 			});
 		}
-		// 50 per batch at most, 30 tries each, then they wait for the caller's next run.
-		expect(tries).toBeLessThanOrEqual(51 * 30);
+		// One reopen per pass for the caller, not one per row: 30 passes give up the first 50
+		// (one batch), 30 more give up the 51st, and the last 11 passes ask nobody.
+		expect(tries).toBe(60);
 		expect(await prisma.pendingAction.count({ where: { callerId: ended.id, deliveredAt: null } })).toBe(51);
 		dispatch.resumeInvestigation.mockClear();
 		await actions.deliverOutcomes();

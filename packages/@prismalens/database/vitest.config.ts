@@ -4,11 +4,8 @@
 import { defineConfig } from "vitest/config";
 
 /**
- * Coverage gate (repo policy since #58): NEW code ships test-first with ≥80%
- * per-metric coverage, enforced here per-glob. Vitest has no "diff coverage",
- * so the mechanism is additive: when you add a module, add it (or its dir) to
- * `thresholds` below — reviewers treat a new source file with no threshold
- * entry as a missing test. Pre-#58 files are exempt until touched.
+ * Coverage floors (docs/contributing/testing.md, #1206): a ratchet, never a target.
+ * A per-file entry below guards a module that already has its tests; a new module needs none.
  */
 const NEW_CODE_THRESHOLD = {
 	statements: 80,
@@ -32,7 +29,7 @@ export default defineConfig({
 			provider: "v8",
 			include: ["src/**/*.ts"],
 			exclude: ["src/**/*.test.ts"],
-			reporter: ["text-summary", "text"],
+			reporter: ["text-summary", "text", "lcov"],
 			thresholds: {
 				// perFile so one well-covered module cannot mask a thin one.
 				perFile: true,

@@ -1,11 +1,11 @@
-# Reruns a `CI` or standalone build run once when its only red jobs never got a runner (#1052) or
+# Reruns a `CI`, standalone build or Nightly run once when its only red jobs never got a runner (#1052) or
 # failed on a network fault: neither is a code failure, and the run's other jobs keep their results.
 # `scripts/ci-gate-report.mjs` decides, from each failed job's log.
 name: CI rerun for jobs that never started or hit the network
 
 on:
   workflow_run:
-    workflows: [CI, Standalone CLI build]
+    workflows: [CI, Standalone CLI build, Nightly]
     types: [completed]
 
 permissions:

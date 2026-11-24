@@ -58,3 +58,32 @@ jobs:
           name: playwright-report-responsive
           path: packages/frontend/playwright-report/
           retention-days: 7
+
+  # A red night opens one issue; the next green one closes it (#1154). A superseded run is no signal.
+  report:
+    name: Report the phone and tablet run
+    needs: responsive
+    if: always() && needs.responsive.result != 'cancelled' && github.repository == 'prismalens/prismalens'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions
+            scripts
+          sparse-checkout-cone-mode: false
+
+      - uses: ./.github/actions/report-failure
+        with:
+          title: "Phone and tablet e2e failing"
+          labels: bug
+          ok: ${{ needs.responsive.result == 'success' }}
+          body: |
+            The nightly @responsive journeys (Pixel 7, iPad) ended `${{ needs.responsive.result }}`: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            The `playwright-report-responsive` artifact holds the report. This issue closes itself on the next green night.
