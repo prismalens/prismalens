@@ -86,15 +86,37 @@ export interface HarnessProbeResult {
 	providers?: string[] | null;
 }
 
-/** The names in an agent CLI's provider list: first column of each line, colour codes and rules removed. */
-export function parseProviderList(out: string): string[] {
+const LIST_FRAME =
+	/^(credentials\b|\d+ credentials?$|environment\b|\d+ environment variables?$)/i;
+
+/**
+ * The provider names in an agent CLI's list, or null when the output is not a list it knows.
+ * A line is `name  type` in padded columns, or, between a list's `Credentials` and `N credentials`
+ * frame, `name type` after a bullet: the type is one token.
+ */
+export function parseProviderList(out: string): string[] | null {
+	const lines = out
+		.split(/\r?\n/)
+		.map((raw) =>
+			stripVTControlCharacters(raw)
+				.replace(/^[^\p{L}\p{N}]+/u, "")
+				.trim(),
+		)
+		.filter(Boolean);
+	const framed = lines.some((l) => LIST_FRAME.test(l));
 	const names: string[] = [];
-	for (const raw of out.split(/\r?\n/)) {
-		const line = stripVTControlCharacters(raw).replace(/[│┌└├─╮╯╰╭]/g, " ");
-		const cols = line.trim().split(/\s{2,}/);
-		if (cols.length >= 2 && cols[0]) names.push(cols[0]);
+	for (const line of lines) {
+		if (LIST_FRAME.test(line)) continue;
+		const cols = line.split(/\s{2,}/);
+		const name =
+			cols.length >= 2
+				? cols[0]
+				: framed && line.includes(" ")
+					? line.slice(0, line.lastIndexOf(" ")).trim()
+					: "";
+		if (name) names.push(name);
 	}
-	return names;
+	return names.length > 0 || framed ? names : null;
 }
 
 const PROVIDER_LIST_BUDGET_MS = 8_000;
