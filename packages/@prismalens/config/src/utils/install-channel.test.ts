@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { installChannel, upgradeCommand } from "./install-channel.js";
+import {
+	installChannel,
+	installerDataDir,
+	upgradeCommand,
+} from "./install-channel.js";
 
 describe("installChannel", () => {
 	it("tells the channels apart by launcher and by where node lives", () => {
@@ -43,5 +48,22 @@ describe("upgradeCommand", () => {
 		expect(
 			upgradeCommand("npm", "linux", "0.5.4-nightly.20261111.7", "nightly"),
 		).toBe("pl upgrade --channel nightly --version 0.5.4-nightly.20261111.7");
+	});
+});
+
+describe("installerDataDir", () => {
+	it("is PRISMALENS_HOME when set, on every platform", () => {
+		const env = { PRISMALENS_HOME: "/tmp/pl-home", LOCALAPPDATA: "/local" };
+		expect(installerDataDir(env, "win32")).toBe("/tmp/pl-home");
+		expect(installerDataDir(env, "linux")).toBe("/tmp/pl-home");
+	});
+
+	it("is the platform's data folder otherwise", () => {
+		expect(installerDataDir({ LOCALAPPDATA: "/local" }, "win32")).toBe(
+			join("/local", "prismalens"),
+		);
+		expect(installerDataDir({ XDG_DATA_HOME: "/x" }, "linux")).toBe(
+			join("/x", "prismalens"),
+		);
 	});
 });

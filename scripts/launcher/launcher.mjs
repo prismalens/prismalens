@@ -27,6 +27,9 @@ export const TARGETS = [
 const STOP_MESSAGE = "prismalens:stop";
 export const DEFAULT_BASE =
 	"https://github.com/prismalens/prismalens/releases/download";
+/** Tried first; it keeps only the newest releases, so GitHub is the fallback (#1096). */
+export const MIRROR_BASE = "https://downloads.prismalens.io";
+export const DEFAULT_BASES = [MIRROR_BASE, DEFAULT_BASE];
 const HOUR = 3_600_000;
 
 export class LauncherError extends Error {}
@@ -67,10 +70,10 @@ export function cacheRoot(env = process.env, platform = process.platform) {
 // --- the release server ------------------------------------------------------------------
 
 /** https: or file: only; credentials leave the URL for an Authorization header. */
-export function parseBase(raw) {
+export function parseBase(raw, fallback = DEFAULT_BASE) {
 	let url;
 	try {
-		url = new URL(raw || DEFAULT_BASE);
+		url = new URL(raw || fallback);
 	} catch {
 		throw new LauncherError(
 			"PRISMALENS_RELEASE_BASE_URL is not a valid URL (its value is not shown: it may hold a password).",
@@ -141,6 +144,7 @@ async function fetchOnce(url, net) {
 }
 
 export async function get(url, net) {
+	const attempts = net.attempts ?? 6;
 	if (url.startsWith("file:")) {
 		const file = fileURLToPath(url);
 		if (!fs.existsSync(file))
@@ -158,7 +162,7 @@ export async function get(url, net) {
 			await res.body?.cancel();
 			if (res.status === 404)
 				throw new NotFound(`${redact(url, net.secrets)} does not exist`);
-			if (!transient(res.status) || attempt === 6)
+			if (!transient(res.status) || attempt >= attempts)
 				throw new LauncherError(
 					`GET ${redact(url, net.secrets)} returned HTTP ${res.status}`,
 				);
@@ -171,7 +175,7 @@ export async function get(url, net) {
 		} catch (error) {
 			if (error instanceof LauncherError) throw error;
 			lastError = error;
-			if (attempt === 6 || Date.now() >= net.deadline)
+			if (attempt >= attempts || Date.now() >= net.deadline)
 				throw unreachable(url, error, net);
 			wait = 500 * 2 ** (attempt - 1);
 		}
@@ -192,7 +196,9 @@ function unreachable(url, error, net) {
 		code || (error?.cause?.message ?? error?.message),
 		net.secrets,
 	);
-	const where = net.isDefault ? "github.com" : redact(net.base, net.secrets);
+	const where = net.isDefault
+		? new URL(net.base).host
+		: redact(net.base, net.secrets);
 	const tls = /CERT|SELF_SIGNED|UNABLE_TO_(VERIFY|GET_ISSUER)/.test(code)
 		? " Its certificate is not trusted here: behind a TLS-inspecting proxy, set NODE_EXTRA_CA_CERTS to your organisation's CA file (npm's cafile is used when it is unset)."
 		: "";
@@ -338,19 +344,32 @@ export function makeNet({
 	env = process.env,
 	log = () => {},
 	deadlineMs,
+	defaultBases = DEFAULT_BASES,
 } = {}) {
-	const parsed = parseBase(env.PRISMALENS_RELEASE_BASE_URL);
+	const raw = env.PRISMALENS_RELEASE_BASE_URL;
+	const parsedAll = raw
+		? [parseBase(raw)]
+		: defaultBases.map((b) => parseBase(undefined, b));
+	const parsed = parsedAll[0];
 	const ms =
 		deadlineMs ??
 		(Number(env.PRISMALENS_LAUNCHER_TIMEOUT_SECONDS) || 900) * 1000;
 	let applied = null;
-	return {
-		...parsed,
-		origin: parsed.base.startsWith("https:")
-			? new URL(parsed.base).origin
-			: null,
+	const shared = {
+		secrets: parsedAll.flatMap((p) => p.secrets),
 		deadline: Date.now() + ms,
 		log,
+	};
+	// A base that has a successor is tried briefly: its failure moves on to the next one.
+	const bases = parsedAll.map((p, i) => ({
+		...shared,
+		...p,
+		origin: p.base.startsWith("https:") ? new URL(p.base).origin : null,
+		attempts: i < parsedAll.length - 1 ? 2 : 6,
+	}));
+	return {
+		...bases[0],
+		bases,
 		/** The proxy/CA settings in force, applied once before the first request. */
 		ready() {
 			if (!applied && !parsed.base.startsWith("file:")) {
@@ -817,21 +836,52 @@ async function expectedDigest(want, net, at, archive) {
 	return { hex, source: "SHA256SUMS" };
 }
 
+/**
+ * The archive in `file`, hashed and checked against the digest. SHA256SUMS and the archive come
+ * from one base; when anything fails there, both are asked of the next base. Resolves to the sha256.
+ */
+async function fetchVerified(want, net, archive, file) {
+	const bases = net.bases ?? [net];
+	const hostOf = (b) => new URL(b.base).host || "disk";
+	const failures = [];
+	for (const [i, b] of bases.entries()) {
+		const at = `${b.base}/${want.tag}`;
+		try {
+			const expected = await expectedDigest(want, b, at, archive);
+			const actual = await download(
+				`${at}/${archive}`,
+				file,
+				b,
+				`${want.version} from ${hostOf(b)}`,
+			);
+			if (actual !== expected.hex)
+				throw new LauncherError(
+					`checksum mismatch for ${archive} (${expected.source} says ${expected.hex}, the download is ${actual}); nothing was installed`,
+				);
+			return actual;
+		} catch (error) {
+			if (!(error instanceof LauncherError) || bases.length === 1) throw error;
+			failures.push(error.message);
+			if (i < bases.length - 1)
+				net.log(
+					`${error.message.split("\n")[0]}; trying ${hostOf(bases[i + 1])}`,
+				);
+		}
+	}
+	throw new LauncherError(
+		`could not download ${archive} from any of ${bases.map(hostOf).join(", ")}:\n${failures.join("\n")}`,
+	);
+}
+
 async function install(root, want, net) {
 	const { version, target, tag } = want;
 	net.ready();
 	const archive = archiveName(version, target);
-	const at = `${net.base}/${tag}`;
-	const expected = await expectedDigest(want, net, at, archive);
 	const staging = path.join(root, `.staging-${randomBytes(6).toString("hex")}`);
 	fs.mkdirSync(staging);
 	try {
 		const file = path.join(staging, archive);
-		const actual = await download(`${at}/${archive}`, file, net, version);
-		if (actual !== expected.hex)
-			throw new LauncherError(
-				`checksum mismatch for ${archive} (${expected.source} says ${expected.hex}, the download is ${actual}); nothing was installed`,
-			);
+		const actual = await fetchVerified(want, net, archive, file);
 		// Windows' own bsdtar reads zip; a Git-for-Windows tar on PATH cannot.
 		const tar = target.startsWith("win32")
 			? path.join(
@@ -1070,7 +1120,8 @@ export function help(release, root, target) {
 	return `PrismaLens launcher ${release.version}
 
 pl from npm is a launcher. On first run it downloads PrismaLens ${release.version} for
-${target} from its GitHub release, checks it against the release's SHA256SUMS,
+${target} from ${new URL(MIRROR_BASE).host}, or from its GitHub release when that
+has no copy, checks it against the release's SHA256SUMS,
 keeps it in ${root}, and runs it. Later runs start from that copy offline.
 
 npm carries stable releases. Inside the app, pl upgrade --channel nightly moves this
@@ -1085,7 +1136,8 @@ Commands
 
 Environment
   PRISMALENS_RELEASE_BASE_URL  Where releases come from, as <base>/v<version>/<file>;
-                               https: or file: only. Default:
+                               https: or file: only. When it is
+                               set, only it is used. Default: ${MIRROR_BASE}, then
                                ${DEFAULT_BASE}
                                https://user:token@host/... sends an Authorization header;
                                the credentials are never printed.

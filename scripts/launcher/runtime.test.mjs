@@ -17,6 +17,7 @@ import net from "node:net";
 import { join, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { after, test } from "node:test";
+import { pathToFileURL } from "node:url";
 import {
 	HOST,
 	httpsServer,
@@ -31,10 +32,15 @@ import {
 	workdir,
 } from "./fixtures.mjs";
 import {
+	archiveName,
 	breakLock,
+	DEFAULT_BASE,
 	detectTarget,
+	ensureRuntime,
 	holds,
 	lockHolder,
+	MIRROR_BASE,
+	makeNet,
 	ownerRecord,
 	parseBase,
 	prune,
@@ -904,4 +910,108 @@ test("finding 6: a reused pid holds nothing once its owner's heartbeat stops", a
 		holds({ ...ownerRecord(), host: "another-machine" }, Date.now() - 120_000),
 		false,
 	);
+});
+
+// --- mirror first, GitHub second -------------------------------------------------------------
+
+const fallbackSetup = (...migrationSets) => {
+	const dir = workdir();
+	const mirrors = migrationSets.map((migrations, i) => {
+		const mirror = join(dir, `mirror-${i}`);
+		mkdirSync(mirror);
+		if (migrations) release(mirror, "0.5.6", { migrations });
+		return mirror;
+	});
+	const logs = [];
+	const net = makeNet({
+		env: {},
+		log: (m) => logs.push(m),
+		defaultBases: mirrors.map((m) => pathToFileURL(m).href),
+	});
+	const want = { version: "0.5.6", tag: "v0.5.6", target: HOST };
+	const archiveIn = (i) =>
+		join(mirrors[i], "v0.5.6", archiveName("0.5.6", HOST));
+	return {
+		dir,
+		mirrors,
+		logs,
+		net,
+		want,
+		cache: join(dir, "cache"),
+		archiveIn,
+	};
+};
+
+test("without PRISMALENS_RELEASE_BASE_URL the bases are the mirror, then GitHub; a set one is the only one", () => {
+	assert.deepEqual(
+		makeNet({ env: {} }).bases.map((b) => b.base),
+		[MIRROR_BASE, DEFAULT_BASE],
+	);
+	const set = makeNet({
+		env: { PRISMALENS_RELEASE_BASE_URL: "https://corp.example/pl" },
+	});
+	assert.deepEqual(
+		set.bases.map((b) => b.base),
+		["https://corp.example/pl"],
+	);
+});
+
+test("a base without the release hands over to the next, and SHA256SUMS comes from the base that serves the archive", async () => {
+	const { mirrors, logs, net, want, cache, archiveIn } = fallbackSetup(null, [
+		"20260901000000_init",
+	]);
+	const got = await ensureRuntime(cache, want, net);
+	assert.equal(got.sha256, sha256(readFileSync(archiveIn(1))));
+	assert.deepEqual(logs, [
+		`${pathToFileURL(mirrors[0]).href}/v0.5.6/SHA256SUMS does not exist; trying disk`,
+	]);
+});
+
+test("SHA256SUMS from one base is never paired with the archive of another", async () => {
+	const { logs, net, want, cache, archiveIn } = fallbackSetup(
+		["20260901000000_init"],
+		["20260901000000_init", "20260902000000_other"],
+	);
+	rmSync(archiveIn(0));
+	const got = await ensureRuntime(cache, want, net);
+	assert.equal(got.sha256, sha256(readFileSync(archiveIn(1))));
+	assert.equal(logs.length, 1);
+	assert.match(
+		logs[0],
+		/\/v0\.5\.6\/prismalens-0\.5\.6-.* does not exist; trying disk$/,
+	);
+});
+
+test("an archive that fails its checksum on one base is replaced by the next base's", async () => {
+	const dir = workdir();
+	const [a, b] = [join(dir, "a"), join(dir, "b")];
+	release(a, "0.5.6", { tamper: true });
+	release(b, "0.5.6");
+	const logs = [];
+	const net = makeNet({
+		env: {},
+		log: (m) => logs.push(m),
+		defaultBases: [pathToFileURL(a).href, pathToFileURL(b).href],
+	});
+	const want = { version: "0.5.6", tag: "v0.5.6", target: HOST };
+	const got = await ensureRuntime(join(dir, "cache"), want, net);
+	assert.equal(
+		got.sha256,
+		sha256(readFileSync(join(b, "v0.5.6", archiveName("0.5.6", HOST)))),
+	);
+	assert.match(
+		logs[0],
+		/^checksum mismatch for prismalens-0\.5\.6-.* nothing was installed; trying disk$/,
+	);
+});
+
+test("when no base has the release, the error names every base tried", async () => {
+	const { mirrors, net, want, cache } = fallbackSetup(null, null);
+	const archive = archiveName("0.5.6", HOST);
+	const missing = mirrors.map(
+		(m) => `${pathToFileURL(m).href}/v0.5.6/SHA256SUMS does not exist`,
+	);
+	await assert.rejects(ensureRuntime(cache, want, net), {
+		message: `could not download ${archive} from any of disk, disk:\n${missing.join("\n")}`,
+	});
 });
