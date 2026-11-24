@@ -255,7 +255,7 @@ describe("ResumableStream", () => {
 		await stream1.start();
 		source1.onUnknownCallback?.();
 		// Allow finish to run
-		await new Promise((r) => setTimeout(r, 10));
+		await vi.advanceTimersByTimeAsync(10);
 
 		expect(sink1.frames.map((f) => f.name)).toContain("done");
 		expect(sink1.closed).toBe(true);
@@ -271,7 +271,7 @@ describe("ResumableStream", () => {
 
 		await stream2.start();
 		source2.onUnknownCallback?.();
-		await new Promise((r) => setTimeout(r, 10));
+		await vi.advanceTimersByTimeAsync(10);
 
 		expect(sink2.frames.map((f) => f.name)).not.toContain("done");
 		expect(sink2.closed).toBe(false);
@@ -340,7 +340,7 @@ describe("ResumableStream", () => {
 		await stream.start();
 		source.gen = 4;
 		source.onCommitCallback?.("reset");
-		await new Promise((r) => setTimeout(r, 0));
+		await vi.advanceTimersByTimeAsync(0);
 		expect(sink.frames.map((f) => [f.name, f.data])).toEqual([["reset", { gen: 4 }]]);
 		expect(sink.closed).toBe(true);
 	});
@@ -434,7 +434,7 @@ describe("ResumableStream", () => {
 			event: JSON.stringify(makeEvent(2)),
 		});
 		source.onCommitCallback?.("commit");
-		await new Promise((r) => setTimeout(r, 10));
+		await vi.advanceTimersByTimeAsync(10);
 
 		expect(sink.frames).toHaveLength(1);
 		expect(sink.frames[0].name).toBe("commit");
@@ -493,7 +493,7 @@ describe("ResumableStream", () => {
 
 		onLive?.(makeEvent(99));
 		onDone?.();
-		await new Promise((r) => setTimeout(r, 10));
+		await vi.advanceTimersByTimeAsync(10);
 
 		expect(sink.frames).toHaveLength(0);
 	});
@@ -596,7 +596,7 @@ describe("ResumableStream", () => {
 		source.onDoneCallback?.();
 		stream.stop();
 		releasePull();
-		await new Promise((r) => setTimeout(r, 10));
+		await vi.advanceTimersByTimeAsync(10);
 
 		expect(sink.frames.map((f) => f.name)).toEqual([]);
 	});
@@ -620,7 +620,7 @@ describe("ResumableStream", () => {
 		source.onCommitCallback?.("reset");
 		stream.stop();
 		releaseHead();
-		await new Promise((r) => setTimeout(r, 10));
+		await vi.advanceTimersByTimeAsync(10);
 
 		expect(sink.closed).toBeNull();
 	});

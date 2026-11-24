@@ -30,7 +30,7 @@ function fakePrisma(now = () => new Date("2026-11-07T10:00:00Z")) {
 	const composerDraft = {
 		// Yields first, so two saves can both read "no row" as they do on SQLite.
 		findUnique: async ({ where }: { where: { scope: string } }) => {
-			await new Promise((r) => setTimeout(r, 0));
+			await vi.advanceTimersByTimeAsync(0);
 			const row = rows.get(where.scope);
 			return row ? { ...row } : null;
 		},

@@ -20,6 +20,8 @@ On CI, an api or frontend test that spends over 40% of its timeout fails (`VITES
 
 API code reads time and signals through `src/core/clock.ts` and `src/infrastructure/dispatch/process-signals.ts`, so tests can fake them; Biome forbids direct calls.
 
+An api `*.spec.ts` is small: fake clock, no database, process or socket, 1 s a test. A `*.int.spec.ts` is medium: real SQLite, git and timers, a timeout 3x its slowest test.
+
 ## Journeys and scenarios
 
 The core loop's journeys are written once and run on every target: [journeys.md](journeys.md). Journeys (`packages/frontend/e2e/features/*.feature`) and the API lifecycle scenarios (`packages/api/test/scenarios/`) make every precondition through the product: an alert from the fake Alertmanager through the real webhook, a run by the fake ACP agent, an operator's click or API call. Nothing is seeded or written to the database by hand; the e2e stack's demo seed is only for screens that read. A walk finding is fixed together with the journey or scenario that would have caught it. How to write one, run the suite and read its reports: `packages/frontend/e2e/README.md`.
