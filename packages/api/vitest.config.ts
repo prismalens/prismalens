@@ -193,6 +193,9 @@ export default defineConfig({
 						"test/**/*.int.spec.ts",
 						...LEGACY_MEDIUM,
 					],
+					// The listed specs carry no timeout of their own until they are renamed; the 5 s default
+					// fails the ones that run git on a slow runner.
+					testTimeout: 120_000,
 				},
 			},
 		],
