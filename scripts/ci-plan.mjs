@@ -10,6 +10,8 @@
 //   full    "true": a release PR, a change to the CLI itself, or a path the release proofs read; `proofs.yml` runs its OS, service and upgrade-chain proofs.
 //   agents  "true": the engine, agent-host or agent-adapters closure changed; the qualification legs run (`proofs.yml`).
 //   defer   "true": a draft release PR; nothing runs and `CI gate` stays red until it is marked ready.
+//   draft   "true": a draft PR runs the fast tier only (lint, build, ubuntu unit tests); e2e, intake, full and agents are off.
+//           The `changes` job is then named `Plan (draft)`, and no later run accepts a draft run as proof (`countsAsProof`).
 // Package paths are decided by turbo's graph (`turbo ls --affected`: the changed packages and their dependents).
 // A path outside every package is looked up in OUTSIDE; one it does not name turns every tier on.
 // A renamed file counts under both its names. A push to main or a merge group runs the PR tiers; the proofs run on the PR and nightly (#1023).
@@ -43,6 +45,30 @@ export const TIER_PACKAGES = {
 		"@prismalens/agent-adapters",
 	],
 };
+
+export const DRAFT_REASON =
+	"draft: the fast tier only; marking it ready runs the full plan";
+
+/** The names of the `changes` job: `ci.yml` names it `Plan (draft)` for a draft PR, so a run's jobs tell its mode. */
+export const PLAN_JOB = "Plan this run";
+export const DRAFT_PLAN_JOB = "Plan (draft)";
+
+/**
+ * Whether a finished `CI` run is proof for a ready PR: its plan job ran and was not the draft one.
+ * @param {string[]} jobNames the names of the run's jobs
+ */
+export const countsAsProof = (jobNames) =>
+	jobNames.includes(PLAN_JOB) && !jobNames.includes(DRAFT_PLAN_JOB);
+
+/**
+ * The first candidate whose run is proof. `jobNamesOf` may throw; the caller then runs everything.
+ * @template T
+ * @param {T[]} candidates
+ * @param {(candidate: T) => string[]} jobNamesOf
+ * @returns {T | undefined}
+ */
+export const firstProof = (candidates, jobNamesOf) =>
+	candidates.find((c) => countsAsProof(jobNamesOf(c)));
 
 /** The package every release artifact is built from. */
 const CLI = { name: "prismalens", path: "packages/cli" };
@@ -107,7 +133,7 @@ const directlyChangesCli = (/** @type {string[]} */ files) =>
 	);
 
 /**
- * @param {{
+ * @typedef {{
  *   event: string,
  *   files: string[],
  *   packages?: { name: string, path: string }[],
@@ -117,10 +143,35 @@ const directlyChangesCli = (/** @type {string[]} */ files) =>
  *   sameTreeAs?: string | null,
  *   draft?: boolean,
  *   readyOnPassedHead?: boolean,
- * }} input `affected` is turbo's list of changed packages and their dependents; `null` when turbo could not say.
- * @returns {{ skip: boolean, code: boolean, e2e: boolean, intake: boolean, full: boolean, agents: boolean, reason: string, defer?: boolean }}
+ * }} PlanInput `affected` is turbo's list of changed packages and their dependents; `null` when turbo could not say.
+ * @typedef {{ skip: boolean, code: boolean, e2e: boolean, intake: boolean, full: boolean, agents: boolean, reason: string, defer?: boolean, draft?: boolean }} PlanResult
  */
-export function plan({
+
+/**
+ * @param {PlanInput} input
+ * @returns {PlanResult}
+ */
+export function plan(input) {
+	const result = planFull(input);
+	// A draft keeps `code` as computed and drops the tiers that cost a runner each; ready_for_review plans the rest.
+	if (input.draft && input.event === "pull_request" && !result.skip)
+		return {
+			...result,
+			e2e: false,
+			intake: false,
+			full: false,
+			agents: false,
+			draft: true,
+			reason: DRAFT_REASON,
+		};
+	return result;
+}
+
+/**
+ * @param {PlanInput} input
+ * @returns {PlanResult}
+ */
+function planFull({
 	event,
 	files,
 	packages = [],
@@ -266,8 +317,23 @@ export function turboPackages({ turbo, cwd, affected }) {
 	return JSON.parse(out.slice(out.indexOf("{"))).packages.items;
 }
 
+/** The names of every job in a run; a failed lookup throws, and the caller then runs everything. */
+const jobNames = (
+	/** @type {NodeJS.ProcessEnv} */ env,
+	/** @type {number} */ id,
+) =>
+	gh([
+		"api",
+		"--paginate",
+		`repos/${env.REPO}/actions/runs/${id}/jobs?per_page=100`,
+		"--jq",
+		".jobs[].name",
+	])
+		.split("\n")
+		.filter(Boolean);
+
 /**
- * An earlier passing `CI` run on this PR branch whose head commit has the same tree, if any.
+ * An earlier `CI` run on this PR branch that passed as a ready PR, whose head commit has the same tree, if any.
  * The run list carries each head commit's tree, as Git's own skip-if-redundant job reads it.
  */
 function earlierPassWithSameTree(/** @type {NodeJS.ProcessEnv} */ env) {
@@ -283,24 +349,29 @@ function earlierPassWithSameTree(/** @type {NodeJS.ProcessEnv} */ env) {
 			"api",
 			`repos/${REPO}/actions/workflows/ci.yml/runs?event=pull_request&status=success&per_page=50&branch=${encodeURIComponent(String(HEAD_REF))}`,
 			"--jq",
-			"[.workflow_runs[] | {sha: .head_sha, tree: .head_commit.tree_id, repo: .head_repository.full_name}]",
+			"[.workflow_runs[] | {id, sha: .head_sha, tree: .head_commit.tree_id, repo: .head_repository.full_name}]",
 		]),
 	);
-	const hit = runs.find(
-		(r) => r.repo === HEAD_REPO && r.sha !== HEAD_SHA && r.tree === mine,
+	const hit = firstProof(
+		runs.filter(
+			(r) => r.repo === HEAD_REPO && r.sha !== HEAD_SHA && r.tree === mine,
+		),
+		(r) => jobNames(env, r.id),
 	);
 	return hit ? hit.sha : null;
 }
 
-/** Whether a `CI` run on exactly this head commit already succeeded. */
+/** Whether a `CI` run on exactly this head commit already succeeded as a ready PR, not as a draft. */
 function headAlreadyPassed(/** @type {NodeJS.ProcessEnv} */ env) {
-	const out = gh([
-		"api",
-		`repos/${env.REPO}/actions/workflows/ci.yml/runs?head_sha=${env.HEAD_SHA}&event=pull_request&status=success&per_page=1`,
-		"--jq",
-		".total_count",
-	]);
-	return Number(out.trim()) > 0;
+	const ids = JSON.parse(
+		gh([
+			"api",
+			`repos/${env.REPO}/actions/workflows/ci.yml/runs?head_sha=${env.HEAD_SHA}&event=pull_request&status=success&per_page=100`,
+			"--jq",
+			"[.workflow_runs[].id]",
+		]),
+	);
+	return firstProof(ids, (id) => jobNames(env, id)) !== undefined;
 }
 
 function main(/** @type {NodeJS.ProcessEnv} */ env) {
@@ -369,6 +440,7 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 		`full=${result.full}`,
 		`agents=${result.agents}`,
 		`defer=${Boolean(result.defer)}`,
+		`draft=${Boolean(result.draft)}`,
 		`reason=${result.reason}`,
 	];
 	console.log(lines.join("\n"));
