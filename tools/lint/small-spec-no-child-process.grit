@@ -1,0 +1,12 @@
+// A small test (*.spec.ts) runs no child process (#1154): a spec that imports child_process is a
+// *.int.spec.ts. A type-only import runs nothing and is allowed.
+language js
+
+JsImport() as $i where {
+	not $i <: r"^import type[\s\S]*",
+	$i <: or {
+		r"[\s\S]*\x22child_process\x22;?",
+		r"[\s\S]*\x22node:child_process\x22;?"
+	},
+	register_diagnostic(span=$i, message="A small test (*.spec.ts) must not import child_process. Mock the process, or rename the file *.int.spec.ts.", severity="error")
+}

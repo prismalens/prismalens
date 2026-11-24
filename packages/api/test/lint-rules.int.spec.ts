@@ -46,3 +46,9 @@ it("no-direct-clock flags each direct clock, timer and kill call, and nothing it
 		"direct-clock.ts:8",
 	]);
 });
+
+it("small-spec-no-child-process flags a value import of child_process, not a type import (#1154)", () => {
+	expect(
+		flagged().filter((f) => f.startsWith("small-spec-child-process.ts")),
+	).toEqual(["small-spec-child-process.ts:2", "small-spec-child-process.ts:3"]);
+});

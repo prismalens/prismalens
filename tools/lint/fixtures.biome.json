@@ -7,6 +7,10 @@
 		{
 			"path": "./no-direct-clock.grit",
 			"includes": ["**/fixtures/direct-clock.ts"]
+		},
+		{
+			"path": "./small-spec-no-child-process.grit",
+			"includes": ["**/fixtures/small-spec-child-process.ts"]
 		}
 	]
 }
