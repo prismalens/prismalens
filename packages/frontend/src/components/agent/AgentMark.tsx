@@ -99,6 +99,28 @@ function Logo({
 		width: logo.min.width,
 		height: logo.min.height,
 	} as CSSProperties;
+	// The tile gives a light-on-dark frame a surround, so a heavy mark reads as a logo and not a white box.
+	return (
+		<span
+			data-testid="agent-logo-tile"
+			className="inline-flex shrink-0 items-center justify-center rounded-[5px] bg-surface-4 p-[3px]"
+		>
+			<LogoSvg logo={logo} className={className} fact={fact} style={style} />
+		</span>
+	);
+}
+
+function LogoSvg({
+	logo,
+	className,
+	fact,
+	style,
+}: {
+	logo: LogoFact;
+	className?: string;
+	fact?: FactId;
+	style: CSSProperties;
+}) {
 	return (
 		<svg
 			aria-hidden

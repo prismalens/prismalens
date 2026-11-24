@@ -7,9 +7,11 @@
  * no prompt turn, no model call. A pass means "answers ACP", never "ready": opencode needs
  * no provider for `session/new`, and claude-agent-acp checks credentials at turn start.
  */
+import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify, stripVTControlCharacters } from "node:util";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import {
 	type LaunchPolicy,
@@ -39,6 +41,7 @@ import { checkSandbox, type SandboxChecks } from "./sandbox-check.js";
 
 export { versionOf };
 
+const execFileAsync = promisify(execFile);
 const RUN_DIR_PREFIX = "pl-doctor-";
 const STALE_RUN_DIR_MS = 24 * 60 * 60 * 1000;
 /** claude-agent-acp pushes its sign-in after `initialize` from a CLI probe it never waits on. */
@@ -79,6 +82,40 @@ export interface HarnessProbeResult {
 	account?: ProbeAccount | null;
 	/** Its sign-in methods, by name, when it asked for one. */
 	signInMethods?: string[];
+	/** The providers the agent holds a login for; null when its CLI's list could not be read; absent when it has none to check. */
+	providers?: string[] | null;
+}
+
+/** The names in an agent CLI's provider list: first column of each line, colour codes and rules removed. */
+export function parseProviderList(out: string): string[] {
+	const names: string[] = [];
+	for (const raw of out.split(/\r?\n/)) {
+		const line = stripVTControlCharacters(raw).replace(/[│┌└├─╮╯╰╭]/g, " ");
+		const cols = line.trim().split(/\s{2,}/);
+		if (cols.length >= 2 && cols[0]) names.push(cols[0]);
+	}
+	return names;
+}
+
+const PROVIDER_LIST_BUDGET_MS = 8_000;
+
+/** Asks the agent's CLI which providers it holds a login for; null when it cannot say. */
+async function listProviders(
+	command: string,
+	args: readonly string[],
+	env: Record<string, string>,
+): Promise<string[] | null> {
+	try {
+		const { stdout } = await execFileAsync(command, [...args], {
+			env,
+			timeout: PROVIDER_LIST_BUDGET_MS,
+			windowsHide: true,
+			shell: process.platform === "win32" && /\.(cmd|bat)$/i.test(command),
+		});
+		return parseProviderList(stdout);
+	} catch {
+		return null;
+	}
 }
 
 function effortLevels(
@@ -186,6 +223,7 @@ export async function probeHarness(
 			| "sessionMeta"
 			| "companionBinary"
 			| "adapterPackage"
+			| "providerAuth"
 		>;
 		budgets?: ProbeInput["budgets"];
 		sandbox?: typeof checkSandbox;
@@ -293,6 +331,13 @@ export async function probeHarness(
 					}
 				: {}),
 		};
+		const gate = descriptor.providerAuth;
+		if (gate)
+			answered.providers = await listProviders(
+				runEnv.companionPath ?? launch.command,
+				gate.args,
+				env,
+			);
 		const modeIds = answered.modes?.map((m) => m.id) ?? [NO_MODE_KEY];
 		// A failed sandbox check must not lose an agent that answered ACP.
 		const sandbox = await (opts.sandbox ?? checkSandbox)(harness, modeIds, {

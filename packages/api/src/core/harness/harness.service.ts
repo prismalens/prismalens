@@ -31,6 +31,8 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	isSafeGatewayUrl,
+	providerSignedOutLine,
+	providerSignIn,
 	refuseModel,
 	reservedEnvNames,
 	signInCommand,
@@ -560,6 +562,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			...(s.binaryPaths ? { binaryPaths: s.binaryPaths } : {}),
 			localAgent: s.localAgent ?? null,
 			isRunnable: (id) => !off.has(id) && this.checkPasses(id),
+			isSignedIn: (id) => this.providerKnown(id, s.models?.[id]),
 		};
 	}
 
@@ -624,6 +627,13 @@ export class HarnessService implements OnApplicationBootstrap {
 				);
 		});
 		return this.persisting;
+	}
+
+	/** Auto prefers an agent whose provider login for its model is known; one it could not read waits behind. */
+	private providerKnown(id: HarnessId, model: string | undefined): boolean {
+		const c = this.models.checked(id);
+		const state = providerSignIn(id, c, model ?? c?.servedModel);
+		return state === "na" || state === "signed-in";
 	}
 
 	private checkPasses(id: HarnessId): boolean {
@@ -805,7 +815,7 @@ export class HarnessService implements OnApplicationBootstrap {
 	 * old, else a check now: a remembered failure is checked again, so signing
 	 * in takes effect on the next run (#673 w9).
 	 */
-	async ensureReady(id: HarnessId): Promise<Readiness> {
+	async ensureReady(id: HarnessId, model?: string | null): Promise<Readiness> {
 		const off = { ready: false, reason: this.offMessage(id) } as const;
 		if (await this.isOff(id)) return off;
 		const remembered = this.models.checked(id);
@@ -820,9 +830,13 @@ export class HarnessService implements OnApplicationBootstrap {
 			};
 		// Turned off while the probe ran: its answer no longer stands.
 		if (!fresh && (await this.isOff(id))) return off;
-		return check.outcome === "answers-acp"
-			? { ready: true }
-			: { ready: false, reason: notReadyReason(id, check) };
+		if (check.outcome !== "answers-acp")
+			return { ready: false, reason: notReadyReason(id, check) };
+		const settings = await this.getSettings();
+		const chosen = model ?? settings.models?.[id] ?? check.servedModel;
+		if (providerSignIn(id, check, chosen) === "signed-out")
+			return { ready: false, reason: providerSignedOutLine(id, chosen) };
+		return { ready: true };
 	}
 
 	private checkOnce(id: HarnessId): Promise<Check | null> {
@@ -1297,6 +1311,11 @@ export class HarnessService implements OnApplicationBootstrap {
 				return {
 					...h,
 					runnable: h.installed && !off && this.checkPasses(h.id),
+					providerSignIn: providerSignIn(
+						h.id,
+						checked,
+						settings.models?.[h.id] ?? checked?.servedModel,
+					),
 					off,
 					added: settings.added?.includes(h.id) ?? false,
 					signIn: this.signInOf(h.id, settings),

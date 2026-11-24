@@ -96,4 +96,22 @@ describe("failureSentence", () => {
 		expect(result.next).toBe("Try again, or pick another model.");
 		expect(result.detail).toBe(rawError);
 	});
+
+	it("takes the agent's detail from the first line that says something, not a lone brace", () => {
+		const error = [
+			"harness exited early (code=1 signal=null): {",
+			'  "message": "not signed in to its provider"',
+			"}",
+		].join("\n");
+		expect(failureSentence("OpenCode", error)).toMatchObject({
+			said: "OpenCode is not signed in to its model provider.",
+			detail: '"message": "not signed in to its provider"',
+		});
+	});
+
+	it("gives no detail, and no quoted blank, for an error with no words in it", () => {
+		const blank = failureSentence("OpenCode", "{\n}\n");
+		expect(blank.detail).toBeUndefined();
+		expect(blank.said).toBe(failureSentence("OpenCode", null).said);
+	});
 });

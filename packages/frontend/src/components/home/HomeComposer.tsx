@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
+import type {
+	HarnessStatus,
+	Severity,
+	ThreadStartSubject,
+} from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
 	Bot,
@@ -354,10 +358,21 @@ function SubjectPicker({
 
 /** Ready once the agent answered a check; installed but silent needs a sign-in or a fix. */
 export function agentReadiness(
-	h: { installed: boolean; checked?: { outcome: string } | null } | undefined,
+	h:
+		| {
+				installed: boolean;
+				checked?: { outcome: string } | null;
+				providerSignIn?: HarnessStatus["providerSignIn"];
+		  }
+		| undefined,
 ): "ready" | "signIn" | "missing" {
 	if (!h?.installed) return "missing";
-	return h.checked?.outcome === "answers-acp" ? "ready" : "signIn";
+	const login = h.providerSignIn ?? "na";
+	return h.checked?.outcome === "answers-acp" &&
+		login !== "signed-out" &&
+		login !== "unchecked"
+		? "ready"
+		: "signIn";
 }
 
 /** The default agent's logo with its readiness dot; not ready opens Settings, Agent. */
@@ -372,7 +387,10 @@ export function AgentReady() {
 			? `${h.label} ready`
 			: state === "missing"
 				? `${h.label} not installed`
-				: (unreadyReason(h) ?? `${h.label} not checked`);
+				: (unreadyReason(h, choice.model) ??
+					(h.providerSignIn === "unchecked"
+						? `${h.label}: sign-in not checked`
+						: `${h.label} not checked`));
 	return <AgentReadyChip agent={h?.id ?? null} state={state} word={word} />;
 }
 

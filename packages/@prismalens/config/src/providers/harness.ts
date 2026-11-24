@@ -18,6 +18,7 @@ import {
 	reopens,
 } from "@prismalens/agent-host/registry";
 import CATALOGUE_SOURCES from "./catalogue-sources.json" with { type: "json" };
+import { modelProvider, providerName } from "./model-makers.js";
 
 export {
 	ACCESS_LEVELS,
@@ -168,6 +169,11 @@ interface ProductFacts {
 	compactTakesFocus: boolean;
 	/** A larger context window taken as a suffix on the model id; absent, the agent offers one window. */
 	modelWindow?: { alias: string; base: string; large: string };
+	/**
+	 * A multi-provider agent whose CLI lists the providers it holds a login for (`args`, one provider
+	 * per line, name first); `keyless` providers run with none. Absent: no provider check exists.
+	 */
+	providerAuth?: { args: readonly string[]; keyless: readonly string[] };
 	/** With no model over ACP, the agent runs a model it chooses itself, so there is no list to wait for. */
 	picksOwnModel?: true;
 	/** The user sets its command and arguments in Settings; no binary is looked up. */
@@ -307,6 +313,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 		tested: { version: "1.19.6", date: "2026-11-21" },
 		loginHint: "`opencode auth login`, or a provider key in env",
 		signInArgs: ["auth", "login"],
+		providerAuth: { args: ["auth", "list"], keyless: ["opencode"] },
 		loginEnvKeys: ["XDG_DATA_HOME", "OPENCODE_DB"],
 	},
 	"claude-code": {
@@ -606,4 +613,39 @@ export function resumeBlockedReason(harnessId: HarnessId): string | null {
 	const row = HARNESS_REGISTRY[harnessId];
 	if (reopens(row)) return null;
 	return `${row.label} can't reopen a finished session, so a new run starts from the report.`;
+}
+
+/** A provider's name and its models.dev id compare equal: `Ollama Cloud` and `ollama-cloud`. */
+export function providerKey(name: string): string {
+	return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Can `harness` run `modelId` as far as its provider login goes? `unchecked` is a multi-provider
+ * agent whose logins no check has read: never reported as ready. `na` is an agent with no such check.
+ */
+export function providerSignIn(
+	harness: HarnessId,
+	checked: { providers?: readonly string[] | null } | null | undefined,
+	modelId: string | null | undefined,
+): "signed-in" | "signed-out" | "unchecked" | "na" {
+	const gate = HARNESS_REGISTRY[harness].providerAuth;
+	const provider = modelId ? modelProvider(modelId) : null;
+	if (!gate || !provider) return "na";
+	if (gate.keyless.includes(provider)) return "signed-in";
+	if (!checked?.providers) return "unchecked";
+	return checked.providers.some((p) => providerKey(p) === providerKey(provider))
+		? "signed-in"
+		: "signed-out";
+}
+
+/** A model whose provider the agent holds no login for, in the words the box, the picker and the Timeline share. */
+export function providerSignedOutLine(
+	harness: HarnessId,
+	modelId: string | null | undefined,
+): string {
+	const provider = modelId ? modelProvider(modelId) : null;
+	const named =
+		(provider && providerName(provider)) || provider || "its provider";
+	return `${HARNESS_REGISTRY[harness].label} is not signed in to ${named}. Sign in with its own CLI, then retry.`;
 }

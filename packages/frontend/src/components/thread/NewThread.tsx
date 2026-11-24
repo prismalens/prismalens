@@ -138,7 +138,7 @@ export function NewThread({
 				: null;
 	const accessLevel =
 		picked.accessLevel ?? defaultAccessOf(harness, choice.axes).level.level;
-	const unready = harness ? unreadyLine(harness) : null;
+	const unready = harness ? unreadyLine(harness, model) : null;
 
 	const agentMode = picked.agentMode ?? null;
 	const run = {

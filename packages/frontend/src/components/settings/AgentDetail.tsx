@@ -19,6 +19,7 @@ import {
 	modelName,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { providerState } from "@/components/agent/agent-choice";
 import { agentModels, makerOf, move } from "@/components/agent/model-list";
 import { fact } from "@/components/kit/fact";
 import { Mark } from "@/components/kit/Mark";
@@ -77,12 +78,18 @@ export function testedHint(h: HarnessStatus): string {
 }
 
 /** An agent's one state word, from its install and the server's last check (#848's words for a source). */
-export function agentState(h: HarnessStatus): Word {
+export function agentState(h: HarnessStatus, model?: string | null): Word {
 	const outcome = h.checked?.outcome ?? null;
 	if (h.off) return { text: "Off", tone: "neutral" };
 	if (h.windowsOnlyPath) return { text: "Can't run in WSL", tone: "warn" };
 	if (!h.installed) return { text: "Not installed", tone: "warn" };
-	if (outcome === "answers-acp") return { text: "Ready", tone: "ok" };
+	if (outcome === "answers-acp") {
+		const login = providerState(h, model);
+		if (login === "signed-out") return { text: "Sign-in needed", tone: "warn" };
+		if (login === "unchecked")
+			return { text: "Sign-in not checked", tone: "neutral" };
+		return { text: "Ready", tone: "ok" };
+	}
 	if (outcome === "sign-in-needed")
 		return { text: "Sign-in needed", tone: "warn" };
 	if (outcome) return { text: "Not responding", tone: "danger" };

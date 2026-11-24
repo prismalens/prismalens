@@ -7,6 +7,8 @@ import {
 	type HarnessId,
 	modelProvider,
 	providerName,
+	providerSignedOutLine,
+	providerSignIn,
 } from "@prismalens/config/harness";
 import {
 	type AxisSource,
@@ -241,10 +243,29 @@ export function shortModel(name: string): string {
 		: bare;
 }
 
+/**
+ * The agent's provider login for `model` (the agent's own pick when none is named): the server's
+ * word for its chosen model, or the same check run against another one.
+ */
+export function providerState(
+	h: HarnessStatus,
+	model?: string | null,
+): NonNullable<HarnessStatus["providerSignIn"]> {
+	return model
+		? providerSignIn(h.id as HarnessId, h.checked, model)
+		: (h.providerSignIn ?? "na");
+}
+
 /** Why an installed agent cannot take a run, in the gate's words; null when it can. */
-export function unreadyReason(h: HarnessStatus): string | null {
-	if (!h.installed || !h.checked || h.checked.outcome === "answers-acp")
-		return null;
+export function unreadyReason(
+	h: HarnessStatus,
+	model?: string | null,
+): string | null {
+	if (!h.installed || !h.checked) return null;
+	if (h.checked.outcome === "answers-acp")
+		return providerState(h, model) === "signed-out"
+			? providerSignedOutLine(h.id as HarnessId, model || h.checked.servedModel)
+			: null;
 	// The same words a run that fails on sign-in shows (#831 w7-3).
 	if (h.checked.outcome === "sign-in-needed")
 		return failureLine(notSignedIn(h.label));
@@ -252,8 +273,11 @@ export function unreadyReason(h: HarnessStatus): string | null {
 }
 
 /** The run gate's line: the reason, then where to check it, one full stop each (#673 w9-1). */
-export function unreadyLine(h: HarnessStatus): string | null {
-	const why = unreadyReason(h)?.replace(/[.\s]+$/, "");
+export function unreadyLine(
+	h: HarnessStatus,
+	model?: string | null,
+): string | null {
+	const why = unreadyReason(h, model)?.replace(/[.\s]+$/, "");
 	return why ? `${why}. Check it in Settings, Agent.` : null;
 }
 
