@@ -4,6 +4,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { signalProcess } from "../../infrastructure/dispatch/process-signals.js";
+import * as clock from "../clock.js";
 import { type GitEnvInput, gitEnv } from "./git-env.js";
 import { scrubGitStderr } from "./git-failure.js";
 
@@ -90,7 +92,7 @@ export function spawnGit(
 				);
 				if (res.error || res.status !== 0) child.kill("SIGKILL");
 			} else if (group && child.pid) {
-				process.kill(-child.pid, "SIGKILL");
+				signalProcess(-child.pid, "SIGKILL");
 			} else {
 				child.kill("SIGKILL");
 			}
@@ -134,7 +136,7 @@ export function spawnGit(
 			grow(chunk.length);
 			stderr += chunk;
 		});
-		const timer = setTimeout(
+		const timer = clock.setTimeout(
 			() =>
 				fail(
 					new GitSpawnError(`git ${args[0] ?? ""} timed out`, null, "", true),
@@ -195,7 +197,7 @@ function coreSshCommand(): Promise<string | null> {
 	if (
 		sshConfig &&
 		sshConfig.home === home &&
-		Date.now() - sshConfig.at < 30_000
+		clock.now() - sshConfig.at < 30_000
 	)
 		return sshConfig.value;
 	const value = spawnGit(["config", "--get", "core.sshCommand"], {
@@ -205,7 +207,7 @@ function coreSshCommand(): Promise<string | null> {
 		(r) => r.stdout.trim() || null,
 		() => null,
 	);
-	sshConfig = { at: Date.now(), home, value };
+	sshConfig = { at: clock.now(), home, value };
 	return value;
 }
 

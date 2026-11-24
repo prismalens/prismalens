@@ -18,6 +18,8 @@ On CI, an api or frontend test that spends over 40% of its timeout fails (`VITES
 
 `test-later` in `ci.yml` runs the api's tests again with the clock 40 days ahead (libfaketime). It runs every api test but `test/scenarios/agent-browser.spec.ts`, because a real browser has no coherent clock under libfaketime. A test written against today's date fails there on its PR, not on the day it expires: use fake timers or a measured timeout, never today's date.
 
+API code reads time and signals through `src/core/clock.ts` and `src/infrastructure/dispatch/process-signals.ts`, so tests can fake them; Biome forbids direct calls.
+
 ## Journeys and scenarios
 
 The core loop's journeys are written once and run on every target: [journeys.md](journeys.md). Journeys (`packages/frontend/e2e/features/*.feature`) and the API lifecycle scenarios (`packages/api/test/scenarios/`) make every precondition through the product: an alert from the fake Alertmanager through the real webhook, a run by the fake ACP agent, an operator's click or API call. Nothing is seeded or written to the database by hand; the e2e stack's demo seed is only for screens that read. A walk finding is fixed together with the journey or scenario that would have caught it. How to write one, run the suite and read its reports: `packages/frontend/e2e/README.md`.

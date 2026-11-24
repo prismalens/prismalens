@@ -25,6 +25,7 @@ import type {
 	JobMessageContext,
 } from "@prismalens/contracts";
 import type { AskResult } from "@prismalens/engine";
+import * as clock from "../../core/clock.js";
 import {
 	type EventBus,
 	type MessageState,
@@ -168,7 +169,7 @@ export class Dispatcher {
 		await Promise.race([
 			Promise.allSettled([...runs.map((r) => r.done), this.ticking]),
 			new Promise((r) => {
-				timer = setTimeout(r, settleMs);
+				timer = clock.setTimeout(r, settleMs);
 			}),
 		]);
 		clearTimeout(timer);
