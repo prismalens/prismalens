@@ -95,7 +95,7 @@ function json(status: number, body: unknown) {
 	});
 }
 
-function fakeFetch(api: ApiMap, calls: string[]) {
+function fakeFetch(api: ApiMap, calls: string[], unmocked: string[]) {
 	return async (input: RequestInfo | URL, init?: RequestInit) => {
 		const req = input instanceof Request ? input : null;
 		const url = new URL(req ? req.url : String(input), window.location.href);
@@ -104,11 +104,11 @@ function fakeFetch(api: ApiMap, calls: string[]) {
 			? match(method, url.pathname.slice("/api".length))
 			: null;
 		const label = `${method} ${url.pathname}`;
-		if (!hit || !(hit.route.id in api))
-			throw new UnmockedApiRouteError(
-				hit ? `${label} (${hit.route.id})` : label,
-				Object.keys(api),
-			);
+		if (!hit || !(hit.route.id in api)) {
+			const route = hit ? `${label} (${hit.route.id})` : label;
+			unmocked.push(route);
+			throw new UnmockedApiRouteError(route, Object.keys(api));
+		}
 		calls.push(hit.route.id);
 		const raw = req ? await req.text() : String(init?.body ?? "");
 		const handler = api[hit.route.id];
@@ -138,6 +138,10 @@ export interface RenderedApp {
 	queryClient: QueryClient;
 	/** Procedure ids answered so far, in order. */
 	calls: string[];
+	/** Requests the fake refused as unmapped. Teardown fails the test while any remain. */
+	unmocked: string[];
+	/** For a test that asserts an unmapped route's error: takes those requests off the teardown's list. */
+	acknowledgeUnmocked(): string[];
 	rerender(ui: ReactNode): Promise<void>;
 	/** For a test on fake timers, where an async `act` never settles. */
 	rerenderSync(ui: ReactNode): void;
@@ -154,10 +158,21 @@ export interface RenderOptions {
 const live: RenderedApp[] = [];
 let restore: (() => void) | null = null;
 
+/** The unmapped requests no test acknowledged, so a component that swallowed the rejection still fails its test. */
+export function unacknowledged(apps: Pick<RenderedApp, "unmocked">[]) {
+	return apps.flatMap((app) => app.unmocked);
+}
+
 afterEach(async () => {
-	for (const app of live.splice(0)) await app.unmount();
+	const apps = live.splice(0);
+	for (const app of apps) await app.unmount();
 	restore?.();
 	restore = null;
+	const stray = unacknowledged(apps);
+	if (stray.length)
+		throw new Error(
+			`The test asked routes it did not map: ${stray.join(", ")}. Map them in api, or call acknowledgeUnmocked() when the test asserts the error.`,
+		);
 });
 
 /**
@@ -186,15 +201,16 @@ export function renderWithAppSync(
 
 function mountApp({ api = {}, queryClient }: RenderOptions): RenderedApp {
 	const calls: string[] = [];
+	const unmocked: string[] = [];
 	if (!restore) {
 		const previous = globalThis.fetch;
-		globalThis.fetch = fakeFetch(api, calls) as typeof fetch;
+		globalThis.fetch = fakeFetch(api, calls, unmocked) as typeof fetch;
 		restore = () => {
 			globalThis.fetch = previous;
 		};
 	} else {
 		// A second render in one test swaps in its own map for the same fetch.
-		globalThis.fetch = fakeFetch(api, calls) as typeof fetch;
+		globalThis.fetch = fakeFetch(api, calls, unmocked) as typeof fetch;
 	}
 	const client =
 		queryClient ??
@@ -217,6 +233,8 @@ function mountApp({ api = {}, queryClient }: RenderOptions): RenderedApp {
 		container,
 		queryClient: client,
 		calls,
+		unmocked,
+		acknowledgeUnmocked: () => unmocked.splice(0),
 		rerender: (next) => act(async () => root.render(wrap(next))),
 		rerenderSync: (next) => act(() => root.render(wrap(next))),
 		unmount: async () => {

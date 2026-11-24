@@ -5,7 +5,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import { orpc } from "@/lib/api/orpc-client";
-import { renderWithApp } from "./render";
+import { renderWithApp, unacknowledged } from "./render";
 
 function Probe({ id }: { id: string }) {
 	const query = useQuery(orpc.alerts.get.queryOptions({ input: { id } }));
@@ -47,5 +47,12 @@ describe("renderWithApp (#1154)", () => {
 			"UnmockedApiRouteError: unit tests have no API: GET /api/alerts/a2 (alerts.get) is not in the api map (mapped: alerts.list)",
 		);
 		expect(app.calls).toEqual([]);
+		// The refused request is held for teardown until the test says it expected it.
+		expect(app.unmocked).toEqual(["GET /api/alerts/a2 (alerts.get)"]);
+		expect(unacknowledged([app])).toEqual(["GET /api/alerts/a2 (alerts.get)"]);
+		expect(app.acknowledgeUnmocked()).toEqual([
+			"GET /api/alerts/a2 (alerts.get)",
+		]);
+		expect(unacknowledged([app])).toEqual([]);
 	});
 });
