@@ -127,6 +127,23 @@ test("a night with NIGHTLY_ENABLED unset says it was skipped and touches no issu
 		/skipped/,
 	);
 	assert.equal(jobs.report.if, "always()");
+	const reporter = jobs.report.steps.find(
+		(s) => s.uses === "./.github/actions/report-failure",
+	);
+	assert.equal(reporter.if, "steps.gate.outputs.skipped != 'true'");
+});
+
+test("the e2e job holds issues: write for its quarantine reporter, which a called workflow cannot get from its caller alone", () => {
+	const e2e = workflow("e2e-browser.yml").jobs.e2e;
+	assert.deepEqual(e2e.permissions, { contents: "read", issues: "write" });
+	assert.equal(
+		e2e.steps.some((s) => s.uses === "./.github/actions/report-failure"),
+		true,
+	);
+	assert.deepEqual(workflow("ci.yml").jobs.e2e.permissions, {
+		contents: "read",
+		issues: "write",
+	});
 });
 
 test("a release takes `latest` only if it is the newest when it is promoted", () => {

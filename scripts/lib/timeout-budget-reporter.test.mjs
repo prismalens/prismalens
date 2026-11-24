@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { budgetLine, overBudget } from "./timeout-budget-reporter.mjs";
 
@@ -33,4 +34,13 @@ test("a passed test over its share of its own timeout is named, the most used fi
 		budgetLine(over[1]),
 		"2600 ms of 5000 ms (52%): a.spec.ts > thread-tree batch",
 	);
+});
+
+// Turbo hands a task only the variables it lists; without this the reporter never loads in CI (#1085).
+test("every turbo test task lists VITEST_TIMEOUT_BUDGET, so the budget reaches vitest and keys the cache", () => {
+	const { tasks } = JSON.parse(
+		readFileSync(new URL("../../turbo.json", import.meta.url), "utf8"),
+	);
+	for (const name of ["test", "test:cov", "@prismalens/database#test"])
+		assert.deepEqual(tasks[name].env, ["VITEST_TIMEOUT_BUDGET"], name);
 });

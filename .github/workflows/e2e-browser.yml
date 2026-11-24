@@ -21,6 +21,10 @@ jobs:
     name: Playwright (Chromium, shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # `issues: write` is for the quarantine report step; the workflow-level default is read-only.
+    permissions:
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -115,6 +119,8 @@ jobs:
           title: Quarantined e2e tests failing
           labels: bug
           ok: ${{ steps.quarantine.outcome == 'success' }}
+          # Used when the quarantine run wrote no summary (the reporter reads body-file when it exists).
+          body: "The quarantined e2e run ended ${{ steps.quarantine.outcome }} without a summary: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           body-file: ${{ runner.temp }}/quarantine-summary.md
 
       - name: Upload Playwright Report
