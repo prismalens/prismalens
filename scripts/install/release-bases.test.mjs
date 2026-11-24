@@ -38,11 +38,3 @@ for (const [file, rel, expected] of [
 		assert.deepEqual(urls(read(rel)), expected);
 	});
 }
-
-// install.sh and the launcher show this by installing (install-sums.test.mjs, launcher/runtime.test.mjs);
-// no test here runs PowerShell, so install.ps1's source is the check.
-test("install.ps1 reads SHA256SUMS from its trusted base only", () => {
-	const text = read("./install.ps1");
-	assert.match(text, /Fetch "\$sumsBase\/v\$Ver\/SHA256SUMS"/);
-	assert.deepEqual(text.match(/"\$\(\$?base[^"]*SHA256SUMS"/gi) ?? [], []);
-});

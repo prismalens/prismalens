@@ -1,0 +1,40 @@
+# Runs scripts/install/*.Tests.ps1 under Windows PowerShell 5.1, the shell `irm | iex` meets on a
+# default box (#1224). Advisory: not one of the required checks.
+name: Windows installer
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "scripts/install/**"
+      - ".github/workflows/install-ps1.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/install/**"
+      - ".github/workflows/install-ps1.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-ps1-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pester:
+    name: install.ps1 (Windows PowerShell 5.1)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pester
+        shell: powershell
+        run: |
+          "PowerShell $($PSVersionTable.PSVersion)"
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
+          Import-Module Pester -RequiredVersion 5.7.1
+          Invoke-Pester scripts/install -Output Detailed -CI
