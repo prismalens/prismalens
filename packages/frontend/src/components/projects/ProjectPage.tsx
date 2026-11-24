@@ -13,6 +13,7 @@ import {
 import { type FormEvent, useState } from "react";
 import { SendTestAlert } from "@/components/alertTest/SendTestAlert";
 import { TickDot } from "@/components/schedules/TickDot";
+import { PathTail } from "@/components/shared/PathTail";
 import { ProjectMark } from "@/components/shared/ProjectMark";
 import { Empty, Loading, NotFound, Problem } from "@/components/shared/State";
 import { NewThread } from "@/components/thread/NewThread";
@@ -104,9 +105,11 @@ export function ProjectPage({ id }: { id: string }) {
 						className="grid gap-1 rounded-pool bg-surface-2 px-3.5 py-3 text-body"
 						data-testid="project-code"
 					>
-						<span className="truncate text-text-1">
-							{p.subPath ? `${p.url}/${p.subPath}` : p.url}
-						</span>
+						<PathTail
+							path={p.subPath ? `${p.url}/${p.subPath}` : p.url}
+							className="text-text-1"
+							testId="project-path"
+						/>
 						<span className="flex flex-wrap items-center gap-2 text-meta text-text-3">
 							<KindMark kind={kind} className="flex items-center gap-1.5" />
 							{p.syncError
@@ -320,8 +323,15 @@ export function MakeService({
 					Make service
 				</Button>
 			</form>
-			<p className="ml-1 font-mono text-meta text-text-3">
-				service={name.trim() || defaultName}
+			<p
+				className="ml-1 text-meta text-text-3"
+				data-testid="make-service-label"
+			>
+				Alerts labelled{" "}
+				<span className="font-mono text-text-2">
+					service={name.trim() || defaultName}
+				</span>{" "}
+				open incidents here.
 			</p>
 			{error && (
 				<p className="ml-1 text-meta text-danger" role="alert">

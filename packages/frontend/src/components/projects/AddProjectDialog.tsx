@@ -12,6 +12,7 @@ import {
 } from "react";
 import { SourceConnectDialog } from "@/components/settings/SourceConnectDialog";
 import { KindIcon } from "@/components/settings/source-words";
+import { PathTail } from "@/components/shared/PathTail";
 import { Button } from "@/components/ui/button";
 import {
 	DIALOG_WIDTH,
@@ -238,9 +239,10 @@ export function AddProjectDialog({
 										<ArrowUp />
 										Up
 									</Button>
-									<span className="min-w-0 flex-1 truncate font-mono text-meta text-text-3">
-										{at?.path}
-									</span>
+									<PathTail
+										path={at?.path ?? ""}
+										className="min-w-0 flex-1 font-mono text-meta text-text-3"
+									/>
 									<label className="flex items-center gap-1.5 text-meta text-text-2">
 										<Switch
 											checked={hidden}

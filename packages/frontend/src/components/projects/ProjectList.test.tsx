@@ -96,7 +96,8 @@ describe("ProjectList rows", () => {
 		}));
 		act(() => root.render(<ProjectList />));
 		expect(
-			[...host.querySelectorAll('[data-testid="project-row-url"]')].map(
+			Array.from(
+				host.querySelectorAll('[data-testid="project-row-url"]'),
 				(e) => e.textContent,
 			),
 		).toEqual(["C:/work/a/shop", "C:/work/b/shop/api"]);

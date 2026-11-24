@@ -5,6 +5,7 @@ import { projectKindOf } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { PathTail } from "@/components/shared/PathTail";
 import { ProjectMark } from "@/components/shared/ProjectMark";
 import { Blank, Loading, Problem } from "@/components/shared/State";
 import { PlaceTabs } from "@/components/shell/PlaceTabs";
@@ -100,17 +101,11 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 										/>
 										<span className="grid min-w-0 flex-1">
 											<span className="truncate">{r.fullName}</span>
-											{/* Two clones share a name and differ at the end of their path: cut the start. */}
-											<span
-												dir="rtl"
-												title={r.url}
-												className="truncate text-left font-mono text-meta text-text-3"
-												data-testid="project-row-url"
-											>
-												<bdi dir="ltr">
-													{r.subPath ? `${r.url}/${r.subPath}` : r.url}
-												</bdi>
-											</span>
+											<PathTail
+												path={r.subPath ? `${r.url}/${r.subPath}` : r.url}
+												className="font-mono text-meta text-text-3"
+												testId="project-row-url"
+											/>
 										</span>
 										{r.syncBranch && (
 											<span className="text-meta text-text-3">
