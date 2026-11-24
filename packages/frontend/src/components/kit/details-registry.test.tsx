@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
 	detailsRows,
@@ -104,6 +105,35 @@ describe("detailsRows for thread", () => {
 
 		// Detached tip counts as code work so quiet row 'No code or folder yet' is suppressed
 		expect(rows.some((r) => r.id === "work")).toBe(false);
+	});
+
+	it("names the branch a detached run copy was cut from", () => {
+		const thread: ThreadDetails = {
+			kind: "thread",
+			detached: "9469cc2",
+			from: "master",
+			place: { name: "repo" },
+		};
+
+		const branchRow = detailsRows(thread).find((r) => r.id === "branch");
+
+		expect(renderToStaticMarkup(<>{branchRow?.label}</>)).toContain(
+			">Run copy of master at 9469cc2</span>",
+		);
+	});
+
+	it("keeps the plain Detached words when the source branch is unknown", () => {
+		const thread: ThreadDetails = {
+			kind: "thread",
+			detached: "9469cc2",
+			place: { name: "repo" },
+		};
+
+		const branchRow = detailsRows(thread).find((r) => r.id === "branch");
+
+		expect(renderToStaticMarkup(<>{branchRow?.label}</>)).toContain(
+			">Detached at 9469cc2</span>",
+		);
 	});
 
 	it("attaches folder open-in node as value of place row (#1176)", () => {

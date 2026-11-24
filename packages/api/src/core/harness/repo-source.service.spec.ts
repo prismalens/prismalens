@@ -402,6 +402,22 @@ describe("repo-source.service", () => {
 			expect(readFileSync(join(src, ".git", "config"), "utf8")).toBe(configBefore);
 		});
 
+		it("a folder snapshot records the branch it was cut from, though its worktree sits on none", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+
+			const snap = await new RepoSourceService().snapshot(
+				{ kind: "folder", source: src },
+				runWorktreeDir("run-from"),
+				undefined,
+				undefined,
+				"run-from",
+			);
+
+			expect(snap.branch).toBeNull();
+			expect(snap.from).toBe("main");
+		});
+
 		it("the user's post-checkout hook does not fire when the worktree is made (#918)", async () => {
 			const src = tmp("pl-src-");
 			initRepo(src);
