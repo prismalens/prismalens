@@ -133,4 +133,36 @@ describe("A Prometheus delivery whose first try fails is retried with its key un
 			{ title: "SecondDown", service: { name: "batch-second" } },
 		]);
 	}, 60_000);
+
+	it("Given a two-alert retry whose first alert's key is still in flight, When Alertmanager posts it inside the 30 s grace, Then it gets 503 with the in-flight message and the second alert is stored", async () => {
+		for (const name of ["flight-first", "flight-second"])
+			await pl.api("/repositories/source", {
+				method: "POST",
+				body: { source: gitFolder(name) },
+			});
+		await failNextServiceWrite();
+		const prisma = await pl.prisma();
+		const first = firing("flight-first", "fp-flight-1", "FirstDown");
+
+		const stranding = await post("am-flight-1", [first]);
+		expect(stranding.status).toBe(503);
+
+		const res = await post("am-flight-1", [
+			first,
+			firing("flight-second", "fp-flight-2", "SecondDown"),
+		]);
+
+		expect(res.status).toBe(503);
+		expect(await res.json()).toMatchObject({
+			message:
+				"A webhook delivery with this idempotency key is still being processed. Retry the delivery.",
+		});
+		const stored = await prisma.alert.findMany({
+			where: { service: { name: { in: ["flight-first", "flight-second"] } } },
+			select: { title: true, service: { select: { name: true } } },
+		});
+		expect(stored).toEqual([
+			{ title: "SecondDown", service: { name: "flight-second" } },
+		]);
+	}, 60_000);
 });

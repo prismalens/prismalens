@@ -148,7 +148,6 @@ describe("WebhooksController Prometheus intake (#633 edge 10, #605)", () => {
 			status: 503,
 			message: inFlight,
 		});
-		expect(service.processPrometheusAlert).toHaveBeenCalledTimes(2);
 	});
 
 	it("handles errors thrown by processPrometheusAlert gracefully", async () => {
