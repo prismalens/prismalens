@@ -483,7 +483,8 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
    - An api test's size is its file name. `*.spec.ts` is small: no real database, process,
      socket or git, a fake clock, and 1 s a test. `*.int.spec.ts` is medium: real SQLite,
      localhost and git, real timers, and a `vi.setConfig({ testTimeout })` of 3x its slowest
-     test, at least 5 s.
+     test, at least 5 s. Biome forbids a `child_process` import in a small
+     spec.
 
    Fix the implementation, not the test, unless the test is wrong. A frontend unit test that reaches the API fails
    (`src/test-setup.ts`): mock the hook or give the component the data it reads.
