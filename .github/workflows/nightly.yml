@@ -387,9 +387,10 @@ jobs:
           passed=0
           for n in 1 2 3; do
             echo "::group::attempt $n"
-            if PACKED_INTAKE_EVENTS_OUT="$PWD/events/attempt-$n.json" \
+            if PACKED_INTAKE_JOURNEYS=alert-to-report \
+              PACKED_INTAKE_EVENTS_OUT="$PWD/events/attempt-$n.json" \
               PACKED_INTAKE_PORT=$((3102 + n)) \
-              timeout 20m node scripts/packed-intake.mjs tarballs; then
+              timeout 18m node scripts/packed-intake.mjs tarballs; then
               passed=$((passed + 1))
               echo "attempt $n: valid report" >> "$GITHUB_STEP_SUMMARY"
             else
@@ -402,6 +403,11 @@ jobs:
             echo "::error::only $passed of 3 attempts completed with a valid report; 2 are needed"
             exit 1
           fi
+          # One run cut off by a restart and taken up again; the 75-minute job fits 3 x 18 + 15.
+          echo "::group::restart-resumes"
+          PACKED_INTAKE_JOURNEYS=restart-resumes PACKED_INTAKE_PORT=3106 \
+            timeout 15m node scripts/packed-intake.mjs tarballs
+          echo "::endgroup::"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

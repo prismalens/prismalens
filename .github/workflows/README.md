@@ -50,7 +50,7 @@ the packed tarball starts with `Tarball:`.
 | `Unit tests (ubuntu-latest)` (`test`) | every package's tests, with the coverage floors (#58), on the scripted fake agent | plan `code` | yes |
 | `Pack npm tarball` (`pack`) | packs both tarballs and gates them (`scripts/check-artifact.mjs`; a second pack gives the same bytes) | plan `code` | yes |
 | `Tarball: installs and boots` (`packed-smoke`) | the tarball installs and boots in a clean container | plan `code` | yes |
-| `Tarball: alert to incident to report, unattended` (`packed-intake`) | a webhook becomes an incident, is investigated by the scripted fake ACP agent, and resolves | plan `intake` | yes, when it runs |
+| `Tarball: alert to incident to report, unattended` (`packed-intake`) | a webhook becomes an incident, is investigated by the scripted fake ACP agent, and resolves; a run cut off by a restart resumes | plan `intake` | yes, when it runs |
 | `Tarball: upgrades an old database` (`packed-upgrade-smoke`) | a database that predates `investigation_turns` upgrades on the packed tarball (#673) | plan `intake` | yes, when it runs |
 | `E2E / Playwright (Chromium, shard <n>/4)` (`e2e`, calls `e2e-browser.yml`) | the browser suite | plan `e2e` | yes, when it runs |
 | `Proofs` (`proofs`, calls `proofs.yml`) | the release proofs below | plan `full` or `agents` | yes, when it runs |
@@ -158,7 +158,7 @@ releases (#639, #712).
 | Job | Model | Cadence | Required |
 | --- | --- | --- | --- |
 | `Live: pack npm tarball` (`live-pack`) | none; packs the tarball the live intake installs | nightly, dispatch with `live` | no |
-| `Live: alert to report on the free model (2 of 3)` (`packed-intake-live`) | live free model on the pinned OpenCode, fixture repo; 3 attempts, passes on at least 2 valid reports | nightly, dispatch with `live` | no |
+| `Live: alert to report on the free model (2 of 3)` (`packed-intake-live`) | live free model on the pinned OpenCode, fixture repo; 3 attempts at the alert-to-report journey, passes on at least 2 valid reports, then one restart-resumes run | nightly, dispatch with `live` | no |
 | `Live: agent qualification (opencode, free model)` (`harness-admission-live`) | live free model on the pinned OpenCode (the PR job runs the same R1-R7 on the scripted model) | nightly, dispatch with `live` | no |
 
 - **Release gate:** dispatch it on `main` with `ref` set to the release PR's base SHA

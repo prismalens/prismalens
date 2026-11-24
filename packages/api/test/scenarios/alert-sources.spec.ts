@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { startFakeAlertmanager } from "../../../../scripts/fakes/fake-alertmanager.mjs";
 import { ScenarioApp } from "./support/scenario-app.js";
 
 const pl = new ScenarioApp();
@@ -23,7 +22,7 @@ interface Source {
 }
 
 describe("Settings, Alert sources (study-v3 §7)", () => {
-	it("Given a source added by URL, When it is listed, Then its URL and its own error read back, and the last delivery is recorded", async () => {
+	it("Given a source added by URL, When it is listed, Then its URL and its own error read back", async () => {
 		const integration = await pl.api<{ id: string }>("/integrations", {
 			method: "POST",
 			body: { templateId: "alertmanager", label: "Alertmanager" },
@@ -48,14 +47,5 @@ describe("Settings, Alert sources (study-v3 §7)", () => {
 			"Connection error occurred. Check logs for details.",
 		);
 		expect(row?.lastErrorMessage).toBeTruthy();
-
-		expect(await pl.api("/webhooks/last-delivery")).toBeNull();
-		const am = await startFakeAlertmanager();
-		am.fire({ labels: { alertname: "SourcesCheck", severity: "warning" } });
-		expect((await am.post(pl.webhookUrl, pl.webhookToken)).status).toBeLessThan(300);
-		await am.close();
-		expect(
-			await pl.api<{ received: number; accepted: number }>("/webhooks/last-delivery"),
-		).toMatchObject({ received: 1, accepted: 1 });
 	});
 });

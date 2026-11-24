@@ -130,6 +130,14 @@ empty workspace; the e2e stack's demo seed is there only for screens that read. 
 fixed together with the journey or scenario that would have caught it. How to write one:
 [`packages/frontend/e2e/README.md`](packages/frontend/e2e/README.md#writing-a-journey).
 
+A new end-to-end behaviour of the core loop (an alert in, a report out, a restart between) is a
+core journey: write it once in `scripts/journeys/` as plain steps over the public HTTP API and the
+webhook, with no product imports, and every target runs it. The targets are in-process
+(`packages/api/test/journeys/journeys.int.spec.ts`: real SQLite, the scripted agent), packed
+(`PACKED_INTAKE_AGENT=fake node scripts/packed-intake.mjs <tarball dir>`: the installed tarball)
+and live (the same script on the pinned agent, nightly). What only one target can show, such as a
+clock jump, a database row or what the browser draws, stays a scenario or a `.feature`.
+
 ### Agent-loop checks: the real agent on a scripted model, live on dispatch
 
 A PR never waits on a live model, and nothing here spends money on one (#884, #914). The agent loop is checked these ways:
