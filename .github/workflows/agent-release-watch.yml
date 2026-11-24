@@ -20,6 +20,8 @@ on:
       - ".github/workflows/agent-release-watch.yml"
       - "scripts/agent-probe.mjs"
       - "scripts/agent-pins.json"
+      - "scripts/agent-locks.mjs"
+      - "scripts/agent-locks/**"
       - "packages/@prismalens/agent-host/src/registry/agents.ts"
       - "packages/@prismalens/agent-host/src/registry/facts.ts"
       - "scripts/agent-facts.mjs"

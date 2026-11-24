@@ -8,11 +8,8 @@ import {
 	channelPackage,
 	factsFor,
 	keyless,
-	npmPinFlags,
-	PIN_SOAK_DAYS,
 	PROBE_FILES,
 	plan,
-	resolvedAsOf,
 	run,
 	shown,
 	verdict,
@@ -210,20 +207,5 @@ test("native process arguments keep requirement operators literal on Windows", (
 			"agent-client-protocol<1",
 		]).trim(),
 		"agent-client-protocol<1",
-	);
-});
-
-test("a pinned Python agent resolves its dependencies as of its upload plus the soak (#1085)", () => {
-	assert.equal(PIN_SOAK_DAYS, 3);
-	assert.equal(
-		resolvedAsOf("2026-10-23T17:05:35.357726Z"),
-		"2026-10-26T17:05:35.357Z",
-	);
-});
-
-test("only a pin installs from npm as of its soak; latest installs what users get today (#1085)", () => {
-	assert.deepEqual(
-		npmPinFlags({ label: "latest" }, "opencode-ai", "1.19.6"),
-		[],
 	);
 });

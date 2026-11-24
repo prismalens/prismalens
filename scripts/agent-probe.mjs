@@ -28,6 +28,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { installLocked } from "./agent-locks.mjs";
 
 const WINDOWS = process.platform === "win32";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -95,40 +96,6 @@ export async function latestOf(channel) {
 	return (await res.json()).info.version;
 }
 
-/** Days a release soaks before its pin moves; a pin resolves its Python dependencies as of then. */
-export const PIN_SOAK_DAYS = 3;
-
-/**
- * uv's `--exclude-newer` for a pinned Python agent: its upload plus the soak, so a later release
- * of a dependency cannot break an old pin, while users installing latest get today's (#1085).
- */
-export const resolvedAsOf = (uploadedAt, days = PIN_SOAK_DAYS) =>
-	new Date(Date.parse(uploadedAt) + days * 86_400_000).toISOString();
-
-/** When PyPI first received `pkg`==`version`. */
-export async function uploadedAt(pkg, version) {
-	const res = await fetch(`https://pypi.org/pypi/${pkg}/${version}/json`);
-	if (!res.ok)
-		throw new Error(`PyPI answered ${res.status} for ${pkg} ${version}`);
-	const times = (await res.json()).urls.map((u) => u.upload_time_iso_8601);
-	if (!times.length)
-		throw new Error(`PyPI lists no file for ${pkg} ${version}`);
-	return times.sort()[0];
-}
-
-/** When npm first published `pkg`@`version`. */
-export function npmPublishedAt(pkg, version) {
-	const at = JSON.parse(run("npm", ["view", pkg, "time", "--json"]))[version];
-	if (!at) throw new Error(`npm lists no ${pkg}@${version}`);
-	return at;
-}
-
-/** `npm install` flags for a pin: its dependencies as of its soak, as uv's `--exclude-newer` (#1085). */
-export const npmPinFlags = (probe, pkg, version) =>
-	probe.label === "pin"
-		? ["--before", resolvedAsOf(npmPublishedAt(pkg, version))]
-		: [];
-
 /** A latest leg and a pin leg, even when they name the same version. */
 function atLatestAndPin(latest, pin, make) {
 	// The same version still runs twice: the pin installs as CI does, latest as users do.
@@ -185,7 +152,7 @@ export function factsFor(row, probe) {
 	return facts;
 }
 
-const npmInstall = (dir, specs, flags = []) =>
+const npmInstall = (dir, specs) =>
 	run("npm", [
 		"install",
 		"--prefix",
@@ -193,7 +160,6 @@ const npmInstall = (dir, specs, flags = []) =>
 		"--no-audit",
 		"--no-fund",
 		"--loglevel=error",
-		...flags,
 		...specs,
 	]);
 
@@ -207,7 +173,7 @@ function binScript(prefix, pkg, binary) {
 }
 
 /** Installs the probe's CLI from its channel under `dir`; returns the bin folder and any adapter. */
-async function install(built, row, probe, dir) {
+function install(built, row, probe, dir) {
 	const { channel } = probe;
 	if (row.adapterPackage) {
 		let adapter;
@@ -220,19 +186,16 @@ async function install(built, row, probe, dir) {
 			adapter = binScript(prefix, row.adapterPackage, row.binary);
 		}
 		const cli = join(dir, "cli");
-		npmInstall(
-			cli,
-			[`${channel.npm}@${probe.companion}`],
-			npmPinFlags(probe, channel.npm, probe.companion),
-		);
+		if (probe.label === "pin")
+			return { bin: installLocked(channel.npm, cli), adapter };
+		npmInstall(cli, [`${channel.npm}@${probe.companion}`]);
 		return { bin: join(cli, "node_modules", ".bin"), adapter };
 	}
+	// A pin installs from its committed lock, the same bytes everywhere (#1154).
+	if (probe.label === "pin")
+		return { bin: installLocked(channelPackage(channel), join(dir, "pin")) };
 	if (channel.npm) {
-		npmInstall(
-			dir,
-			[`${channel.npm}@${probe.version}`],
-			npmPinFlags(probe, channel.npm, probe.version),
-		);
+		npmInstall(dir, [`${channel.npm}@${probe.version}`]);
 		return { bin: join(dir, "node_modules", ".bin") };
 	}
 	// uv fetches the Python the package needs when the runner has none.
@@ -248,9 +211,6 @@ async function install(built, row, probe, dir) {
 		join(bin, WINDOWS ? "python.exe" : "python"),
 		`${cli}==${probe.version}`,
 		...extras,
-		...(probe.label === "pin"
-			? ["--exclude-newer", resolvedAsOf(await uploadedAt(cli, probe.version))]
-			: []),
 	]);
 	return { bin };
 }

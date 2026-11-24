@@ -36,8 +36,9 @@ const METADATA = [
 const CI_ONLY = [
 	...METADATA,
 	/^\.github\/workflows\/(?!ci\.yml$|e2e-browser\.yml$)/,
-	/^scripts\/(ci-plan|ci-gate-report|agent-probe|agent-tested|agent-adapter-sdk|gate-side-checks|packed-upgrade-chain|admission-fake|nightly-version)(\.test)?\.mjs$/,
+	/^scripts\/(ci-plan|ci-gate-report|agent-probe|agent-locks|agent-tested|agent-adapter-sdk|gate-side-checks|packed-upgrade-chain|admission-fake|nightly-version)(\.test)?\.mjs$/,
 	/^scripts\/(workflow-pins\.test\.mjs|agent-pins\.json)$/,
+	/^scripts\/agent-locks\//,
 ];
 
 /** What the browser suite boots, on top of the CI-only paths. The desktop shell is not part of it. */
