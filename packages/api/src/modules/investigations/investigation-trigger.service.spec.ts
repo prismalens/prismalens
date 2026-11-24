@@ -15,7 +15,6 @@ import { InvestigationsService } from "./investigations.service.js";
 import {
 	InvestigationTriggerService,
 	NO_SERVICE_REASON,
-	plainFolderReason,
 	readTriggerPolicy,
 	type TriggerDecision,
 } from "./investigation-trigger.service.js";
@@ -245,7 +244,7 @@ describe("InvestigationTriggerService", () => {
 			);
 
 			expect(mockTimelineService.create.mock.calls[0][0].description).toBe(
-				plainFolderReason("notes"),
+				"notes is a folder with no git, so there is no code history to investigate. Start git in it from its project page, then send the alert again.",
 			);
 			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
 		});
@@ -372,7 +371,7 @@ describe("InvestigationTriggerService", () => {
 			);
 		});
 
-		it("checks the global model when the alert run names no model of its own", async () => {
+		it("leaves the model to readiness, which takes the Settings one, when the alert run names none", async () => {
 			await service.triggerInvestigation(incident, decision);
 
 			expect(mockHarnessService.ensureReady).toHaveBeenCalledWith(

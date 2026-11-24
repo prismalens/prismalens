@@ -381,7 +381,7 @@ describe("SchedulesService (#979)", () => {
 
 	it("refuses a tick and run now whose own model is signed out while the global model is signed in", async () => {
 		ready.mockImplementation((async (_id: string, model?: string | null) =>
-			model
+			model === "google/gemini-4-neon"
 				? { ready: false, reason: "signed out for the schedule's model" }
 				: { ready: true }) as never);
 		const s = scheduler();

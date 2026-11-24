@@ -96,8 +96,15 @@ describe("AgentMark", () => {
 		expect(HARNESS_IDS.filter((id) => HARNESS_REGISTRY[id].mark)).toEqual([
 			"local",
 		]);
-		expect(drawn(<AgentMark id="local" />)?.getAttribute("data-letters")).toBe(
-			"LA",
+		const marks = HARNESS_IDS.map((id) => {
+			const el = drawn(<AgentMark id={id} />);
+			return [
+				id,
+				el?.getAttribute("data-brand") ?? el?.getAttribute("data-letters"),
+			];
+		});
+		expect(marks).toEqual(
+			HARNESS_IDS.map((id) => [id, id === "local" ? "LA" : brandOf(id)?.id]),
 		);
 	});
 

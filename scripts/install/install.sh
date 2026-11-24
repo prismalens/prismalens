@@ -139,7 +139,7 @@ fetch() {
 remote_size() {
 	case "$1" in file://*) return 0 ;; esac
 	command -v curl >/dev/null 2>&1 || return 0
-	curl -sIL --connect-timeout 20 "$1" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" { n = $2 } END { if (n) print n }'
+	curl -sIL --connect-timeout 20 --max-time 20 "$1" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" { n = $2 } END { if (n) print n }'
 }
 
 host_of() {

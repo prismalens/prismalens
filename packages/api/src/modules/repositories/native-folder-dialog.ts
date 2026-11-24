@@ -11,6 +11,8 @@ export interface DialogRun {
 	code: number | null;
 	stdout: string;
 	stderr: string;
+	/** Left open past DIALOG_MS and closed for the user: a cancel, whatever its code. */
+	timedOut?: boolean;
 }
 
 export interface DialogDeps {
@@ -189,11 +191,12 @@ export async function folderDialogTool(
 }
 
 /** A path the dialog printed: one line, a folder's trailing separator dropped (a root keeps it). */
-function chosenPath(stdout: string): string | null {
+function chosenPath(stdout: string, platform: NodeJS.Platform): string | null {
 	const line = stdout.replace(/\r?\n$/, "");
 	if (!line.trim()) return null;
+	// Only Windows separates with a backslash; elsewhere it can end a folder's name.
 	return line.length > 1 &&
-		/[\\/]$/.test(line) &&
+		(platform === "win32" ? /[\\/]$/ : /\/$/).test(line) &&
 		!/^[A-Za-z]:[\\/]$/.test(line)
 		? line.slice(0, -1)
 		: line;
@@ -212,10 +215,12 @@ export function pickNativeFolder(deps: DialogDeps): Promise<PickFolderResult> {
 		if (!tool) return { status: "unavailable" };
 		const ran = await deps.run(tool.command, tool.args);
 		if (ran.code === 0) {
-			const path = chosenPath(ran.stdout);
+			const path = chosenPath(ran.stdout, deps.platform);
 			return path ? { status: "picked", path } : { status: "cancelled" };
 		}
-		if (ran.code === 1 || ran.stderr.includes("(-128)")) {
+		// The Windows script cancels with exit 0 and no path, so its exit 1 is a failure.
+		const cancelCode = deps.platform !== "win32" && ran.code === 1;
+		if (ran.timedOut || cancelCode || ran.stderr.includes("(-128)")) {
 			return { status: "cancelled" };
 		}
 		return { status: "unavailable" };
@@ -240,7 +245,12 @@ export const systemDialogDeps: DialogDeps = {
 							? error.code
 							: null
 						: 0;
-					resolve({ code: error?.killed ? 1 : code, stdout, stderr });
+					resolve({
+						code,
+						stdout,
+						stderr,
+						...(error?.killed ? { timedOut: true } : {}),
+					});
 				},
 			);
 		}),

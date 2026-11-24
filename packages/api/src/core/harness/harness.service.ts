@@ -835,16 +835,23 @@ export class HarnessService implements OnApplicationBootstrap {
 
 	/**
 	 * Would a run on this agent start? A remembered `answers-acp` under a day
-	 * old, else a check now: a remembered failure is checked again, so signing
-	 * in takes effect on the next run (#673 w9).
+	 * old, else a check now: a remembered failure or provider refusal is checked
+	 * again, so signing in takes effect on the next run (#673 w9). `null` asks
+	 * for the agent's own default, as dispatch does; `undefined` takes Settings'.
 	 */
 	async ensureReady(id: HarnessId, model?: string | null): Promise<Readiness> {
 		const off = { ready: false, reason: this.offMessage(id) } as const;
 		if (await this.isOff(id)) return off;
+		const settings = await this.getSettings();
+		const chosenBy = (c: Check) =>
+			model === null
+				? (c.servedModel ?? null)
+				: (model ?? settings.models?.[id] ?? this.runModelOf(id));
 		const remembered = this.models.checked(id);
 		const fresh =
 			remembered?.outcome === "answers-acp" &&
-			Date.now() - Date.parse(remembered.at) < READY_CHECK_TTL_MS;
+			Date.now() - Date.parse(remembered.at) < READY_CHECK_TTL_MS &&
+			providerSignIn(id, remembered, chosenBy(remembered)) !== "signed-out";
 		const check = fresh ? remembered : await this.checkOnce(id);
 		if (!check)
 			return {
@@ -855,8 +862,7 @@ export class HarnessService implements OnApplicationBootstrap {
 		if (!fresh && (await this.isOff(id))) return off;
 		if (check.outcome !== "answers-acp")
 			return { ready: false, reason: notReadyReason(id, check) };
-		const settings = await this.getSettings();
-		const chosen = model ?? settings.models?.[id] ?? this.runModelOf(id);
+		const chosen = chosenBy(check);
 		if (providerSignIn(id, check, chosen) === "signed-out")
 			return { ready: false, reason: providerSignedOutLine(id, chosen) };
 		return { ready: true };

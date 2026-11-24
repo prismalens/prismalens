@@ -101,6 +101,10 @@ describe("AlertMappingService.resolveServiceForAlert", () => {
 	});
 
 	it("does not fall back to a contains match: 'checkout-legacy' must not resolve to 'checkout'", async () => {
+		mockPrisma.service.findUnique.mockImplementation(
+			async ({ where }: { where: { name: string } }) =>
+				where.name === "checkout" ? { id: "svc-1", name: "checkout" } : null,
+		);
 		const result = await service.resolveServiceForAlert({
 			title: "High CPU",
 			labels: { service: "checkout-legacy" },

@@ -355,7 +355,6 @@ export class RepoSourceService {
 		preferBranch?: string | null,
 	): Promise<SourceCheck> {
 		const ref = preferBranch?.trim() || "HEAD";
-		const { stdout: head } = await this.git(["rev-parse", ref], cwd);
 		let branch: string | null = null;
 		try {
 			const { stdout } = await this.git(
@@ -370,6 +369,9 @@ export class RepoSourceService {
 		} catch {
 			branch = ref === "HEAD" ? null : ref;
 		}
+		// The commit comes from the branch just read: a checkout between the calls can't pair them wrong.
+		const at = ref === "HEAD" && branch ? `refs/heads/${branch}` : ref;
+		const { stdout: head } = await this.git(["rev-parse", at], cwd);
 		return { branch, head: head.trim() };
 	}
 

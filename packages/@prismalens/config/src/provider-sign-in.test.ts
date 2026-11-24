@@ -20,6 +20,16 @@ describe("providerSignIn", () => {
 		);
 	});
 
+	it("is signed in when the list prints a display name unlike the provider's id", () => {
+		expect(
+			providerSignIn(
+				"opencode",
+				{ providers: ["Vertex"] },
+				"google-vertex/gemini-2.5-pro",
+			),
+		).toBe("signed-in");
+	});
+
 	it("is signed out for a provider the agent holds no login for", () => {
 		expect(providerSignIn("opencode", held, "anthropic/claude-5")).toBe(
 			"signed-out",
@@ -89,7 +99,7 @@ describe("preferredModel", () => {
 		).toBe("google/gemini-4-neon");
 	});
 
-	it("names none when no listed model is signed in, and none for an agent with no provider check", () => {
+	it("keeps the agent's own model when no listed model is signed in, and names none for an agent with no provider check and no model", () => {
 		expect(
 			preferredModel(
 				"opencode",

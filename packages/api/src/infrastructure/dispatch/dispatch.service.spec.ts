@@ -340,7 +340,7 @@ describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w5
 		accessLevels: { codex: "auto" },
 	};
 
-	it("starts a run with no starred model on the model whose provider is signed in", async () => {
+	it("starts a run with no starred model on the agent's run-model override (HarnessService picks a signed-in one)", async () => {
 		const { service } = withSettings(
 			{ harness: "opencode", models: {} },
 			"ollama-cloud/qwen",

@@ -130,11 +130,11 @@ function Get-Size([string]$Url) {
 	if ($Url.StartsWith("file://")) { return $null }
 	try {
 		if ($curl) {
-			return & $curl -s -I -L --connect-timeout 20 -A "prismalens-installer" $Url |
+			return & $curl -s -I -L --connect-timeout 20 --max-time 20 -A "prismalens-installer" $Url |
 				ForEach-Object { if ($_ -match '^(?i)content-length:\s*(\d+)') { [long]$matches[1] } } | Select-Object -Last 1
 		}
 		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-		$h = Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing -Headers @{ "User-Agent" = "prismalens-installer" }
+		$h = Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing -TimeoutSec 20 -Headers @{ "User-Agent" = "prismalens-installer" }
 		return [long]$h.Headers["Content-Length"]
 	} catch { return $null }
 }

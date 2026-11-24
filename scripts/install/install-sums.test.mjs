@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import {
 	chmodSync,
 	copyFileSync,
+	cpSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -42,7 +43,13 @@ for a in "$@"; do
 	[ "$prev" != -o ] || out=$a
 	prev=$a
 done
-case "$*" in *" -sIL "*|"-sIL "*) exit 0 ;; esac
+case "$*" in *" -sIL "*|"-sIL "*)
+	# HANG_SIZE: headers never come; only a total time limit ends the request.
+	[ "\${HANG_SIZE:-}" = 1 ] || exit 0
+	case "$*" in *--max-time*) exit 28 ;; esac
+	sleep 60
+	exit 0 ;;
+esac
 echo "$url $speed" >>"$FAKE_LOG"
 case "$url" in
 "${MIRROR}/"*) file="$MIRROR_ROOT/\${url#${MIRROR}/}" ;;
@@ -100,6 +107,8 @@ function run(extraEnv = {}) {
 	const go = () =>
 		spawnSync("sh", [INSTALLER], {
 			encoding: "utf8",
+			// A request with no time limit would hang here, not fail.
+			timeout: 30_000,
 			env: {
 				PATH: `${bin}${delimiter}${process.env.PATH}`,
 				HOME: join(work, "home"),
@@ -174,5 +183,20 @@ test("a mirror whose transfer breaks hands over to GitHub, and only the mirror i
 		`${GITHUB}/v0.5.6/SHA256SUMS plain`,
 		`${MIRROR}/v0.5.6/${ARCHIVE} stall`,
 		`${GITHUB}/v0.5.6/${ARCHIVE} plain`,
+	]);
+});
+
+test("a mirror that never answers the size request still serves the archive: that request has a time limit", {
+	skip,
+}, () => {
+	const t = run({ HANG_SIZE: "1" });
+	release(t.github, "genuine");
+	cpSync(t.github, t.mirror, { recursive: true });
+	const result = t.go();
+	assert.equal(result.status, 0, result.stderr);
+	assert.equal(t.pl(), "genuine");
+	assert.deepEqual(t.requests(), [
+		`${GITHUB}/v0.5.6/SHA256SUMS plain`,
+		`${MIRROR}/v0.5.6/${ARCHIVE} stall`,
 	]);
 });

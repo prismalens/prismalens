@@ -122,15 +122,6 @@ export class ScenarioApp {
 		return this.app.get(PrismaService);
 	}
 
-	/** Intake's service lookup, called directly so a scenario can race several first alerts (#1216). */
-	async alertMapping() {
-		if (!this.app) throw new Error("PrismaLens is not running");
-		const { AlertMappingService } = await import(
-			"../../../src/modules/alert-mapping/alert-mapping.service.js"
-		);
-		return this.app.get(AlertMappingService);
-	}
-
 	/** Runs one dispatch pass: the loop has no poll timer, so a job moved to now waits for one (#981). */
 	async tick(): Promise<void> {
 		if (!this.app) throw new Error("PrismaLens is not running");

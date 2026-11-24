@@ -957,7 +957,7 @@ test("without PRISMALENS_RELEASE_BASE_URL the bases are the mirror, then GitHub;
 	);
 });
 
-test("a base without the release hands over to the next, and SHA256SUMS comes from the last base only", async () => {
+test("a base without the release hands over to the next", async () => {
 	const { mirrors, logs, net, want, cache, archiveIn } = fallbackSetup(null, [
 		"20260901000000_init",
 	]);

@@ -53,27 +53,27 @@ describe("An alert that names a project makes the project's service", () => {
 		).toBe(1);
 	}, 60_000);
 
-	it("Given an unlinked project, When eight first alerts for it resolve at once, Then all get the same service and it has one link", async () => {
+	it("Given an unlinked project, When eight first alerts for it arrive at once, Then all get the same service and it has one link", async () => {
 		const shop = await project("team-c/shop");
-		const mapping = await pl.alertMapping();
+		const titles = Array.from({ length: 8 }, (_, i) => `Checkout is failing ${i}`);
 
-		const resolved = await Promise.all(
-			Array.from({ length: 8 }, (_, i) =>
-				mapping.resolveServiceForAlert({
-					title: `Checkout is failing ${i}`,
-					serviceName: "team-c/shop",
-				}),
-			),
+		const statuses = await Promise.all(
+			titles.map(async (t) => (await deliver("team-c/shop", t)).status),
 		);
 
+		expect(statuses).toEqual(titles.map(() => 200));
 		const prisma = await pl.prisma();
 		const links = await prisma.serviceRepository.findMany({
 			where: { repositoryId: shop.id },
 			include: { service: true },
 		});
 		expect(links.map((l) => l.service.name)).toEqual(["shop"]);
-		expect(resolved.map((s) => s?.id)).toEqual(
-			resolved.map(() => links[0]?.serviceId),
+		const alerts = await prisma.alert.findMany({
+			where: { title: { in: titles } },
+			select: { serviceId: true },
+		});
+		expect(alerts.map((a) => a.serviceId)).toEqual(
+			titles.map(() => links[0]?.serviceId),
 		);
 	}, 60_000);
 });

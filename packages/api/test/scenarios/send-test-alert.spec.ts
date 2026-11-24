@@ -95,6 +95,15 @@ describe("Send a test alert", () => {
 			`/incidents/${sent.incidentId}`,
 		);
 		expect(incident.serviceId ?? null).toBeNull();
+		// Intake runs after the response: its skip entry is the point it has settled.
+		await eventually(
+			() =>
+				pl.api<Array<{ title: string }>>(
+					`/timeline?incidentId=${sent.incidentId}`,
+				),
+			(t) => t.some((e) => e.title === "Auto-investigation skipped: no service"),
+			"the skipped intake's timeline entry",
+		);
 		expect(await pl.investigations(sent.incidentId as string)).toEqual([]);
 	}, 60_000);
 });
