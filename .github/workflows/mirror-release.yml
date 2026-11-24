@@ -21,7 +21,11 @@ on:
         required: true
 permissions:
   contents: read
-concurrency: mirror-${{ inputs.tag }}
+# One group for the whole bucket: two tags' jobs must not both prune the same version. A third run
+# queued behind a pending one replaces it (GitHub keeps one pending run per group): dispatch it again.
+concurrency:
+  group: mirror-prismalens-releases
+  cancel-in-progress: false
 jobs:
   mirror:
     name: Mirror ${{ inputs.tag }} to downloads.prismalens.io
@@ -41,6 +45,10 @@ jobs:
       # Half of R2's free 10 GB: a release is about 1 GB, so 3 kept leave room for growth.
       CEILING_BYTES: 5000000000
     steps:
+      # Retention only prunes vX.Y.Z prefixes, so anything else would stay in the bucket for good.
+      - name: Only stable release tags are mirrored
+        run: |
+          echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::$TAG is not a stable release tag (vX.Y.Z); nothing was written"; exit 1; }
       - name: Only the newest releases are mirrored
         id: keep
         run: |
@@ -59,6 +67,16 @@ jobs:
         run: |
           gh release download "$TAG" -p 'prismalens-*' -p 'PrismaLens-*' -p install.sh -p install.ps1 -p SHA256SUMS -D assets --repo "$GITHUB_REPOSITORY"
           cd assets && sha256sum -c SHA256SUMS
+      # Before any write: what stays in the bucket plus this release must fit under the ceiling.
+      - name: The bucket has room for this release
+        if: steps.keep.outputs.skip != 'true'
+        env:
+          DROP: ${{ steps.keep.outputs.drop }}
+        run: |
+          incoming=$(cat assets/* | wc -c)
+          retained=$(aws s3 ls "s3://$BUCKET/" --recursive --endpoint-url "$ENDPOINT" | awk -v gone=" $DROP $TAG " '{ split($4, p, "/"); if (index(gone, " " p[1] " ") == 0) s += $3 } END { print s + 0 }')
+          echo "Bucket keeps $retained bytes and takes $incoming more (ceiling $CEILING_BYTES)"
+          [ $((retained + incoming)) -le "$CEILING_BYTES" ] || { echo "::error::Mirroring $TAG would hold $((retained + incoming)) bytes, over the $CEILING_BYTES ceiling; nothing was written"; exit 1; }
       # SHA256SUMS goes last: a client that finds it can fetch every archive it names.
       - name: Upload, archives first
         if: steps.keep.outputs.skip != 'true'
