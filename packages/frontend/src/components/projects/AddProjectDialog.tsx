@@ -120,8 +120,16 @@ export function AddProjectDialog({
 		choose(source);
 	};
 	// What the dialog shows when a pick resolves, not when it was clicked.
-	const now = useRef({ open, from, choose });
-	now.current = { open, from, choose };
+	const now = useRef({ open, from, choose, pending });
+	now.current = { open, from, choose, pending };
+	// A pick that resolves after this dialog unmounted (its owner closes it that way) adds nothing.
+	const mounted = useRef(true);
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+		};
+	}, []);
 	const [picking, setPicking] = useState(false);
 	const [pickFailed, setPickFailed] = useState(false);
 	const pickNative = async () => {
@@ -130,7 +138,9 @@ export function AddProjectDialog({
 		const got = await folders.pick().finally(() => setPicking(false));
 		if (got.status === "failed") setPickFailed(true);
 		if (got.status !== "picked") return;
-		if (!now.current.open || now.current.from !== FOLDER) return;
+		const cur = now.current;
+		if (!mounted.current || !cur.open || cur.from !== FOLDER || cur.pending)
+			return;
 		setTyped(got.path);
 		now.current.choose(got.path);
 	};

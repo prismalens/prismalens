@@ -355,6 +355,69 @@ describe("AddProjectDialog (git hosts)", () => {
 		expect(onChoose).not.toHaveBeenCalled();
 	});
 
+	it("adds nothing when the dialog was unmounted by its owner before the folder dialog answered", async () => {
+		let answer: (v: unknown) => void = () => undefined;
+		mockBridge = {
+			pickFolder: () => new Promise((resolve) => (answer = resolve)),
+		};
+		const onChoose = vi.fn();
+		await act(async () => {
+			root.render(
+				<AddProjectDialog open onOpenChange={vi.fn()} onChoose={onChoose} />,
+			);
+		});
+		await act(async () => {
+			document.body
+				.querySelector<HTMLButtonElement>(
+					'[data-testid="add-project-pick-folder"]',
+				)
+				?.click();
+		});
+		await act(async () => root.render(<div />));
+		await act(async () => answer({ path: "/work" }));
+		expect(onChoose).not.toHaveBeenCalled();
+	});
+
+	it("leaves the typed path alone when an add started before the folder dialog answered", async () => {
+		let answer: (v: unknown) => void = () => undefined;
+		mockBridge = {
+			pickFolder: () => new Promise((resolve) => (answer = resolve)),
+		};
+		const onChoose = vi.fn();
+		const view = (pending: boolean) => (
+			<AddProjectDialog
+				open
+				pending={pending}
+				onOpenChange={vi.fn()}
+				onChoose={onChoose}
+			/>
+		);
+		await act(async () => root.render(view(false)));
+		const field = () =>
+			document.body.querySelector<HTMLInputElement>(
+				'[data-testid="add-project-source"]',
+			);
+		await act(async () => {
+			const set = Object.getOwnPropertyDescriptor(
+				HTMLInputElement.prototype,
+				"value",
+			)?.set;
+			set?.call(field(), "/typed");
+			field()?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		await act(async () => {
+			document.body
+				.querySelector<HTMLButtonElement>(
+					'[data-testid="add-project-pick-folder"]',
+				)
+				?.click();
+		});
+		await act(async () => root.render(view(true)));
+		await act(async () => answer({ path: "/work" }));
+		expect(field()?.value).toBe("/typed");
+		expect(onChoose).not.toHaveBeenCalled();
+	});
+
 	it("adds the folder the computer's dialog picked while the dialog is still on Local folder", async () => {
 		mockBridge = { pickFolder: async () => ({ path: "/work" }) };
 		const onChoose = vi.fn();

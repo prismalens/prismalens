@@ -70,7 +70,10 @@ export function SendTestAlert({ project }: { project?: ProjectChoice }) {
 		gitless: !!chosen?.plain,
 		sending: send.isPending,
 	};
-	useAppCommand("sendTestAlert", sendNow, true, blocked);
+	// Until the projects are known, the palette must not say there are none.
+	const known =
+		!!project || !(repos.isPending || (repos.isError && !repos.data));
+	useAppCommand("sendTestAlert", sendNow, known, blocked);
 	if (!project && repos.isError && !repos.data)
 		return (
 			<Problem

@@ -67,6 +67,7 @@ interface Picked {
  */
 export function NewThread({
 	subject,
+	scopeSubject,
 	draft,
 	branch,
 	incident = null,
@@ -81,6 +82,8 @@ export function NewThread({
 	onRepeat,
 }: {
 	subject: ThreadStartSubject;
+	/** The subject the box keeps its draft under, when that differs from the one the send starts on. */
+	scopeSubject?: ThreadStartSubject;
 	/** A seeded box's own draft id, from the address. */
 	draft?: string;
 	branch: string | null;
@@ -255,7 +258,7 @@ export function NewThread({
 			usageRing
 			lean={lean}
 			onSend={onSend}
-			scope={newThreadScope(subject, draft)}
+			scope={newThreadScope(scopeSubject ?? subject, draft)}
 			seed={seed}
 			placeholder={
 				placeholder ?? (incident ? "What's wrong?" : "Ask or describe a change")

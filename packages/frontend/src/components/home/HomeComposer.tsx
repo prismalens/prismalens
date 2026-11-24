@@ -261,6 +261,7 @@ export function HomeComposer({
 			<HomePurpose />
 			<NewThread
 				subject={subject}
+				scopeSubject={subjectOf(picked)}
 				draft={search.draft}
 				branch={repo?.defaultBranch ?? null}
 				incident={incident}

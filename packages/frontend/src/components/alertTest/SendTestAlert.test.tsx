@@ -67,6 +67,8 @@ describe("SendTestAlert", () => {
 		expect(host.querySelector('[data-testid="state-loading"]')).not.toBeNull();
 		expect(why()).toBeUndefined();
 		expect(button()).toBeNull();
+		expect(appFacts().is.sendTestAlert).toBeUndefined();
+		expect(entryOf("app.sendTestAlert", { facts: appFacts() })).toBeNull();
 	});
 
 	it("when the projects fail to load, says so and retries the query", () => {
@@ -77,6 +79,8 @@ describe("SendTestAlert", () => {
 			host.querySelector('[data-testid="state-problem"]')?.textContent,
 		).toContain("Projects did not load.");
 		expect(why()).toBeUndefined();
+		expect(appFacts().is.sendTestAlert).toBeUndefined();
+		expect(entryOf("app.sendTestAlert", { facts: appFacts() })).toBeNull();
 		act(() => host.querySelector<HTMLButtonElement>("button")?.click());
 		expect(h.refetch).toHaveBeenCalledTimes(1);
 	});
