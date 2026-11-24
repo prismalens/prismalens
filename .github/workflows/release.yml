@@ -166,10 +166,20 @@ jobs:
           TAG: ${{ needs.draft.outputs.tag }}
         run: gh release upload "$TAG" assets/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
 
+  # The installers and the launcher download from the mirror first, so it is filled before publishing.
+  mirror:
+    needs: [draft, sums]
+    uses: ./.github/workflows/mirror-release.yml
+    with:
+      tag: ${{ needs.draft.outputs.tag }}
+    secrets:
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+
   # The release publishes first: npm's launcher downloads from it, and a draft's assets are not public (#717).
   publish-release:
     name: Publish the release
-    needs: [draft, sums]
+    needs: [draft, sums, mirror]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # One release promotes at a time across every ref, and `latest` is decided then, not when

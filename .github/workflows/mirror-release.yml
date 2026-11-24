@@ -1,11 +1,17 @@
 name: Mirror a release
-# Copies a release's archives and SHA256SUMS to downloads.prismalens.io/v<version>/, the
-# default download base for the installers and the launcher; GitHub stays their fallback (#1215).
+# Copies a release's archives and SHA256SUMS to downloads.prismalens.io/v<version>/ and keeps
+# only the newest KEEP releases, so the bucket stays inside R2's free tier; anything older
+# falls back to GitHub (#1215 holds the budget).
 on:
   workflow_call:
     inputs:
       tag:
         type: string
+        required: true
+    secrets:
+      R2_ACCESS_KEY_ID:
+        required: true
+      R2_SECRET_ACCESS_KEY:
         required: true
   # Back-fill or repair: mirror an existing release again.
   workflow_dispatch:
@@ -31,8 +37,23 @@ jobs:
       AWS_REQUEST_CHECKSUM_CALCULATION: when_required
       AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
       ENDPOINT: https://${{ vars.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      KEEP: 3
+      # Half of R2's free 10 GB: a release is about 1 GB, so 3 kept leave room for growth.
+      CEILING_BYTES: 5000000000
     steps:
+      - name: Only the newest releases are mirrored
+        id: keep
+        run: |
+          listed=$(aws s3 ls "s3://$BUCKET/" --endpoint-url "$ENDPOINT" | awk '$1=="PRE"{print $2}' | tr -d / | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          keep=$(echo $listed "$TAG" | tr ' ' '\n' | sort -uV | tail -n "$KEEP")
+          echo "Kept after this run:" $keep
+          if ! echo "$keep" | grep -qx "$TAG"; then
+            echo "::notice::$TAG is older than the newest $KEEP; it stays on GitHub only"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "drop=$(echo $listed | tr ' ' '\n' | grep -vxF "$keep" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
       - name: Download the release's assets
+        if: steps.keep.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -40,6 +61,7 @@ jobs:
           cd assets && sha256sum -c SHA256SUMS
       # SHA256SUMS goes last: a client that finds it can fetch every archive it names.
       - name: Upload, archives first
+        if: steps.keep.outputs.skip != 'true'
         run: |
           dest="s3://$BUCKET/$TAG"
           cache="public, max-age=31536000, immutable"
@@ -49,9 +71,23 @@ jobs:
           done
           aws s3 cp assets/SHA256SUMS "$dest/SHA256SUMS" --endpoint-url "$ENDPOINT" --cache-control "$cache" --content-type text/plain --only-show-errors
       - name: The mirror serves the same bytes
+        if: steps.keep.outputs.skip != 'true'
         run: |
           cd assets
           curl -fsSL "https://downloads.prismalens.io/$TAG/SHA256SUMS" | diff - SHA256SUMS
           f=$(ls prismalens-*-win32-x64.zip)
           curl -fsSL "https://downloads.prismalens.io/$TAG/$f" -o "$RUNNER_TEMP/$f"
           echo "$(grep " $f\$" SHA256SUMS | cut -d' ' -f1)  $RUNNER_TEMP/$f" | sha256sum -c
+      - name: Drop releases past the newest ${{ env.KEEP }}
+        env:
+          DROP: ${{ steps.keep.outputs.drop }}
+        run: |
+          for v in $DROP; do
+            echo "Removing $v from the mirror"
+            aws s3 rm "s3://$BUCKET/$v/" --recursive --endpoint-url "$ENDPOINT" --only-show-errors
+          done
+      - name: The bucket stays under its ceiling
+        run: |
+          total=$(aws s3 ls "s3://$BUCKET/" --recursive --summarize --endpoint-url "$ENDPOINT" | awk '/Total Size/{print $3}')
+          echo "Bucket holds ${total:-0} bytes (ceiling $CEILING_BYTES)"
+          [ "${total:-0}" -le "$CEILING_BYTES" ] || { echo "::error::The mirror holds $total bytes, over its $CEILING_BYTES ceiling"; exit 1; }
