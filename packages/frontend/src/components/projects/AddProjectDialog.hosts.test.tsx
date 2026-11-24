@@ -186,13 +186,13 @@ describe("AddProjectDialog (git hosts)", () => {
 		).toBe("bitbucket");
 	});
 
-	it("offers the native folder button and no in-page browser when the desktop bridge picks folders", async () => {
+	it("offers the Browse… button and no in-page browser when the desktop bridge picks folders", async () => {
 		mockBridge = { pickFolder: async () => ({ path: "/work" }) };
 		await render();
 		expect(
-			document.body.querySelector('[data-testid="add-project-native"]')
+			document.body.querySelector('[data-testid="add-project-pick-folder"]')
 				?.textContent,
-		).toBe("Choose folder");
+		).toBe("Browse…");
 		expect(
 			document.body.querySelector('[data-testid="add-project-entries"]'),
 		).toBeNull();

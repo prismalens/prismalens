@@ -25,7 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { useOperator } from "@/hooks/use-operator";
 import { useGitHosts } from "@/lib/api/hooks/use-app-settings-orpc";
 import { orpc } from "@/lib/api/orpc-client";
-import { desktopBridge } from "@/lib/desktop";
+import { useFolderPicker } from "@/lib/folder-picker";
 import {
 	BROWSE_ERROR,
 	isGitUrl,
@@ -72,11 +72,11 @@ export function AddProjectDialog({
 }) {
 	const [typed, setTyped] = useState("");
 	const [hidden, setHidden] = useState(false);
-	const [native, setNative] = useState(!!desktopBridge()?.pickFolder);
 	useEffect(() => {
 		if (open) setTyped("");
 	}, [open]);
 	const { managesPairing: host } = useOperator();
+	const folders = useFolderPicker(host);
 	const hosts = useGitHosts(open && !folderOnly);
 	const choices = useMemo(() => hostChoices(hosts.data ?? []), [hosts.data]);
 	// Local folder leads and stays the default: the list never reorders with the tokens.
@@ -87,7 +87,8 @@ export function AddProjectDialog({
 	const choice = choices.find((c) => c.host === from && c.connected);
 	const pasting = from === URL_ROW;
 	const url = !folderOnly && isGitUrl(typed);
-	const usesNative = native && host;
+	// The desktop app picks only in its own window; the browser keeps the list beside Browse.
+	const usesNative = folders.desktop && folders.available;
 	const { dir, prefix } = splitTyped(useDeferredValue(typed));
 	const listing = useQuery({
 		...orpc.repositories.browseFolders.queryOptions({ input: { path: dir } }),
@@ -116,12 +117,10 @@ export function AddProjectDialog({
 		choose(source);
 	};
 	const pickNative = async () => {
-		const got = await desktopBridge()?.pickFolder?.();
-		if (!got || "unavailable" in got) return setNative(false);
-		if (got.path) {
-			setTyped(got.path);
-			choose(got.path);
-		}
+		const got = await folders.pick();
+		if (got.status !== "picked") return;
+		setTyped(got.path);
+		choose(got.path);
 	};
 	const sep = at?.ok && at.path.includes("\\") ? "\\" : "/";
 	const into = (path: string) =>
@@ -202,15 +201,15 @@ export function AddProjectDialog({
 										className="min-w-0 flex-1 font-mono"
 										data-testid="add-project-source"
 									/>
-									{usesNative && (
+									{folders.available && (
 										<Button
 											type="button"
 											variant="secondary"
 											onClick={() => void pickNative()}
-											data-testid="add-project-native"
+											data-testid="add-project-pick-folder"
 										>
 											<FolderOpen />
-											Choose folder
+											Browse…
 										</Button>
 									)}
 								</div>

@@ -194,6 +194,20 @@ export const BrowseFoldersResultSchema = /* @__PURE__ */ lazySchema(() =>
 );
 export type BrowseFoldersResult = z.infer<typeof BrowseFoldersResultSchema>;
 
+/** Whether this client may open the host's own folder dialog (#1216): the host's owner, with a dialog tool present. */
+export const PickFolderAvailabilitySchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({ available: z.boolean() }),
+);
+
+export const PickFolderResultSchema = /* @__PURE__ */ lazySchema(() =>
+	z.discriminatedUnion("status", [
+		z.object({ status: z.literal("picked"), path: z.string() }),
+		z.object({ status: z.literal("cancelled") }),
+		z.object({ status: z.literal("unavailable") }),
+	]),
+);
+export type PickFolderResult = z.infer<typeof PickFolderResultSchema>;
+
 /** Relative to the repository root; the run joins it onto the snapshot, so it must stay inside. */
 const SubPathSchema = /* @__PURE__ */ lazySchema(() =>
 	z
