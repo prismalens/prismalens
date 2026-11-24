@@ -9,7 +9,8 @@
  * The releases come from `npm view prismalens versions` (stable, 0.5.0 and later), never
  * from a list in this repo. A local registry proxies npmjs and carries the candidate's npm
  * launcher; a local release mirror carries this runner's archives of the candidate and of a
- * nightly after it (#717). The chain installs the oldest release, boots it and writes an
+ * nightly after it (#717), and each published launcher release's own archive, which its pinned
+ * digest admits alone (#1154). The chain installs the oldest release, boots it and writes an
  * incident, upgrades release by release up to the candidate launcher, then switches it to the
  * nightly and back to stable, booting after each step to check the incident survived. A second
  * install of the oldest release upgrades straight to the candidate.
@@ -33,7 +34,11 @@ import { DatabaseSync } from "node:sqlite";
 import { stripVTControlCharacters } from "node:util";
 import crossSpawn from "cross-spawn";
 import { baseEnv, homeDirs, killTree } from "./lib/gate-portable.mjs";
-import { nightlyAfter, prepareLauncher } from "./lib/launcher-mirror.mjs";
+import {
+	mirrorPublished,
+	nightlyAfter,
+	prepareLauncher,
+} from "./lib/launcher-mirror.mjs";
 import { startLocalRegistry } from "./lib/local-registry.mjs";
 import { candidateVersion, hops, releasesFrom } from "./lib/upgrade-chain.mjs";
 
@@ -346,8 +351,19 @@ async function main() {
 		work: join(work, "release"),
 		releases: [{ version: candidate, launcher: true }, { version: nightly }],
 	});
+	const launchers = [];
+	for (const version of releases) {
+		const pins = JSON.parse(
+			npm(["view", `prismalens@${version}`, "prismalens.release", "--json"], {
+				capture: true,
+			}).trim() || "null",
+		);
+		if (!pins?.sha256) continue;
+		await mirrorPublished(mirror.root, { version, sha256: pins.sha256 });
+		launchers.push(version);
+	}
 	console.log(
-		`[upgrade-chain] mirror ${mirror.baseUrl}: ${candidate} (launcher and archive), ${nightly} (archive)`,
+		`[upgrade-chain] mirror ${mirror.baseUrl}: ${candidate} (launcher and archive), ${nightly} (archive), published ${launchers.join(", ") || "none"} (release archives)`,
 	);
 
 	const registry = await startLocalRegistry({

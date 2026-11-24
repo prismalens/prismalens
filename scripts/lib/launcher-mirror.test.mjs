@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import {
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
@@ -17,6 +18,7 @@ import {
 	archiveFile,
 	fakeArchive,
 	mergeSums,
+	mirrorPublished,
 	nightlyAfter,
 	ownTarget,
 	publishToMirror,
@@ -87,4 +89,74 @@ test("the runtime of a version is found by its app's package.json, and only one 
 	}
 	assert.equal(runtimeAppDir(dir, "0.5.6"), join(dir, "0.5.6-x", "app"));
 	assert.throws(() => runtimeAppDir(dir, "0.5.5"), /0 runtimes of 0\.5\.5/);
+});
+
+const served =
+	(body, status = 200) =>
+	async (url) => {
+		served.last = url;
+		return new Response(body, { status });
+	};
+
+test("a published release's archive lands in the mirror only with the digest its launcher pins", async () => {
+	const root = join(work, "published-mirror");
+	mkdirSync(root, { recursive: true });
+	const bytes = Buffer.from("release archive bytes");
+	const digest = createHash("sha256").update(bytes).digest("hex");
+	await mirrorPublished(
+		root,
+		{ version: "0.5.6", sha256: { "linux-x64": digest } },
+		{
+			base: "https://releases.test",
+			fetchImpl: served(bytes),
+			target: "linux-x64",
+		},
+	);
+	assert.equal(
+		served.last,
+		"https://releases.test/v0.5.6/prismalens-0.5.6-linux-x64.tar.gz",
+	);
+	assert.deepEqual(
+		readFileSync(join(root, "v0.5.6", "prismalens-0.5.6-linux-x64.tar.gz")),
+		bytes,
+	);
+	assert.equal(
+		readFileSync(join(root, "v0.5.6", "SHA256SUMS"), "utf8"),
+		`${digest}  prismalens-0.5.6-linux-x64.tar.gz\n`,
+	);
+});
+
+test("a published archive whose digest differs from the pin is refused, and a missing one names its status", async () => {
+	const root = join(work, "refused-mirror");
+	mkdirSync(root, { recursive: true });
+	const pin = "0".repeat(64);
+	const bytes = Buffer.from("other bytes");
+	const digest = createHash("sha256").update(bytes).digest("hex");
+	const opts = { base: "https://releases.test", target: "linux-x64" };
+	await assert.rejects(
+		mirrorPublished(
+			root,
+			{ version: "0.5.6", sha256: { "linux-x64": pin } },
+			{ ...opts, fetchImpl: served(bytes) },
+		),
+		{
+			message: `https://releases.test/v0.5.6/prismalens-0.5.6-linux-x64.tar.gz has sha256 ${digest}; the launcher pins ${pin}`,
+		},
+	);
+	await assert.rejects(
+		mirrorPublished(
+			root,
+			{ version: "0.5.6", sha256: { "linux-x64": pin } },
+			{ ...opts, fetchImpl: served("", 404) },
+		),
+		{
+			message:
+				"https://releases.test/v0.5.6/prismalens-0.5.6-linux-x64.tar.gz answered 404",
+		},
+	);
+	await assert.rejects(
+		mirrorPublished(root, { version: "0.5.6", sha256: {} }, opts),
+		{ message: "prismalens@0.5.6 pins no archive for linux-x64" },
+	);
+	assert.deepEqual(readdirSync(root), []);
 });

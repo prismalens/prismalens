@@ -176,6 +176,37 @@ export function publishToMirror(root, archive, version) {
 	writeFileSync(sums, mergeSums(before, name, sha256(archive)));
 }
 
+export const RELEASES_URL =
+	"https://github.com/prismalens/prismalens/releases/download";
+
+/**
+ * A published launcher fetches its own release's archive and refuses any other digest, so the
+ * mirror must carry that exact archive, not one built here (#1154).
+ * @param {string} root the mirror
+ * @param {{ version: string, sha256: Record<string, string> }} release a published launcher's pins
+ */
+export async function mirrorPublished(
+	root,
+	{ version, sha256 },
+	{ base = RELEASES_URL, fetchImpl = fetch, target = ownTarget() } = {},
+) {
+	const name = archiveFile(version, target);
+	const pinned = sha256[target];
+	if (!pinned)
+		throw new Error(`prismalens@${version} pins no archive for ${target}`);
+	const url = `${base}/v${version}/${name}`;
+	const res = await fetchImpl(url);
+	if (!res.ok) throw new Error(`${url} answered ${res.status}`);
+	const bytes = Buffer.from(await res.arrayBuffer());
+	const digest = createHash("sha256").update(bytes).digest("hex");
+	if (digest !== pinned)
+		throw new Error(`${url} has sha256 ${digest}; the launcher pins ${pinned}`);
+	const staged = join(mkdtempSync(join(root, "..", "published-")), name);
+	writeFileSync(staged, bytes);
+	publishToMirror(root, staged, version);
+	rmSync(dirname(staged), { recursive: true, force: true });
+}
+
 /** The npm package at `version`, packed by the same script release.yml publishes with. */
 export function packLauncherAt(version, outDir) {
 	mkdirSync(outDir, { recursive: true });
