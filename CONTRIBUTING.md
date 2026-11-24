@@ -466,13 +466,19 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
 ## Making a change
 
 1. **Branch** off `main`: `git checkout -b fix/short-description main`.
-2. **Work test-first (repo policy since #58): new code ships with tests written
-   at its public seams and ≥80% per-metric coverage.** Vitest enforces this via
-   per-glob `coverage.thresholds` (see `packages/cli/vitest.config.ts`) — when
-   you add a module, add it (or its directory) to that map; reviewers treat a
-   new source file with no threshold entry as a missing test. Pre-existing
-   files are exempt until touched. Fix the implementation, not the test,
-   unless the test is wrong. A frontend unit test that reaches the API fails
+2. **Test behaviour once its shape settles.** The app changes weekly, so tests pin what a
+   user or caller sees, not how the code does it today.
+   - A bug fix starts with a test that fails on the bug, at the highest seam that shows
+     it (a journey, a route, a service's public method), then the fix.
+   - A feature may start as a spike. Before its PR is ready it has tests at its public
+     seam or a journey for the behaviour it ships. Don't write tests first for internals
+     that the next change will move; a test that breaks on a refactor with no change in
+     behaviour is testing the wrong thing.
+   - Coverage shows a reviewer what is untested; it is not a target. Each package's
+     floor in `vitest.config.ts` is a ratchet: raise it, never lower it. A new module
+     needs no per-file entry.
+
+   Fix the implementation, not the test, unless the test is wrong. A frontend unit test that reaches the API fails
    (`src/test-setup.ts`): mock the hook or give the component the data it reads.
    On CI, an api or frontend test that spends over 40% of its timeout fails
    (`scripts/lib/timeout-budget-reporter.mjs`), and the api's tests run again
