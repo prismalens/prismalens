@@ -23,7 +23,7 @@ import {
 	type ClosedAsk,
 } from "../asks/asks.contract.js";
 import { PutOff } from "./put-off.js";
-import { isDuplicate, TreeIo } from "./tree-io.service.js";
+import { type Delivery, isDuplicate, TreeIo } from "./tree-io.service.js";
 import { TreeSettings } from "./tree-settings.service.js";
 
 /** What one `act` tool does once allowed; `check` runs at the call and again at approval. */
@@ -478,9 +478,17 @@ export class PendingActionsService {
 		rows: PendingAction[],
 		ready: PendingAction[],
 	): Promise<void> {
+		// A caller that refused a reopen refuses it for every outcome this pass, so it is asked once.
+		const refused = new Set<string>();
 		for (const row of rows) {
+			if (refused.has(row.callerId)) {
+				if (ready.includes(row)) this.putOff.defer(row.id);
+				this.refusedReopen(row.id);
+				continue;
+			}
 			try {
-				await this.deliverRow(row, ready);
+				const got = await this.deliverRow(row, ready);
+				if (got.state === "later" && got.refused) refused.add(row.callerId);
 			} catch (e) {
 				// One failing delivery is put off and logged; the rest of the pass goes on.
 				logger.warn(
@@ -495,7 +503,7 @@ export class PendingActionsService {
 	private async deliverRow(
 		row: PendingAction,
 		ready: PendingAction[],
-	): Promise<void> {
+	): Promise<Delivery> {
 		const reopen = (REOPENS as readonly string[]).includes(row.state);
 		const got = await this.io.deliver(row.callerId, this.outcomeText(row), {
 			reopen,
@@ -504,16 +512,17 @@ export class PendingActionsService {
 			this.putOff.defer(row.id);
 		if (got.state === "later") {
 			this.refusedReopen(row.id);
-			return;
+			return got;
 		}
 		// Parked: kept for the caller's next run, when it is delivered as a message.
-		if (got.state === "parked") return;
+		if (got.state === "parked") return got;
 		this.reopenTries.delete(row.id);
 		this.gaveUp.delete(row.id);
 		await this.prisma.pendingAction.update({
 			where: { id: row.id },
 			data: { deliveredAt: new Date() },
 		});
+		return got;
 	}
 
 	/** After REOPEN_TRIES refused or failed reopens, an outcome waits for its caller's next run. */

@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     branches: [main]
-  # Recovery: resume an existing draft release from its assets on (CONTRIBUTING.md, #717).
+  # Recovery: resume an existing draft release from its assets on (docs/contributing/release-pipeline.md, #717).
   workflow_dispatch:
     inputs:
       tag:
@@ -13,12 +13,8 @@ permissions:
 concurrency: release-${{ github.ref }}
 jobs:
   release-please:
-    # HELD until 0.5.0 is deliberately cut. release-please opens a release PR on
-    # every push to main, and merging that PR publishes to npm and cuts a GitHub
-    # Release — so an open release PR is a live publish button nobody asked for.
-    # Set the `RELEASE_ENABLED` repository variable to "true" to re-arm it
-    # (Settings -> Secrets and variables -> Actions -> Variables); no code change
-    # and no PR needed to turn it back on.
+    # Runs only while the `RELEASE_ENABLED` repository variable is "true": an open
+    # release PR is a live publish button, so unsetting the variable pauses releases.
     #
     # Every release is a 0.5.x patch (`versioning: always-bump-patch` in
     # release-please-config.json); a minor needs that line changed on purpose.
@@ -166,10 +162,133 @@ jobs:
           TAG: ${{ needs.draft.outputs.tag }}
         run: gh release upload "$TAG" assets/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
 
-  # The release publishes first: npm's launcher downloads from it, and a draft's assets are not public (#717).
+  # The npm launcher, packed once from the draft's own archives and SHA256SUMS. The proofs below
+  # install this file and `npm` publishes it, so what is proved is what ships (#1154).
+  launcher:
+    name: Pack the npm launcher once
+    needs: [draft, sums]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # A draft is visible to write access only.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.draft.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Download the draft's archives and SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: gh release download "$TAG" -p 'prismalens-*' -p SHA256SUMS -D assets --repo "$GITHUB_REPOSITORY"
+      - name: Pack the launcher pinned to those digests
+        run: node scripts/pack-launcher.mjs --assets assets --out launcher
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-launcher
+          path: launcher/prismalens-*.tgz
+          if-no-files-found: error
+          retention-days: 3
+
+  # The release proofs run on the draft's own bytes, before anything is public: its launcher, pinned
+  # to its digests, fetching its own archive, upgraded to from every release on npm. A red proof
+  # leaves the release a draft, and neither `publish-release` nor `npm` runs (#1085, #1154).
+  upgrade-chain:
+    name: Every published release upgrades to this one
+    needs: [draft, launcher]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.draft.outputs.tag }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # The scripts need only the root package's own dependencies (cross-spawn, semver, a pseudo-terminal).
+      - run: pnpm install --frozen-lockfile --ignore-scripts --filter prismalens-monorepo
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-launcher
+          path: launcher
+      - name: Download the draft's linux-x64 archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: gh release download "$TAG" -p 'prismalens-*-linux-x64.tar.gz' -D assets --repo "$GITHUB_REPOSITORY"
+      - run: node scripts/packed-upgrade-chain.mjs --assets assets --launcher "$(ls launcher/prismalens-*.tgz)"
+
+  # The release side checks (#673) on each OS, running the draft's archive for that OS.
+  release-side-checks:
+    name: "Release side checks (${{ matrix.os }})"
+    needs: [draft, launcher]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: macos-latest
+            target: darwin-arm64
+          - os: windows-latest
+            target: win32-x64
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.draft.outputs.tag }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # The scripts need only the root package's own dependencies (cross-spawn, semver, a pseudo-terminal).
+      - run: pnpm install --frozen-lockfile --ignore-scripts --filter prismalens-monorepo
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-launcher
+          path: launcher
+      - name: Give the runner user a systemd manager (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          sudo loginctl enable-linger "$(id -un)"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          for _ in $(seq 1 20); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 1; done
+      - name: Download the draft's archive for this OS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.draft.outputs.tag }}
+          TARGET: ${{ matrix.target }}
+        run: gh release download "$TAG" -p "prismalens-*-$TARGET.*" -D assets --repo "$GITHUB_REPOSITORY"
+      - name: Run the side checks
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -eu
+          if [ "$RUNNER_OS" = "Linux" ]; then export XDG_RUNTIME_DIR="/run/user/$(id -u)"; fi
+          node scripts/gate-side-checks.mjs --no-skip --archive "$(ls assets/prismalens-*-"$TARGET".*)" --launcher "$(ls launcher/prismalens-*.tgz)"
+
+  # The release publishes once its proofs pass: npm's launcher downloads from it, and a draft's assets are not public (#717).
   publish-release:
     name: Publish the release
-    needs: [draft, sums]
+    needs: [draft, sums, upgrade-chain, release-side-checks]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # One release promotes at a time across every ref, and `latest` is decided then, not when
@@ -203,7 +322,7 @@ jobs:
 
   npm:
     name: Publish to npm
-    needs: [draft, publish-release]
+    needs: [draft, publish-release, launcher, upgrade-chain, release-side-checks]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # One npm publish at a time across every ref, from reading npm's `latest` to publishing,
@@ -231,11 +350,17 @@ jobs:
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      # pack-launcher refuses unless the release downloads, anonymously, complete and matching
-      # SHA256SUMS. An older version finished after a newer one must not take npm's `latest`;
-      # provenance is required, so a publish that cannot make it fails closed (#906).
+      - if: steps.npm.outputs.published != 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-launcher
+          path: launcher
+      # The launcher the proofs ran, published as packed: pack-launcher refuses unless the public release
+      # holds the digests it pins. An older version finished after a newer one must not take npm's
+      # `latest`; provenance is required, so a publish that cannot make it fails closed (#906).
       - if: steps.npm.outputs.published != 'true'
         env:
+          TARBALL: launcher/prismalens-${{ needs.draft.outputs.version }}.tgz
           LATEST: ${{ needs.publish-release.outputs.latest }}
           VERSION: ${{ needs.draft.outputs.version }}
           NPM_CONFIG_PROVENANCE: "true"
@@ -246,7 +371,7 @@ jobs:
           newest=$(printf '%s\n%s\n' "$npm_latest" "$VERSION" | sort -V | tail -1)
           tag=previous
           if [ "$LATEST" = true ] && [ "$newest" = "$VERSION" ]; then tag=latest; fi
-          node scripts/pack-launcher.mjs --publish --tag "$tag"
+          node scripts/pack-launcher.mjs --publish --tarball "$TARBALL" --tag "$tag"
 
   package-managers:
     name: Update the Homebrew tap and Scoop bucket

@@ -17,7 +17,7 @@ reviews:
     #
     # No dry run exists for this setting: CodeRabbit applies base-branch config
     # only for open-source repos, so it takes effect the moment it lands on main.
-    # The revert is one commit — see ~/ai-context/state/prismalens-valve-revert.md.
+    # The revert is one commit: set `enabled: true` again.
     enabled: false
     labels:
       - "coderabbit_review"
@@ -66,6 +66,15 @@ reviews:
     - path: "packages/frontend/src/**"
       instructions: >-
         Repo invariant: ordered-evidence epistemics — no numeric confidence scores anywhere in UI copy.
+    # Tests are reviewed for what makes them catch a break, not for style (docs/contributing/testing.md).
+    - path: "**/*.{spec,test}.{ts,tsx,mjs}"
+      instructions: >-
+        Review this test only against the repo's test rules in AGENTS.md, and skip style, naming taste and
+        refactor suggestions. Flag: a claim in the test's name that its body does not assert; a step parameter the
+        test never asserts; a bare toBeInstanceOf, toBeDefined, truthiness or ">= 1" where the behaviour has an exact
+        value, code or message; an expect inside an if, a loop or a mock; a test that returns early instead of failing
+        or being skipped by name; a test that pins internals (private helpers, call order, mock call counts) where the
+        public seam or a journey would show the same behaviour; and a fixture the broken code would still pass on.
 # `chat` governs comment-chat commands (@coderabbitai ...), which is a separate
 # surface from the `reviews` block above. It defaults to allow_non_org_members:
 # true, so on a public repo any GitHub user who can comment could otherwise

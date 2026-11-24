@@ -96,6 +96,29 @@ export async function latestOf(channel) {
 	return (await res.json()).info.version;
 }
 
+/** What a pinned Python agent needs that its channel leaves uncapped: 0.2.1 predates ACP 1.0 (#1204). */
+export const PIN_CONSTRAINTS = {
+	"deepagents-code": ["agent-client-protocol<1"],
+};
+
+/**
+ * The `uv pip install` arguments for a probe's Python CLI. The cap goes to any probe whose version is the
+ * pin, a latest leg that names the pin's version included, never to a version that is not (#1204).
+ */
+export function uvInstallArgs(probe, python, pins = PINS) {
+	const [cli, ...extras] = probe.channel.uv;
+	return [
+		"pip",
+		"install",
+		"--quiet",
+		"--python",
+		python,
+		`${cli}==${probe.version}`,
+		...extras,
+		...(probe.version === pins[cli] ? (PIN_CONSTRAINTS[cli] ?? []) : []),
+	];
+}
+
 /** A latest leg and a pin leg, even when they name the same version. */
 function atLatestAndPin(latest, pin, make) {
 	// The same version still runs twice: the pin installs as CI does, latest as users do.
@@ -173,7 +196,7 @@ function binScript(prefix, pkg, binary) {
 }
 
 /** Installs the probe's CLI from its channel under `dir`; returns the bin folder and any adapter. */
-function install(built, row, probe, dir) {
+async function install(built, row, probe, dir) {
 	const { channel } = probe;
 	if (row.adapterPackage) {
 		let adapter;
@@ -202,16 +225,7 @@ function install(built, row, probe, dir) {
 	const venv = join(dir, "venv");
 	run("uv", ["venv", "--quiet", "--python", "3.14", venv]);
 	const bin = join(venv, WINDOWS ? "Scripts" : "bin");
-	const [cli, ...extras] = channel.uv;
-	run("uv", [
-		"pip",
-		"install",
-		"--quiet",
-		"--python",
-		join(bin, WINDOWS ? "python.exe" : "python"),
-		`${cli}==${probe.version}`,
-		...extras,
-	]);
+	run("uv", uvInstallArgs(probe, join(bin, WINDOWS ? "python.exe" : "python")));
 	return { bin };
 }
 

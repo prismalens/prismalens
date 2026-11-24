@@ -24,6 +24,11 @@ on:
         required: false
         type: boolean
         default: true
+      code:
+        description: Run the macOS unit tests and the sim's proof specs, which a code change needs on its PR (#1085)
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -34,7 +39,7 @@ env:
 jobs:
   pack:
     name: Pack the tarball for the proofs
-    if: inputs.full
+    if: inputs.full || inputs.code
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -67,11 +72,11 @@ jobs:
           path: /tmp/tarballs/*.tgz
           retention-days: 3
 
-  # macOS runs the unit tests nightly and on a release PR: the PR queue's runs flaked there (#959).
+  # macOS runs the unit tests on a code PR too: 5 of 11 timing failures in a month showed only here (#1085).
   # macos-latest is 3 or 5 CPUs, so turbo runs two tasks at a time (#885).
   macos-tests:
     name: Unit tests (macos-latest)
-    if: inputs.full
+    if: inputs.full || inputs.code
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -337,7 +342,7 @@ jobs:
   sim-specs:
     name: "Tarball: the sim's Playwright proof specs"
     needs: pack
-    if: inputs.full
+    if: inputs.full || inputs.code
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

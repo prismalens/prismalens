@@ -14,7 +14,8 @@ export default {
 	coverageAnalysis: "perTest",
 	concurrency: 4,
 	timeoutMS: 30_000,
-	reporters: ["clear-text", "progress", "html"],
+	// scripts/mutation-report.mjs reads the JSON report (default reports/mutation/mutation.json).
+	reporters: ["clear-text", "progress", "html", "json"],
 	htmlReporter: { fileName: "reports/mutation/index.html" },
 	thresholds: { high: 80, low: 60, break: null },
 };

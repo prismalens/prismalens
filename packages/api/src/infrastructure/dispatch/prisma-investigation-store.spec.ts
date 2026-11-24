@@ -88,12 +88,14 @@ function makePorts(
 function makeStore(
 	appendEvents: (id: string, events: CanonicalEvent[]) => Promise<void>,
 	portOverrides: Partial<RunPorts> = {},
+	retryDelaysMs?: readonly number[],
 ) {
 	const ports = makePorts(appendEvents, portOverrides);
 	const store = createPrismaInvestigationStore(ports, {
 		investigationId: INVESTIGATION_ID,
 		incidentId: INCIDENT_ID,
 		runId: RUN_ID,
+		...(retryDelaysMs && { retryDelaysMs }),
 	});
 	return { store, ports };
 }
@@ -261,7 +263,8 @@ describe("createPrismaInvestigationStore — batched durable append", () => {
 			throw new Error("network down");
 		});
 		const writeResult = vi.fn(async () => true);
-		const { store } = makeStore(appendEvents, { writeResult });
+		// The end-of-run retries wait on real time; this test is about not throwing.
+		const { store } = makeStore(appendEvents, { writeResult }, [0, 0, 0]);
 
 		// A size-triggered flush whose append rejects must not throw out of append.
 		for (let i = 1; i <= 25; i++) {

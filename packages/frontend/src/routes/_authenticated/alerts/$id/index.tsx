@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * One alert's record, the centre of the alerts frame (#523 S3, the study's M2).
  */
