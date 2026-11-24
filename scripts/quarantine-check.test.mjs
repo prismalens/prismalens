@@ -56,6 +56,20 @@ test("a feature comment that mentions @quarantine is not a tag, and the tag afte
 	]);
 });
 
+test("a spec comment that mentions @quarantine is not a tag, and the tag after it still is", () => {
+	const root = fixture({
+		"b.spec.ts":
+			'// Do not add @quarantine without an issue\n/* @quarantine is capped */\n * @quarantine in a block\ntest("y", { tag: "@quarantine" }, () => {}); // #6\n',
+	});
+	assert.deepEqual(findTags(root), [
+		{
+			file: "b.spec.ts",
+			line: 4,
+			text: 'test("y", { tag: "@quarantine" }, () => {}); // #6',
+		},
+	]);
+});
+
 test("six tags fail on the cap and name the count", () => {
 	const tags = findTags(fixture({ "a.feature": tagLines(6) }));
 	assert.deepEqual(check(tags, { issue: openIssue, now: NOW }), [

@@ -25,12 +25,14 @@ export function findTags(root) {
 			if (entry.isDirectory()) {
 				if (!SKIPPED_DIRS.has(entry.name)) walk(path);
 			} else if (/\.(feature|ts|mts|js|mjs)$/.test(entry.name)) {
-				const isFeature = entry.name.endsWith(".feature");
+				const comment = entry.name.endsWith(".feature")
+					? /^\s*#/
+					: /^\s*(\/\/|\/\*|\*)/;
 				readFileSync(path, "utf8")
 					.split("\n")
 					.forEach((text, index) => {
-						// A Gherkin line that starts with # is a comment, never a tag.
-						if (TAG.test(text) && !(isFeature && /^\s*#/.test(text)))
+						// A line that is only a comment is prose about the tag, never a tag.
+						if (TAG.test(text) && !comment.test(text))
 							tags.push({
 								file: relative(root, path).split("\\").join("/"),
 								line: index + 1,
