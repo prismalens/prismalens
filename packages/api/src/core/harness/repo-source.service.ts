@@ -65,6 +65,8 @@ export interface Snapshot {
 	path: string;
 	head: string;
 	branch: string | null;
+	/** The source's branch this snapshot was cut from; a worktree itself sits on none. */
+	from?: string | null;
 	/** A folder's worktree: the lock reason naming this attempt (#918). */
 	lock?: string;
 	/** The setup command the run workspace settings name, when one ran (#925). */
@@ -287,6 +289,7 @@ export class RepoSourceService {
 			path: dest,
 			...check,
 			branch: check.branch ?? (mirror ? (tip?.branch ?? null) : null),
+			from: tip?.branch ?? null,
 			...added,
 		};
 	}
@@ -352,21 +355,21 @@ export class RepoSourceService {
 		preferBranch?: string | null,
 	): Promise<SourceCheck> {
 		const ref = preferBranch?.trim() || "HEAD";
-		const { stdout: head } = await this.git(["rev-parse", ref], cwd);
 		let branch: string | null = null;
+		let at = ref;
 		try {
 			const { stdout } = await this.git(
-				[
-					"symbolic-ref",
-					"--short",
-					ref === "HEAD" ? "HEAD" : `refs/heads/${ref}`,
-				],
+				["symbolic-ref", ref === "HEAD" ? "HEAD" : `refs/heads/${ref}`],
 				cwd,
 			);
-			branch = stdout.trim() || null;
+			const full = stdout.trim();
+			branch = full.replace(/^refs\/heads\//, "") || null;
+			// The commit comes from the exact ref just read: a checkout between the calls can't pair them wrong.
+			if (ref === "HEAD" && full) at = full;
 		} catch {
 			branch = ref === "HEAD" ? null : ref;
 		}
+		const { stdout: head } = await this.git(["rev-parse", at], cwd);
 		return { branch, head: head.trim() };
 	}
 

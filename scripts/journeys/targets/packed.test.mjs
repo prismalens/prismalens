@@ -93,11 +93,12 @@ test("a restart after the target was cleaned up boots no replacement", async () 
 		},
 	});
 	await up.boot();
-	const restarting = up.restart();
-	await up.stop();
-	await assert.rejects(restarting, {
+	// Handled before stop(): the restart can reject while stop() is still waiting.
+	const rejected = assert.rejects(up.restart(), {
 		message: "the packed target was cleaned up during restart",
 	});
+	await up.stop();
+	await rejected;
 	assert.equal(spawned.length, 1);
 });
 

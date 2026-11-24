@@ -615,7 +615,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 		expect(orpcErr.code).toBe("PRECONDITION_FAILED");
 		expect(orpcErr.message).toBe("Codex: sign in needed (API Key, ChatGPT)");
 		expect(orpcErr.data).toMatchObject({ harness: "codex" });
-		expect(harnessService.ensureReady).toHaveBeenCalledWith("codex");
+		expect(harnessService.ensureReady).toHaveBeenCalledWith("codex", undefined);
 		expect(investigationsService.startOrGet).not.toHaveBeenCalled();
 		expect(dispatchService.addInvestigationJob).not.toHaveBeenCalled();
 	});
@@ -682,7 +682,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 				data: { harness: "codex", failure: "not-ready" },
 			});
 			expect(t.harnessService.resolveSelection).toHaveBeenCalledWith({ harness: "codex", model: null });
-			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("codex");
+			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("codex", null);
 			expect(t.investigationsService.startOrGet).not.toHaveBeenCalled();
 		});
 
@@ -690,7 +690,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			const t = make({ ready: true });
 			await t.handlers.chat({ input: { id: mockIncident.id, text: "hi" } });
 			expect(t.harnessService.resolveSelection).toHaveBeenCalledWith({});
-			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("opencode");
+			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("opencode", undefined);
 			expect(t.dispatchService.addInvestigationJob).toHaveBeenCalledWith(
 				expect.not.objectContaining({ harness: expect.anything() }),
 			);
@@ -703,7 +703,7 @@ describe("IncidentsController - investigate runnability gate (#520)", () => {
 			await t.handlers.chat({ input: { id: mockIncident.id, text: "hi", ...choice } });
 			for (const call of t.dispatchService.addInvestigationJob.mock.calls)
 				expect(call[0]).toMatchObject(choice);
-			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("claude-code");
+			expect(t.harnessService.ensureReady).toHaveBeenCalledWith("claude-code", "opus[1m]");
 		});
 	});
 

@@ -14,6 +14,8 @@ import {
 	IdParamSchema,
 	LinkRepositorySchema,
 	PaginationSchema,
+	PickFolderAvailabilitySchema,
+	PickFolderResultSchema,
 	RemoveProjectScriptSchema,
 	RepositorySchema,
 	RepositoryWithServicesSchema,
@@ -52,6 +54,34 @@ export const repositoriesContract = {
 		})
 		.input(BrowseFoldersSchema)
 		.output(BrowseFoldersResultSchema),
+
+	/**
+	 * Whether this client may open the host's folder dialog: the host's owner, with a dialog tool present (#1216).
+	 * POST /fs/pick-folder/available
+	 */
+	pickFolderAvailable: oc
+		.route({
+			method: "POST",
+			path: "/fs/pick-folder/available",
+			summary: "Whether this computer can open a native folder dialog for you",
+			tags: ["repositories"],
+		})
+		.input(z.object({}))
+		.output(PickFolderAvailabilitySchema),
+
+	/**
+	 * Open the host's native folder dialog and answer the folder chosen. Host owner only (#1216).
+	 * POST /fs/pick-folder
+	 */
+	pickFolder: oc
+		.route({
+			method: "POST",
+			path: "/fs/pick-folder",
+			summary: "Open a native folder dialog on this computer",
+			tags: ["repositories"],
+		})
+		.input(z.object({}))
+		.output(PickFolderResultSchema),
 
 	/**
 	 * Start git in a plain folder project: init plus a first commit of what git does not ignore (#1020). Host only.

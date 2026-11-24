@@ -27,6 +27,12 @@ export const TARGETS = [
 const STOP_MESSAGE = "prismalens:stop";
 export const DEFAULT_BASE =
 	"https://github.com/prismalens/prismalens/releases/download";
+/** Tried first; it keeps only the newest releases, so GitHub is the fallback (#1096). */
+export const MIRROR_BASE = "https://downloads.prismalens.io";
+export const DEFAULT_BASES = [MIRROR_BASE, DEFAULT_BASE];
+/** A base with a successor is dropped after this long without a byte, and may use this share of the budget. */
+const MIRROR_STALL_MS = 30_000;
+const MIRROR_BUDGET_SHARE = 0.6;
 const HOUR = 3_600_000;
 
 export class LauncherError extends Error {}
@@ -67,10 +73,10 @@ export function cacheRoot(env = process.env, platform = process.platform) {
 // --- the release server ------------------------------------------------------------------
 
 /** https: or file: only; credentials leave the URL for an Authorization header. */
-export function parseBase(raw) {
+export function parseBase(raw, fallback = DEFAULT_BASE) {
 	let url;
 	try {
-		url = new URL(raw || DEFAULT_BASE);
+		url = new URL(raw || fallback);
 	} catch {
 		throw new LauncherError(
 			"PRISMALENS_RELEASE_BASE_URL is not a valid URL (its value is not shown: it may hold a password).",
@@ -125,11 +131,24 @@ async function fetchOnce(url, net) {
 		const headers = {};
 		if (net.auth && current.origin === net.origin)
 			headers.authorization = net.auth;
-		const res = await fetch(current, {
-			headers,
-			redirect: "manual",
-			signal: AbortSignal.timeout(Math.max(1, net.deadline - Date.now())),
-		});
+		// A server that never answers is dropped after stallMs, not after the shared deadline.
+		const silent = new AbortController();
+		const timer = net.stallMs
+			? setTimeout(() => silent.abort(), net.stallMs)
+			: null;
+		let res;
+		try {
+			res = await fetch(current, {
+				headers,
+				redirect: "manual",
+				signal: AbortSignal.any([
+					AbortSignal.timeout(Math.max(1, net.deadline - Date.now())),
+					silent.signal,
+				]),
+			});
+		} finally {
+			clearTimeout(timer);
+		}
 		if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
 			await res.body?.cancel();
 			current = new URL(res.headers.get("location"), current);
@@ -141,6 +160,7 @@ async function fetchOnce(url, net) {
 }
 
 export async function get(url, net) {
+	const attempts = net.attempts ?? 6;
 	if (url.startsWith("file:")) {
 		const file = fileURLToPath(url);
 		if (!fs.existsSync(file))
@@ -158,7 +178,7 @@ export async function get(url, net) {
 			await res.body?.cancel();
 			if (res.status === 404)
 				throw new NotFound(`${redact(url, net.secrets)} does not exist`);
-			if (!transient(res.status) || attempt === 6)
+			if (!transient(res.status) || attempt >= attempts)
 				throw new LauncherError(
 					`GET ${redact(url, net.secrets)} returned HTTP ${res.status}`,
 				);
@@ -171,7 +191,7 @@ export async function get(url, net) {
 		} catch (error) {
 			if (error instanceof LauncherError) throw error;
 			lastError = error;
-			if (attempt === 6 || Date.now() >= net.deadline)
+			if (attempt >= attempts || Date.now() >= net.deadline)
 				throw unreachable(url, error, net);
 			wait = 500 * 2 ** (attempt - 1);
 		}
@@ -192,7 +212,9 @@ function unreachable(url, error, net) {
 		code || (error?.cause?.message ?? error?.message),
 		net.secrets,
 	);
-	const where = net.isDefault ? "github.com" : redact(net.base, net.secrets);
+	const where = net.isDefault
+		? new URL(net.base).host
+		: redact(net.base, net.secrets);
 	const tls = /CERT|SELF_SIGNED|UNABLE_TO_(VERIFY|GET_ISSUER)/.test(code)
 		? " Its certificate is not trusted here: behind a TLS-inspecting proxy, set NODE_EXTRA_CA_CERTS to your organisation's CA file (npm's cafile is used when it is unset)."
 		: "";
@@ -338,19 +360,35 @@ export function makeNet({
 	env = process.env,
 	log = () => {},
 	deadlineMs,
+	stallMs = MIRROR_STALL_MS,
+	defaultBases = DEFAULT_BASES,
 } = {}) {
-	const parsed = parseBase(env.PRISMALENS_RELEASE_BASE_URL);
+	const raw = env.PRISMALENS_RELEASE_BASE_URL;
+	const parsedAll = raw
+		? [parseBase(raw)]
+		: defaultBases.map((b) => parseBase(undefined, b));
+	const parsed = parsedAll[0];
 	const ms =
 		deadlineMs ??
 		(Number(env.PRISMALENS_LAUNCHER_TIMEOUT_SECONDS) || 900) * 1000;
 	let applied = null;
-	return {
-		...parsed,
-		origin: parsed.base.startsWith("https:")
-			? new URL(parsed.base).origin
-			: null,
+	const shared = {
+		secrets: parsedAll.flatMap((p) => p.secrets),
 		deadline: Date.now() + ms,
 		log,
+	};
+	// A base that has a successor is tried briefly: its failure moves on to the next one.
+	const bases = parsedAll.map((p, i) => ({
+		...shared,
+		...p,
+		origin: p.base.startsWith("https:") ? new URL(p.base).origin : null,
+		attempts: i < parsedAll.length - 1 ? 2 : 6,
+		stallMs: i < parsedAll.length - 1 ? stallMs : 0,
+	}));
+	return {
+		...bases[0],
+		stallMs: 0,
+		bases,
 		/** The proxy/CA settings in force, applied once before the first request. */
 		ready() {
 			if (!applied && !parsed.base.startsWith("file:")) {
@@ -728,6 +766,25 @@ export function releaseLock(file, token) {
 	return removeEntry(file, token);
 }
 
+/** One body read; a broken or silent stream is a LauncherError, so the next base is tried. */
+async function readChunk(reader, net, label) {
+	let timer;
+	const silence = new Error();
+	const stalled = new Promise((_, reject) => {
+		if (net.stallMs) timer = setTimeout(() => reject(silence), net.stallMs);
+	});
+	try {
+		return await Promise.race([reader.read(), stalled]);
+	} catch (error) {
+		reader.cancel().catch(() => {});
+		throw new LauncherError(
+			`the download of ${label} ${error === silence ? `stalled for ${net.stallMs} ms` : `broke (${error.message})`}`,
+		);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 async function download(url, file, net, label) {
 	const res = await get(url, net);
 	const total = Number(res.headers.get("content-length")) || 0;
@@ -736,8 +793,11 @@ async function download(url, file, net, label) {
 	const tty = process.stderr.isTTY;
 	let received = 0;
 	let shown = -1;
+	const reader = res.body.getReader();
 	try {
-		for await (const chunk of res.body) {
+		for (;;) {
+			const { done, value: chunk } = await readChunk(reader, net, label);
+			if (done) break;
 			hash.update(chunk);
 			fs.writeSync(out, chunk);
 			received += chunk.byteLength;
@@ -797,12 +857,25 @@ export async function ensureRuntime(root, want, net) {
 
 /**
  * The digest the archive must have: the one npm's launcher manifest pins for its own stable
- * release, else the release's SHA256SUMS line, which must match a digest this copy verified before.
+ * release, else the release's SHA256SUMS line from the last base (GitHub, or the one a set
+ * PRISMALENS_RELEASE_BASE_URL names), which must match a digest this copy verified before.
+ * A mirror's SHA256SUMS is never read: a mirror could alter an archive and its sums together.
  */
-async function expectedDigest(want, net, at, archive) {
+async function expectedDigest(want, trusted, archive) {
 	if (want.pinned)
 		return { hex: want.pinned, source: "the digest npm's launcher pins" };
-	const sums = await (await get(`${at}/SHA256SUMS`, net)).text();
+	const host = new URL(trusted.base).host || "disk";
+	const url = `${trusted.base}/${want.tag}/SHA256SUMS`;
+	let sums;
+	try {
+		sums = await (await get(url, trusted)).text();
+	} catch (error) {
+		if (!(error instanceof LauncherError)) throw error;
+		const refused = `${want.tag}'s SHA256SUMS is not on ${host}, the only source of checksums; nothing was installed (${error.message})`;
+		throw error instanceof NotFound
+			? new NotFound(refused)
+			: new LauncherError(refused);
+	}
 	const line = sums
 		.split(/\r?\n/)
 		.map((l) => /^([0-9a-f]{64})\s+\*?(.+)$/i.exec(l.trim()))
@@ -817,21 +890,61 @@ async function expectedDigest(want, net, at, archive) {
 	return { hex, source: "SHA256SUMS" };
 }
 
+/**
+ * The archive in `file`, hashed and checked against the digest from the last base's SHA256SUMS.
+ * The archive may come from any base; when one fails (a missing file, a broken or silent body,
+ * a wrong hash) the next is asked. A base with a successor gets part of the budget, so the
+ * last one always keeps time. Resolves to the sha256.
+ */
+async function fetchVerified(want, net, archive, file) {
+	const bases = net.bases ?? [net];
+	const hostOf = (b) => new URL(b.base).host || "disk";
+	const expected = await expectedDigest(want, bases.at(-1), archive);
+	const failures = [];
+	for (const [i, b] of bases.entries()) {
+		const last = i === bases.length - 1;
+		const now = Date.now();
+		const from = last
+			? b
+			: {
+					...b,
+					deadline: now + Math.floor((b.deadline - now) * MIRROR_BUDGET_SHARE),
+				};
+		try {
+			const actual = await download(
+				`${b.base}/${want.tag}/${archive}`,
+				file,
+				from,
+				`${want.version} from ${hostOf(b)}`,
+			);
+			if (actual !== expected.hex)
+				throw new LauncherError(
+					`checksum mismatch for ${archive} (${expected.source} says ${expected.hex}, the download is ${actual}); nothing was installed`,
+				);
+			return actual;
+		} catch (error) {
+			if (!(error instanceof LauncherError) || bases.length === 1) throw error;
+			failures.push(error.message);
+			if (!last)
+				net.log(
+					`${error.message.split("\n")[0]}; trying ${hostOf(bases[i + 1])}`,
+				);
+		}
+	}
+	throw new LauncherError(
+		`could not download ${archive} from any of ${bases.map(hostOf).join(", ")}:\n${failures.join("\n")}`,
+	);
+}
+
 async function install(root, want, net) {
 	const { version, target, tag } = want;
 	net.ready();
 	const archive = archiveName(version, target);
-	const at = `${net.base}/${tag}`;
-	const expected = await expectedDigest(want, net, at, archive);
 	const staging = path.join(root, `.staging-${randomBytes(6).toString("hex")}`);
 	fs.mkdirSync(staging);
 	try {
 		const file = path.join(staging, archive);
-		const actual = await download(`${at}/${archive}`, file, net, version);
-		if (actual !== expected.hex)
-			throw new LauncherError(
-				`checksum mismatch for ${archive} (${expected.source} says ${expected.hex}, the download is ${actual}); nothing was installed`,
-			);
+		const actual = await fetchVerified(want, net, archive, file);
 		// Windows' own bsdtar reads zip; a Git-for-Windows tar on PATH cannot.
 		const tar = target.startsWith("win32")
 			? path.join(
@@ -1070,7 +1183,8 @@ export function help(release, root, target) {
 	return `PrismaLens launcher ${release.version}
 
 pl from npm is a launcher. On first run it downloads PrismaLens ${release.version} for
-${target} from its GitHub release, checks it against the release's SHA256SUMS,
+${target} from ${new URL(MIRROR_BASE).host}, or from its GitHub release when that
+has no copy, checks it against the SHA256SUMS of its GitHub release,
 keeps it in ${root}, and runs it. Later runs start from that copy offline.
 
 npm carries stable releases. Inside the app, pl upgrade --channel nightly moves this
@@ -1085,8 +1199,9 @@ Commands
 
 Environment
   PRISMALENS_RELEASE_BASE_URL  Where releases come from, as <base>/v<version>/<file>;
-                               https: or file: only. Default:
-                               ${DEFAULT_BASE}
+                               https: or file: only. When it is
+                               set, only it is used. Default: archives from ${MIRROR_BASE},
+                               then ${DEFAULT_BASE}; SHA256SUMS always from the latter.
                                https://user:token@host/... sends an Authorization header;
                                the credentials are never printed.
   PRISMALENS_LAUNCHER_DIR      Where runtimes are kept. Default: ${root}

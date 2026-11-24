@@ -30,11 +30,16 @@ afterEach(() => {
 	rmSync(workspace, { recursive: true, force: true });
 });
 
-function about(env: NodeJS.ProcessEnv, fetchImpl: typeof fetch) {
+function about(
+	env: NodeJS.ProcessEnv,
+	fetchImpl: typeof fetch,
+	build: string | null = "abc1234",
+) {
 	const s = new AboutService();
 	s.env = env;
 	s.fetchImpl = fetchImpl;
 	s.now = () => 1_000_000;
+	s.build = build;
 	return s.get();
 }
 
@@ -50,6 +55,12 @@ describe("AboutService", () => {
 		expect(a.channel).toBe("npm");
 		expect(a.upgradeCommand).toBe("npm install -g prismalens@latest");
 		expect(a.uninstallCommand).toBe("npm uninstall -g prismalens");
+	});
+
+	it("announces no update to a source checkout, which carries no pack-time build", async () => {
+		const a = await about({}, github(true), null);
+		expect(a.update).toMatchObject({ latest: "99.0.0", available: false });
+		expect(a.build).toBe(null);
 	});
 
 	it("doesn't announce a release whose downloads aren't attached yet", async () => {

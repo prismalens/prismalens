@@ -951,7 +951,7 @@ Then(
 		).toHaveCount(1);
 		await expect(
 			row(page, "Starred", "claude-code", "claude-opus-5-5").locator(
-				'[data-letters="CC"]',
+				'[data-brand="claude-code"]',
 			),
 		).toHaveCount(1);
 	},

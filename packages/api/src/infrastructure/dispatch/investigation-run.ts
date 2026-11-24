@@ -2539,6 +2539,7 @@ export async function resolveWorkspace(
 			connectionId: repo.connectionId,
 			head: snap.head,
 			branch: snap.branch,
+			...(snap.from ? { from: snap.from } : {}),
 			services,
 			credential,
 		});

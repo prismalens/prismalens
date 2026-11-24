@@ -112,7 +112,7 @@ describe("WebhooksController Prometheus intake (#633 edge 10, #605)", () => {
 		expect(res).toEqual({ received: 1, processed: 1, alertIds: ["a1"] });
 	});
 
-	it("answers a retryable failure with an error after the rest of the batch ran", async () => {
+	it("answers a batch with a retryable failure with 503", async () => {
 		const service = {
 			processPrometheusAlert: vi
 				.fn()
@@ -126,8 +126,28 @@ describe("WebhooksController Prometheus intake (#633 edge 10, #605)", () => {
 				input: { alerts: [firing, { ...firing, fingerprint: "fp-2" }] },
 				context: {},
 			}),
-		).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
-		expect(service.processPrometheusAlert).toHaveBeenCalledTimes(2);
+		).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE", status: 503 });
+	});
+
+	it("answers 503 when an alert's key is still in flight, so Alertmanager retries until the event resumes", async () => {
+		const inFlight =
+			"A webhook delivery with this idempotency key is still being processed. Retry the delivery.";
+		const service = {
+			processPrometheusAlert: vi
+				.fn()
+				.mockRejectedValueOnce(new ORPCError("CONFLICT", { message: inFlight }))
+				.mockResolvedValueOnce({ alertId: "a2", isNew: true }),
+		};
+		await expect(
+			prometheusHandler(service as unknown as Partial<WebhooksService>)({
+				input: { alerts: [firing, { ...firing, fingerprint: "fp-2" }] },
+				context: {},
+			}),
+		).rejects.toMatchObject({
+			code: "SERVICE_UNAVAILABLE",
+			status: 503,
+			message: inFlight,
+		});
 	});
 
 	it("handles errors thrown by processPrometheusAlert gracefully", async () => {
