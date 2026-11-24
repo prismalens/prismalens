@@ -341,6 +341,29 @@ describe("AlertMappingService.resolveServiceForAlert", () => {
 		});
 	});
 
+	it("answers SERVICE_UNAVAILABLE when the retry after a lost unique key cannot start its transaction", async () => {
+		mockPrisma.repository.findMany.mockResolvedValue([
+			project("repo-1", "demo-proj"),
+		]);
+		mockPrisma.$transaction
+			.mockRejectedValueOnce(
+				Object.assign(new Error("Unique constraint failed"), { code: "P2002" }),
+			)
+			.mockRejectedValueOnce(
+				Object.assign(new Error("Transaction API error"), { code: "P2028" }),
+			);
+
+		await expect(
+			service.resolveServiceForAlert({ title: "Boom", serviceName: "demo-proj" }),
+		).rejects.toMatchObject({
+			code: "SERVICE_UNAVAILABLE",
+			status: 503,
+			message:
+				"Could not make a service for demo-proj: the database was busy",
+		});
+		expect(mockPrisma.$transaction).toHaveBeenCalledTimes(2);
+	});
+
 	it("rethrows an error that is not a lost unique key", async () => {
 		mockPrisma.repository.findMany.mockResolvedValue([
 			project("repo-1", "demo-proj"),

@@ -112,20 +112,21 @@ export class AlertMappingService {
 
 	private async makeOrTakeService(project: Repository): Promise<Service> {
 		try {
-			return await this.makeLinkedService(project);
+			return await this.makeLinkedService(project).catch(async (error) => {
+				if ((error as { code?: string }).code !== "P2002") throw error;
+				// A concurrent first alert for this project won the unique name or link: take its service, or retry once.
+				return (
+					(await this.linkedService(project.id)) ??
+					(await this.makeLinkedService(project))
+				);
+			});
 		} catch (error) {
-			const code = (error as { code?: string }).code;
-			// The transaction could not start in time: answer 503 so the sender retries the delivery.
-			if (code === "P2028")
+			// A transaction that could not start in time, on either try: answer 503 so the sender retries.
+			if ((error as { code?: string }).code === "P2028")
 				throw new ORPCError("SERVICE_UNAVAILABLE", {
 					message: `Could not make a service for ${project.fullName}: the database was busy`,
 				});
-			if (code !== "P2002") throw error;
-			// A concurrent first alert for this project won the unique name or link: take its service, or retry once.
-			return (
-				(await this.linkedService(project.id)) ??
-				(await this.makeLinkedService(project))
-			);
+			throw error;
 		}
 	}
 
