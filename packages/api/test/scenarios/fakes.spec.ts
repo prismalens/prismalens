@@ -8,6 +8,7 @@ import {
 	fingerprintOf,
 	startFakeAlertmanager,
 } from "../../../../scripts/fakes/fake-alertmanager.mjs";
+import { mcpReplyJson } from "../../../../scripts/fakes/fake-acp-agent.mjs";
 import { alertmanagerFingerprint } from "../../src/modules/alerts/alertmanager-fingerprint.js";
 
 let am: FakeAlertmanager | undefined;
@@ -96,5 +97,25 @@ describe("the fake Alertmanager", () => {
 		} finally {
 			await new Promise<void>((r) => sink.close(() => r()));
 		}
+	});
+});
+
+describe("the fake agent's MCP client (#1061)", () => {
+	const result = '{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"opened"}]}}';
+	const SSE = "text/event-stream";
+
+	it("reads the last event of a stream whose first frame is a keepalive comment", () => {
+		const body = `: keepalive\n\n: keepalive\n\nevent: message\ndata: ${result}\n\n`;
+		expect(mcpReplyJson(body, SSE)).toBe(result);
+	});
+
+	it("reads the result after a progress event, not the first event", () => {
+		const progress = '{"jsonrpc":"2.0","method":"notifications/progress","params":{"progress":1}}';
+		const body = `event: message\ndata: ${progress}\n\nevent: message\ndata: ${result}\n\n`;
+		expect(mcpReplyJson(body, SSE)).toBe(result);
+	});
+
+	it("returns a plain JSON body as it is", () => {
+		expect(mcpReplyJson(result, "application/json")).toBe(result);
 	});
 });
