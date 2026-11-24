@@ -256,7 +256,8 @@ jobs:
             asof=$(node --input-type=module -e "import { resolvedAsOf, uploadedAt } from './scripts/agent-probe.mjs'; console.log(resolvedAsOf(await uploadedAt(process.env.PIN, '$version')))")
             uv tool install --python 3.14 "$PIN==$version" --with deepagents-acp --exclude-newer "$asof"
           else
-            npm install -g "$PIN@$version"
+            asof=$(node --input-type=module -e "import { npmPublishedAt, resolvedAsOf } from './scripts/agent-probe.mjs'; console.log(resolvedAsOf(npmPublishedAt(process.env.PIN, '$version')))")
+            npm install -g "$PIN@$version" --before "$asof"
           fi
           "$BINARY" --version
 

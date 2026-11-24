@@ -116,6 +116,19 @@ export async function uploadedAt(pkg, version) {
 	return times.sort()[0];
 }
 
+/** When npm first published `pkg`@`version`. */
+export function npmPublishedAt(pkg, version) {
+	const at = JSON.parse(run("npm", ["view", pkg, "time", "--json"]))[version];
+	if (!at) throw new Error(`npm lists no ${pkg}@${version}`);
+	return at;
+}
+
+/** `npm install` flags for a pin: its dependencies as of its soak, as uv's `--exclude-newer` (#1085). */
+export const npmPinFlags = (probe, pkg, version) =>
+	probe.label === "pin"
+		? ["--before", resolvedAsOf(npmPublishedAt(pkg, version))]
+		: [];
+
 /** One entry per version: a latest that is also the pin runs once. */
 function atLatestAndPin(latest, pin, make) {
 	if (!pin || pin === latest) return [make(latest, "latest, pin")];
@@ -171,7 +184,7 @@ export function factsFor(row, probe) {
 	return facts;
 }
 
-const npmInstall = (dir, specs) =>
+const npmInstall = (dir, specs, flags = []) =>
 	run("npm", [
 		"install",
 		"--prefix",
@@ -179,6 +192,7 @@ const npmInstall = (dir, specs) =>
 		"--no-audit",
 		"--no-fund",
 		"--loglevel=error",
+		...flags,
 		...specs,
 	]);
 
@@ -205,11 +219,19 @@ async function install(built, row, probe, dir) {
 			adapter = binScript(prefix, row.adapterPackage, row.binary);
 		}
 		const cli = join(dir, "cli");
-		npmInstall(cli, [`${channel.npm}@${probe.companion}`]);
+		npmInstall(
+			cli,
+			[`${channel.npm}@${probe.companion}`],
+			npmPinFlags(probe, channel.npm, probe.companion),
+		);
 		return { bin: join(cli, "node_modules", ".bin"), adapter };
 	}
 	if (channel.npm) {
-		npmInstall(dir, [`${channel.npm}@${probe.version}`]);
+		npmInstall(
+			dir,
+			[`${channel.npm}@${probe.version}`],
+			npmPinFlags(probe, channel.npm, probe.version),
+		);
 		return { bin: join(dir, "node_modules", ".bin") };
 	}
 	// uv fetches the Python the package needs when the runner has none.
@@ -379,6 +401,7 @@ async function main() {
 					channel: row.channel,
 					adapter: values.version,
 					companion: values.companion ?? PINS[channelPackage(row.channel)],
+					...(!values.companion ? { label: "pin" } : {}),
 				}
 			: {
 					id: row.id,

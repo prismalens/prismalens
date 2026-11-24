@@ -8,6 +8,7 @@ import {
 	channelPackage,
 	factsFor,
 	keyless,
+	npmPinFlags,
 	PIN_SOAK_DAYS,
 	PROBE_FILES,
 	plan,
@@ -211,5 +212,16 @@ test("a pinned Python agent resolves its dependencies as of its upload plus the 
 	assert.equal(
 		resolvedAsOf("2026-10-23T17:05:35.357726Z"),
 		"2026-10-26T17:05:35.357Z",
+	);
+});
+
+test("only a pin installs from npm as of its soak; latest installs what users get today (#1085)", () => {
+	assert.deepEqual(
+		npmPinFlags({ label: "latest" }, "opencode-ai", "1.19.6"),
+		[],
+	);
+	assert.deepEqual(
+		npmPinFlags({ label: "latest, pin" }, "opencode-ai", "1.19.6"),
+		[],
 	);
 });
