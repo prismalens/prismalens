@@ -130,8 +130,10 @@ function Get-Size([string]$Url) {
 	if ($Url.StartsWith("file://")) { return $null }
 	try {
 		if ($curl) {
-			return & $curl -s -I -L --connect-timeout 20 --max-time 20 -A "prismalens-installer" $Url |
-				ForEach-Object { if ($_ -match '^(?i)content-length:\s*(\d+)') { [long]$matches[1] } } | Select-Object -Last 1
+			$headers = & $curl -s -I -L --connect-timeout 20 --max-time 20 -A "prismalens-installer" $Url
+			# A failed or timed-out request may still hold a redirect's headers: no size then.
+			if ($LASTEXITCODE -ne 0) { return $null }
+			return $headers | ForEach-Object { if ($_ -match '^(?i)content-length:\s*(\d+)') { [long]$matches[1] } } | Select-Object -Last 1
 		}
 		[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 		$h = Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing -TimeoutSec 20 -Headers @{ "User-Agent" = "prismalens-installer" }

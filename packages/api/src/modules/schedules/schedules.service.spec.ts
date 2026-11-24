@@ -354,11 +354,11 @@ describe("SchedulesService (#979)", () => {
 	});
 
 	it("checks readiness for the schedule's own model, on a tick and on run now", async () => {
-		// Signed in only for the schedule's model; the agent's global model is signed out.
+		// Ready only for the schedule's model, not for the agent's global model.
 		ready.mockImplementation((async (_id: string, model?: string | null) =>
 			model === "google/gemini-4-neon"
 				? { ready: true }
-				: { ready: false, reason: "signed out for the global model" }) as never);
+				: { ready: false, reason: "not ready for the global model" }) as never);
 		const s = scheduler();
 		const created = await s.create(
 			input({ model: "google/gemini-4-neon" }),
@@ -379,10 +379,10 @@ describe("SchedulesService (#979)", () => {
 		]);
 	});
 
-	it("refuses a tick and run now whose own model is signed out while the global model is signed in", async () => {
+	it("refuses a tick and run now whose own model is not ready while the global model is", async () => {
 		ready.mockImplementation((async (_id: string, model?: string | null) =>
 			model === "google/gemini-4-neon"
-				? { ready: false, reason: "signed out for the schedule's model" }
+				? { ready: false, reason: "not ready for the schedule's model" }
 				: { ready: true }) as never);
 		const s = scheduler();
 		const created = await s.create(
@@ -395,11 +395,11 @@ describe("SchedulesService (#979)", () => {
 			s.runNow(created.id, "host", new Date("2026-07-01T09:10:00Z")),
 		).rejects.toMatchObject({
 			code: "PRECONDITION_FAILED",
-			message: "signed out for the schedule's model",
+			message: "not ready for the schedule's model",
 		});
 
 		expect((await ticks(created.id)).map((t) => [t.outcome, t.reason])).toEqual([
-			["skipped_agent_not_ready", "signed out for the schedule's model"],
+			["skipped_agent_not_ready", "not ready for the schedule's model"],
 		]);
 	});
 

@@ -79,7 +79,9 @@ import { HarnessProbeService } from "./harness-probe.service.js";
 /** How long a remembered "ready" stands before a run checks again; "not ready" is never reused (#673 w9). */
 export const READY_CHECK_TTL_MS = 24 * 60 * 60 * 1000;
 
-export type Readiness = { ready: true } | { ready: false; reason: string };
+export type Readiness =
+	| { ready: true; warning?: string }
+	| { ready: false; reason: string };
 
 type Check = NonNullable<HarnessStatus["checked"]>;
 
@@ -835,9 +837,9 @@ export class HarnessService implements OnApplicationBootstrap {
 
 	/**
 	 * Would a run on this agent start? A remembered `answers-acp` under a day
-	 * old, else a check now: a remembered failure or provider refusal is checked
-	 * again, so signing in takes effect on the next run (#673 w9). `null` asks
-	 * for the agent's own default, as dispatch does; `undefined` takes Settings'.
+	 * old, else a check now: a remembered failure is checked again, so signing
+	 * in takes effect on the next run (#673 w9). `null` asks for the agent's own
+	 * default, as dispatch does; `undefined` takes Settings'.
 	 */
 	async ensureReady(id: HarnessId, model?: string | null): Promise<Readiness> {
 		const off = { ready: false, reason: this.offMessage(id) } as const;
@@ -850,8 +852,7 @@ export class HarnessService implements OnApplicationBootstrap {
 		const remembered = this.models.checked(id);
 		const fresh =
 			remembered?.outcome === "answers-acp" &&
-			Date.now() - Date.parse(remembered.at) < READY_CHECK_TTL_MS &&
-			providerSignIn(id, remembered, chosenBy(remembered)) !== "signed-out";
+			Date.now() - Date.parse(remembered.at) < READY_CHECK_TTL_MS;
 		const check = fresh ? remembered : await this.checkOnce(id);
 		if (!check)
 			return {
@@ -863,8 +864,12 @@ export class HarnessService implements OnApplicationBootstrap {
 		if (check.outcome !== "answers-acp")
 			return { ready: false, reason: notReadyReason(id, check) };
 		const chosen = chosenBy(check);
-		if (providerSignIn(id, check, chosen) === "signed-out")
-			return { ready: false, reason: providerSignedOutLine(id, chosen) };
+		// A warning, not a refusal: the login list misses keys set in config files, AWS and ADC (#1222).
+		if (providerSignIn(id, check, chosen) === "signed-out") {
+			const warning = providerSignedOutLine(id, chosen);
+			this.logger.warn(`Starting anyway: ${warning}`);
+			return { ready: true, warning };
+		}
 		return { ready: true };
 	}
 

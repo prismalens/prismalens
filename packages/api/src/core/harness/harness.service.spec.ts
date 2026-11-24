@@ -1320,12 +1320,12 @@ describe("HarnessService provider sign-in (multi-provider agents)", () => {
 		mockPrismaService.setting.findUnique.mockResolvedValue(null);
 	});
 
-	it("refuses a run on a model whose provider the agent holds no login for, naming the provider", async () => {
+	it("starts a run on a model whose provider the agent lists no login for, warning and naming the provider", async () => {
 		expect(
 			await seeded(["Ollama Cloud"]).ensureReady("opencode", "google/gemini-4-neon"),
 		).toEqual({
-			ready: false,
-			reason:
+			ready: true,
+			warning:
 				"OpenCode is not signed in to Google. Sign in with its own CLI, then retry.",
 		});
 	});
@@ -1346,27 +1346,10 @@ describe("HarnessService provider sign-in (multi-provider agents)", () => {
 		const svc = seeded(["Google"]);
 		expect(await svc.ensureReady("opencode", null)).toEqual({ ready: true });
 		expect(await svc.ensureReady("opencode")).toEqual({
-			ready: false,
-			reason:
+			ready: true,
+			warning:
 				"OpenCode is not signed in to Anthropic. Sign in with its own CLI, then retry.",
 		});
-	});
-
-	it("checks the logins again after a provider refusal, so signing in takes effect on the next run", async () => {
-		const models = new HarnessModelsService();
-		models.rememberCheck("opencode", answered([]));
-		const check = vi.fn(async () => {
-			models.rememberCheck("opencode", answered(["Google"]));
-		});
-		const svc = new HarnessService(
-			mockPrismaService as unknown as PrismaService,
-			models,
-			{ check } as unknown as HarnessProbeService,
-		);
-		expect(await svc.ensureReady("opencode", "google/gemini-4-neon")).toEqual({
-			ready: true,
-		});
-		expect(check).toHaveBeenCalledTimes(1);
 	});
 
 	it("reports the chosen model's login as the agent's providerSignIn in the status", async () => {

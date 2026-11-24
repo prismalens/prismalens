@@ -44,8 +44,9 @@ for a in "$@"; do
 	prev=$a
 done
 case "$*" in *" -sIL "*|"-sIL "*)
-	# HANG_SIZE: headers never come; only a total time limit ends the request.
+	# HANG_SIZE: a redirect answers, then the final headers never come; only a total time limit ends it.
 	[ "\${HANG_SIZE:-}" = 1 ] || exit 0
+	printf 'HTTP/1.1 302 Found\\r\\nContent-Length: 5242880000\\r\\n\\r\\n'
 	case "$*" in *--max-time*) exit 28 ;; esac
 	sleep 60
 	exit 0 ;;
@@ -186,7 +187,7 @@ test("a mirror whose transfer breaks hands over to GitHub, and only the mirror i
 	]);
 });
 
-test("a mirror that never answers the size request still serves the archive: that request has a time limit", {
+test("a mirror that never finishes the size request still serves the archive, labelled with no size: that request has a time limit", {
 	skip,
 }, () => {
 	const t = run({ HANG_SIZE: "1" });
@@ -194,6 +195,10 @@ test("a mirror that never answers the size request still serves the archive: tha
 	cpSync(t.github, t.mirror, { recursive: true });
 	const result = t.go();
 	assert.equal(result.status, 0, result.stderr);
+	assert.match(
+		result.stdout + result.stderr,
+		/Downloading PrismaLens 0\.5\.6 for linux-x64 from downloads\.prismalens\.io\n/,
+	);
 	assert.equal(t.pl(), "genuine");
 	assert.deepEqual(t.requests(), [
 		`${GITHUB}/v0.5.6/SHA256SUMS plain`,

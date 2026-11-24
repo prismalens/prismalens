@@ -340,7 +340,7 @@ describe("InvestigationTriggerService", () => {
 			);
 		});
 
-		it("checks readiness for the alert run's own model, and skips when that model is signed out", async () => {
+		it("checks readiness for the alert run's own model, and skips when that model is not ready", async () => {
 			mockHarnessService.getSettings.mockResolvedValue({
 				harness: "auto",
 				useDefaults: { alert: { harness: "opencode", model: "google/gemini-4-neon" } },

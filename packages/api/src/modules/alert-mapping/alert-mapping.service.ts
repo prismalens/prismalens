@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Injectable, Logger } from "@nestjs/common";
+import { ORPCError } from "@orpc/nest";
 import type { Repository, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 
@@ -113,7 +114,13 @@ export class AlertMappingService {
 		try {
 			return await this.makeLinkedService(project);
 		} catch (error) {
-			if ((error as { code?: string }).code !== "P2002") throw error;
+			const code = (error as { code?: string }).code;
+			// The transaction could not start in time: answer 503 so the sender retries the delivery.
+			if (code === "P2028")
+				throw new ORPCError("SERVICE_UNAVAILABLE", {
+					message: `Could not make a service for ${project.fullName}: the database was busy`,
+				});
+			if (code !== "P2002") throw error;
 			// A concurrent first alert for this project won the unique name or link: take its service, or retry once.
 			return (
 				(await this.linkedService(project.id)) ??
