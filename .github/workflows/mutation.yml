@@ -42,8 +42,11 @@ jobs:
             shard: "dispatch 3"
             mutate: "src/infrastructure/dispatch/prisma-investigation-store.ts,src/infrastructure/dispatch/checkout-lease.ts,src/infrastructure/dispatch/job-store.ts"
           - package: "@prismalens/api"
+            shard: "harness-receipt"
+            mutate: "src/infrastructure/dispatch/harness-receipt.ts"
+          - package: "@prismalens/api"
             shard: "dispatch rest"
-            mutate: "src/infrastructure/dispatch/**/*.ts,!src/**/*.spec.ts,!src/infrastructure/dispatch/in-process-runner.ts,!src/infrastructure/dispatch/checkout-status.ts,!src/infrastructure/dispatch/event-bus.ts,!src/infrastructure/dispatch/restart-recovery.ts,!src/infrastructure/dispatch/folder-lock.ts,!src/infrastructure/dispatch/dispatcher.ts,!src/infrastructure/dispatch/run-ports.ts,!src/infrastructure/dispatch/prisma-investigation-store.ts,!src/infrastructure/dispatch/checkout-lease.ts,!src/infrastructure/dispatch/job-store.ts,!src/infrastructure/dispatch/dispatch.service.ts,!src/infrastructure/dispatch/investigation-run.ts"
+            mutate: "src/infrastructure/dispatch/**/*.ts,!src/**/*.spec.ts,!src/infrastructure/dispatch/in-process-runner.ts,!src/infrastructure/dispatch/checkout-status.ts,!src/infrastructure/dispatch/event-bus.ts,!src/infrastructure/dispatch/restart-recovery.ts,!src/infrastructure/dispatch/folder-lock.ts,!src/infrastructure/dispatch/dispatcher.ts,!src/infrastructure/dispatch/run-ports.ts,!src/infrastructure/dispatch/prisma-investigation-store.ts,!src/infrastructure/dispatch/checkout-lease.ts,!src/infrastructure/dispatch/job-store.ts,!src/infrastructure/dispatch/dispatch.service.ts,!src/infrastructure/dispatch/investigation-run.ts,!src/infrastructure/dispatch/harness-receipt.ts"
           - package: "@prismalens/api"
             shard: "dispatch.service 1"
             mutate: "src/infrastructure/dispatch/dispatch.service.ts:1-857"
@@ -105,7 +108,12 @@ jobs:
           MUTATE: ${{ matrix.mutate }}
           # A mutant that allocates without end crashes its own worker, not the runner (#1154).
           NODE_OPTIONS: --max-old-space-size=3072
-        run: pnpm --filter "${{ matrix.package }}" exec stryker run ${MUTATE:+--mutate "$MUTATE"}
+        # Its own PID namespace (#1154): a mutant that signals every process it can list (the
+        # harness receipt's sweep) reaches only Stryker's tree, never the runner's agent.
+        run: >-
+          sudo -E unshare --pid --fork --mount-proc --kill-child
+          sudo -E -u "$(id -un)" env "PATH=$PATH"
+          pnpm --filter "${{ matrix.package }}" exec stryker run ${MUTATE:+--mutate "$MUTATE"}
 
       - name: Upload the report
         if: always()
