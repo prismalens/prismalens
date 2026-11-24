@@ -16,9 +16,11 @@
  * install of the oldest release upgrades straight to the candidate.
  *
  * Usage: packed-upgrade-chain.mjs <dir-with-tarball>
+ *        packed-upgrade-chain.mjs --assets <dir> --launcher <pinned launcher.tgz>
  *   PRISMALENS_TARBALL overrides with an exact path. Env: PACKED_CHAIN_PORT (default 3107).
- *   PACKED_CHAIN_RELEASE_BASE: the candidate is a public release there; its launcher is packed
- *   pinned, as npm will carry it, and fetches that release's own archive (#1085).
+ *   --assets, --launcher: the candidate is a release not yet public: its launcher, packed once and
+ *   pinned to the draft's digests as npm will carry it, fetches the draft's own archive for this
+ *   OS from <dir>, and the nightly is that archive retagged (#1085, #1154).
  *   An old `pl` with no `upgrade` command is moved by `npm install -g`, and the hop says so.
  */
 import { execFile, execFileSync, spawn } from "node:child_process";
@@ -33,14 +35,17 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { stripVTControlCharacters } from "node:util";
+import { parseArgs, stripVTControlCharacters } from "node:util";
 import crossSpawn from "cross-spawn";
 import { baseEnv, homeDirs, killTree } from "./lib/gate-portable.mjs";
 import {
+	archiveFile,
 	mirrorPublished,
 	nightlyAfter,
-	packLauncherAt,
+	ownTarget,
+	prepareDraftRelease,
 	prepareLauncher,
+	tarballVersion,
 } from "./lib/launcher-mirror.mjs";
 import { startLocalRegistry } from "./lib/local-registry.mjs";
 import { candidateVersion, hops, releasesFrom } from "./lib/upgrade-chain.mjs";
@@ -73,10 +78,15 @@ function npm(args, { env = cleanEnv, cwd, capture = false } = {}) {
 	return r.stdout ?? "";
 }
 
+const { values: opts, positionals } = parseArgs({
+	allowPositionals: true,
+	options: { assets: { type: "string" }, launcher: { type: "string" } },
+});
+
 function findTarball() {
 	if (process.env.PRISMALENS_TARBALL)
 		return resolve(process.env.PRISMALENS_TARBALL);
-	const dir = process.argv[2];
+	const dir = positionals[0];
 	if (!dir)
 		throw new Error(
 			"usage: packed-upgrade-chain.mjs <dir-with-tarball> (or set PRISMALENS_TARBALL)",
@@ -333,7 +343,18 @@ async function walk(line, plan, written, label) {
 }
 
 async function main() {
-	const tgz = findTarball();
+	if (!opts.assets !== !opts.launcher)
+		throw new Error("--assets and --launcher go together");
+	const draft = opts.assets
+		? {
+				archive: join(
+					resolve(opts.assets),
+					archiveFile(tarballVersion(resolve(opts.launcher)), ownTarget()),
+				),
+				launcher: resolve(opts.launcher),
+			}
+		: null;
+	const tgz = draft ? draft.launcher : findTarball();
 	const own = JSON.parse(
 		tar(tgz, ["-xzOf", basename(tgz), "package/package.json"]),
 	).version;
@@ -349,42 +370,24 @@ async function main() {
 		throw new Error("npm lists no release to upgrade from");
 	const plan = hops(releases, candidate);
 	const nightly = nightlyAfter(candidate);
-	const releaseBase = process.env.PACKED_CHAIN_RELEASE_BASE;
-	if (releaseBase && candidate !== own)
+	if (draft && candidate !== own)
 		throw new Error(
 			`${own} is already on npm; a release proof needs an unpublished one`,
 		);
-	const mirror = prepareLauncher({
-		tgz,
-		work: join(work, "release"),
-		releases: [
-			...(releaseBase ? [] : [{ version: candidate, launcher: true }]),
-			{ version: nightly },
-		],
-	});
-	if (releaseBase) {
-		const tgzPinned = packLauncherAt(
-			candidate,
-			join(work, "release", "pinned"),
-			["--pin", "--release-base", releaseBase],
-		);
-		const { sha256 } = JSON.parse(
-			execFileSync(
-				"tar",
-				["-xzOf", basename(tgzPinned), "package/package.json"],
-				{
-					cwd: dirname(tgzPinned),
-					encoding: "utf8",
-				},
-			),
-		).prismalens.release;
-		await mirrorPublished(
-			mirror.root,
-			{ version: candidate, sha256 },
-			{ base: releaseBase },
-		);
-		mirror.launchers[candidate] = tgzPinned;
-	}
+	const mirror = draft
+		? prepareDraftRelease({
+				...draft,
+				work: join(work, "release"),
+				releases: [{ version: nightly }],
+			})
+		: prepareLauncher({
+				tgz,
+				work: join(work, "release"),
+				releases: [
+					{ version: candidate, launcher: true },
+					{ version: nightly },
+				],
+			});
 	const launchers = [];
 	for (const version of releases) {
 		const pins = JSON.parse(
@@ -397,7 +400,7 @@ async function main() {
 		launchers.push(version);
 	}
 	console.log(
-		`[upgrade-chain] mirror ${mirror.baseUrl}: ${candidate} (${releaseBase ? "pinned launcher, release archive" : "launcher and archive"}), ${nightly} (archive), published ${launchers.join(", ") || "none"} (release archives)`,
+		`[upgrade-chain] mirror ${mirror.baseUrl}: ${candidate} (${draft ? "pinned launcher, the draft's archive" : "launcher and archive"}), ${nightly} (archive), published ${launchers.join(", ") || "none"} (release archives)`,
 	);
 
 	const registry = await startLocalRegistry({

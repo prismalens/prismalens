@@ -151,21 +151,14 @@ test("npm's dist-tag is `previous` when npm already has a newer latest", () => {
 	const tag = (npmLatest, latest, version) =>
 		runStep(
 			step,
-			{ LATEST: latest, VERSION: version },
+			{ LATEST: latest, VERSION: version, TARBALL: "launcher/pl.tgz" },
 			{ npm: `echo "${npmLatest}"`, node: 'echo "$@"' },
 		).stdout.trim();
-	assert.equal(
-		tag("0.5.7", "true", "0.5.6"),
-		"scripts/pack-launcher.mjs --publish --tag previous",
-	);
-	assert.equal(
-		tag("0.5.5", "true", "0.5.6"),
-		"scripts/pack-launcher.mjs --publish --tag latest",
-	);
-	assert.equal(
-		tag("0.5.5", "false", "0.5.6"),
-		"scripts/pack-launcher.mjs --publish --tag previous",
-	);
+	const publish =
+		"scripts/pack-launcher.mjs --publish --tarball launcher/pl.tgz";
+	assert.equal(tag("0.5.7", "true", "0.5.6"), `${publish} --tag previous`);
+	assert.equal(tag("0.5.5", "true", "0.5.6"), `${publish} --tag latest`);
+	assert.equal(tag("0.5.5", "false", "0.5.6"), `${publish} --tag previous`);
 });
 
 /** Runs `step` as bash with `env` and the stub commands in `bin`; resolves to its exit status. */
@@ -250,23 +243,124 @@ test("two overlapping releases leave npm's latest on the newer one", async () =>
 	}
 });
 
-test("npm publishes a release only after every published release upgrades to it, pinned as npm carries it (#1085)", () => {
+/** Every job `job` waits on, directly or through others. */
+function ancestors(jobs, job, seen = new Set()) {
+	for (const need of [jobs[job].needs ?? []].flat()) {
+		if (seen.has(need)) continue;
+		seen.add(need);
+		ancestors(jobs, need, seen);
+	}
+	return seen;
+}
+
+const PROOFS = ["upgrade-chain", "release-side-checks"];
+const runs = (job) => (job.steps ?? []).map((s) => String(s.run ?? ""));
+
+test("the release proofs run before publish-release, on the draft's own assets (#1154)", () => {
 	const { jobs } = workflow("release.yml");
-	assert.deepEqual(jobs.npm.needs, [
-		"draft",
-		"publish-release",
-		"upgrade-chain",
-	]);
-	assert.deepEqual(jobs["upgrade-chain"].needs, ["draft", "publish-release"]);
-	const chain = jobs["upgrade-chain"].steps.at(-1);
+	for (const proof of PROOFS) {
+		const before = ancestors(jobs, proof);
+		assert.ok(
+			!before.has("publish-release"),
+			`${proof} waits on publish-release`,
+		);
+		assert.ok(
+			before.has("sums"),
+			`${proof} does not wait on the draft's SHA256SUMS`,
+		);
+		const download = jobs[proof].steps.filter((s) =>
+			String(s.run).includes('gh release download "$TAG"'),
+		);
+		assert.ok(download.length > 0, `${proof} downloads no draft asset`);
+		for (const step of download)
+			assert.equal(
+				step.env.GH_TOKEN,
+				"${{ github.token }}",
+				`${proof}: a draft is not public`,
+			);
+		for (const step of jobs[proof].steps)
+			assert.ok(
+				!JSON.stringify(step).includes("PACKED_CHAIN_RELEASE_BASE"),
+				proof,
+			);
+	}
 	assert.equal(
-		chain.run,
-		"node scripts/packed-upgrade-chain.mjs /tmp/tarballs",
+		jobs["upgrade-chain"].steps.at(-1).run,
+		'node scripts/packed-upgrade-chain.mjs --assets assets --launcher "$(ls launcher/prismalens-*.tgz)"',
+	);
+	const sideChecks = jobs["release-side-checks"];
+	assert.deepEqual(
+		sideChecks.strategy.matrix.include.map((m) => [m.os, m.target]),
+		[
+			["ubuntu-latest", "linux-x64"],
+			["macos-latest", "darwin-arm64"],
+			["windows-latest", "win32-x64"],
+		],
+	);
+	assert.ok(
+		sideChecks.steps
+			.at(-1)
+			.run.includes(
+				'node scripts/gate-side-checks.mjs --no-skip --archive "$(ls assets/prismalens-*-"$TARGET".*)" --launcher "$(ls launcher/prismalens-*.tgz)"',
+			),
+	);
+});
+
+test("publish-release and npm each wait on every release proof (#1154)", () => {
+	const { jobs } = workflow("release.yml");
+	for (const job of ["publish-release", "npm"])
+		for (const proof of PROOFS)
+			assert.ok(
+				[jobs[job].needs].flat().includes(proof),
+				`${job} does not need ${proof}`,
+			);
+	assert.ok(ancestors(jobs, "npm").has("publish-release"));
+});
+
+test("a release builds each artifact once: no job after the build stage rebuilds one (#1154)", () => {
+	const { jobs } = workflow("release.yml");
+	const rebuilds = Object.keys(jobs).filter((name) =>
+		runs(jobs[name]).some((r) =>
+			/pack-cli|build-standalone|\bpnpm (run )?(build|pack)\b/.test(r),
+		),
+	);
+	assert.deepEqual(rebuilds, []);
+	const packsLauncher = Object.keys(jobs).filter((name) =>
+		runs(jobs[name]).some(
+			(r) => /pack-launcher.mjs/.test(r) && !r.includes("--tarball"),
+		),
+	);
+	assert.deepEqual(packsLauncher, ["launcher"]);
+	for (const user of [...PROOFS, "npm"]) {
+		const download = jobs[user].steps.find((s) =>
+			String(s.uses).startsWith("actions/download-artifact@"),
+		);
+		assert.equal(download.with.name, "release-launcher", user);
+		assert.ok(ancestors(jobs, user).has("launcher"), user);
+	}
+	const upload = jobs.launcher.steps.find((s) =>
+		String(s.uses).startsWith("actions/upload-artifact@"),
+	);
+	assert.equal(upload.with.name, "release-launcher");
+});
+
+test("npm publishes the launcher the proofs ran, as packed", () => {
+	const { jobs } = workflow("release.yml");
+	const publish = jobs.npm.steps.find((s) =>
+		String(s.run).includes("pack-launcher.mjs --publish"),
+	);
+	assert.ok(
+		publish.run
+			.trim()
+			.endsWith(
+				'node scripts/pack-launcher.mjs --publish --tarball "$TARBALL" --tag "$tag"',
+			),
 	);
 	assert.equal(
-		chain.env.PACKED_CHAIN_RELEASE_BASE,
-		"https://github.com/${{ github.repository }}/releases/download",
+		publish.env.TARBALL,
+		"launcher/prismalens-${{ needs.draft.outputs.version }}.tgz",
 	);
+	assert.equal(publish.env.GH_TOKEN, "");
 });
 
 test("a Nightly whose only red jobs never got a runner or hit the network is rerun once, as CI is (#1085)", () => {

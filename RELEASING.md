@@ -60,6 +60,13 @@ What stays manual, because a runner cannot do it:
 
 Flaky gate checks are tracked in #742 - Release-gate CI checks pass or fail on the same commit: App boot on Windows and Packed intake.
 
+## The release run
+`.github/workflows/release.yml` builds every artifact once and proves those bytes before anything is public (#1154):
+1. The draft release gets the archives and `SHA256SUMS`.
+2. `launcher` packs the npm launcher once, pinned to the draft's digests (`pack-launcher.mjs --assets`), and uploads it.
+3. `upgrade-chain` and `release-side-checks` (Linux, macOS, Windows) download the draft's archive for their OS with the job's token and run on it with that launcher. A red proof leaves the release a draft.
+4. `publish-release` makes the release public, then `npm` publishes the same launcher file (`pack-launcher.mjs --publish --tarball`), after checking that the public release holds the digests it pins.
+
 ## Patch release
 In 0.x every release is a patch (`0.N.P`), whatever its commits: fixes, features and breaking changes alike. `versioning: always-bump-patch` in `release-please-config.json` holds the line ([VERSIONING.md](VERSIONING.md)).
 
