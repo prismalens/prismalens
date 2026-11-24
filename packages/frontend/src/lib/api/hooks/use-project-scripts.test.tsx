@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderHookWithApp } from "@/test/render";
 import { useEditProjectScript } from "./use-project-scripts";
 
 const { addScriptSpy, updateScriptSpy, removeScriptSpy } = vi.hoisted(() => ({
@@ -42,60 +41,16 @@ vi.mock("../orpc-client", () => ({
 	},
 }));
 
-(
-	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
-function HookHarness<T>({
-	hook,
-	onResult,
-}: {
-	hook: () => T;
-	onResult: (value: T) => void;
-}) {
-	onResult(hook());
-	return null;
-}
-
-function renderHook<T>(hook: () => T, queryClient: QueryClient) {
-	const result = { current: undefined as unknown as T };
-	const container = document.createElement("div");
-	document.body.appendChild(container);
-	const root = createRoot(container);
-	act(() => {
-		root.render(
-			<QueryClientProvider client={queryClient}>
-				<HookHarness
-					hook={hook}
-					onResult={(value) => {
-						result.current = value;
-					}}
-				/>
-			</QueryClientProvider>,
-		);
-	});
-	return { result, container };
-}
-
 describe("useEditProjectScript", () => {
-	let queryClient: QueryClient;
-
 	beforeEach(() => {
-		queryClient = new QueryClient({
-			defaultOptions: {
-				queries: { retry: false },
-				mutations: { retry: false },
-			},
-		});
 		vi.clearAllMocks();
 	});
 
 	it("executes addScript and invalidates threads.context and repositories.scripts queries", async () => {
-		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
-		const { result } = renderHook(
-			() => useEditProjectScript("proj-1"),
-			queryClient,
+		const { result, queryClient } = await renderHookWithApp(() =>
+			useEditProjectScript("proj-1"),
 		);
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
 		await act(async () => {
 			await result.current.mutateAsync({
@@ -119,9 +74,8 @@ describe("useEditProjectScript", () => {
 	});
 
 	it("executes updateScript", async () => {
-		const { result } = renderHook(
-			() => useEditProjectScript("proj-1"),
-			queryClient,
+		const { result } = await renderHookWithApp(() =>
+			useEditProjectScript("proj-1"),
 		);
 
 		await act(async () => {
@@ -142,9 +96,8 @@ describe("useEditProjectScript", () => {
 	});
 
 	it("executes removeScript", async () => {
-		const { result } = renderHook(
-			() => useEditProjectScript("proj-1"),
-			queryClient,
+		const { result } = await renderHookWithApp(() =>
+			useEditProjectScript("proj-1"),
 		);
 
 		await act(async () => {

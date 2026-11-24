@@ -3,13 +3,8 @@
 // Copyright 2026 Sumit Patel
 
 import type { ServiceIntegrationWithStatus } from "@prismalens/contracts";
-import {
-	QueryClient,
-	QueryClientProvider,
-	useQuery,
-} from "@tanstack/react-query";
-import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, useQuery } from "@tanstack/react-query";
+import { act, createElement, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	serviceIntegrationsKeys,
@@ -19,6 +14,7 @@ import {
 	useUpdateServiceIntegration,
 } from "@/lib/api/hooks/use-integrations-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+import { type RenderedApp, renderWithApp } from "@/test/render";
 import {
 	movedOrder,
 	orderRows,
@@ -61,20 +57,22 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 });
 
 let container: HTMLDivElement;
-let root: Root;
+let app: RenderedApp | undefined;
+
+async function show(ui: ReactElement) {
+	if (app) await app.rerender(ui);
+	else app = await renderWithApp(ui);
+	container = app.container;
+}
 
 beforeEach(() => {
 	reorderMutate.mockReset();
 	updateMutate.mockReset();
 	reorderPending = false;
-	container = document.createElement("div");
-	document.body.appendChild(container);
-	root = createRoot(container);
+	app = undefined;
 });
 
-afterEach(async () => {
-	await act(async () => root.unmount());
-	container.remove();
+afterEach(() => {
 	vi.restoreAllMocks();
 });
 
@@ -148,13 +146,11 @@ describe("ServiceTelemetrySection reordering UI (case 11)", () => {
 			makeRow("ov-2", 5, "Prom B"),
 		];
 
-		await act(async () =>
-			root.render(
-				createElement(ServiceTelemetrySection, {
-					serviceId: "svc-1",
-					integrations: twoMappings,
-				}),
-			),
+		await show(
+			createElement(ServiceTelemetrySection, {
+				serviceId: "svc-1",
+				integrations: twoMappings,
+			}),
 		);
 
 		const hint = container.querySelector('[data-testid="mapping-order-hint"]');
@@ -162,13 +158,11 @@ describe("ServiceTelemetrySection reordering UI (case 11)", () => {
 		expect(hint?.textContent).toBe("Higher rows win.");
 
 		// Render with only one mapping
-		await act(async () =>
-			root.render(
-				createElement(ServiceTelemetrySection, {
-					serviceId: "svc-1",
-					integrations: [makeRow("ov-1", 10, "Prom A")],
-				}),
-			),
+		await show(
+			createElement(ServiceTelemetrySection, {
+				serviceId: "svc-1",
+				integrations: [makeRow("ov-1", 10, "Prom A")],
+			}),
 		);
 		expect(
 			container.querySelector('[data-testid="mapping-order-hint"]'),
@@ -188,13 +182,11 @@ describe("ServiceTelemetrySection reordering UI (case 11)", () => {
 			},
 		);
 
-		await act(async () =>
-			root.render(
-				createElement(ServiceTelemetrySection, {
-					serviceId: "svc-1",
-					integrations,
-				}),
-			),
+		await show(
+			createElement(ServiceTelemetrySection, {
+				serviceId: "svc-1",
+				integrations,
+			}),
 		);
 
 		// Open first row: Prom A
@@ -239,13 +231,11 @@ describe("ServiceTelemetrySection reordering UI (case 11)", () => {
 	});
 
 	it("a mapped row's name is its switch's label: tapping it switches the mapping (#848 touch)", async () => {
-		await act(async () =>
-			root.render(
-				createElement(ServiceTelemetrySection, {
-					serviceId: "svc-1",
-					integrations: [makeRow("ov-1", 10, "Prom A")],
-				}),
-			),
+		await show(
+			createElement(ServiceTelemetrySection, {
+				serviceId: "svc-1",
+				integrations: [makeRow("ov-1", 10, "Prom A")],
+			}),
 		);
 		const sw = container.querySelector('[data-testid="mapping-switch"]');
 		const label = Array.from(container.querySelectorAll("label")).find(
@@ -267,13 +257,11 @@ describe("ServiceTelemetrySection reordering UI (case 11)", () => {
 			makeRow("ov-2", 5, "Prom B"),
 		];
 
-		await act(async () =>
-			root.render(
-				createElement(ServiceTelemetrySection, {
-					serviceId: "svc-1",
-					integrations,
-				}),
-			),
+		await show(
+			createElement(ServiceTelemetrySection, {
+				serviceId: "svc-1",
+				integrations,
+			}),
 		);
 
 		const editBtn = container.querySelector(
@@ -306,13 +294,10 @@ async function afterMutation(
 	const server = { order: "ov-1,ov-2" };
 	const rowsFn = vi.fn(async () => server.order);
 	const matrixFn = vi.fn(async () => server.order.split(",")[0]);
-	vi.stubGlobal(
-		"fetch",
-		vi.fn(async () => {
-			server.order = "ov-2,ov-1";
-			return Response.json({});
-		}),
-	);
+	const moves = () => {
+		server.order = "ov-2,ov-1";
+		return {};
+	};
 	const queryClient = new QueryClient({
 		defaultOptions: { queries: { retry: false, staleTime: 30_000 } },
 	});
@@ -337,15 +322,16 @@ async function afterMutation(
 			`${rows.data ?? ""}|${matrix.data ?? ""}`,
 		);
 	}
-	await act(async () =>
-		root.render(
-			createElement(
-				QueryClientProvider,
-				{ client: queryClient },
-				createElement(View),
-			),
-		),
-	);
+	const mounted = await renderWithApp(createElement(View), {
+		queryClient,
+		api: {
+			"integrations.createServiceIntegration": moves,
+			"integrations.setServiceIntegrationOrder": moves,
+			"integrations.updateServiceIntegration": moves,
+			"integrations.deleteServiceIntegration": moves,
+		},
+	});
+	const container = mounted.container;
 	const view = () =>
 		container.querySelector('[data-testid="view"]')?.textContent;
 	for (let i = 0; i < 50 && view() !== "ov-1,ov-2|ov-1"; i++)
@@ -364,8 +350,6 @@ async function afterMutation(
 }
 
 describe("mapping mutations refresh the rows and the matrix (#848 case 11, 12)", () => {
-	afterEach(() => vi.unstubAllGlobals());
-
 	it("a move refetches the rows and the preview, so the new order shows", async () => {
 		const r = await afterMutation(useSetServiceIntegrationOrder, {
 			serviceId: "svc-1",
