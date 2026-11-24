@@ -477,6 +477,9 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
    - Coverage shows a reviewer what is untested; it is not a target. Each package's
      floor in `vitest.config.ts` is a ratchet: raise it, never lower it. A new module
      needs no per-file entry.
+     On a PR, the *Unit tests* job lists the added lines no test runs, in its summary
+     and as notices on the diff (`scripts/changed-line-coverage.mjs`). CodeRabbit reviews
+     tests only against the test rules in `AGENTS.md`.
 
    Fix the implementation, not the test, unless the test is wrong. A frontend unit test that reaches the API fails
    (`src/test-setup.ts`): mock the hook or give the component the data it reads.

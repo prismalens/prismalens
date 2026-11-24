@@ -29,7 +29,7 @@ export default defineConfig({
 			provider: "v8",
 			include: ["src/**/*.ts"],
 			exclude: ["src/**/*.test.ts"],
-			reporter: ["text-summary", "text"],
+			reporter: ["text-summary", "text", "lcov"],
 			thresholds: {
 				// perFile so one well-covered module cannot mask a thin one.
 				perFile: true,

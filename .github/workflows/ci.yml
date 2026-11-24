@@ -146,6 +146,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A PR's merge commit and its base, for the changed-line coverage below.
+          fetch-depth: 2
 
       - name: Setup pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -175,6 +178,11 @@ jobs:
         run: |
           pnpm turbo run test --filter='!@prismalens/api'
           pnpm turbo run test:cov --filter=@prismalens/api
+
+      # The PR's added lines no test runs, in the job summary and inline on the diff; never fails.
+      - name: Changed-line coverage
+        if: github.event_name == 'pull_request'
+        run: node scripts/changed-line-coverage.mjs HEAD^1
 
   # The api's tests with the clock 40 days ahead: a test written against today's date fails
   # here on its PR, not on the day it expires (#1085; the cron.spec 7-day bomb from #1088).
