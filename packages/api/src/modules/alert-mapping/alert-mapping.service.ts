@@ -2,23 +2,28 @@
 // Copyright 2026 Sumit Patel
 
 import { Injectable, Logger } from "@nestjs/common";
-import type { Service } from "@prismalens/database";
+import type { Repository, Service } from "@prismalens/database";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 
 export interface AlertInfo {
 	source?: string;
 	labels?: Record<string, string>;
+	/** The webhook's `serviceName` field: counts exactly like the `service` label. */
+	serviceName?: string;
 	tags?: string[];
 	title: string;
 	description?: string;
 }
 
+const lastSegment = (name: string) => name.split("/").pop() ?? name;
+
 /**
- * The rule editor, the health report and the "Alert mapping issues" card are
- * deferred along with the correlation module (prismalens/prismalens#608, C5 on
- * #337). Intake keeps exactly one lookup: an exact match of the alert's
- * `service` label against `Service.name`. No rule table, no priority order,
- * no configurability.
+ * Intake's one service lookup (#1008 N4). The name an alert carries, from its
+ * `serviceName` field or its `service` label, matches a `Service.name` exactly;
+ * failing that it matches a project (a git repository the user added), whose
+ * service is made on first use. An alert that names nothing goes to the
+ * workspace's only project, if there is exactly one. A name that matches
+ * nothing stays unrouted: a typo must not land on the wrong code.
  */
 @Injectable()
 export class AlertMappingService {
@@ -26,29 +31,87 @@ export class AlertMappingService {
 
 	constructor(private readonly prisma: PrismaService) {}
 
-	/**
-	 * Resolve which service an alert belongs to from its `service` label.
-	 * Returns null when the alert carries no `service` label, or when the
-	 * label's value does not exactly match any `Service.name`.
-	 */
 	async resolveServiceForAlert(alert: AlertInfo): Promise<Service | null> {
-		const serviceLabel = alert.labels?.service;
-		if (!serviceLabel) return null;
+		const names = [alert.serviceName, alert.labels?.service]
+			.map((n) => n?.trim())
+			.filter((n): n is string => !!n);
 
-		const service = await this.prisma.service.findUnique({
-			where: { name: serviceLabel },
-		});
-
-		if (service) {
+		for (const name of names) {
+			const service = await this.prisma.service.findUnique({ where: { name } });
+			if (service) {
+				this.logger.debug(
+					`Alert "${alert.title}" mapped to service "${service.name}" by exact name match`,
+				);
+				return service;
+			}
+		}
+		if (names.length > 0) {
+			for (const name of names) {
+				const project = await this.projectNamed(name);
+				if (project) return this.serviceOf(project);
+			}
 			this.logger.debug(
-				`Alert "${alert.title}" mapped to service "${service.name}" by exact label match`,
+				`Alert "${alert.title}" names "${names.join('", "')}" but no service or project has that name`,
 			);
-		} else {
-			this.logger.debug(
-				`Alert "${alert.title}" carries service label "${serviceLabel}" but no service has that name`,
-			);
+			return null;
 		}
 
+		const projects = await this.prisma.repository.findMany({
+			where: { plain: false },
+			take: 2,
+			orderBy: { createdAt: "asc" },
+		});
+		const only = projects.length === 1 ? projects[0] : undefined;
+		if (!only) return null;
+		// Another service already in the workspace means the user routes by name.
+		const services = await this.prisma.service.count();
+		const linked = await this.prisma.serviceRepository.count({
+			where: { repositoryId: only.id },
+		});
+		if (services > 0 && linked === 0) return null;
+		return this.serviceOf(only);
+	}
+
+	private async projectNamed(name: string): Promise<Repository | null> {
+		const wanted = name.toLowerCase();
+		const projects = await this.prisma.repository.findMany({
+			where: { plain: false },
+		});
+		const exact = projects.filter((p) => p.fullName.toLowerCase() === wanted);
+		const found =
+			exact.length > 0
+				? exact
+				: projects.filter(
+						(p) => lastSegment(p.fullName).toLowerCase() === wanted,
+					);
+		// Two projects that share a folder name are ambiguous: route neither.
+		return found.length === 1 ? (found[0] ?? null) : null;
+	}
+
+	/** The project's primary service; made, named for the project, when it has none. */
+	private async serviceOf(project: Repository): Promise<Service> {
+		const link = await this.prisma.serviceRepository.findFirst({
+			where: { repositoryId: project.id },
+			orderBy: { isPrimary: "desc" },
+			include: { service: true },
+		});
+		if (link) return link.service;
+
+		const name = lastSegment(project.fullName);
+		const service =
+			(await this.prisma.service.findUnique({ where: { name } })) ??
+			(await this.prisma.service.create({ data: { name } }));
+		await this.prisma.serviceRepository.create({
+			data: {
+				serviceId: service.id,
+				repositoryId: project.id,
+				subPath: project.subPath,
+				isPrimary: true,
+			},
+		});
+		this.logger.log(
+			`Project ${project.fullName} became service "${service.name}" because an alert reached it`,
+		);
 		return service;
 	}
 }

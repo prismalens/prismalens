@@ -594,18 +594,17 @@ export class WebhooksService {
 
 		this.logger.log(`Created event ${event.id} from generic webhook`);
 
-		// 3. Resolve the service: an explicit serviceId, then serviceName, then
-		// the mapping rules. An id or name that matches nothing falls through.
+		// 3. Resolve the service: an explicit serviceId, then the one name lookup
+		// (`serviceName`, the `service` label, a project of that name). An id that
+		// matches nothing falls through.
 		const mappedService =
 			(dto.serviceId
 				? await this.servicesService.findById(dto.serviceId)
 				: null) ??
-			(dto.serviceName
-				? await this.servicesService.findByName(dto.serviceName)
-				: null) ??
 			(await this.alertMappingService.resolveServiceForAlert({
 				source: dto.source ?? "generic",
 				labels: dto.labels,
+				serviceName: dto.serviceName,
 				tags: dto.tags,
 				title: dto.title,
 				description: dto.description,

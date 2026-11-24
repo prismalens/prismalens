@@ -62,7 +62,7 @@ export interface TriggerDecision {
 export const REOPEN_RUN_SPACING_MS = 60 * 60 * 1000;
 
 export const NO_SERVICE_REASON =
-	"The incident has no service, so there is no repository to investigate. Alerts reach a service through a `service` label whose value is the service's name; add it to the alert, or pick the service on the incident and press Investigate.";
+	"This alert did not say which project it is about, so there is no code to look at. Add the label `service=<project name>` (or the field `serviceName`) to the alert, or open the incident, pick its service and press Investigate.";
 
 /** The service's own policy from `metadata.investigation.trigger`; the default when absent or invalid. */
 export function readTriggerPolicy(metadata: string | null): TriggerPolicy {
