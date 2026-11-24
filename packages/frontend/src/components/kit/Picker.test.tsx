@@ -305,4 +305,65 @@ describe("Picker", () => {
 		root = createRoot(container);
 		expect(await mount(9)).toBe("outline-none max-h-[320px] overflow-y-auto");
 	});
+	it("moves along the rail on Up and Down, goes to the search on Right and back on Left, and runs an action tile", async () => {
+		const onChange = vi.fn();
+		const add = vi.fn();
+		await act(async () => {
+			root.render(
+				<PickerList
+					label="Model"
+					options={[{ id: "m1", name: "Model one" }]}
+					groups={[""]}
+					values={[]}
+					emptyText="None"
+					pick={vi.fn()}
+					rail={{
+						label: "Agents",
+						value: "a",
+						onChange,
+						items: [
+							{ id: "starred", name: "Starred" },
+							{ id: "a", name: "Agent A" },
+							{ id: "b", name: "Agent B" },
+							{ id: "add", name: "Add agent", run: add },
+						],
+					}}
+				/>,
+			);
+		});
+		expect(
+			document
+				.querySelector('[data-testid="picker-rail"]')
+				?.getAttribute("role"),
+		).toBe("tablist");
+		const input = document.querySelector<HTMLInputElement>("[cmdk-input]");
+		expect(document.activeElement).toBe(input);
+		const key = (el: HTMLElement | null, k: string) =>
+			act(() => {
+				el?.dispatchEvent(
+					new KeyboardEvent("keydown", { key: k, bubbles: true }),
+				);
+			});
+		await key(input, "ArrowLeft");
+		const tab = (id: string) =>
+			document.querySelector<HTMLElement>(`[data-testid="rail-${id}"]`);
+		expect(document.activeElement).toBe(tab("a"));
+		await key(tab("a"), "ArrowDown");
+		expect(document.activeElement).toBe(tab("b"));
+		expect(onChange).toHaveBeenLastCalledWith("b");
+		await key(tab("a"), "ArrowUp");
+		expect(onChange).toHaveBeenLastCalledWith("starred");
+		await key(tab("a"), "ArrowRight");
+		expect(document.activeElement).toBe(input);
+		expect(
+			document
+				.querySelector('[data-testid="rail-a"]')
+				?.getAttribute("aria-selected"),
+		).toBe("true");
+		act(() =>
+			document.querySelector<HTMLElement>('[data-testid="rail-add"]')?.click(),
+		);
+		expect(add).toHaveBeenCalledTimes(1);
+		expect(onChange).toHaveBeenCalledTimes(2);
+	});
 });

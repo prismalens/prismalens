@@ -408,11 +408,17 @@ describe("no Default row, real names and only runnable agents (#902 f10, #907)",
 		expect(html).toContain('aria-pressed="true"');
 	});
 
-	it("groups only agents that can run, and offers Add agent", () => {
+	it("puts only agents that can run on the rail, with Starred first and Add agent last", () => {
 		const html = render("");
-		expect(html).toContain(">Claude Code<");
-		expect(html).not.toContain(">Codex<");
-		expect(html).toContain('data-testid="rail-add-agent"');
+		const tiles = Array.from(html.matchAll(/data-testid="(rail-[^"]+)"/g), (m) => m[1]);
+		expect(tiles).toEqual(["rail-starred", "rail-claude-code", "rail-add-agent"]);
+	});
+
+	it("opens on the box's own agent, its models under their provider and its search named for it", () => {
+		const html = render("claude-sonnet-5-5");
+		expect(html).toMatch(/data-testid="rail-claude-code"[^>]*aria-selected="true"|aria-selected="true"[^>]*data-testid="rail-claude-code"/);
+		expect(html).toContain('placeholder="Search Claude Code models"');
+		expect(html).toContain(">Anthropic<");
 	});
 
 	it("an off agent and its models are not offered, even when it is the current selection (#1171)", () => {
@@ -459,10 +465,11 @@ describe("no Default row, real names and only runnable agents (#902 f10, #907)",
 				onPick: vi.fn(),
 			}),
 		);
+		expect(html).not.toContain('data-testid="rail-claude-code"');
+		expect(html).toContain('data-testid="rail-codex"');
 		const listHtml = html.slice(html.indexOf('data-testid="agent-picker-list"'));
-		expect(listHtml).not.toContain("Claude Code");
 		expect(listHtml).not.toContain("Sonnet 5.5");
-		expect(listHtml).toContain("Codex");
+		expect(listHtml).toContain('placeholder="Search Codex models"');
 		expect(listHtml).toContain("GPT-4o");
 	});
 });

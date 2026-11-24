@@ -149,9 +149,12 @@ function agentRows(
 	return [...unknown, ...runsNow, ...ids.map((m) => row(m))];
 }
 
+const STARRED = "starred";
+
 /**
- * The agent and model picker (sheet §5): the kit picker, one group per agent
- * that can run with starred models first, a star on each row, and Add agent.
+ * The agent and model picker (#673 w7, restored on the kit): a rail of Starred, each
+ * agent that can run and Add agent; beside it the shown tile's models under their
+ * providers, a star on each row. It opens on the box's own agent.
  */
 export function ModelChip({
 	harness,
@@ -178,10 +181,11 @@ export function ModelChip({
 	const update = useUpdateHarnessSettings();
 	const check = useCheckHarness();
 	const [adding, setAdding] = useState(false);
+	const [tile, setTile] = useState<string>(harness?.id ?? STARRED);
 	const { harnesses, models, isLoading } = prefs;
 	// The rows rebuild only when what they show changes: every agent's models, with marks,
 	// took over 100 ms on a slowed CPU at each data arrival (#1101 cat 1.8).
-	const { onList, options } = useMemo(() => {
+	const { onList, options, shownId } = useMemo(() => {
 		// Only agents that can run, plus the one this box is on, so a choice never vanishes (#907); never an Off one (#1171).
 		const onList = harnesses
 			.filter((h) => !h.off && (h.runnable || h.id === harness?.id))
@@ -251,7 +255,7 @@ export function ModelChip({
 			trailing: star(r),
 			testId: "model-option",
 		});
-		const starred = starredOf(harnesses, models).flatMap((f) => {
+		const starredRows = starredOf(harnesses, models).flatMap((f) => {
 			const h = onList.find((x) => x.id === f.harness);
 			return h
 				? [
@@ -261,42 +265,47 @@ export function ModelChip({
 								model: f.model,
 								name: modelName(h, f.model) ?? f.model,
 							},
-							"Starred",
+							"",
 							true,
 						),
 					]
 				: [];
 		});
-		const options: PickerOption[] = [
-			...starred,
-			...onList.flatMap((h): PickerOption[] => {
-				const state = modelState(h);
-				if (state === "pending")
-					return [
-						{
-							id: `check::${h.id}`,
-							name: check.isPending ? "Checking" : "List its models",
-							group: h.label,
-							icon: RefreshCw,
-							run: () => check.mutate({ id: h.id as HarnessId }),
-							testId: "model-pending",
-						},
-					];
-				if (state === "own")
-					return [
-						{
-							id: pickId(h, ""),
-							name: "Its own model",
-							group: h.label,
-							mark: <AgentMark id={h.id} className="size-3.5" />,
-						},
-					];
-				const chosen =
-					harness?.id === h.id ? model : (models[h.id as HarnessId] ?? "");
-				return agentRows(h, prefs, chosen).map((r) => option(r, h.label));
-			}),
-		];
-		return { onList, options };
+		// The box's agent may be off the rail (turned off, uninstalled): the first agent shows.
+		const shown =
+			tile === STARRED
+				? undefined
+				: (onList.find((h) => h.id === tile) ?? onList[0]);
+		const options: PickerOption[] = !shown
+			? starredRows
+			: ((h): PickerOption[] => {
+					const state = modelState(h);
+					if (state === "pending")
+						return [
+							{
+								id: `check::${h.id}`,
+								name: check.isPending ? "Checking" : "List its models",
+								icon: RefreshCw,
+								run: () => check.mutate({ id: h.id as HarnessId }),
+								testId: "model-pending",
+							},
+						];
+					if (state === "own")
+						return [
+							{
+								id: pickId(h, ""),
+								name: "Its own model",
+								mark: <AgentMark id={h.id} className="size-3.5" />,
+							},
+						];
+					const chosen =
+						harness?.id === h.id ? model : (models[h.id as HarnessId] ?? "");
+					// Under the shown agent, rows sit under who serves them (#673 w7).
+					return agentRows(h, prefs, chosen).map((r) =>
+						option(r, r.provider ?? h.label),
+					);
+				})(shown);
+		return { onList, options, shownId: shown?.id ?? STARRED };
 	}, [
 		prefs,
 		harness,
@@ -307,6 +316,7 @@ export function ModelChip({
 		models,
 		harnesses.filter,
 		harnesses,
+		tile,
 	]);
 	// With none picked, the row ticked is the one the chip names: what the agent runs, else its first (#907).
 	const current =
@@ -341,6 +351,39 @@ export function ModelChip({
 				label="Model"
 				fact="model"
 				options={options}
+				onOpenChange={(open) => {
+					if (open) setTile(harness?.id ?? STARRED);
+				}}
+				rail={{
+					label: "Agents",
+					value: shownId,
+					onChange: setTile,
+					items: [
+						{
+							id: STARRED,
+							name: "Starred",
+							icon: Star,
+							testId: "rail-starred",
+						},
+						...onList.map((h) => ({
+							id: h.id,
+							name: h.label,
+							mark: <AgentMark id={h.id} className="size-5" />,
+							testId: `rail-${h.id}`,
+						})),
+						{
+							id: "add-agent",
+							name: "Add agent",
+							icon: Plus,
+							run: () => setAdding(true),
+							testId: "rail-add-agent",
+						},
+					],
+				}}
+				emptyText={shownId === STARRED ? "No starred models" : "No match"}
+				{...(harness && !isLoading && modelState(harness) !== "own"
+					? { hint: `via ${harness.label}` }
+					: {})}
 				value={harness ? pickId(harness, current ?? "") : ""}
 				onChange={(id) => {
 					const [hid, ...rest] = id.split("::");
@@ -351,16 +394,7 @@ export function ModelChip({
 					name: isLoading ? (early?.name ?? "…") : shown,
 					...(chipMark ? { mark: chipMark } : {}),
 				}}
-				actions={[
-					{
-						id: "add-agent",
-						name: "Add agent",
-						icon: Plus,
-						run: () => setAdding(true),
-						testId: "rail-add-agent",
-					},
-				]}
-				searchPlaceholder="Search models"
+				searchPlaceholder={`Search ${onList.find((h) => h.id === shownId)?.label ?? "starred"} models`}
 				short={shortModel}
 				disabled={disabled}
 				side={side}

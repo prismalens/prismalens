@@ -72,6 +72,21 @@ describe("ModelChip", () => {
 		expect(host.querySelector("[data-testid=maker-lettermark]")).toBeNull();
 	});
 
+	it("names the agent the model runs on after the model, so a maker's mark is never alone", () => {
+		const host = document.createElement("div");
+		document.body.appendChild(host);
+		act(() =>
+			createRoot(host).render(
+				<ModelChip harness={opencode} model={GOOGLE_MODEL} onPick={vi.fn()} />,
+			),
+		);
+		expect(
+			host
+				.querySelector("[data-testid=agent-picker]")
+				?.getAttribute("aria-label"),
+		).toBe("Model: Gemini 4 Neon · via OpenCode");
+	});
+
 	it("shows the OpenCode logo when the model names no maker", () => {
 		const host = document.createElement("div");
 		document.body.appendChild(host);

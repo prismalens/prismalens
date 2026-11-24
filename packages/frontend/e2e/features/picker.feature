@@ -1,17 +1,18 @@
 # flows-v3.feature, @pr2: Agent and model picker.
-# #1101 folded the agent rail into the list: one group per agent, Starred first.
+# #673 w7's rail is back: Starred, one tile per agent that can run, Add agent; the list
+# beside it holds the shown tile's models under their providers.
 @pr2
 Feature: Agent and model picker
 
-  Scenario: Each agent is a group of its models, with Starred first
+  Scenario: Each agent is a tile on the rail, with Starred first
     Given OpenCode, Claude Code and Codex are installed and deepagents is not
     When I open the picker in Settings, Models
-    Then the list has one group per installed agent, headed by its name, and none for deepagents
-    And OpenCode's group shows its models by their own names, no Default row, each named once
+    Then the rail has Starred, a tile per installed agent and Add agent, and none for deepagents
+    And OpenCode's tile shows its models by their own names, no Default row, each named once
     When I type "sonnet" in the search
     Then only models matching "sonnet" remain
     When I star "Claude Sonnet 5.5"
-    Then it is listed under Starred and first in OpenCode's group on the next open
+    Then it is listed under Starred and first on OpenCode's tile on the next open
 
   Scenario: The box's chips follow what the agent supports
     When I pick Codex and open a new run's draft
@@ -49,7 +50,7 @@ Feature: Agent and model picker
     Then the picker's chip, the Settings row and the box on an incident all read "Claude Sonnet 5.5"
     And "DeepSeek V4.1 Flash (free)" carries the warning "Trains on your prompts" and the picker ticks one model by its name, with no Default row
 
-  Scenario: Rows carry their maker's mark, the search names the agent, Starred holds favourites across agents
-    Then every row in an agent's group carries a mark, and searching an agent's name finds its models
+  Scenario: Rows carry their maker's mark, each tile holds its agent's models, Starred holds favourites across agents
+    Then every row on an agent's tile carries a mark, and each tile shows only its agent's models
     When I open the picker with a model starred on OpenCode and on Claude Code
-    Then both are listed under Starred, each with its agent's mark
+    Then both are on the Starred tile, each with its agent's mark
