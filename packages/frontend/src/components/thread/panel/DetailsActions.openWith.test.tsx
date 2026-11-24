@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type RenderedApp, renderWithApp } from "@/test/render";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { DetailsFolder, useOpenWith } from "./DetailsActions";
 import "./details.actions";
 import "./details.surface";
@@ -74,15 +75,18 @@ function mount(open: (e?: EditorChoice) => void) {
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false } },
 	});
-	let app: RenderedApp | undefined;
+	const root = createRoot(document.createElement("div"));
 	return {
 		result,
 		client,
-		render: async () => {
-			const ui = <Harness open={open} result={result} />;
-			if (app) await app.rerender(ui);
-			else app = await renderWithApp(ui, { queryClient: client });
-		},
+		render: () =>
+			act(async () => {
+				root.render(
+					<QueryClientProvider client={client}>
+						<Harness open={open} result={result} />
+					</QueryClientProvider>,
+				);
+			}),
 	};
 }
 
@@ -240,32 +244,56 @@ describe("the folder split names no provisional default (#1176)", () => {
 
 	/** Inside a place row that leaves the name no slack, so the split folds to one control. */
 	async function renderNarrow() {
-		const { container } = await renderWithApp(
-			<div data-testid="details-place">
-				<div>
-					<span data-testid="details-place-name" />
-				</div>
-				<DetailsFolder
-					ctx={{
-						...baseCtx,
-						facts: { is: { folder: true, terminal: true } },
-						opener: { os: "linux", owner: true, open: vi.fn() },
-					}}
-				/>
-			</div>,
-		);
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		await act(async () => {
+			root.render(
+				<QueryClientProvider client={client}>
+					<TooltipProvider>
+						<div data-testid="details-place">
+							<div>
+								<span data-testid="details-place-name" />
+							</div>
+							<DetailsFolder
+								ctx={{
+									...baseCtx,
+									facts: { is: { folder: true, terminal: true } },
+									opener: { os: "linux", owner: true, open: vi.fn() },
+								}}
+							/>
+						</div>
+					</TooltipProvider>
+				</QueryClientProvider>,
+			);
+		});
 		return container;
 	}
 
 	async function renderSplit() {
-		const { container } = await renderWithApp(
-			<DetailsFolder
-				ctx={{
-					...baseCtx,
-					opener: { os: "linux", owner: true, open: vi.fn() },
-				}}
-			/>,
-		);
+		const container = document.createElement("div");
+		document.body.appendChild(container);
+		const root = createRoot(container);
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		await act(async () => {
+			root.render(
+				<QueryClientProvider client={client}>
+					<TooltipProvider>
+						<DetailsFolder
+							ctx={{
+								...baseCtx,
+								opener: { os: "linux", owner: true, open: vi.fn() },
+							}}
+						/>
+					</TooltipProvider>
+				</QueryClientProvider>,
+			);
+		});
 		return container;
 	}
 

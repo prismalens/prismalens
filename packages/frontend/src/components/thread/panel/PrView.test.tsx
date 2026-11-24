@@ -3,9 +3,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { PrCheckLog, PrCheckRun, ThreadLink } from "@prismalens/contracts";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type RenderedApp, renderWithApp } from "@/test/render";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { PrView } from "./PrView";
 import type { PullRequestView } from "./PullRequests";
 
@@ -82,18 +84,36 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 let container: HTMLDivElement;
-let app: RenderedApp | undefined;
+let root: Root;
 
 beforeEach(() => {
-	app = undefined;
+	container = document.createElement("div");
+	document.body.appendChild(container);
+	root = createRoot(container);
 	threadLinksState.links = [];
 	settingsState.rerunChecks = false;
 });
 
+afterEach(async () => {
+	await act(async () => root.unmount());
+	container.remove();
+});
+
+function renderWithClient(ui: React.ReactNode) {
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	return (
+		<QueryClientProvider client={queryClient}>
+			<TooltipProvider>{ui}</TooltipProvider>
+		</QueryClientProvider>
+	);
+}
+
 async function show(ui: React.ReactNode) {
-	if (app) await app.rerender(ui);
-	else app = await renderWithApp(ui);
-	container = app.container;
+	await act(async () => {
+		root.render(renderWithClient(ui));
+	});
 }
 
 const basePr: PullRequestView = {

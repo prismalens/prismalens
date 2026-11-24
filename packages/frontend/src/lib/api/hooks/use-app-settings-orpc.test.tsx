@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderHookWithApp } from "@/test/render";
 import {
 	useUpdateThreadContextSettings,
 	useUpdateTreeSettings,
@@ -42,6 +43,47 @@ vi.mock("../orpc-client", () => ({
 	},
 }));
 
+(
+	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
+function HookHarness<T>({
+	hook,
+	onResult,
+}: {
+	hook: () => T;
+	onResult: (value: T) => void;
+}) {
+	onResult(hook());
+	return null;
+}
+
+function renderHook<T>(hook: () => T, queryClient: QueryClient) {
+	const result = { current: undefined as unknown as T };
+	const container = document.createElement("div");
+	document.body.appendChild(container);
+	const root = createRoot(container);
+	act(() => {
+		root.render(
+			<QueryClientProvider client={queryClient}>
+				<HookHarness
+					hook={hook}
+					onResult={(value) => {
+						result.current = value;
+					}}
+				/>
+			</QueryClientProvider>,
+		);
+	});
+	return {
+		result,
+		unmount: () => {
+			act(() => root.unmount());
+			container.remove();
+		},
+	};
+}
+
 beforeEach(() => {
 	updateThreadContextSpy.mockClear();
 	updateTreeSettingsSpy.mockClear();
@@ -49,13 +91,21 @@ beforeEach(() => {
 
 describe("use-app-settings-orpc", () => {
 	it("sends merged cached editor on thread context update and defaults to system when uncached", async () => {
-		const cachedHook = await renderHookWithApp(() =>
-			useUpdateThreadContextSettings(),
-		);
-		cachedHook.queryClient.setQueryData(["settings", "threadContext"], {
+		const cachedClient = new QueryClient({
+			defaultOptions: {
+				queries: { retry: false },
+				mutations: { retry: false },
+			},
+		});
+		cachedClient.setQueryData(["settings", "threadContext"], {
 			prStatus: true,
 			editor: "vscode",
 		});
+
+		const cachedHook = renderHook(
+			() => useUpdateThreadContextSettings(),
+			cachedClient,
+		);
 		await act(async () => {
 			cachedHook.result.current.mutate({ prStatus: false });
 		});
@@ -64,10 +114,17 @@ describe("use-app-settings-orpc", () => {
 			editor: "vscode",
 			rerunChecks: false,
 		});
-		await cachedHook.unmount();
+		cachedHook.unmount();
 
-		const emptyHook = await renderHookWithApp(() =>
-			useUpdateThreadContextSettings(),
+		const emptyClient = new QueryClient({
+			defaultOptions: {
+				queries: { retry: false },
+				mutations: { retry: false },
+			},
+		});
+		const emptyHook = renderHook(
+			() => useUpdateThreadContextSettings(),
+			emptyClient,
 		);
 		await act(async () => {
 			emptyHook.result.current.mutate({ prStatus: false });
@@ -77,7 +134,7 @@ describe("use-app-settings-orpc", () => {
 			editor: "system",
 			rerunChecks: false,
 		});
-		await emptyHook.unmount();
+		emptyHook.unmount();
 	});
 
 	// ce798d662 adds turnsPerDay to tree settings defaults; e1858b496 adds pairPerDay.
@@ -89,10 +146,14 @@ describe("use-app-settings-orpc", () => {
 					releaseFirst = () => resolve(input);
 				}),
 		);
-		const hook = await renderHookWithApp(() => useUpdateTreeSettings());
-		const second = await renderHookWithApp(() => useUpdateTreeSettings(), {
-			queryClient: hook.queryClient,
+		const queryClient = new QueryClient({
+			defaultOptions: {
+				queries: { retry: false },
+				mutations: { retry: false },
+			},
 		});
+		const hook = renderHook(() => useUpdateTreeSettings(), queryClient);
+		const second = renderHook(() => useUpdateTreeSettings(), queryClient);
 		await act(async () => {
 			hook.result.current.mutate({ agentsStartThreads: "allow" });
 			second.result.current.mutate({ children: 3 });
@@ -109,13 +170,19 @@ describe("use-app-settings-orpc", () => {
 			turnsPerDay: 200,
 			pairPerDay: 20,
 		});
-		await hook.unmount();
-		await second.unmount();
+		hook.unmount();
+		second.unmount();
 	});
 
 	// ce798d662 adds turnsPerDay to tree settings defaults; e1858b496 adds pairPerDay.
 	it("sends defaults with a patched cap on tree settings update when uncached", async () => {
-		const hook = await renderHookWithApp(() => useUpdateTreeSettings());
+		const queryClient = new QueryClient({
+			defaultOptions: {
+				queries: { retry: false },
+				mutations: { retry: false },
+			},
+		});
+		const hook = renderHook(() => useUpdateTreeSettings(), queryClient);
 		await act(async () => {
 			hook.result.current.mutate({ children: 3 });
 		});
@@ -126,6 +193,6 @@ describe("use-app-settings-orpc", () => {
 			turnsPerDay: 200,
 			pairPerDay: 20,
 		});
-		await hook.unmount();
+		hook.unmount();
 	});
 });

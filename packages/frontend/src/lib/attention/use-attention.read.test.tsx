@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithAppSync } from "@/test/render";
 import { READ_EVERY_MS, useReadAdvance } from "./use-attention";
 
 vi.mock("@/lib/api/orpc-client", async (importOriginal) => {
@@ -25,6 +26,10 @@ import { client } from "@/lib/api/orpc-client";
 
 const mockedMarkThreadRead = vi.mocked(client.attention.markThreadRead);
 
+(
+	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
 interface AdvanceProps {
 	id: string;
 	lastOnScreen: string | null;
@@ -36,18 +41,40 @@ function HookHarness({ props }: { props: AdvanceProps }) {
 	return null;
 }
 
-function renderHook(initialProps: AdvanceProps) {
-	const app = renderWithAppSync(<HookHarness props={initialProps} />);
+function renderHook(initialProps: AdvanceProps, queryClient: QueryClient) {
+	const container = document.createElement("div");
+	document.body.appendChild(container);
+	const root = createRoot(container);
+
+	function render(props: AdvanceProps) {
+		act(() => {
+			root.render(
+				<QueryClientProvider client={queryClient}>
+					<HookHarness props={props} />
+				</QueryClientProvider>,
+			);
+		});
+	}
+
+	render(initialProps);
+
 	return {
-		rerender: (nextProps: AdvanceProps) =>
-			app.rerenderSync(<HookHarness props={nextProps} />),
-		unmount: () => app.unmountSync(),
+		rerender: (nextProps: AdvanceProps) => {
+			render(nextProps);
+		},
+		unmount: () => {
+			act(() => root.unmount());
+			container.remove();
+		},
 	};
 }
 
 describe("useReadAdvance and READ_EVERY_MS (#1181)", () => {
+	let queryClient: QueryClient;
+
 	beforeEach(() => {
 		vi.clearAllMocks();
+		queryClient = new QueryClient();
 		mockedMarkThreadRead.mockResolvedValue({ advanced: true });
 		Object.defineProperty(document, "visibilityState", {
 			value: "visible",
@@ -67,11 +94,10 @@ describe("useReadAdvance and READ_EVERY_MS (#1181)", () => {
 
 	it("first advance sends after the 800 ms debounce", () => {
 		vi.useFakeTimers();
-		const { unmount } = renderHook({
-			id: "t1",
-			lastOnScreen: "main:1",
-			ready: true,
-		});
+		const { unmount } = renderHook(
+			{ id: "t1", lastOnScreen: "main:1", ready: true },
+			queryClient,
+		);
 
 		act(() => {
 			vi.advanceTimersByTime(799);
@@ -92,11 +118,10 @@ describe("useReadAdvance and READ_EVERY_MS (#1181)", () => {
 
 	it("while lastOnScreen keeps changing, sends are at least READ_EVERY_MS apart and the send carries the latest key", () => {
 		vi.useFakeTimers();
-		const { rerender, unmount } = renderHook({
-			id: "t1",
-			lastOnScreen: "main:1",
-			ready: true,
-		});
+		const { rerender, unmount } = renderHook(
+			{ id: "t1", lastOnScreen: "main:1", ready: true },
+			queryClient,
+		);
 
 		// First send happens at t = 800 ms
 		act(() => {
@@ -153,11 +178,10 @@ describe("useReadAdvance and READ_EVERY_MS (#1181)", () => {
 		});
 		document.dispatchEvent(new Event("visibilitychange"));
 
-		const { unmount } = renderHook({
-			id: "t1",
-			lastOnScreen: "main:1",
-			ready: true,
-		});
+		const { unmount } = renderHook(
+			{ id: "t1", lastOnScreen: "main:1", ready: true },
+			queryClient,
+		);
 
 		act(() => {
 			vi.advanceTimersByTime(READ_EVERY_MS + 2000);
@@ -169,11 +193,10 @@ describe("useReadAdvance and READ_EVERY_MS (#1181)", () => {
 
 	it("the same key is not sent twice", () => {
 		vi.useFakeTimers();
-		const { rerender, unmount } = renderHook({
-			id: "t1",
-			lastOnScreen: "main:1",
-			ready: true,
-		});
+		const { rerender, unmount } = renderHook(
+			{ id: "t1", lastOnScreen: "main:1", ready: true },
+			queryClient,
+		);
 
 		act(() => {
 			vi.advanceTimersByTime(800);

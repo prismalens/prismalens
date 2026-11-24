@@ -4,13 +4,13 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import { act } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	afterRepositoryLink,
 	repositoryKeys,
 } from "@/lib/api/hooks/use-repositories-orpc";
 import { serviceKeys } from "@/lib/api/hooks/use-services-orpc";
-import { renderWithApp } from "@/test/render";
 import { MakeService } from "./ProjectPage";
 
 const create = vi.fn();
@@ -39,10 +39,18 @@ const SERVICE = "00000000-0000-4000-8000-000000000002";
 
 describe("MakeService (#1020)", () => {
 	let host: HTMLDivElement;
+	let root: Root;
 	beforeEach(() => {
 		create.mockReset();
 		link.mockReset();
 		pending.create = false;
+		host = document.createElement("div");
+		document.body.append(host);
+		root = createRoot(host);
+	});
+	afterEach(() => {
+		act(() => root.unmount());
+		host.remove();
 	});
 
 	const submit = async () => {
@@ -57,11 +65,11 @@ describe("MakeService (#1020)", () => {
 	it("retries only the link after a failed link, never a second service", async () => {
 		create.mockResolvedValue({ id: SERVICE });
 		link.mockRejectedValueOnce(new Error("link failed")).mockResolvedValue({});
-		host = (
-			await renderWithApp(
+		act(() =>
+			root.render(
 				<MakeService repositoryId={REPO} defaultName="shop" linked={[]} />,
-			)
-		).container;
+			),
+		);
 		await submit();
 		expect(host.querySelector('[role="alert"]')?.textContent).toBe(
 			"link failed",
@@ -75,11 +83,11 @@ describe("MakeService (#1020)", () => {
 	it("locks the name once the service exists, so the rule shown is the one linked", async () => {
 		create.mockResolvedValue({ id: SERVICE });
 		link.mockRejectedValueOnce(new Error("link failed"));
-		host = (
-			await renderWithApp(
+		act(() =>
+			root.render(
 				<MakeService repositoryId={REPO} defaultName="shop" linked={[]} />,
-			)
-		).container;
+			),
+		);
 		await submit();
 		const input = host.querySelector<HTMLInputElement>(
 			'[data-testid="make-service-name"]',
@@ -90,16 +98,22 @@ describe("MakeService (#1020)", () => {
 });
 
 describe("MakeService name while creating (#1020)", () => {
-	it("is read-only while the service is being created", async () => {
+	it("is read-only while the service is being created", () => {
 		pending.create = true;
-		const { container } = await renderWithApp(
-			<MakeService repositoryId={REPO} defaultName="shop" linked={[]} />,
+		const host = document.createElement("div");
+		document.body.append(host);
+		const root = createRoot(host);
+		act(() =>
+			root.render(
+				<MakeService repositoryId={REPO} defaultName="shop" linked={[]} />,
+			),
 		);
 		expect(
-			container.querySelector<HTMLInputElement>(
-				'[data-testid="make-service-name"]',
-			)?.readOnly,
+			host.querySelector<HTMLInputElement>('[data-testid="make-service-name"]')
+				?.readOnly,
 		).toBe(true);
+		act(() => root.unmount());
+		host.remove();
 		pending.create = false;
 	});
 });

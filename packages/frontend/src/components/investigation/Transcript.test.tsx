@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { act, type ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { formatElapsed } from "@/lib/format-time";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import type { AskRecord } from "@/lib/run-asks";
-import { type RenderedApp, renderWithApp } from "@/test/render";
 import { Transcript } from "./Transcript";
 
 vi.mock("@tanstack/react-router", () => ({
@@ -41,16 +43,29 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 let container: HTMLDivElement;
-let app: RenderedApp | undefined;
-
-async function show(ui: ReactNode) {
-	if (app) await app.rerender(ui);
-	else app = await renderWithApp(ui);
-	container = app.container;
-}
+let root: Root;
+let queryClient: QueryClient;
 
 beforeEach(() => {
-	app = undefined;
+	queryClient = new QueryClient();
+	container = document.createElement("div");
+	document.body.appendChild(container);
+	// The app root provides tooltips and queries; turn cards need both here too.
+	const inner = createRoot(container);
+	root = {
+		render: (node) =>
+			inner.render(
+				<QueryClientProvider client={queryClient}>
+					<TooltipProvider>{node}</TooltipProvider>
+				</QueryClientProvider>,
+			),
+		unmount: () => inner.unmount(),
+	} as Root;
+});
+
+afterEach(async () => {
+	await act(async () => root.unmount());
+	container.remove();
 });
 
 describe("Transcript asks (#820)", () => {
@@ -76,14 +91,16 @@ describe("Transcript asks (#820)", () => {
 	const item: TranscriptItem = { kind: "ask", key: "a", askId: ask.askId };
 
 	it("shows no card and no buttons: the ask answers in the dock", async () => {
-		await show(
-			<Transcript
-				items={[item]}
-				incidentId="inc-1"
-				agent="Claude Code"
-				steps={steps([{ ...ask, state: "waiting" }])}
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[item]}
+					incidentId="inc-1"
+					agent="Claude Code"
+					steps={steps([{ ...ask, state: "waiting" }])}
+				/>,
+			);
+		});
 		expect(container.querySelector('[data-testid="ask-approve"]')).toBeNull();
 		expect(
 			container.querySelector('[data-testid="transcript-ask"]')?.textContent,
@@ -93,14 +110,16 @@ describe("Transcript asks (#820)", () => {
 	});
 
 	it("keeps one line for an ask no step carries, saying how it ended", async () => {
-		await show(
-			<Transcript
-				items={[item]}
-				incidentId="inc-1"
-				agent="Claude Code"
-				steps={steps([{ ...ask, clamped: true }])}
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[item]}
+					incidentId="inc-1"
+					agent="Claude Code"
+					steps={steps([{ ...ask, clamped: true }])}
+				/>,
+			);
+		});
 		expect(
 			container.querySelector('[data-testid="transcript-ask"]')?.textContent,
 		).toBe(
@@ -109,14 +128,16 @@ describe("Transcript asks (#820)", () => {
 	});
 
 	it("leaves the line to the step when a step carries the ask", async () => {
-		await show(
-			<Transcript
-				items={[item]}
-				incidentId="inc-1"
-				agent="Claude Code"
-				steps={steps([{ ...ask, step: 1 }])}
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[item]}
+					incidentId="inc-1"
+					agent="Claude Code"
+					steps={steps([{ ...ask, step: 1 }])}
+				/>,
+			);
+		});
 		expect(
 			container.querySelector('[data-testid="transcript-ask"]'),
 		).toBeNull();
@@ -140,9 +161,15 @@ describe("Transcript level lines (#673 w21)", () => {
 			},
 		];
 
-		await show(
-			<Transcript items={levelItems} incidentId="inc-1" agent="Claude Code" />,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={levelItems}
+					incidentId="inc-1"
+					agent="Claude Code"
+				/>,
+			);
+		});
 
 		const allowed = container.querySelector(
 			'[data-testid="transcript-allowed"]',
@@ -162,13 +189,15 @@ describe("Transcript report drafts (#673 w8-14)", () => {
 	const draft = '{\n  "rootCause": null,\n  "nextSteps": []\n}';
 
 	it("folds the draft under the answer, closed, instead of printing it", async () => {
-		await show(
-			<Transcript
-				items={[{ kind: "prose", key: "p", text: "No cause yet.", draft }]}
-				incidentId="inc-1"
-				agent="Claude Code"
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[{ kind: "prose", key: "p", text: "No cause yet.", draft }]}
+					incidentId="inc-1"
+					agent="Claude Code"
+				/>,
+			);
+		});
 		const fold = container.querySelector<HTMLDetailsElement>(
 			'[data-testid="transcript-report-draft"]',
 		);
@@ -196,47 +225,49 @@ describe("a step you denied (#673 w8-18)", () => {
 			state: "denied",
 			step: 1,
 		};
-		await show(
-			<Transcript
-				items={[
-					{
-						kind: "tools",
-						key: "t",
-						count: 1,
-						summary: "",
-						failed: 1,
-						running: 0,
-						rows: [],
-						callIds: ["c1"],
-					},
-				]}
-				incidentId="inc-1"
-				agent="Claude Code"
-				steps={{
-					all: [
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[
 						{
-							n: 1,
-							callId: "c1",
-							title: "docker ps",
-							command: "docker ps",
-							kind: "command",
-							verb: "Failed",
-							ok: false,
-							unfinished: false,
-							output: "denied",
-							at: "2026-10-13T04:30:00Z",
-							took: 1,
-							input: null,
+							kind: "tools",
+							key: "t",
+							count: 1,
+							summary: "",
+							failed: 1,
+							running: 0,
+							rows: [],
+							callIds: ["c1"],
 						},
-					],
-					open: new Set<number>(),
-					onToggle: () => {},
-					highlight: null,
-					flagged: new Set<number>(),
-					asks: [denied],
-				}}
-			/>,
-		);
+					]}
+					incidentId="inc-1"
+					agent="Claude Code"
+					steps={{
+						all: [
+							{
+								n: 1,
+								callId: "c1",
+								title: "docker ps",
+								command: "docker ps",
+								kind: "command",
+								verb: "Failed",
+								ok: false,
+								unfinished: false,
+								output: "denied",
+								at: "2026-10-13T04:30:00Z",
+								took: 1,
+								input: null,
+							},
+						],
+						open: new Set<number>(),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>(),
+						asks: [denied],
+					}}
+				/>,
+			);
+		});
 		const folded = container.querySelector('[data-testid="tools-expand"]');
 		expect(folded?.textContent).toContain("1 denied by you");
 		expect(folded?.textContent).not.toContain("failed");
@@ -265,32 +296,34 @@ describe("a tool group", () => {
 			took: 1,
 			input: null,
 		};
-		await show(
-			<Transcript
-				items={[
-					{
-						kind: "tools",
-						key: "t",
-						count: 1,
-						summary: "ran 1 command",
-						failed: 0,
-						running: 0,
-						rows: [],
-						callIds: ["c1"],
-					},
-				]}
-				incidentId="inc-1"
-				agent="Claude Code"
-				steps={{
-					all: [step],
-					open: new Set<number>(),
-					onToggle: () => {},
-					highlight: null,
-					flagged: new Set<number>(),
-					asks: [],
-				}}
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[
+						{
+							kind: "tools",
+							key: "t",
+							count: 1,
+							summary: "ran 1 command",
+							failed: 0,
+							running: 0,
+							rows: [],
+							callIds: ["c1"],
+						},
+					]}
+					incidentId="inc-1"
+					agent="Claude Code"
+					steps={{
+						all: [step],
+						open: new Set<number>(),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>(),
+						asks: [],
+					}}
+				/>,
+			);
+		});
 		const folded = container.querySelector('[data-testid="tools-expand"]');
 		expect(folded?.textContent).toBe("Ran 1 command");
 		expect(container.querySelector('[data-testid="step-verb"]')).toBeNull();
@@ -305,27 +338,29 @@ describe("the report card", () => {
 	it("reads the stop, says no lasting fix yet and offers to ask for one", async () => {
 		const asked = vi.fn();
 		window.addEventListener("pl:compose", asked);
-		await show(
-			<Transcript
-				items={[
-					{
-						kind: "end",
-						key: "end",
-						tone: "done",
-						text: "Report ready",
-						report: true,
-					},
-				]}
-				incidentId={null}
-				agent="Claude Code"
-				report={{
-					title: "Run 1 report",
-					summary: "d37d888 dropped the index.",
-					stop: { title: "Revert d37d888" },
-					lasting: null,
-				}}
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={[
+						{
+							kind: "end",
+							key: "end",
+							tone: "done",
+							text: "Report ready",
+							report: true,
+						},
+					]}
+					incidentId={null}
+					agent="Claude Code"
+					report={{
+						title: "Run 1 report",
+						summary: "d37d888 dropped the index.",
+						stop: { title: "Revert d37d888" },
+						lasting: null,
+					}}
+				/>,
+			);
+		});
 		expect(
 			container.querySelector('[data-testid="report-stop"]')?.textContent,
 		).toContain("Revert d37d888");
@@ -384,15 +419,17 @@ describe("Worked fold", () => {
 		const seconds = 252;
 		const steps = 23;
 
-		await show(
-			<Transcript
-				items={items}
-				incidentId="inc-1"
-				agent="Claude Code"
-				report={reportData}
-				worked={{ seconds, steps, open: false, onToggle }}
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={reportData}
+					worked={{ seconds, steps, open: false, onToggle }}
+				/>,
+			);
+		});
 
 		const toggle = container.querySelector('[data-testid="worked-toggle"]');
 		expect(toggle).not.toBeNull();
@@ -418,15 +455,17 @@ describe("Worked fold", () => {
 	it("renders items when open and calls onToggle on click", async () => {
 		const onToggle = vi.fn();
 
-		await show(
-			<Transcript
-				items={items}
-				incidentId="inc-1"
-				agent="Claude Code"
-				report={reportData}
-				worked={{ seconds: 252, steps: 23, open: true, onToggle }}
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={reportData}
+					worked={{ seconds: 252, steps: 23, open: true, onToggle }}
+				/>,
+			);
+		});
 
 		const toggle = container.querySelector(
 			'[data-testid="worked-toggle"]',
@@ -455,30 +494,34 @@ describe("Worked fold", () => {
 	});
 
 	it("formats singular step when steps is 1", async () => {
-		await show(
-			<Transcript
-				items={items}
-				incidentId="inc-1"
-				agent="Claude Code"
-				report={reportData}
-				worked={{ seconds: 5, steps: 1, open: false, onToggle: () => {} }}
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={reportData}
+					worked={{ seconds: 5, steps: 1, open: false, onToggle: () => {} }}
+				/>,
+			);
+		});
 
 		const toggle = container.querySelector('[data-testid="worked-toggle"]');
 		expect(toggle?.textContent).toBe("Worked for 5s, 1 step");
 	});
 
 	it("renders no toggle and every item when worked is null", async () => {
-		await show(
-			<Transcript
-				items={items}
-				incidentId="inc-1"
-				agent="Claude Code"
-				report={reportData}
-				worked={null}
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={reportData}
+					worked={null}
+				/>,
+			);
+		});
 
 		expect(container.querySelector('[data-testid="worked-toggle"]')).toBeNull();
 		expect(
@@ -496,15 +539,17 @@ describe("Worked fold", () => {
 	});
 
 	it("renders afterReport immediately after report card and omits it when report is null", async () => {
-		await show(
-			<Transcript
-				items={items}
-				incidentId="inc-1"
-				agent="Claude Code"
-				report={reportData}
-				afterReport={<li data-testid="after">hypotheses</li>}
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={reportData}
+					afterReport={<li data-testid="after">hypotheses</li>}
+				/>,
+			);
+		});
 
 		const reportCard = container.querySelector(
 			'[data-testid="transcript-report"]',
@@ -514,15 +559,17 @@ describe("Worked fold", () => {
 		expect(after).not.toBeNull();
 		expect(reportCard?.nextElementSibling).toBe(after);
 
-		await show(
-			<Transcript
-				items={items}
-				incidentId="inc-1"
-				agent="Claude Code"
-				report={null}
-				afterReport={<li data-testid="after">hypotheses</li>}
-			/>,
-		);
+		await act(async () => {
+			root.render(
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="Claude Code"
+					report={null}
+					afterReport={<li data-testid="after">hypotheses</li>}
+				/>,
+			);
+		});
 
 		expect(container.querySelector('[data-testid="after"]')).toBeNull();
 	});
@@ -586,7 +633,9 @@ describe("Transcript spine (#1020)", () => {
 				at: "x",
 			},
 		];
-		await show(<Transcript items={items} incidentId={null} agent="Agent" />);
+		await act(async () =>
+			root.render(<Transcript items={items} incidentId={null} agent="Agent" />),
+		);
 		const delivery = container.querySelectorAll(
 			'[data-testid="transcript-delivery"]',
 		);
@@ -626,7 +675,9 @@ describe("Transcript spine (#1020)", () => {
 				attachments: [],
 			},
 		];
-		await show(<Transcript items={items} incidentId={null} agent="Agent" />);
+		await act(async () =>
+			root.render(<Transcript items={items} incidentId={null} agent="Agent" />),
+		);
 		const rows = container.querySelectorAll(
 			'[data-testid="transcript-operator"]',
 		);
@@ -649,25 +700,29 @@ describe("Transcript spine (#1020)", () => {
 
 	it("never calls a chat's first message a brief", async () => {
 		const items = [op("hi", "started", "2026-11-03T10:00:00Z")];
-		await show(
-			<Transcript
-				items={items}
-				incidentId={null}
-				agent="Agent"
-				runName="Hi"
-				chat
-			/>,
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={items}
+					incidentId={null}
+					agent="Agent"
+					runName="Hi"
+					chat
+				/>,
+			),
 		);
 		const line = container.querySelector('[data-testid="transcript-delivery"]');
 		expect(line?.textContent).toBe("sent");
 		expect(container.textContent).not.toMatch(/brief/i);
-		await show(
-			<Transcript
-				items={items}
-				incidentId={null}
-				agent="Agent"
-				runName="Run 2"
-			/>,
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={items}
+					incidentId={null}
+					agent="Agent"
+					runName="Run 2"
+				/>,
+			),
 		);
 		expect(
 			container.querySelector('[data-testid="transcript-delivery"]')
@@ -697,13 +752,15 @@ describe("Transcript spine (#1020)", () => {
 				at: "2026-11-03T10:04:00Z",
 			},
 		];
-		await show(
-			<Transcript
-				items={items}
-				incidentId={null}
-				agent="Agent"
-				foldTurns={{ live: false }}
-			/>,
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={items}
+					incidentId={null}
+					agent="Agent"
+					foldTurns={{ live: false }}
+				/>,
+			),
 		);
 		const fold = container.querySelector<HTMLButtonElement>(
 			'[data-testid="turn-fold"]',
@@ -749,20 +806,22 @@ describe("Transcript spine (#1020)", () => {
 			callIds: stepsAll.map((s) => s.callId),
 		};
 
-		await show(
-			<Transcript
-				items={[item]}
-				incidentId="inc-1"
-				agent="Agent"
-				steps={{
-					all: stepsAll,
-					open: new Set<number>([12]),
-					onToggle: () => {},
-					highlight: null,
-					flagged: new Set<number>([6]),
-					asks: [],
-				}}
-			/>,
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={[item]}
+					incidentId="inc-1"
+					agent="Agent"
+					steps={{
+						all: stepsAll,
+						open: new Set<number>([12]),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>([6]),
+						asks: [],
+					}}
+				/>,
+			),
 		);
 
 		// Step 6 is flagged and should be rendered in the document
@@ -820,20 +879,22 @@ describe("Transcript spine (#1020)", () => {
 			edit: { path: "a.ts", add: 3, del: 1 },
 		};
 
-		await show(
-			<Transcript
-				items={[opItem, toolsItem, proseItem]}
-				incidentId="inc-1"
-				agent="Agent"
-				steps={{
-					all: [editStep as never],
-					open: new Set<number>(),
-					onToggle: () => {},
-					highlight: null,
-					flagged: new Set<number>(),
-					asks: [],
-				}}
-			/>,
+		await act(async () =>
+			root.render(
+				<Transcript
+					items={[opItem, toolsItem, proseItem]}
+					incidentId="inc-1"
+					agent="Agent"
+					steps={{
+						all: [editStep as never],
+						open: new Set<number>(),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>(),
+						asks: [],
+					}}
+				/>,
+			),
 		);
 
 		const summaryEl = container.querySelector('[data-testid="turn-summary"]');

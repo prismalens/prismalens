@@ -8,9 +8,11 @@ import type {
 	PrChecks,
 	PrTone,
 } from "@prismalens/contracts";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type RenderedApp, renderWithApp } from "@/test/render";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { PrView } from "./PrView";
 import {
 	checksCount,
@@ -42,11 +44,29 @@ vi.mock("@/lib/api/hooks/use-app-settings-orpc", () => ({
 }));
 
 let container: HTMLDivElement;
-let app: RenderedApp | undefined;
+let root: Root;
 
 beforeEach(() => {
-	app = undefined;
+	container = document.createElement("div");
+	document.body.appendChild(container);
+	root = createRoot(container);
 });
+
+afterEach(async () => {
+	await act(async () => root.unmount());
+	container.remove();
+});
+
+function renderWithClient(ui: React.ReactNode) {
+	const queryClient = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	return (
+		<QueryClientProvider client={queryClient}>
+			<TooltipProvider>{ui}</TooltipProvider>
+		</QueryClientProvider>
+	);
+}
 
 const basePr: PullRequestView = {
 	id: "pr-1",
@@ -156,9 +176,9 @@ const q = <T extends Element = Element>(sel: string) =>
 const qa = <T extends Element = Element>(sel: string) =>
 	container.querySelectorAll<T>(sel);
 async function show(ui: React.ReactNode) {
-	if (app) await app.rerender(ui);
-	else app = await renderWithApp(ui);
-	container = app.container;
+	await act(async () => {
+		root.render(renderWithClient(ui));
+	});
 }
 
 describe("PullRequestRow: one line that opens the PR view (sheet §3)", () => {
