@@ -480,6 +480,9 @@ position of an `ALTER TABLE`-added column differs, which Prisma does not depend 
      On a PR, the *Unit tests* job lists the added lines no test runs, in its summary
      and as notices on the diff (`scripts/changed-line-coverage.mjs`). CodeRabbit reviews
      tests only against the test rules in `AGENTS.md`.
+   - API product code reads time and signals through `packages/api/src/core/clock.ts` and
+     `src/infrastructure/dispatch/process-signals.ts`, so a test can fake them. Biome forbids
+     a direct `Date.now()`, `new Date()`, `setTimeout`, `setInterval` or `process.kill` there.
 
    Fix the implementation, not the test, unless the test is wrong. A frontend unit test that reaches the API fails
    (`src/test-setup.ts`): mock the hook or give the component the data it reads.

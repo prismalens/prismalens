@@ -12,6 +12,7 @@ import type { LaunchPolicy } from "@prismalens/agent-host";
 import type { HarnessId } from "@prismalens/config/harness";
 import type { HarnessProbeResult } from "@prismalens/contracts/schemas";
 import { probeHarness } from "@prismalens/engine";
+import * as clock from "../clock.js";
 import { HarnessModelsService } from "./harness-models.service.js";
 
 @Injectable()
@@ -67,7 +68,7 @@ export class HarnessProbeService {
 			prev?.outcome === "answers-acp" && result.outcome === "no-answer";
 		if (current && hungAfterPass)
 			this.models.keepWithTry(id, {
-				at: new Date().toISOString(),
+				at: clock.date().toISOString(),
 				outcome: result.outcome,
 				detail: result.detail,
 			});

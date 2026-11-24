@@ -5,6 +5,7 @@ import { realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 
 export const FOLDER_BUSY = "A thread is already working in this folder.";
 
@@ -60,7 +61,7 @@ export async function canonical(
 		return await Promise.race([
 			op,
 			new Promise<null>((r) => {
-				timer = setTimeout(() => r(null), ms);
+				timer = clock.setTimeout(() => r(null), ms);
 			}),
 		]);
 	} catch {
