@@ -95,6 +95,27 @@ export async function latestOf(channel) {
 	return (await res.json()).info.version;
 }
 
+/** Days a release soaks before its pin moves; a pin resolves its Python dependencies as of then. */
+export const PIN_SOAK_DAYS = 3;
+
+/**
+ * uv's `--exclude-newer` for a pinned Python agent: its upload plus the soak, so a later release
+ * of a dependency cannot break an old pin, while users installing latest get today's (#1085).
+ */
+export const resolvedAsOf = (uploadedAt, days = PIN_SOAK_DAYS) =>
+	new Date(Date.parse(uploadedAt) + days * 86_400_000).toISOString();
+
+/** When PyPI first received `pkg`==`version`. */
+export async function uploadedAt(pkg, version) {
+	const res = await fetch(`https://pypi.org/pypi/${pkg}/${version}/json`);
+	if (!res.ok)
+		throw new Error(`PyPI answered ${res.status} for ${pkg} ${version}`);
+	const times = (await res.json()).urls.map((u) => u.upload_time_iso_8601);
+	if (!times.length)
+		throw new Error(`PyPI lists no file for ${pkg} ${version}`);
+	return times.sort()[0];
+}
+
 /** One entry per version: a latest that is also the pin runs once. */
 function atLatestAndPin(latest, pin, make) {
 	if (!pin || pin === latest) return [make(latest, "latest, pin")];
@@ -171,7 +192,7 @@ function binScript(prefix, pkg, binary) {
 }
 
 /** Installs the probe's CLI from its channel under `dir`; returns the bin folder and any adapter. */
-function install(built, row, probe, dir) {
+async function install(built, row, probe, dir) {
 	const { channel } = probe;
 	if (row.adapterPackage) {
 		let adapter;
@@ -204,6 +225,9 @@ function install(built, row, probe, dir) {
 		join(bin, WINDOWS ? "python.exe" : "python"),
 		`${cli}==${probe.version}`,
 		...extras,
+		...(probe.label === "pin"
+			? ["--exclude-newer", resolvedAsOf(await uploadedAt(cli, probe.version))]
+			: []),
 	]);
 	return { bin };
 }
@@ -251,7 +275,7 @@ async function probeOne(built, probe) {
 	try {
 		let installed;
 		try {
-			installed = install(built, row, probe, dir);
+			installed = await install(built, row, probe, dir);
 		} catch (e) {
 			return {
 				ok: false,
@@ -356,7 +380,14 @@ async function main() {
 					adapter: values.version,
 					companion: values.companion ?? PINS[channelPackage(row.channel)],
 				}
-			: { id: row.id, channel: row.channel, version: values.version };
+			: {
+					id: row.id,
+					channel: row.channel,
+					version: values.version,
+					...(values.version === PINS[channelPackage(row.channel)]
+						? { label: "pin" }
+						: {}),
+				};
 		const result = await probeOne(built, probe);
 		console.log(`${row.id} ${shown(probe)}: ${result.text}`);
 		process.exit(result.ok ? 0 : 1);
