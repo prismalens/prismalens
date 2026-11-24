@@ -108,7 +108,7 @@ function Fetch([string]$Url, [string]$OutFile, [switch]$Progress) {
 		return $true
 	}
 	if ($curl) {
-		$flags = if ($Progress) { @("--progress-bar") } else { @("-s") }
+		[string[]]$flags = if ($Progress) { @("--progress-bar") } else { @("-s") }
 		& $curl -f -L --retry 2 --connect-timeout 20 -A "prismalens-installer" @flags -o $OutFile $Url
 		if ($LASTEXITCODE -ne 0) { Remove-Item $OutFile -Force -ErrorAction SilentlyContinue; return $false }
 		return $true
