@@ -1,0 +1,57 @@
+name: Mirror a release
+# Copies a release's archives and SHA256SUMS to downloads.prismalens.io/v<version>/, the
+# default download base for the installers and the launcher; GitHub stays their fallback (#1215).
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  # Back-fill or repair: mirror an existing release again.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to mirror, e.g. v0.5.6"
+        required: true
+permissions:
+  contents: read
+concurrency: mirror-${{ inputs.tag }}
+jobs:
+  mirror:
+    name: Mirror ${{ inputs.tag }} to downloads.prismalens.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TAG: ${{ inputs.tag }}
+      BUCKET: prismalens-releases
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      # R2 rejects the CRC checksums newer AWS CLIs send by default.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      ENDPOINT: https://${{ vars.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+    steps:
+      - name: Download the release's assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$TAG" -p 'prismalens-*' -p 'PrismaLens-*' -p install.sh -p install.ps1 -p SHA256SUMS -D assets --repo "$GITHUB_REPOSITORY"
+          cd assets && sha256sum -c SHA256SUMS
+      # SHA256SUMS goes last: a client that finds it can fetch every archive it names.
+      - name: Upload, archives first
+        run: |
+          dest="s3://$BUCKET/$TAG"
+          cache="public, max-age=31536000, immutable"
+          for f in assets/*; do
+            [ "$(basename "$f")" = SHA256SUMS ] && continue
+            aws s3 cp "$f" "$dest/$(basename "$f")" --endpoint-url "$ENDPOINT" --cache-control "$cache" --only-show-errors
+          done
+          aws s3 cp assets/SHA256SUMS "$dest/SHA256SUMS" --endpoint-url "$ENDPOINT" --cache-control "$cache" --content-type text/plain --only-show-errors
+      - name: The mirror serves the same bytes
+        run: |
+          cd assets
+          curl -fsSL "https://downloads.prismalens.io/$TAG/SHA256SUMS" | diff - SHA256SUMS
+          f=$(ls prismalens-*-win32-x64.zip)
+          curl -fsSL "https://downloads.prismalens.io/$TAG/$f" -o "$RUNNER_TEMP/$f"
+          echo "$(grep " $f\$" SHA256SUMS | cut -d' ' -f1)  $RUNNER_TEMP/$f" | sha256sum -c
