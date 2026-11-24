@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * The Alerts door. From 1280 the sidebar holds the list, so this page holds
  * the numbers; narrower, the list is the page. Either way the header carries
