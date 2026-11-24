@@ -44,7 +44,8 @@ test("a target adopted before any signal is stopped once, by the first cleanup",
 });
 
 test("packed-intake runs no journey when a signal lands while the target boots", async () => {
-	const guard = targetGuard(() => {});
+	const codes = [];
+	const guard = targetGuard((code) => codes.push(code));
 	const app = fakeApp();
 	let journeysRun = 0;
 	await assert.rejects(
@@ -64,4 +65,5 @@ test("packed-intake runs no journey when a signal lands while the target boots",
 	);
 	assert.equal(journeysRun, 0);
 	assert.equal(app.stops, 1);
+	assert.deepEqual(codes, [143]);
 });

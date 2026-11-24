@@ -3,10 +3,9 @@
 // Copyright 2026 Sumit Patel
 
 import type { CanonicalEvent, OpenThread } from "@prismalens/contracts";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderHookWithAppSync as renderHook } from "@/test/render";
 import { APPEND_MIN_MS, paced, useThreadWindow } from "./use-thread-window";
 import type { WindowChange } from "./window-store";
 
@@ -27,38 +26,6 @@ const mockedOpenWindow = vi.mocked(client.investigations.openWindow);
 const mockedGetEvents = vi.mocked(client.investigations.getEvents);
 const mockedWindowPage = vi.mocked(client.investigations.windowPage);
 const mockedWindowIndex = vi.mocked(client.investigations.windowIndex);
-
-(
-	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
-function renderHook<T>(hook: () => T, queryClient: QueryClient) {
-	const result = { current: undefined as unknown as T };
-	const container = document.createElement("div");
-	document.body.appendChild(container);
-	const root = createRoot(container);
-
-	function HookHarness() {
-		result.current = hook();
-		return null;
-	}
-
-	act(() => {
-		root.render(
-			<QueryClientProvider client={queryClient}>
-				<HookHarness />
-			</QueryClientProvider>,
-		);
-	});
-
-	return {
-		result,
-		unmount: () => {
-			act(() => root.unmount());
-			container.remove();
-		},
-	};
-}
 
 function makeStepEvent(seq: number): CanonicalEvent {
 	return {
@@ -94,20 +61,12 @@ class MockEventSource {
 }
 
 describe("useThreadWindow", () => {
-	let queryClient: QueryClient;
 	const originalEventSource = globalThis.EventSource;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
 		MockEventSource.instances = [];
 		globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
-		queryClient = new QueryClient({
-			defaultOptions: {
-				queries: {
-					retry: false,
-				},
-			},
-		});
 	});
 
 	afterEach(() => {
@@ -159,9 +118,8 @@ describe("useThreadWindow", () => {
 
 		mockedOpenWindow.mockResolvedValueOnce(minimalOpen);
 
-		const { result } = renderHook(
-			() => useThreadWindow("t1", { enabled: true, live: false }),
-			queryClient,
+		const { result } = renderHook(() =>
+			useThreadWindow("t1", { enabled: true, live: false }),
 		);
 
 		await vi.waitFor(() => {
@@ -220,10 +178,7 @@ describe("useThreadWindow", () => {
 
 		mockedOpenWindow.mockResolvedValueOnce(minimalOpen);
 
-		renderHook(
-			() => useThreadWindow("t1", { enabled: true, live: false }),
-			queryClient,
-		);
+		renderHook(() => useThreadWindow("t1", { enabled: true, live: false }));
 
 		await vi.waitFor(() => {
 			expect(mockedOpenWindow).toHaveBeenCalledTimes(1);
@@ -260,9 +215,8 @@ describe("useThreadWindow", () => {
 		};
 		mockedOpenWindow.mockResolvedValueOnce(minimalOpen);
 
-		const { unmount } = renderHook(
-			() => useThreadWindow("t1", { enabled: true, live: true }),
-			queryClient,
+		const { unmount } = renderHook(() =>
+			useThreadWindow("t1", { enabled: true, live: true }),
 		);
 
 		await vi.waitFor(() => {

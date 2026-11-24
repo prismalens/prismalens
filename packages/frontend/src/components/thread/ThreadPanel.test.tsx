@@ -3,13 +3,11 @@
 // Copyright 2026 Sumit Patel
 
 import type { WorktreeChanges } from "@prismalens/contracts";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AskCard } from "@/components/investigation/RunDock";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import type { AskRecord } from "@/lib/run-asks";
+import { type RenderedApp, renderWithApp } from "@/test/render";
 import { WorktreeDiff } from "./WorktreeDiff";
 
 const state = vi.hoisted(() => ({
@@ -79,9 +77,6 @@ vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: ReactNode }) => children,
 }));
 
-(
-	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
 if (typeof globalThis.ResizeObserver === "undefined")
 	globalThis.ResizeObserver = class {
 		observe() {}
@@ -107,40 +102,22 @@ const workspace = {
 		},
 	],
 };
-let container: HTMLDivElement;
-let root: Root;
-const q = (id: string) => container.querySelector(`[data-testid="${id}"]`);
-
-let client: QueryClient;
+let app: RenderedApp | undefined;
+const q = (id: string) =>
+	app?.container.querySelector(`[data-testid="${id}"]`) ?? null;
 
 async function render(node: ReactNode) {
-	client = new QueryClient({
-		defaultOptions: { queries: { retry: false } },
-	});
-	await act(async () => root.unmount());
-	root = createRoot(container);
-	await act(async () =>
-		root.render(
-			<QueryClientProvider client={client}>
-				<TooltipProvider>{node}</TooltipProvider>
-			</QueryClientProvider>,
-		),
-	);
+	await app?.unmount();
+	app = await renderWithApp(node);
 	// Let the queries settle.
 	await act(async () => new Promise((r) => setTimeout(r, 20)));
 }
 
 beforeEach(() => {
-	container = document.createElement("div");
-	document.body.appendChild(container);
-	root = createRoot(container);
+	app = undefined;
 	state.changes = { repos: [] };
 	state.canEdit = false;
 	state.opened = [];
-});
-afterEach(async () => {
-	await act(async () => root.unmount());
-	container.remove();
 });
 
 const diff = () => <WorktreeDiff runId="r1" live={false} />;
@@ -187,7 +164,7 @@ describe("WorktreeDiff (#1020)", () => {
 		};
 		await render(diff());
 		const rows = Array.from(
-			container.querySelectorAll('[data-testid="diff-file"]'),
+			app?.container.querySelectorAll('[data-testid="diff-file"]') ?? [],
 		);
 		expect(rows.map((r) => r.getAttribute("data-status"))).toEqual([
 			"modified",
@@ -253,7 +230,9 @@ describe("WorktreeDiff (#1020)", () => {
 		};
 		await render(diff());
 		const rows = () =>
-			Array.from(container.querySelectorAll('[data-testid="diff-file"]'));
+			Array.from(
+				app?.container.querySelectorAll('[data-testid="diff-file"]') ?? [],
+			);
 		await act(async () => (rows()[1] as HTMLButtonElement).click());
 		expect(q("patch")?.textContent).toContain("in b.ts");
 		expect(q("diff-truncated")).toBeNull();
@@ -264,7 +243,7 @@ describe("WorktreeDiff (#1020)", () => {
 			],
 		};
 		await act(async () => {
-			await client.invalidateQueries();
+			await app?.queryClient.invalidateQueries();
 		});
 		await act(async () => new Promise((r) => setTimeout(r, 20)));
 		expect(rows()[0]?.getAttribute("aria-current")).toBe("true");

@@ -408,3 +408,95 @@ test("the lint job may read the issues its quarantine check looks up (#1154)", (
 		issues: "read",
 	});
 });
+
+// A draft PR runs lint, build and the ubuntu unit tests; ci-plan.mjs `draft` switches the rest off.
+test("a draft run skips the tarball, the clock-ahead tests and the proofs, and no other job", () => {
+	const { jobs } = workflow("ci.yml");
+	const skipped = ["pack", "test-later", "proofs"];
+	for (const id of skipped)
+		assert.match(jobs[id].if, /needs\.changes\.outputs\.draft != 'true'/, id);
+	assert.deepEqual(jobs.pack.needs, ["build", "changes"]);
+	assert.equal(jobs.build.if, "needs.changes.outputs.code == 'true'");
+	assert.equal(jobs.lint.if, "needs.changes.outputs.skip != 'true'");
+	for (const id of ["test", "build", "lint"])
+		assert.doesNotMatch(String(jobs[id].if), /draft/, id);
+});
+
+/** Runs the `CI gate` assertion over a `needs` object and returns its exit status and what it printed. */
+function runGate(results, outputs) {
+	const step = workflow("ci.yml").jobs["ci-gate"].steps.find(
+		(s) => s.name === "Assert every required job succeeded",
+	);
+	const needs = Object.fromEntries(
+		Object.entries(results).map(([k, result]) => [k, { result }]),
+	);
+	needs.changes.outputs = outputs;
+	const dir = mkdtempSync(join(tmpdir(), "pl-gate-"));
+	const bin = join(dir, "bin");
+	mkdirSync(bin);
+	// The failed-job report calls the API; the assertion under test is the jq above it.
+	writeFileSync(join(bin, "node"), "#!/usr/bin/env bash\nexit 0\n");
+	chmodSync(join(bin, "node"), 0o755);
+	const r = spawnSync("bash", ["-c", step.run], {
+		encoding: "utf8",
+		env: {
+			...process.env,
+			NEEDS_JSON: JSON.stringify(needs),
+			PATH: `${bin}${delimiter}${process.env.PATH}`,
+		},
+	});
+	return { status: r.status, out: `${r.stdout}${r.stderr}` };
+}
+
+const DRAFT_RESULTS = {
+	changes: "success",
+	build: "success",
+	test: "success",
+	"test-later": "skipped",
+	pack: "skipped",
+	"packed-smoke": "skipped",
+	"packed-intake": "skipped",
+	"packed-upgrade-smoke": "skipped",
+	lint: "success",
+	e2e: "skipped",
+	proofs: "skipped",
+};
+const DRAFT_PLAN = {
+	skip: "false",
+	code: "true",
+	e2e: "false",
+	intake: "false",
+	full: "false",
+	agents: "false",
+	defer: "false",
+	draft: "true",
+	reason: "draft: the fast tier only; marking it ready runs the full plan",
+};
+
+test("CI gate accepts the draft tier's skips only when the plan says draft", () => {
+	const draft = runGate(DRAFT_RESULTS, DRAFT_PLAN);
+	assert.equal(draft.status, 0, draft.out);
+	assert.match(draft.out, /skipped by the plan: draft: the fast tier only/);
+	// The same results under a ready plan (code on, e2e off) are red, naming exactly the draft-only skips.
+	for (const draftOutput of ["false", "", undefined]) {
+		const ready = runGate(DRAFT_RESULTS, { ...DRAFT_PLAN, draft: draftOutput });
+		assert.equal(ready.status, 1, ready.out);
+		assert.match(
+			ready.out,
+			/did not succeed: test-later=skipped, pack=skipped, packed-smoke=skipped, proofs=skipped\n/,
+		);
+	}
+});
+
+test("CI gate stays red for a draft whose lint, build or unit tests did not run", () => {
+	for (const job of ["lint", "build", "test"]) {
+		const r = runGate({ ...DRAFT_RESULTS, [job]: "skipped" }, DRAFT_PLAN);
+		assert.equal(r.status, 1, job);
+		assert.match(r.out, new RegExp(`did not succeed: ${job}=skipped\n`), job);
+	}
+	const e2e = runGate(
+		{ ...DRAFT_RESULTS, e2e: "failure" },
+		{ ...DRAFT_PLAN, e2e: "true" },
+	);
+	assert.equal(e2e.status, 1);
+});

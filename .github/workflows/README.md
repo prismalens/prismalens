@@ -1,6 +1,6 @@
 # Workflows
 
-Each workflow file's header comment says what it is for and when it runs. This file holds what the YAML cannot say: what blocks a merge, what a contributor must keep true when editing a workflow, what a workflow needs from the repository settings, and how to run the things people run by hand. The review lane's rollout is tracked in #301.
+Each workflow file's header comment says what it is for and when it runs. This file holds what the YAML cannot say: what blocks a merge, what a contributor must keep true when editing a workflow, what a workflow needs from the repository settings, and how to run the things people run by hand.
 
 ## The merge gate
 
@@ -21,13 +21,12 @@ It also sets `required_review_thread_resolution: true`: an unresolved review thr
 
 ## What a CI run runs
 
-The `changes` job runs `scripts/ci-plan.mjs`, whose header lists the tiers (`skip`, `code`, `e2e`, `intake`, `full`, `agents`, `defer`) and what turns each on. The tier outputs gate the jobs in `ci.yml`, and `proofs.yml` runs when `full` or `agents` is true; `CI gate` waits on all of them. `nightly.yml` calls `proofs.yml` with everything on.
+The `changes` job runs `scripts/ci-plan.mjs`, whose header lists the tiers (`skip`, `code`, `e2e`, `intake`, `full`, `agents`, `defer`, `draft`) and what turns each on. The tier outputs gate the jobs in `ci.yml`; `CI gate` waits on all of them.
 
 - Turbo's graph (`turbo ls --affected`) decides a package's tiers, so a new package needs no list. A path outside every package that `OUTSIDE` in `scripts/ci-plan.mjs` does not name turns every tier on, and so does a failed turbo call. A renamed file counts under both its names.
-- A push to `main` or a merge group runs the PR tiers; the `proofs` jobs run nightly.
-- `test-later` runs the api's tests with the clock 40 days ahead (`docs/contributing/testing.md`).
-- The `full-ci` label is read at the next push or re-run; adding it starts nothing. To run the proofs on a branch without a release PR: `gh workflow run nightly.yml --ref <branch>`.
+- The `full-ci` label is read at the next push or re-run. To run the proofs on a branch without a release PR: `gh workflow run nightly.yml --ref <branch>`.
 - A draft release PR plans `defer`: nothing runs and `CI gate` is red on purpose until the PR is marked ready, which starts the run.
+- A draft PR plans `draft`: `lint`, `build` and the ubuntu `test` run; `e2e`, the tarball jobs, `test-later` and `proofs` do not, and `CI gate` allows exactly those skips; marking it ready plans the rest. A draft run's plan job is named `Plan (draft)`; `scripts/ci-plan.mjs` never counts such a run as an earlier pass, so a green draft proves nothing for a ready PR.
 - A PR check shows the job's `name:`; `needs:` uses the job id. Every check that runs the packed tarball starts with `Tarball:`.
 - One build per run (#885): `build` saves turbo's cache under `turbo-<os>-<sha>`; `test`, `pack` and `e2e` restore it. `cli-smoke-cross-os.yml` waits for `Pack npm tarball` on the same commit and installs that artifact, packing itself only if the job is missing or red.
 - `ci-rerun-unstarted.yml` reruns a failed `CI`, `Standalone CLI build` or `Nightly` run once, when its only red jobs never got a runner or failed on a network fault their log names.
@@ -58,10 +57,10 @@ It probes each agent row at its channel's latest release and at its pin on Linux
 
 `claude-code-review.yml` and `claude.yml` are managed caller stubs: the logic lives in `gh-workflows:.github/workflows/claude-code-review.yml` and `claude.yml`, so do not add logic here. `.github/claude-review.yml` sets the lane's admission to label: only a PR labelled `claude_review` gets the Claude review. CodeRabbit is summoned by `Sumit1993/rig`'s hourly routine, and the `coderabbit_review` label is the manual override (`.coderabbit.yaml`). Any unresolved thread, from a reviewer or a human, blocks the merge.
 
-A reviewer that posts nothing leaves a PR that merges unreviewed; the callee's `announce` job upserts one advisory comment per PR saying whether the reviewer published anything for that head, and nothing gates on it.
+A reviewer that posts nothing leaves a PR that merges unreviewed; the callee's `announce` job upserts one advisory comment per PR saying whether the reviewer published for that head; nothing gates on it.
 
 - The stub's `permissions:` block is a ceiling; each callee job declares its own subset. `review` and `verify` run a model over diff text an attacker can influence and must never acquire a write: an injected prompt would then reach a job that can resolve review threads.
-- Fork PRs get no secrets, so the lane skips them.
+- Fork PRs get no secrets; the lane skips them.
 
 ## Gate-writers
 

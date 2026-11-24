@@ -42,7 +42,8 @@ jobs:
   # What this run has to run (scripts/ci-plan.mjs, #1052, #1053). `CI gate` below lets exactly the
   # jobs a plan output switches off be skipped, and only when that output is `false` in so many words.
   changes:
-    name: Plan this run
+    # `Plan (draft)` marks a draft run, which ci-plan.mjs never accepts as proof for a ready PR.
+    name: ${{ github.event.pull_request.draft && 'Plan (draft)' || 'Plan this run' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -57,6 +58,7 @@ jobs:
       full: ${{ steps.plan.outputs.full }}
       agents: ${{ steps.plan.outputs.agents }}
       defer: ${{ steps.plan.outputs.defer }}
+      draft: ${{ steps.plan.outputs.draft }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
       # Turbo reads the history to list the packages a PR changes; blobs come on demand.
@@ -189,7 +191,7 @@ jobs:
   test-later:
     name: Unit tests, clock 40 days ahead (api)
     needs: [changes, build]
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.draft != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -238,7 +240,8 @@ jobs:
   # layout, and engines bugs that monorepo-resident tests structurally cannot.
   pack:
     name: Pack npm tarball
-    needs: build
+    needs: [build, changes]
+    if: needs.changes.outputs.draft != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -461,7 +464,7 @@ jobs:
   proofs:
     name: Proofs
     needs: changes
-    if: needs.changes.outputs.full == 'true' || needs.changes.outputs.agents == 'true' || needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.draft != 'true' && (needs.changes.outputs.full == 'true' || needs.changes.outputs.agents == 'true' || needs.changes.outputs.code == 'true')
     permissions:
       contents: read
     uses: ./.github/workflows/proofs.yml
@@ -524,15 +527,17 @@ jobs:
             exit 1
           fi
           # A job may be skipped only when `changes` says `false` for its tier (#1052, #1053); `lint` only on `skip`.
+          # `pack`, `packed-smoke`, `test-later` and `proofs` may also be skipped when it says `draft` is `true`.
           # An absent or other output allows no skip, and `changes` itself must succeed.
           bad=$(echo "$NEEDS_JSON" | jq -r '
             .changes.outputs as $p
-            | def tier: if . == "build" or . == "test" or . == "pack" or . == "packed-smoke" then $p.code
+            | def tier: if . == "build" or . == "test" then $p.code
+                elif . == "pack" or . == "packed-smoke" then (if $p.code == "false" or $p.draft == "true" then "false" else "true" end)
                 elif . == "packed-intake" or . == "packed-upgrade-smoke" then $p.intake
                 elif . == "e2e" then $p.e2e
                 elif . == "lint" then (if $p.skip == "true" then "false" else "true" end)
-                elif . == "proofs" then (if $p.full == "false" and $p.agents == "false" and $p.code == "false" then "false" else "true" end)
-                elif . == "test-later" then $p.code
+                elif . == "proofs" then (if $p.draft == "true" or ($p.full == "false" and $p.agents == "false" and $p.code == "false") then "false" else "true" end)
+                elif . == "test-later" then (if $p.code == "false" or $p.draft == "true" then "false" else "true" end)
                 else "true" end;
             to_entries
             | map(select(.value.result != "success"
