@@ -37,7 +37,7 @@ flowchart TD
 | Job | What it proves |
 | :--- | :--- |
 | `Build & typecheck`, `Lint (Biome)`, `Test` | the code builds, type-checks and passes its tests |
-| `Pack npm tarball`, `Packed smoke` | the one published tarball installs and boots in a clean container |
+| `Pack npm tarball`, `Packed smoke` | the packed CLI tarball installs and boots in a clean container, through a launcher packed from this runner's archive; the launcher npm publishes is proven in [The release run](#the-release-run) |
 | `Packed intake` | a webhook becomes an incident, an unattended investigation reports, a resolution closes it |
 | `Packed service` | `pl service` installs, restarts and uninstalls on a real systemd user manager |
 | `Packed upgrade smoke` | a database that predates `investigation_turns` upgrades, and every release npm lists from 0.5.0 on upgrades to the tarball through its own `pl upgrade`, with its data |

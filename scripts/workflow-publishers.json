@@ -817,6 +817,7 @@
 					"title": "Quarantined e2e tests failing",
 					"labels": "bug",
 					"ok": "${{ steps.quarantine.outcome == 'success' }}",
+					"body": "The quarantined e2e run ended ${{ steps.quarantine.outcome }} without a summary: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
 					"body-file": "${{ runner.temp }}/quarantine-summary.md"
 				},
 				"env": null
