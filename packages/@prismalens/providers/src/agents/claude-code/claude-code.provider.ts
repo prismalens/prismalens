@@ -10,7 +10,11 @@ export const claudeCode = defineAgent({
 	mark: { brand: "claude-code" },
 	order: 20,
 	launch: "claude-code",
-	entryPoints: ["settings.agents", "thread.composer-agent", "schedules.agent"],
+	entryPoints: [
+		"settings.agents",
+		"composer.agent-picker",
+		"incidents.first-run",
+	],
 	stored: [
 		{ column: "Run.harness", value: "claude-code" },
 		{ column: "Schedule.harness", value: "claude-code" },

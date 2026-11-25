@@ -12,18 +12,20 @@ export const settingsAgents = defineEntryPoint({
 	screen: "packages/frontend/src/components/settings/HarnessSettings.tsx",
 });
 
-export const composerAgent = defineEntryPoint({
-	id: "thread.composer-agent",
+export const agentPicker = defineEntryPoint({
+	id: "composer.agent-picker",
 	family: "agent",
 	required: true,
-	about: "The composer's agent picker, where a run chooses its agent.",
-	screen: "packages/frontend/src/components/thread/Composer.tsx",
+	about:
+		"The agent picker on every composer and schedule, where a run chooses its agent.",
+	screen: "packages/frontend/src/components/agent/AgentPicker.tsx",
 });
 
-export const scheduleAgent = defineEntryPoint({
-	id: "schedules.agent",
+export const firstRun = defineEntryPoint({
+	id: "incidents.first-run",
 	family: "agent",
 	required: true,
-	about: "A schedule's agent, which every scheduled run starts on.",
-	screen: "packages/frontend/src/routes/_authenticated/schedules/$id.tsx",
+	about:
+		"The first-run checklist, done once the selected agent answers a check.",
+	screen: "packages/frontend/src/components/incidents/FirstRunPanel.tsx",
 });
