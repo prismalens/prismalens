@@ -183,6 +183,20 @@ export function notSignedIn(agent: string, hint?: string): FailureWords {
 	};
 }
 
+/**
+ * What to do about an agent that is not signed in: its own login command when one is
+ * known, then `then`, the button that rechecks it on the surface it shows on.
+ */
+export function signInNext(
+	agent: { signIn?: { command: string } | null; loginHint?: string },
+	then = "retry",
+): string {
+	const command = agent.signIn?.command ?? signInCommand(agent.loginHint);
+	return command
+		? `Run ${command} in a terminal, then ${then}.`
+		: `Sign in with its own CLI, then ${then}.`;
+}
+
 /** The agent's sign-in command from its settings hint, e.g. `opencode auth login`; never an env key. */
 export function signInCommand(hint: string | undefined): string | null {
 	const spans = (hint ?? "").split("`").filter((_, i) => i % 2 === 1);

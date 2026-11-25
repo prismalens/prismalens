@@ -6,6 +6,16 @@ import { harnessWords } from "./report-view";
 import type { StopSource } from "./stop-causes";
 
 const MAX = 200;
+const SAYS = /[\p{L}\p{N}]/u;
+
+/** The first line that says something: not blank, a bare bracket or an `Error:` heading. */
+function firstWords(error: string | null | undefined): string {
+	const lines = harnessWords(error ?? "")
+		.split("\n")
+		.map((l) => l.trim())
+		.filter((l) => SAYS.test(l));
+	return lines.find((l) => !/^(error|exception)[\s:]*$/i.test(l)) ?? "";
+}
 
 const cut = (line: string) =>
 	line.length > MAX ? `${line.slice(0, MAX - 1)}…` : line;
@@ -39,11 +49,11 @@ export function failureSentence(
 	/** Who raised it, which names the raw words under the sentence. */
 	source?: StopSource;
 } {
-	if (!error) {
-		const none = failureWords(error);
+	const line = firstWords(error);
+	if (!error || !line) {
+		const none = failureWords(null);
 		return { said: `${none.what} ${none.next}`, words: null };
 	}
-	const line = harnessWords(error).split("\n")[0]?.trim() ?? "";
 	const known = failureWords(error, agent, hint);
 	if (known.ours || known.plain) {
 		return {

@@ -52,6 +52,7 @@ import {
 import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useNow } from "@/hooks/use-now";
 import { toast } from "@/hooks/use-toast";
+import { alertSearchLine } from "@/lib/alert-groups";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import {
 	useSettleThread,
@@ -275,7 +276,7 @@ export function Palette({
 					key: `alert-${a.id}`,
 					tab: "alerts",
 					label: a.title,
-					sub: `${a.status}${a.fingerprint ? `, ${a.fingerprint.slice(0, 12)}` : ""}`,
+					sub: alertSearchLine(a),
 					icon: Bell,
 					run: () =>
 						void navigate({ to: "/alerts/$id", params: { id: a.id } } as never),
@@ -334,19 +335,26 @@ export function Palette({
 		// The app's registered actions that can run here, Find in the thread among them (#1101 19.4).
 		...surfaceEntries("app", "more", { facts: appFacts() }).flatMap(
 			(e): Item[] =>
-				"separator" in e || e.disabled || e.id === "search" || !named(e.label)
+				"separator" in e ||
+				(e.disabled && !e.why) ||
+				e.id === "search" ||
+				!named(e.label)
 					? []
 					: [
 							{
 								key: `action-app-${e.id}`,
 								tab: "actions",
 								label: e.label,
+								// A blocked action stays listed with its reason and runs nothing.
+								...(e.disabled ? { sub: e.why } : {}),
 								icon: e.icon ?? SquarePen,
 								...(e.keys ? { keys: keyText(e.keys).split("+") } : {}),
 								// Here, Find in every thread is this palette's Messages tab.
 								...(e.id === "findMessages"
 									? { run: () => setTab("messages"), stay: true }
-									: { run: e.onSelect }),
+									: e.disabled
+										? { run: () => undefined, stay: true }
+										: { run: e.onSelect }),
 								testId: `thread-search-action-${e.id}`,
 							},
 						],
@@ -388,6 +396,8 @@ export function Palette({
 			),
 	].filter((i) => on(i.tab));
 	const current = items.find((i) => i.key === active) ?? items[0];
+	// With no thread among the results the preview could only repeat a label; the list takes the room.
+	const previews = items.some((i) => i.thread);
 	const go = (fn: () => void) => {
 		onDone();
 		fn();
@@ -518,7 +528,7 @@ export function Palette({
 					)}
 					{searchedNote(messages.data, tab)}
 				</CommandList>
-				{!phone && current && !actionsFor && (
+				{!phone && current && previews && !actionsFor && (
 					<aside
 						className="relative hidden w-60 shrink-0 p-3 before:absolute before:inset-y-2 before:left-0 before:w-px before:bg-hairline min-[900px]:block"
 						aria-label="Preview"

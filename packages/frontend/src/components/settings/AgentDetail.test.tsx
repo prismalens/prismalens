@@ -738,3 +738,50 @@ describe("parseArgs", () => {
 		expect(parseArgs("")).toEqual([]);
 	});
 });
+
+describe("AgentDetail: which agent runs next", () => {
+	it("offers Use for new runs on a runnable agent that is not the setting, and sets the harness", async () => {
+		mockHarnesses[2].runnable = true;
+		mockHarnesses[2].installed = true;
+		await act(async () => {
+			root.render(<AgentDetail id="opencode" />);
+		});
+		const button = container.querySelector(
+			'[data-testid="agent-detail-use-for-new-runs"]',
+		) as HTMLButtonElement;
+		expect(button.textContent).toBe("Use for new runs");
+		expect(button.disabled).toBe(false);
+		await act(async () => button.click());
+		expect(mutateSpy).toHaveBeenCalledWith({ harness: "opencode" });
+		mockHarnesses[2].runnable = false;
+		mockHarnesses[2].installed = false;
+	});
+
+	it("reads In use, disabled, on the agent the setting names", async () => {
+		mockHarnesses[0].runnable = true;
+		await act(async () => {
+			root.render(<AgentDetail id="claude-code" />);
+		});
+		const button = container.querySelector(
+			'[data-testid="agent-detail-use-for-new-runs"]',
+		) as HTMLButtonElement;
+		expect(button.textContent).toBe("In use");
+		expect(button.disabled).toBe(true);
+	});
+
+	it("names the providers an agent holds a login for as its account", async () => {
+		mockHarnesses[2].checked = {
+			outcome: "answers-acp",
+			detail: "answers ACP",
+			providers: ["Ollama Cloud", "Google"],
+		} as HarnessStatus["checked"];
+		await act(async () => {
+			root.render(<AgentDetail id="opencode" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-account"]')
+				?.textContent,
+		).toBe("Signed in to Ollama Cloud, Google");
+		mockHarnesses[2].checked = null;
+	});
+});

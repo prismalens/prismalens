@@ -18,11 +18,17 @@ vi.mock("@/lib/api/hooks/use-app-settings-orpc", () => ({
 	useHostImages: () => true,
 }));
 
-vi.mock("@/components/settings/SourceConnectDialog", () => ({
-	SourceConnectDialog: ({ initialKind }: { initialKind: string }) => (
-		<div data-testid="connect-dialog">{initialKind}</div>
-	),
-}));
+vi.mock("@/components/settings/SourceConnectDialog", async () => {
+	const real = await vi.importActual<
+		typeof import("@/components/settings/SourceConnectDialog")
+	>("@/components/settings/SourceConnectDialog");
+	return {
+		SOURCE_KINDS: real.SOURCE_KINDS,
+		SourceConnectDialog: ({ initialKind }: { initialKind: string }) => (
+			<div data-testid="connect-dialog">{initialKind}</div>
+		),
+	};
+});
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -44,13 +50,30 @@ afterEach(async () => {
 });
 
 describe("HostRepoPicker", () => {
-	it("returns disconnected GitHub when host list is empty", () => {
+	it("lists GitHub, GitLab and Bitbucket disconnected when no host has a credential", () => {
 		expect(hostChoices([])).toEqual([
-			{ host: "github.com", label: "GitHub", connected: false },
+			{
+				host: "github.com",
+				label: "GitHub",
+				kindId: "github",
+				connected: false,
+			},
+			{
+				host: "gitlab.com",
+				label: "GitLab",
+				kindId: "gitlab",
+				connected: false,
+			},
+			{
+				host: "bitbucket.org",
+				label: "Bitbucket",
+				kindId: "bitbucket",
+				connected: false,
+			},
 		]);
 	});
 
-	it("places connected GitLab before disconnected GitHub in hostChoices", () => {
+	it("keeps the declared order when only GitLab is connected", () => {
 		const gitlabView: GitHostView = {
 			host: "gitlab.com",
 			order: ["stored"],
@@ -71,12 +94,28 @@ describe("HostRepoPicker", () => {
 		};
 
 		expect(hostChoices([gitlabView])).toEqual([
-			{ host: "gitlab.com", label: "GitLab", connected: true },
-			{ host: "github.com", label: "GitHub", connected: false },
+			{
+				host: "github.com",
+				label: "GitHub",
+				kindId: "github",
+				connected: false,
+			},
+			{
+				host: "gitlab.com",
+				label: "GitLab",
+				kindId: "gitlab",
+				connected: true,
+			},
+			{
+				host: "bitbucket.org",
+				label: "Bitbucket",
+				kindId: "bitbucket",
+				connected: false,
+			},
 		]);
 	});
 
-	it("shows Connect GitHub and Paste buttons for none credential and triggers dialog and paste", async () => {
+	it("shows Connect GitHub for a none credential and opens the connect dialog on GitHub", async () => {
 		useHostRepositoriesMock.mockReturnValue({
 			data: { credential: "none", repositories: [] },
 			isLoading: false,
@@ -85,7 +124,6 @@ describe("HostRepoPicker", () => {
 		});
 
 		const onChoose = vi.fn();
-		const onPasteUrl = vi.fn();
 
 		await act(async () => {
 			root.render(
@@ -93,17 +131,16 @@ describe("HostRepoPicker", () => {
 					choice={{
 						host: "github.com",
 						label: "GitHub",
+						kindId: "github",
 						connected: false,
 					}}
 					onChoose={onChoose}
-					onPasteUrl={onPasteUrl}
 					pending={false}
 				/>,
 			);
 		});
 
 		expect(container.textContent).toContain("Connect GitHub");
-		expect(container.textContent).toContain("Paste a URL instead");
 
 		const connectButton = container.querySelector<HTMLButtonElement>(
 			'[data-testid="host-repos-connect-button"]',
@@ -116,14 +153,6 @@ describe("HostRepoPicker", () => {
 			'[data-testid="connect-dialog"]',
 		);
 		expect(connectDialog?.textContent).toBe("github");
-
-		const pasteButton = container.querySelector<HTMLButtonElement>(
-			'[data-testid="host-repos-paste"]',
-		);
-		await act(async () => {
-			pasteButton?.click();
-		});
-		expect(onPasteUrl).toHaveBeenCalledTimes(1);
 	});
 
 	it("renders repository items for resolved credential and updates hook on search input", async () => {
@@ -154,7 +183,6 @@ describe("HostRepoPicker", () => {
 		});
 
 		const onChoose = vi.fn();
-		const onPasteUrl = vi.fn();
 
 		await act(async () => {
 			root.render(
@@ -162,10 +190,10 @@ describe("HostRepoPicker", () => {
 					choice={{
 						host: "github.com",
 						label: "GitHub",
+						kindId: "github",
 						connected: true,
 					}}
 					onChoose={onChoose}
-					onPasteUrl={onPasteUrl}
 					pending={false}
 				/>,
 			);
@@ -218,7 +246,6 @@ describe("HostRepoPicker", () => {
 		});
 
 		const onChoose = vi.fn();
-		const onPasteUrl = vi.fn();
 
 		await act(async () => {
 			root.render(
@@ -226,10 +253,10 @@ describe("HostRepoPicker", () => {
 					choice={{
 						host: "github.com",
 						label: "GitHub",
+						kindId: "github",
 						connected: true,
 					}}
 					onChoose={onChoose}
-					onPasteUrl={onPasteUrl}
 					pending={false}
 				/>,
 			);

@@ -333,7 +333,7 @@ test("B6: a commit on the detached worktree shows its tip and offers a branch th
 	expect(branch.length).toBeLessThanOrEqual(50);
 	await openThread(page);
 	await expect(page.getByTestId("details-detached").first()).toHaveText(
-		`Detached at ${repo?.tip?.slice(0, 7)}`,
+		`Run copy of main at ${repo?.tip?.slice(0, 7)}`,
 	);
 	const action = page.getByTestId("details-git-action").first();
 	await expect(action).toHaveAttribute("data-action", "branchAndPush");

@@ -65,9 +65,8 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 		// Header is 48px
 		expect(touchBlock).toContain("--header-h: 48px;");
 
-		// Touch target min-height: 48px
+		// Rows and fields: a real 48 px box
 		expect(touchBlock).toContain("min-height: 48px;");
-		expect(touchBlock).toContain('button:not([role="switch"])');
 		expect(touchBlock).toContain('[role="tab"]');
 		expect(touchBlock).toContain('[role="radio"]');
 		expect(touchBlock).toContain('[role="option"]');
@@ -88,13 +87,36 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 	const touchRules = () =>
 		parse(css).find((n) => n.prelude === TOUCH)?.children ?? [];
 	const slotRule = () => touchRules().find((n) => n.prelude.includes("[data-slot"));
+	const tapLayer = () =>
+		parse(css)
+			.find((n) => n.prelude === "@layer base")
+			?.children.find((n) => n.prelude === TOUCH)?.children ?? [];
+	const tapRule = () =>
+		tapLayer().find((n) => n.prelude.includes('[data-slot="button"]') && n.prelude.endsWith("::after"));
 
-	it("gives every Button, asChild anchors included, a real 48 px box on touch", () => {
+	it("draws a Button 36 px on touch and gives it a 48 px tap area, not a 48 px box (#848)", () => {
 		expect(Object.fromEntries(slotRule()?.decls ?? [])).toEqual({
+			"min-width": "36px",
+			"min-height": "36px",
+		});
+		expect(Object.fromEntries(tapRule()?.decls ?? [])).toEqual({
+			content: '""',
+			position: "absolute",
+			top: "50%",
+			left: "50%",
+			width: "max(100%, 48px)",
+			height: "max(100%, 48px)",
+			transform: "translate(-50%, -50%)",
+		});
+	});
+
+	it("keeps a real 48 px box on a Button that draws its own ::after", () => {
+		const own = touchRules().find((n) => n.prelude.includes('[data-slot="button"][class*="after:"]'));
+		expect(Object.fromEntries(own?.decls ?? [])).toEqual({
 			"min-width": "48px",
 			"min-height": "48px",
 		});
-		expect(css).not.toMatch(/\[data-slot="button"\][^{]*::after/);
+		expect(tapRule()?.prelude).toContain(':not([class*="after:"])');
 	});
 
 	it("covers exactly the ui slots a Button can carry, triggers included (OBJ-011)", () => {
@@ -148,10 +170,8 @@ describe("contrast nudges and 48 px touch targets (#848 case 20)", () => {
 		act(() => root.unmount());
 	});
 
-	it("gives header links and buttons 48 px of width, the title link 48 px of height", () => {
-		expect(
-			decls(touchRules(), ':where(header button:not([role="switch"]), header a)'),
-		).toEqual({ "min-width": "48px" });
+	it("gives header links 48 px of width, the title link 48 px of height", () => {
+		expect(decls(touchRules(), ":where(header a)")).toEqual({ "min-width": "48px" });
 		expect(decls(touchRules(), ':where([data-testid="incident-header"] h1 > a)')).toEqual({
 			display: "block",
 			overflow: "hidden",

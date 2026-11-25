@@ -495,16 +495,32 @@ async function pickerScene(
 const picker = (page: Page) => page.getByTestId("agent-picker-list");
 
 /**
- * A model's row in one group of the picker: cmdk keys each row by its group, a NUL, then
- * `<agent>::<model>` (kit PickerList), so the group starts the value and the model ends it.
+ * Shows one tile of the picker's rail (Starred or an agent, #673 w7): the list then holds
+ * only its rows. False when the rail has no such tile.
  */
-const row = (page: Page, group: string, agent: string, model: string) =>
-	picker(page).locator(
-		`[data-testid="model-option"][data-value^="${group}"][data-value$="${agent}::${model}"]`,
-	);
-/** Every model row under one group's heading. */
-const groupRows = (page: Page, group: string) =>
-	picker(page).locator(`[data-testid="model-option"][data-value^="${group}"]`);
+async function show(page: Page, tile: string): Promise<boolean> {
+	// The list loads when the picker opens: count the tiles only once the rail is there.
+	await expect(page.getByTestId("picker-rail")).toBeVisible();
+	const tab = page
+		.getByTestId("picker-rail")
+		.getByRole("tab", { name: tile, exact: true });
+	if ((await tab.count()) === 0) return false;
+	await tab.click();
+	await expect(tab).toHaveAttribute("aria-selected", "true");
+	return true;
+}
+/** A model's row on one tile: cmdk keys it by its provider heading, a NUL, then `<agent>::<model>`. */
+const row = async (page: Page, tile: string, agent: string, model: string) =>
+	(await show(page, tile))
+		? picker(page).locator(
+				`[data-testid="model-option"][data-value$="${agent}::${model}"]`,
+			)
+		: picker(page).locator('[data-testid="model-option"][data-absent]');
+/** Every model row on one tile. */
+const groupRows = async (page: Page, tile: string) =>
+	(await show(page, tile))
+		? picker(page).getByTestId("model-option")
+		: picker(page).locator('[data-testid="model-option"][data-absent]');
 const SONNET = "anthropic/claude-sonnet-5-5";
 
 Given(
@@ -531,20 +547,25 @@ When("I open the picker in Settings, Models", async ({ page }) => {
 });
 
 Then(
-	"the list has one group per installed agent, headed by its name, and none for deepagents",
+	"the rail has Starred, a tile per installed agent and Add agent, and none for deepagents",
 	async ({ page }) => {
-		const headings = picker(page).locator("[cmdk-group-heading]");
-		for (const name of ["OpenCode", "Claude Code", "Codex"])
-			await expect(headings.filter({ hasText: name })).toHaveCount(1);
-		// An agent that cannot run has no group (#907).
-		await expect(headings.filter({ hasText: "deepagents" })).toHaveCount(0);
+		// An agent that cannot run has no tile (#907); Add agent sits apart at the rail's foot.
+		const names = await page
+			.getByTestId("picker-rail")
+			.getByRole("tab")
+			.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+		expect(names[0]).toBe("Starred");
+		expect(new Set(names)).toEqual(
+			new Set(["Starred", "OpenCode", "Claude Code", "Codex"]),
+		);
+		await expect(page.getByTestId("rail-add-agent")).toBeVisible();
 	},
 );
 
 Then(
-	"OpenCode's group shows its models by their own names, no Default row, each named once",
+	"OpenCode's tile shows its models by their own names, no Default row, each named once",
 	async ({ page }) => {
-		const rows = groupRows(page, "OpenCode");
+		const rows = await groupRows(page, "OpenCode");
 		await expect(rows.filter({ hasText: "Claude Sonnet 5.5" })).toHaveCount(1);
 		await expect(
 			rows.filter({ hasText: "DeepSeek V4.1 Flash (free)" }),
@@ -573,7 +594,7 @@ Then("only models matching {string} remain", async ({ page }, text: string) => {
 
 When("I star {string}", async ({ page }, name: string) => {
 	expect(name).toBe("Claude Sonnet 5.5");
-	const star = row(page, "OpenCode", "opencode", SONNET).getByTestId(
+	const star = (await row(page, "OpenCode", "opencode", SONNET)).getByTestId(
 		"model-star",
 	);
 	await star.click();
@@ -581,13 +602,13 @@ When("I star {string}", async ({ page }, name: string) => {
 });
 
 Then(
-	"it is listed under Starred and first in OpenCode's group on the next open",
+	"it is listed under Starred and first on OpenCode's tile on the next open",
 	async ({ page }) => {
 		await page.keyboard.press("Escape");
 		await expect(picker(page)).toBeHidden();
 		await openPicker(page);
-		await expect(row(page, "Starred", "opencode", SONNET)).toHaveCount(1);
-		await expect(groupRows(page, "OpenCode").first()).toHaveAttribute(
+		await expect(await row(page, "Starred", "opencode", SONNET)).toHaveCount(1);
+		await expect((await groupRows(page, "OpenCode")).first()).toHaveAttribute(
 			"data-value",
 			new RegExp(`opencode::${SONNET}$`),
 		);
@@ -654,7 +675,9 @@ Then(
 	async ({ page }) => {
 		await page.getByTestId("agent-picker").click();
 		// The check read Codex's own model option, so its list replaces the check line.
-		await expect(row(page, "Codex", "codex", "gpt-5.6")).toHaveText("GPT-5.6");
+		await expect(await row(page, "Codex", "codex", "gpt-5.6")).toHaveText(
+			"GPT-5.6",
+		);
 		await expect(picker(page).getByTestId("model-pending")).toHaveCount(0);
 		await page.keyboard.press("Escape");
 	},
@@ -772,11 +795,11 @@ When(
 		await openDraft(page, { alertmanager, deliverWebhook }, unique("ChipRun"));
 		w(page).incident = new URL(page.url()).pathname.split("/")[2];
 		await page.getByTestId("agent-picker").click();
-		// One list grouped by agent, no rail (#893): Codex's ids are its names in lower case.
-		await row(page, "Codex", "codex", model.toLowerCase()).click();
+		// Codex's tile on the rail (#673 w7): its ids are its names in lower case.
+		await (await row(page, "Codex", "codex", model.toLowerCase())).click();
 		await expect(
 			page.getByTestId("docked-composer").getByTestId("agent-picker"),
-		).toHaveAttribute("aria-label", `Model: ${model}`);
+		).toHaveAttribute("aria-label", `Model: ${model} · via Codex`);
 		await page.getByTestId("effort-chip").click();
 		await page.getByTestId("effort-option").filter({ hasText: level }).click();
 		await expect(page.getByTestId("effort-chip")).toContainText(level);
@@ -805,7 +828,7 @@ Then(
 		await expect(page.getByTestId("docked-composer")).toBeVisible();
 		await expect(
 			page.getByTestId("docked-composer").getByTestId("agent-picker"),
-		).toHaveAttribute("aria-label", `Model: ${model}`);
+		).toHaveAttribute("aria-label", `Model: ${model} · via Codex`);
 		await expect(page.getByTestId("effort-chip")).toContainText(level);
 	},
 );
@@ -861,7 +884,7 @@ Given(
 When("I choose {string}", async ({ page }, name: string) => {
 	expect(name).toBe("Claude Sonnet 5.5");
 	await openPicker(page);
-	await row(page, "OpenCode", "opencode", SONNET).click();
+	await (await row(page, "OpenCode", "opencode", SONNET)).click();
 	await expect(picker(page)).toBeHidden();
 });
 
@@ -872,7 +895,7 @@ Then(
 		const settingsRow = page.getByTestId("harness-run-row");
 		await expect(settingsRow.getByTestId("agent-picker")).toHaveAttribute(
 			"aria-label",
-			`Model: ${name}`,
+			`Model: ${name} · via OpenCode`,
 		);
 		const made = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("PickerBox"),
@@ -883,7 +906,7 @@ Then(
 		await page.goto(`/incidents/${made.id}/conversation`);
 		await expect(
 			page.getByTestId("docked-composer").getByTestId("agent-picker"),
-		).toHaveAttribute("aria-label", `Model: ${name}`);
+		).toHaveAttribute("aria-label", `Model: ${name} · via OpenCode`);
 	},
 );
 
@@ -891,14 +914,14 @@ Then(
 	/^"DeepSeek V4\.1 Flash \(free\)" carries the warning "(.+)" and the picker ticks one model by its name, with no Default row$/,
 	async ({ page }, warning: string) => {
 		await openPicker(page);
-		const free = row(
+		const free = await row(
 			page,
 			"OpenCode",
 			"opencode",
 			"opencode/deepseek-v4.1-flash-free",
 		);
 		await expect(free.getByLabel(warning)).toBeVisible();
-		// The chosen model is also the agent's star, so Starred ticks it too: one name either way.
+		// The tile shows one agent, so the chosen model is ticked once, by its one name.
 		const ticked = picker(page).locator("[cmdk-item][data-on]");
 		const names = await ticked.evaluateAll((els) =>
 			els.map((e) => e.textContent?.trim()),
@@ -909,22 +932,25 @@ Then(
 );
 
 Then(
-	"every row in an agent's group carries a mark, and searching an agent's name finds its models",
+	"every row on an agent's tile carries a mark, and each tile shows only its agent's models",
 	async ({ page, agents }) => {
 		await pickerScene(page, agents);
 		await openPicker(page);
 		for (const group of ["OpenCode", "Codex"]) {
-			const rows = groupRows(page, group);
+			const rows = await groupRows(page, group);
 			await expect(rows.first()).toBeVisible();
 			const marks = await rows.evaluateAll((els) =>
 				els.map((e) => !!e.querySelector("svg, [data-letters]")),
 			);
 			expect(marks.every(Boolean)).toBe(true);
 		}
-		// A row's keywords hold its group, so the agent's name finds its models (kit PickerList).
-		await picker(page).getByTestId("picker-search").fill("Codex");
-		await expect(row(page, "Codex", "codex", "gpt-5.6")).toBeVisible();
-		await expect(groupRows(page, "OpenCode")).toHaveCount(0);
+		// The Codex tile holds Codex's models and none of OpenCode's.
+		await expect(await row(page, "Codex", "codex", "gpt-5.6")).toBeVisible();
+		await expect(
+			picker(page).locator(
+				'[data-testid="model-option"][data-value*="opencode::"]',
+			),
+		).toHaveCount(0);
 		await page.keyboard.press("Escape");
 	},
 );
@@ -944,13 +970,15 @@ When(
 );
 
 Then(
-	"both are listed under Starred, each with its agent's mark",
+	"both are on the Starred tile, each with its agent's mark",
 	async ({ page }) => {
 		await expect(
-			row(page, "Starred", "opencode", SONNET).getByTestId("agent-logo"),
+			(await row(page, "Starred", "opencode", SONNET)).getByTestId(
+				"agent-logo",
+			),
 		).toHaveCount(1);
 		await expect(
-			row(page, "Starred", "claude-code", "claude-opus-5-5").locator(
+			(await row(page, "Starred", "claude-code", "claude-opus-5-5")).locator(
 				'[data-brand="claude-code"]',
 			),
 		).toHaveCount(1);

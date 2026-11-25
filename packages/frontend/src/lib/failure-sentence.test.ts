@@ -17,6 +17,24 @@ describe("failureStatusLine", () => {
 		});
 	});
 
+	it("keeps a heading's non-English message, and says no reason only for a bare heading or braces", () => {
+		expect(failureStatusLine("Codex", "Error: 权限不足")).toBe(
+			'Codex answered "Error: 权限不足".',
+		);
+		const none = {
+			said: "The agent's session ended without giving a reason. Retry runs it again from here.",
+			words: null,
+		};
+		expect(failureSentence("Codex", "Error:")).toEqual(none);
+		expect(failureSentence("Codex", "{}\n}")).toEqual(none);
+	});
+
+	it("skips a line of box-drawing characters for the words under it", () => {
+		expect(failureStatusLine("Codex", "───\ndisk full")).toBe(
+			'Codex answered "disk full".',
+		);
+	});
+
 	it("keeps an agent's own words as they are", () => {
 		expect(failureStatusLine("Codex", "disk full")).toBe(
 			'Codex answered "disk full".',
@@ -95,5 +113,23 @@ describe("failureSentence", () => {
 		expect(result.words).toBeNull();
 		expect(result.next).toBe("Try again, or pick another model.");
 		expect(result.detail).toBe(rawError);
+	});
+
+	it("takes the agent's detail from the first line that says something, not a lone brace", () => {
+		const error = [
+			"harness exited early (code=1 signal=null): {",
+			'  "message": "not signed in to its provider"',
+			"}",
+		].join("\n");
+		expect(failureSentence("OpenCode", error)).toMatchObject({
+			said: "OpenCode is not signed in to its model provider.",
+			detail: '"message": "not signed in to its provider"',
+		});
+	});
+
+	it("gives no detail, and no quoted blank, for an error with no words in it", () => {
+		const blank = failureSentence("OpenCode", "{\n}\n");
+		expect(blank.detail).toBeUndefined();
+		expect(blank.said).toBe(failureSentence("OpenCode", null).said);
 	});
 });

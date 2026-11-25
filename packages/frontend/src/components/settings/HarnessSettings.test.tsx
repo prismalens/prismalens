@@ -513,8 +513,11 @@ describe("HarnessSettings agent rows (#911)", () => {
 });
 
 describe("HarnessSettings signed-out row (w8-9)", () => {
-	it("says the picker's sentence when the last check needs a sign-in", async () => {
+	it("names the agent's own login command and the Check button when the last check needs a sign-in", async () => {
 		const saved = mockHarnesses[0].checked;
+		const savedHint = mockHarnesses[0].loginHint;
+		mockHarnesses[0].loginHint =
+			"`claude auth login`, or `ANTHROPIC_API_KEY` in env";
 		mockHarnesses[0].checked = {
 			at: "",
 			outcome: "sign-in-needed",
@@ -540,11 +543,14 @@ describe("HarnessSettings signed-out row (w8-9)", () => {
 			expect(
 				container.querySelector('[data-testid="harness-note-claude-code"]')
 					?.textContent,
-			).toBe(
-				"Claude Code is not signed in to its model provider. Sign in with its own CLI, then retry.",
-			);
+			).toBe("Run claude auth login in a terminal, then Check.");
+			expect(
+				container.querySelector('[data-testid="sign-in-copy-claude-code"] code')
+					?.textContent,
+			).toBe("claude auth login");
 		} finally {
 			mockHarnesses[0].checked = saved;
+			mockHarnesses[0].loginHint = savedHint;
 		}
 	});
 });

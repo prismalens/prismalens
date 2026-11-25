@@ -29,7 +29,7 @@ Plugin headers cite these numbers.
 16. One page header, `shell/PageHeader` or `run/IncidentHeader`: `one-page-header.grit`.
 17. Tool calls fold to one line per group: `Transcript.test.tsx`.
 18. Reduced motion shows the final state: design matrix frame `frames-live-reduced`.
-19. AA contrast, a visible focus ring, targets of 24 px (48 px on the phone strip), no sideways scroll at 390 px except a row marked `data-scroll-x`: design matrix with `ui-budget.json`.
+19. AA contrast, a visible focus ring, targets of 24 px, no sideways scroll at 390 px except a row marked `data-scroll-x`: design matrix with `ui-budget.json`. On touch a button draws 36 px and its `::after` makes a 48 px tap area (`styles/tokens.css`); `tapOverlaps` holds the spacing.
 
 Plugins live in `biome-plugins/`, one rule each. A plugin's `includes` in `biome.json` excludes the files that still break it; that list only shrinks, and a new exclusion names its reason in the PR. `nursery/noTailwindRestyledComponents` keeps classes on a design-system component to layout only.
 
