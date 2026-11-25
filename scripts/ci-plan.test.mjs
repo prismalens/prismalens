@@ -315,6 +315,84 @@ test("a renamed file counts under both names, so a source file moved into docs s
 	assert.deepEqual(tiers(p), [false, true, true, true, false, false]);
 });
 
+test("a diff touching install.ps1 plans every tier, the Windows installer test with them", () => {
+	assert.deepEqual(planFor(["scripts/install/install.ps1"]), {
+		affected: [],
+		skip: false,
+		code: true,
+		e2e: true,
+		intake: true,
+		full: true,
+		agents: true,
+		installer: true,
+		reason: "scripts/install/install.ps1 is on no plan rule: everything runs",
+	});
+});
+
+test("a diff touching only packages/ leaves the installer test off", () => {
+	const p = planFor(["packages/api/src/a.ts"]);
+	assert.deepEqual(
+		{ ...p, affected: p.affected.sort() },
+		{
+			affected: ["@prismalens/api", "prismalens"],
+			skip: false,
+			code: true,
+			e2e: true,
+			intake: true,
+			full: false,
+			agents: false,
+			installer: false,
+			reason: "affected packages and path rules",
+		},
+	);
+});
+
+test("the full tier runs the installer test: a full-ci label, a CLI source change, a push and a merge group", () => {
+	const labelled = pr({
+		files: ["packages/api/src/a.ts"],
+		packages: PACKAGES,
+		affected: ["@prismalens/api"],
+		labels: ["full-ci"],
+	});
+	assert.deepEqual(labelled, {
+		skip: false,
+		code: true,
+		e2e: true,
+		intake: true,
+		full: true,
+		agents: true,
+		installer: true,
+		reason: "label full-ci: everything runs",
+	});
+	const cli = planFor(["packages/cli/src/cli/service.ts"]);
+	assert.deepEqual([cli.full, cli.installer], [true, true]);
+	for (const event of ["push", "merge_group"])
+		assert.equal(plan({ event, files: [] }).installer, true, event);
+});
+
+test("a draft PR and a docs-only PR leave the installer test off", () => {
+	const draft = pr({ files: ["scripts/install/install.ps1"], draft: true });
+	assert.equal(draft.installer, false);
+	assert.equal(pr({ files: ["README.md"] }).installer, false);
+});
+
+test("ci.yml runs the installer test on Windows when the plan says so, and CI gate waits for it", () => {
+	const { jobs } = parse(readFileSync(join(WORKFLOWS, "ci.yml"), "utf8"));
+	assert.equal(
+		jobs.changes.outputs.installer,
+		"${{ steps.plan.outputs.installer }}",
+	);
+	assert.equal(jobs.installer.needs, "changes");
+	assert.equal(jobs.installer.if, "needs.changes.outputs.installer == 'true'");
+	assert.equal(jobs.installer["runs-on"], "windows-latest");
+	assert.equal(jobs.installer.steps.at(-1).shell, "powershell");
+	assert.equal(
+		jobs.installer.steps.at(-1).run.trim().split("\n").at(-1),
+		"Invoke-Pester scripts/install -Output Detailed -CI",
+	);
+	assert.equal(jobs["ci-gate"].needs.includes("installer"), true);
+});
+
 test("a push to main runs the PR checks and leaves the release proofs to the nightly", () => {
 	for (const event of ["push", "schedule"]) {
 		const p = plan({ event, files: ["README.md"] });
