@@ -21,6 +21,8 @@ export interface FirstPaintPage {
 	hold?: false;
 	/** Held calls the first screen still draws (header, picker): first in the lane after it. */
 	next?: readonly string[];
+	/** Code its first content needs that the route's own chunk would only start once it runs. */
+	code?: readonly (() => Promise<unknown>)[];
 }
 
 /** Every signed-in page draws the device check and the sidebar's thread list. */
@@ -63,6 +65,8 @@ export const FIRST_PAINT: readonly FirstPaintPage[] = [
 		// The open file's patch is the pane's content: it never queues behind held calls (#1130).
 		soon: ["/api/investigations/$1/changes/patch?*"],
 		next: THREAD_NEXT,
+		// The file list is in the side panel: its code waited on the thread page's, 1.6 s (#1181).
+		code: [() => import("@/components/thread/panel/ThreadSidePanel")],
 	},
 	{
 		name: "thread",
