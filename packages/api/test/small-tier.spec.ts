@@ -51,18 +51,20 @@ describe("the small tier (#1154)", () => {
 		"fork",
 	] as const)("refuses a child process through %s", (form) => {
 		const start = childProcess[form] as (file: string) => unknown;
-		expect(() => start("git")).toThrow(refusal(`a child process (${form})`));
+		expect(() => start("git")).toThrow(
+			new Error(refusal(`a child process (${form})`)),
+		);
 	});
 
 	it("refuses a socket and a listening server", () => {
 		expect(() => net.connect(80, "localhost")).toThrow(
-			refusal("the network (connect)"),
+			new Error(refusal("the network (connect)")),
 		);
 		expect(() => new net.Socket().connect(80, "127.0.0.1")).toThrow(
-			refusal("the network (connect)"),
+			new Error(refusal("the network (connect)")),
 		);
 		expect(() => net.createServer().listen(0)).toThrow(
-			refusal("the network (listen)"),
+			new Error(refusal("the network (listen)")),
 		);
 	});
 
@@ -83,7 +85,7 @@ describe("the small tier (#1154)", () => {
 		const Database = fromAdapter("better-sqlite3");
 		const db = new Database(":memory:");
 		expect(() => db.prepare("select 1")).toThrow(
-			refusal("a SQLite database (prepare)"),
+			new Error(refusal("a SQLite database (prepare)")),
 		);
 	});
 });
