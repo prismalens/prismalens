@@ -98,10 +98,11 @@ const OUTSIDE = [
 		[],
 	],
 	[
-		/^scripts\/(agent-probe|agent-tested|agent-adapter-sdk|admission-fake)(\.test)?\.mjs$/,
+		/^scripts\/(agent-probe|agent-locks|agent-tested|agent-adapter-sdk|admission-fake)(\.test)?\.mjs$/,
 		["agents"],
 	],
 	[/^scripts\/agent-pins\.json$/, ["agents"]],
+	[/^scripts\/agent-locks\//, ["agents"]],
 	[
 		/^scripts\/(gate-side-checks|packed-upgrade-chain)(\.test)?\.mjs$/,
 		["full"],

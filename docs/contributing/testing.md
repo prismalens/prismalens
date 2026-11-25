@@ -49,6 +49,8 @@ A PR never waits on a live model, and nothing here spends money on one.
 
 Tier-1 legs (opencode, claude-code, codex) gate; tier-2 legs (gemini, deepagents) do not. A row's `tested` version equals the pin CI installs (`scripts/agent-pins.json`, checked by `harness-pins.test.ts`) and moves only in a merged bump PR.
 
+A pinned agent installs from its lock in `scripts/agent-locks/<agent>/` (`npm ci`, or `uv pip sync` of a hashed `requirements.lock`), the same bytes on every runner (#1154); latest legs stay unlocked. After a pin moves, `node scripts/agent-locks.mjs regen` rewrites the locks; `check` (in `format-and-lint`) fails until it has run.
+
 Run one agent's qualification with the agent on PATH at its pin:
 
 ```bash

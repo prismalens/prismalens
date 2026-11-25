@@ -1,0 +1,8 @@
+{
+	"name": "agent-lock-claude-code",
+	"version": "0.0.0",
+	"private": true,
+	"dependencies": {
+		"@anthropic-ai/claude-code": "2.1.329"
+	}
+}
