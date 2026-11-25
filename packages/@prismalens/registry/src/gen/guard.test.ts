@@ -7,6 +7,7 @@ import {
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -351,6 +352,25 @@ describe("the guard's label check", { timeout: 30_000 }, () => {
 		expect(check(base, commit())).toEqual([
 			`packages/a/src/old.ts L9 rose from 2 to 3 in registry.ratchet.tsv. ${fix}`,
 		]);
+	});
+
+	// Git answers with the real path, so the config's own may not be under it (macOS's /var).
+	it("reads the ratchet and its renames when the workspace is reached through a link", () => {
+		const base = commit();
+		run("mv", "packages/a/src/old.ts", "packages/a/src/new.ts");
+		put("registry.ratchet.tsv", rows("packages/a/src/new.ts	L9	3"));
+		const head = commit();
+		const links = mkdtempSync(join(tmpdir(), "registry-link-"));
+		try {
+			const link = join(links, "repo");
+			symlinkSync(root, link, "junction");
+			const ws = loadWorkspace(join(link, "registry.workspace.json"));
+			expect(guardLabelCheck(ws, base, head, "")).toEqual([
+				`packages/a/src/new.ts L9 rose from 2 to 3 in registry.ratchet.tsv. ${fix}`,
+			]);
+		} finally {
+			rmSync(links, { recursive: true, force: true });
+		}
 	});
 
 	it("asks for the label when the scanned package list changes, not for another edit to the file", () => {

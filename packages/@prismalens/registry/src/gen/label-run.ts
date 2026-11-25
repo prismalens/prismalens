@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { join, relative } from "node:path";
+import { posix } from "node:path";
 import { labelProblems } from "../label.ts";
 import { ledgerDiff } from "../ledger.ts";
 import { git as runGit } from "./git.ts";
@@ -62,10 +62,10 @@ export function labelCheck(
 ): string[] {
 	if (!base) return ["label-check needs --base <sha>"];
 	const top = git(cfg.root, ["rev-parse", "--show-toplevel"]).trim();
+	// Git's own prefix: `top` is a real path, which a linked `cfg.root` is not under.
+	const prefix = git(cfg.root, ["rev-parse", "--show-prefix"]).trim();
 	// A host may keep no ratchet; reading "" would `git show` the host's own folder.
-	const ratchet = cfg.ratchet
-		? relative(top, join(cfg.root, cfg.ratchet)).split("\\").join("/")
-		: "";
+	const ratchet = cfg.ratchet ? posix.join(prefix, cfg.ratchet) : "";
 	const showAt = (ref: string, path: string) => {
 		try {
 			return git(top, ["show", `${ref}:${path}`]);
@@ -78,9 +78,7 @@ export function labelCheck(
 	const from = git(top, ["merge-base", base, head]).trim();
 	const named = labelList(labels);
 	const label = cfg.label ?? "registry-approved";
-	const ledgerFile = cfg.ledger
-		? relative(top, join(cfg.root, cfg.ledger.file)).split("\\").join("/")
-		: "";
+	const ledgerFile = cfg.ledger ? posix.join(prefix, cfg.ledger.file) : "";
 	const ledger =
 		ledgerFile && !named.includes(label)
 			? ledgerDiff(showAt(from, ledgerFile), showAt(head, ledgerFile)).map(
@@ -108,11 +106,7 @@ export function labelCheck(
 			baseTsv: show(from),
 			headTsv: show(head),
 			labels: named,
-			renames: renames(
-				top,
-				[from, head],
-				relative(top, cfg.root).split("\\").join("/"),
-			),
+			renames: renames(top, [from, head], prefix.replace(/\/$/, "")),
 			label,
 			budgets: (cfg.budgets ?? []).map((path) => ({
 				path,
