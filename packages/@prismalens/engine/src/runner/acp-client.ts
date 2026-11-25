@@ -785,7 +785,8 @@ export class AcpSession {
 				{ methodId: config.authenticate },
 				config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
 			).catch((e: unknown) => {
-				// ACP auth_required, so the run reads as signed out, not as a broken agent.
+				// Any refused authenticate is a failed sign-in: signed out, Cursor 2026.11.22 answers
+				// -32602, not -32000. Rewrapped as auth_required, the run reads as signed out (#1235).
 				if (!(e instanceof AcpRpcError)) throw e;
 				throw new AcpRpcError(
 					`Authentication required: ${config.authenticate} refused (${e.message})`,

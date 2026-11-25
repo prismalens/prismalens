@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineAgent, noModeLines } from "../family.ts";
+import { defineAgent, type Lines } from "../family.ts";
+
+// Its agent, plan and ask modes are its own, not levels; PrismaLens answers its asks.
+const line = () =>
+	"Cursor's modes are not permission levels; PrismaLens answers its asks by this level.";
+const lines: Lines = {
+	supervised: line,
+	"auto-edits": line,
+	auto: line,
+	"full-access": line,
+};
 
 export const cursor = defineAgent({
 	id: "agent.cursor",
@@ -54,7 +64,9 @@ export const cursor = defineAgent({
 		// Its `acp` command is hidden and unversioned: the install it was written against (#1235).
 		install:
 			"curl https://cursor.com/install -fsS | bash (Windows: irm 'https://cursor.com/install?win32=true' | iex)",
-		lines: noModeLines("Cursor"),
+		lines,
+		noLevelReason:
+			"Cursor's Agent, Plan and Ask modes are not permission levels.",
 		loginHint: "`cursor-agent login`, or `CURSOR_API_KEY` in env",
 		signInArgs: ["login"],
 	},
