@@ -338,6 +338,26 @@ describe("pl_citation_read (#1195)", () => {
 		});
 	});
 
+	it("keeps the cited message in a turn longer than the rows it reads", async () => {
+		const prisma = await pl.prisma();
+		const long = await thread("Long turn", [ask(0, "Go")]);
+		await prisma.investigationEvent.createMany({
+			data: Array.from({ length: 450 }, (_, i) => ({
+				investigationId: long,
+				seq: i + 1,
+				branchId: "main",
+				event: JSON.stringify(answer(i + 1, `step ${i + 1}`)),
+			})),
+		});
+		await svc.cite(citing, {
+			references: [{ kind: "message", id: messageRefId(long, "main:430"), label: "deep" }],
+		});
+		const r = await tool()(citing, { threadId: long, key: "main:430" });
+		expect(r.body).toMatchObject({ threadId: long, key: "main:430", turn: 1 });
+		expect(r.body.body).toContain("Agent said (the cited message):\nstep 430\n");
+		expect(r.body.body).toContain("User asked:\nGo\n");
+	});
+
 	it("reads as not_found once the cited thread is deleted", async () => {
 		await svc.cite(citing, {
 			references: [{ kind: "message", id: messageRefId(doomed, "main:0"), label: "bye" }],
