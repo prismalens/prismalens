@@ -13,10 +13,7 @@ import { kindStatus } from "@/components/home/AwayView";
 import { statusUrgency } from "@/components/kit/Status";
 import { useThreadListModel } from "@/components/shell/ThreadList";
 import { client, orpc } from "@/lib/api/orpc-client";
-import {
-	setAttentionOpener,
-	setAttentionToasts,
-} from "@/lib/attention/attention-toasts";
+import { useAttentionToastOwner } from "@/lib/attention/attention-toasts";
 import { setNeedsCount, useNeedsCount } from "@/lib/attention/needs-count";
 import { decide, notificationText } from "@/lib/attention/notify-rules";
 import { playNeedsYou } from "@/lib/attention/sound";
@@ -136,17 +133,7 @@ export function AttentionRuntime() {
 		},
 		[navigate],
 	);
-	useEffect(() => {
-		setAttentionOpener(open);
-		return () => setAttentionOpener(null);
-	}, [open]);
-	// Its toasts go with it: with no opener a click would only dismiss; a later mount's stay.
-	const raised = useRef(new Set<string>());
-	useEffect(() => {
-		const mine = raised.current;
-		return () =>
-			setAttentionToasts((all) => all.filter((t) => !mine.has(t.id)));
-	}, []);
+	const raise = useAttentionToastOwner(open);
 
 	useEffect(() => {
 		const list = events.data?.events;
@@ -167,9 +154,8 @@ export function AttentionRuntime() {
 				permission: permission(),
 			});
 			const text = notificationText(e);
-			if (d.toast) raised.current.add(e.id);
 			if (d.toast)
-				setAttentionToasts((t) =>
+				raise(e.id, (t) =>
 					[
 						{
 							id: e.id,

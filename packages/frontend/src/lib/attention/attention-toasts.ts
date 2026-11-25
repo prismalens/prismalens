@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 /** One toast for another thread's event; the lazy toast layer draws the list. */
 export interface AttentionToast {
@@ -48,3 +48,29 @@ export const useAttentionToasts = (): readonly AttentionToast[] =>
 		() => shown,
 		() => shown,
 	);
+
+/**
+ * Owns the opener while mounted and returns how to raise a toast. Unmounting takes the
+ * toasts it raised with it, since none could open its thread; a later owner's stay.
+ */
+export function useAttentionToastOwner(
+	open: (threadId: string, eventId: string) => void,
+): (
+	id: string,
+	next: (all: readonly AttentionToast[]) => readonly AttentionToast[],
+) => void {
+	useEffect(() => {
+		setAttentionOpener(open);
+		return () => setAttentionOpener(null);
+	}, [open]);
+	const raised = useRef(new Set<string>());
+	useEffect(() => {
+		const mine = raised.current;
+		return () =>
+			setAttentionToasts((all) => all.filter((t) => !mine.has(t.id)));
+	}, []);
+	return useCallback((id, next) => {
+		raised.current.add(id);
+		setAttentionToasts(next);
+	}, []);
+}
