@@ -147,7 +147,7 @@ describe("RewindService (#1193)", () => {
 		expect([read(cwd, "src/app.txt"), read(cwd, "README.md")]).toEqual([APP_TURN_2, HAND_EDIT]);
 	});
 
-	it("rewind sets the agent's file back and keeps the hand edit, folds the later turn, moves the sessions into its marker; undo brings files, transcript and sessions back", async () => {
+	it("rewind sets the agent's file back and keeps the hand edit, folds the edited turn from its session divider on, moves the sessions into its marker; undo brings files, transcript and sessions back", async () => {
 		const { id, cwd } = await fixture();
 		const seq = await seqOf(id, MESSAGE_2);
 		const shown = (await visible(id)).map(labelOf);
@@ -167,7 +167,8 @@ describe("RewindService (#1193)", () => {
 			true,
 		]);
 		const folded = (await rewinds().folded(id, r.rewindId)).map(labelOf);
-		expect(folded).toEqual(shown.slice(shown.indexOf(`run ${seq} operator_message`)));
+		expect(folded).toEqual(shown.slice(shown.indexOf(`run ${seq} operator_message`) - 1));
+		expect(folded[0]).toBe(`run ${seq - 1} session_opened`);
 		expect([read(cwd, "src/app.txt"), read(cwd, "README.md")]).toEqual([APP_TURN_1, HAND_EDIT]);
 		const marker = (await visible(id)).find((e) => e.kind === "thread_rewound");
 		expect(marker?.kind === "thread_rewound" ? marker.priorSessions : null).toEqual({

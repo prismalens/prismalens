@@ -204,6 +204,18 @@ export class RewindService {
 		);
 	}
 
+	/** The message's ordinal, or the session divider its own run opened just before it: that divider folds with it. */
+	private foldFrom(rows: Row[], m: Row): number {
+		const runId = "runId" in m.event ? m.event.runId : undefined;
+		let from = m.ordinal;
+		for (const r of [...rows].reverse()) {
+			if (r.ordinal >= m.ordinal) continue;
+			if (r.event.kind !== "session_opened" || r.event.runId !== runId) break;
+			from = r.ordinal;
+		}
+		return from;
+	}
+
 	private async blockOf(
 		t: Thread,
 		rows: Row[],
@@ -530,7 +542,7 @@ export class RewindService {
 					investigationId: t.id,
 					foldedBy: null,
 					branchId: { in: look.branches },
-					ordinal: { gte: m.ordinal, lte: now.eventOrdinal },
+					ordinal: { gte: this.foldFrom(rows, m), lte: now.eventOrdinal },
 				};
 				const out = await this.supersede(tx, t.id, range);
 				await tx.investigationEvent.updateMany({
