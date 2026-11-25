@@ -329,7 +329,7 @@ async function measurePage(browser, base, storageState, p, suffix = "") {
 		.transfers()
 		.filter((t) => /\.js(\?|$)/.test(t.url))
 		.reduce((n, t) => n + t.bytes, 0);
-	if (process.argv.includes("--verbose"))
+	if (process.argv.includes("--verbose")) {
 		for (const t of cpu
 			.transfers()
 			.sort((a, b) => b.bytes - a.bytes)
@@ -337,6 +337,13 @@ async function measurePage(browser, base, storageState, p, suffix = "") {
 			console.log(
 				`  ${t.bytes}\t${t.url.replace(/^.*\/(assets|api)\//, "$1/")}`,
 			);
+		// When each request left, against the first content: what the page waited on.
+		for (const r of cpu.requests())
+			console.error(
+				`  sent ${r.at - t0}\t${r.bytes}\t${r.done ? "done" : "open"}\t${r.url.replace(/^.*\/(assets|api)\//, "$1/")}`,
+			);
+		console.error(`  first content ${firstContentMs}`);
+	}
 	// The interface font arrives after the first paint; its swap is inside this wait.
 	const fontMs = await until(page, t0, PLEX, firstContentMs + 10_000);
 	await page.waitForTimeout(1000);

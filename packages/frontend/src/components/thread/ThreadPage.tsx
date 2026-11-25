@@ -250,8 +250,11 @@ const DiffSurface = lazyPart(
 	<Loading />,
 	{ now: true },
 );
-// On a diff landing the surface imports while this page evaluates, so the first render has it.
-if (firstContentOf() === "diff") DiffSurface.preload(true).catch(() => {});
+// On a diff landing the surface and the panel holding it import while this page evaluates, so
+// the first render has both: the panel's code waited on this page's, 1.6 s later (#1181).
+if (firstContentOf() === "diff")
+	for (const part of [DiffSurface, ThreadSidePanel])
+		part.preload(true).catch(() => {});
 // The diff surface's own late parts (the tree), fetched before the pane opens.
 const DiffParts = lazyPart(() =>
 	import("./diff/DiffSurface").then(async (m) => {
