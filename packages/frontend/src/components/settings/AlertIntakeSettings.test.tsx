@@ -20,6 +20,10 @@ const state = {
 	dialogEnvOrigin: [] as (string | null | undefined)[],
 };
 
+vi.mock("@/components/alertTest/SendTestAlert", () => ({
+	SendTestAlert: () => null,
+}));
+
 vi.mock("./ConnectionFormDialog", async (importOriginal) => ({
 	...(await importOriginal<typeof import("./ConnectionFormDialog")>()),
 	ConnectionFormDialog: (props: {

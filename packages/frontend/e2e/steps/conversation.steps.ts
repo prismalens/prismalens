@@ -140,21 +140,26 @@ const said = (words: string) => new RegExp(`^, ${words}`);
 /** Stop sits in the box while the agent works (RunStrip: "Stop lives in the composer"). */
 const stop = (page: Page) => page.getByTestId("composer-stop");
 
-/** Each agent's mark in the model chip: OpenCode's logo, the others' letter tiles (#1101). */
-const MARK: Record<string, string> = {
-	OpenCode: '[data-testid="agent-logo"]',
-	"Claude Code": '[data-letters="CC"]',
-	Codex: '[data-letters="CX"]',
-	Gemini: '[data-letters="GE"]',
+/** Each agent's name as the model chip says it runs the model (#1215). */
+const VIA: Record<string, string> = {
+	OpenCode: "OpenCode",
+	"Claude Code": "Claude Code",
+	Codex: "Codex",
+	Gemini: "Gemini CLI",
 };
 
-/** The box's model chip shows `agent`'s mark and a model by name. */
+/** The box's model chip names a model, shows its maker's mark, and says which agent runs it. */
 async function chipNames(page: Page, agent: string) {
 	const chip = page.getByTestId("agent-picker");
-	await expect(chip.locator(`[data-fact="agent"]${MARK[agent]}`)).toHaveCount(
-		1,
+	await expect(
+		chip.locator(
+			'[data-testid="agent-logo"], [data-testid="maker-lettermark"]',
+		),
+	).toHaveCount(1);
+	await expect(chip).toHaveAttribute(
+		"aria-label",
+		new RegExp(`^Model: [^…]+ · via ${VIA[agent]}$`),
 	);
-	await expect(chip).toHaveAttribute("aria-label", /^Model: [^…]+$/);
 }
 
 async function check(page: Page, id: string) {

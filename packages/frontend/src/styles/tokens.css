@@ -177,13 +177,13 @@
 	--sev-low: oklch(0.72 0.12 250);
 }
 
-/* Touch layouts: every control is a 48 px target (#848, OBJ-012). */
+/* Touch layouts: every control is a 48 px target (#848, OBJ-012). Rows and fields are a
+   48 px box; a button is 36 px to the eye and 48 px to the finger (below). */
 @media (pointer: coarse), (max-width: 767px) {
 	:root {
 		--header-h: 48px;
 	}
 	:where(
-		button:not([role="switch"]),
 		[role="tab"],
 		[role="radio"],
 		[role="option"],
@@ -196,13 +196,25 @@
 	) {
 		min-height: 48px;
 	}
-	/* A real box, not an overlay, so a neighbour 4 px away can't take part of it (#848, OBJ-003).
-	   An asChild trigger's slot replaces the Button's, so triggers are named too (OBJ-011). */
-	:where([data-slot="button"], [data-slot$="-trigger"]) {
+	/* An asChild trigger's slot replaces the Button's, so triggers are named too (OBJ-011). */
+	:where(
+		button:not([role="switch"]),
+		[data-slot="button"],
+		[data-slot$="-trigger"]
+	) {
+		min-width: 36px;
+		min-height: 36px;
+	}
+	/* A control that draws its own ::after keeps a real 48 px box. */
+	:where(
+		button:not([role="switch"])[class*="after:"],
+		[data-slot="button"][class*="after:"],
+		[data-slot$="-trigger"][class*="after:"]
+	) {
 		min-width: 48px;
 		min-height: 48px;
 	}
-	:where(header button:not([role="switch"]), header a) {
+	:where(header a) {
 		min-width: 48px;
 	}
 	:where([data-testid="incident-header"] h1 > a) {
@@ -251,11 +263,31 @@
 	}
 }
 
-/* A switch keeps its 34x20 look and gains a 48 px hit area (Material 48dp); its
-   rows leave the 7 px it spills sideways free. Layered so a component's own
-   position wins (#848). */
+/* A switch and a button keep their look and gain a 48 px hit area (Material 48dp is a
+   tap area, not a drawn size). Neighbours stay 12 px apart so no area takes another's
+   taps. Layered so a component's own position wins (#848). */
 @layer base {
 	@media (pointer: coarse), (max-width: 767px) {
+		:where(
+				button:not([role="switch"], [class*="after:"]),
+				[data-slot="button"]:not([class*="after:"]),
+				[data-slot$="-trigger"]:not([class*="after:"])
+			) {
+			position: relative;
+		}
+		:where(
+				button:not([role="switch"], [class*="after:"]),
+				[data-slot="button"]:not([class*="after:"]),
+				[data-slot$="-trigger"]:not([class*="after:"])
+			)::after {
+			content: "";
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			width: max(100%, 48px);
+			height: max(100%, 48px);
+			transform: translate(-50%, -50%);
+		}
 		:where([data-slot="switch"]) {
 			position: relative;
 		}

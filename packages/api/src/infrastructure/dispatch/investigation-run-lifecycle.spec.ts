@@ -885,6 +885,8 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 				["inv-1", { ...kept(R.cancelled), lastTurnOutcome: outcome }, { stopped: outcome === "stopped" }],
 			]);
 		},
+		// The store's real end-of-run retries (250 + 1000 + 3000 ms) run before it settles.
+		15_000,
 	);
 	// T9 restart: dispatch.service.spec.ts, T12 "an Ask on a stopped reportless run cut off by a restart keeps it cancelled".
 });

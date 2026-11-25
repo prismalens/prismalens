@@ -5,7 +5,6 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join, posix, relative } from "node:path";
-import { g4Facts } from "../quality.ts";
 import {
 	compare,
 	countText,
@@ -14,6 +13,7 @@ import {
 	lintFacts,
 	parseTsv,
 } from "../ratchet.ts";
+import { g4Facts } from "../ui/quality.ts";
 import { type Config, generate } from "./index.ts";
 
 /** Rows whose file starts with this are recorded by `scripts/measure`, never re-measured here. */

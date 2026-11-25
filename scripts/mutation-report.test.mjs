@@ -84,16 +84,29 @@ test("a file that is not a Stryker JSON report throws", () => {
 	assert.throws(() => survivors("{}"), /not a Stryker JSON report/);
 });
 
-test("every stryker config writes the JSON report the summary reads, where it is uploaded from", () => {
-	const root = new URL("../packages/", import.meta.url);
-	for (const pkg of ["@prismalens/auth", "@prismalens/engine", "api"]) {
-		const config = readFileSync(
-			new URL(`${pkg}/stryker.config.mjs`, root),
-			"utf8",
-		);
-		assert.match(config, /reporters: \[[^\]]*"json"/, pkg);
-		assert.doesNotMatch(config, /jsonReporter/, pkg);
-	}
+const strykerConfig = (/** @type {string} */ pkg) =>
+	readFileSync(
+		new URL(`../packages/${pkg}/stryker.config.mjs`, import.meta.url),
+		"utf8",
+	);
+
+// The summary reads the JSON report from where the shard uploads it.
+test("the auth stryker config writes the JSON report the summary reads", () => {
+	const config = strykerConfig("@prismalens/auth");
+	assert.match(config, /reporters: \[[^\]]*"json"/);
+	assert.doesNotMatch(config, /jsonReporter/);
+});
+
+test("the engine stryker config writes the JSON report the summary reads", () => {
+	const config = strykerConfig("@prismalens/engine");
+	assert.match(config, /reporters: \[[^\]]*"json"/);
+	assert.doesNotMatch(config, /jsonReporter/);
+});
+
+test("the api stryker config writes the JSON report the summary reads", () => {
+	const config = strykerConfig("api");
+	assert.match(config, /reporters: \[[^\]]*"json"/);
+	assert.doesNotMatch(config, /jsonReporter/);
 });
 
 test("a clean run is ok; a survivor, a red shard or an infra loss is not", () => {

@@ -1346,8 +1346,8 @@ test.describe("Incident Overview (#811, PR #815)", {
 	});
 });
 
-/** Overflow, a required control missing or hidden, and every link or button under 48x48
- *  once its clipping ancestors cut it, or off screen. */
+/** Overflow, a required control missing or hidden, and every link or button whose tap
+ *  area is under 48x48 once its clipping ancestors cut it, or off screen. */
 async function toolbarFaults(
 	page: Page,
 	testId: string,
@@ -1366,10 +1366,23 @@ async function toolbarFaults(
 		for (const el of Array.from(
 			bar.querySelectorAll<HTMLElement>("a, button"),
 		)) {
-			let { left, right, top, bottom } = el.getBoundingClientRect();
+			const box = el.getBoundingClientRect();
+			// What a finger hits: the box, widened by a centred ::after tap area (tokens.css, #848).
+			const a = getComputedStyle(el, "::after");
+			const on = a.content !== "none" && a.position === "absolute";
+			const w = Math.max(box.width, on ? Number.parseFloat(a.width) || 0 : 0);
+			const h = Math.max(box.height, on ? Number.parseFloat(a.height) || 0 : 0);
+			const cx = box.left + box.width / 2;
+			const cy = box.top + box.height / 2;
+			let [left, right, top, bottom] = [
+				cx - w / 2,
+				cx + w / 2,
+				cy - h / 2,
+				cy + h / 2,
+			];
 			const id =
 				el.dataset.testid ?? el.getAttribute("aria-label") ?? el.tagName;
-			if (right - left === 0 && !required.includes(id)) continue;
+			if (box.width === 0 && !required.includes(id)) continue;
 			for (
 				let p = el.parentElement;
 				p && p !== bar.parentElement;
@@ -1386,7 +1399,7 @@ async function toolbarFaults(
 				faults.push(
 					`${id} ${Math.round(right - left)}x${Math.round(bottom - top)}`,
 				);
-			if (left < 0 || right > document.documentElement.clientWidth)
+			if (box.left < 0 || box.right > document.documentElement.clientWidth)
 				faults.push(`${id} off screen`);
 		}
 		return faults;

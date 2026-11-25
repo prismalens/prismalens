@@ -70,7 +70,7 @@ jobs:
           fi
 
       # Phone and tablet run nightly (e2e-browser-mobile.yml), not per PR. `@quarantine`
-      # tests are excluded here and run in the next step (CONTRIBUTING.md, "Browser e2e tier").
+      # tests are excluded here and run in the next step (docs/contributing/testing.md, "Flaky e2e tests").
       - name: Run Playwright E2E Tests
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/playwright-main.json

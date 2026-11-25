@@ -137,6 +137,12 @@ export class WebhooksController {
 								error.code === "SERVICE_UNAVAILABLE"
 							)
 								retryable = error;
+							// Its key is still in flight: Alertmanager retries only a 5xx, and a
+							// later retry resumes the event once the grace period passes.
+							if (error instanceof ORPCError && error.code === "CONFLICT")
+								retryable ??= new ORPCError("SERVICE_UNAVAILABLE", {
+									message: error.message,
+								});
 						}
 					}
 

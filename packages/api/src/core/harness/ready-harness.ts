@@ -21,7 +21,10 @@ export async function requireReadyHarness(
 			},
 		});
 	}
-	const readiness = await harness.ensureReady(selection.harness);
+	const readiness = await harness.ensureReady(
+		selection.harness,
+		requested.model,
+	);
 	if (!readiness.ready) {
 		throw new ORPCError("PRECONDITION_FAILED", {
 			message: readiness.reason,

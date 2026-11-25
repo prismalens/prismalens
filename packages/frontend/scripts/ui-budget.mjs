@@ -31,7 +31,7 @@ function highest(runs) {
 
 const budget = {
 	$comment:
-		"Per-state ceilings from the design matrix (pnpm ui:shots). A run fails when any number rises; raise one only with a reason in the PR. GUIDELINES.md explains each field.",
+		"Per-state ceilings from the design matrix (pnpm ui:shots). A run fails when any number rises; raise one only with a reason in the PR. design/GUIDELINES.md lists each field.",
 	rules: previous.rules ?? {
 		emptyCopyWords: 5,
 		oneStatePerRow: true,

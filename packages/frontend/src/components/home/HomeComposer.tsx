@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { Severity, ThreadStartSubject } from "@prismalens/contracts";
+import type {
+	HarnessStatus,
+	Severity,
+	ThreadStartSubject,
+} from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
 	Bot,
@@ -11,16 +15,18 @@ import {
 	Plus,
 	Siren,
 } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	CHIP,
 	unreadyReason,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { providerState } from "@/components/agent/agent-choice";
 import { Mark } from "@/components/kit/Mark";
 import { markLook } from "@/components/kit/marks";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
+import { AddProjectFlow } from "@/components/projects/AddProjectFlow";
 import type { SchedulePrefill } from "@/components/schedules/ScheduleDialog";
 import { codeWhere } from "@/components/services/service-detail.utils";
 import { Hint } from "@/components/shared/Hint";
@@ -28,7 +34,13 @@ import { RestartNotice } from "@/components/shell/RestartNotice";
 import { NewThread } from "@/components/thread/NewThread";
 import { useRepositories, useServices } from "@/lib/api/hooks";
 import { useSchedules } from "@/lib/api/hooks/use-schedules-orpc";
-import { lastSubject, subjectMenu } from "@/lib/last-subject";
+import {
+	lastSubject,
+	onlyProject,
+	serviceIsProject,
+	serviceOfProject,
+	subjectMenu,
+} from "@/lib/last-subject";
 import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import { HomeHandover as HomeHandoverView } from "./HomeHandover";
@@ -103,14 +115,28 @@ export function HomeComposer({
 	// Only the host saves a schedule, so only the host is offered Repeat… (#1020).
 	const canSchedule = useSchedules().data?.canEdit === true;
 	const [repeat, setRepeat] = useState<SchedulePrefill | null>(null);
-	const picked = search;
-	const subject = subjectOf(picked);
+	const [adding, setAdding] = useState(false);
+	// A default arriving after typing would swap the box to another scope's draft (#1216).
+	const [typed, setTyped] = useState(false);
+	const only = typed ? undefined : onlyProject(repos, search);
+	const picked = only ? { ...search, project: only.id } : search;
+	// The default is written to the address like a pick, so the URL and the chip agree.
+	const onlyId = only?.id;
+	useEffect(() => {
+		if (onlyId) set({ project: onlyId });
+	}, [onlyId]);
 	const repo = repos.find((r) => r.id === picked.project);
-	const service = services.find((s) => s.id === picked.service);
+	// A project that an alert reached lists once, and its same-name service carries the incident.
+	const folded = serviceOfProject(services, repos, picked.project);
+	const service = services.find((s) => s.id === picked.service) ?? folded;
 	// An incident carries a service, not a project (the contract has no repositoryId): #1020.
-	const incidentOff = !!picked.project;
+	const incidentOff = !!picked.project && !folded;
 	const incident =
 		search.incident && !incidentOff ? (search.severity ?? "high") : null;
+	const subject =
+		incident && folded
+			? ({ kind: "service", serviceId: folded.id } as const)
+			: subjectOf(picked);
 	const pick = (v: string) => {
 		const [kind, id] = v.split(":");
 		set({
@@ -134,23 +160,35 @@ export function HomeComposer({
 							: "none"
 				}
 				projects={repos.map((r) => ({ id: r.id, name: r.fullName }))}
-				services={services.map((s) => ({
-					id: s.id,
-					name: s.displayName || s.name,
-				}))}
+				services={services
+					.filter((s) => !serviceIsProject(s, repos))
+					.map((s) => ({
+						id: s.id,
+						name: s.displayName || s.name,
+					}))}
 				onPick={pick}
+				onAddProject={() => setAdding(true)}
 			/>
+			{adding && (
+				<AddProjectFlow
+					onOpenChange={setAdding}
+					onAdded={(id) => {
+						setAdding(false);
+						pick(`project:${id}`);
+					}}
+				/>
+			)}
 			{noSubjects && (
 				<Hint label="A project gives each thread its code, in its own worktree">
-					<Link
-						to="/projects"
-						search={{ add: true }}
+					<button
+						type="button"
+						onClick={() => setAdding(true)}
 						className={cn(CHIP, "gap-1.5 text-text-1")}
 						data-testid="composer-add-project"
 					>
 						<Plus aria-hidden className="size-3.5" />
 						Add a project
-					</Link>
+					</button>
 				</Hint>
 			)}
 			{service && !codeWhere(service) && (
@@ -226,11 +264,15 @@ export function HomeComposer({
 			<HomePurpose />
 			<NewThread
 				subject={subject}
+				scopeSubject={subjectOf(picked)}
 				draft={search.draft}
 				branch={repo?.defaultBranch ?? null}
 				incident={incident}
 				note={!!search.note}
 				top={top}
+				onText={(text) => {
+					if (text) setTyped(true);
+				}}
 				placeholder="Ask anything"
 				{...(canSchedule ? { onRepeat: setRepeat } : {})}
 				slash={
@@ -283,11 +325,13 @@ function SubjectPicker({
 	projects,
 	services,
 	onPick,
+	onAddProject,
 }: {
 	value: string;
 	projects: { id: string; name: string }[];
 	services: { id: string; name: string }[];
 	onPick: (value: string) => void;
+	onAddProject: () => void;
 }) {
 	const navigate = useNavigate();
 	// Read when the menu renders, so a send in this tab shows up next time.
@@ -338,7 +382,7 @@ function SubjectPicker({
 					id: "add-project",
 					name: "Add project",
 					icon: Plus,
-					run: () => void navigate({ to: "/projects", search: { add: true } }),
+					run: onAddProject,
 				},
 				{
 					id: "add-service",
@@ -354,10 +398,13 @@ function SubjectPicker({
 
 /** Ready once the agent answered a check; installed but silent needs a sign-in or a fix. */
 export function agentReadiness(
-	h: { installed: boolean; checked?: { outcome: string } | null } | undefined,
+	h: HarnessStatus | undefined,
+	model?: string | null,
 ): "ready" | "signIn" | "missing" {
 	if (!h?.installed) return "missing";
-	return h.checked?.outcome === "answers-acp" ? "ready" : "signIn";
+	if (h.checked?.outcome !== "answers-acp") return "signIn";
+	const login = providerState(h, model);
+	return login === "signed-out" || login === "unchecked" ? "signIn" : "ready";
 }
 
 /** The default agent's logo with its readiness dot; not ready opens Settings, Agent. */
@@ -365,24 +412,37 @@ export function AgentReady() {
 	const choice = useAgentChoice();
 	if (choice.isLoading) return null;
 	const h = choice.effective;
-	const state = agentReadiness(h);
+	const state = agentReadiness(h, choice.model);
 	const word = !h
 		? "No agent installed"
 		: state === "ready"
 			? `${h.label} ready`
 			: state === "missing"
 				? `${h.label} not installed`
-				: (unreadyReason(h) ?? `${h.label} not checked`);
-	return <AgentReadyChip agent={h?.id ?? null} state={state} word={word} />;
+				: (unreadyReason(h, choice.model) ??
+					(providerState(h, choice.model) === "unchecked"
+						? `${h.label}: sign-in not checked`
+						: `${h.label} not checked`));
+	return (
+		<AgentReadyChip
+			agent={h?.id ?? null}
+			name={h?.label}
+			state={state}
+			word={word}
+		/>
+	);
 }
 
 /** The chip alone, so the gallery can show each state from fixtures. */
 export function AgentReadyChip({
 	agent,
+	name,
 	state,
 	word,
 }: {
 	agent: string | null;
+	/** The agent's name beside its mark: a mark alone is not known on first use. */
+	name?: string;
 	state: "ready" | "signIn" | "missing";
 	word: string;
 }) {
@@ -403,28 +463,38 @@ export function AgentReadyChip({
 			</span>
 		</span>
 	);
+	const body = (
+		<>
+			{mark}
+			{name && (
+				<span aria-hidden className="max-w-32 truncate">
+					{name}
+				</span>
+			)}
+		</>
+	);
 	return (
 		<Hint label={word}>
 			{state === "ready" ? (
 				<span
 					role="img"
 					aria-label={label}
-					className={cn(CHIP, "px-2 hover:bg-transparent")}
+					className={cn(CHIP, "gap-2 px-2 hover:bg-transparent")}
 					data-testid="composer-agent-ready"
 					data-state={state}
 				>
-					{mark}
+					{body}
 				</span>
 			) : (
 				<Link
 					to="/settings"
 					search={{ tab: "agent" }}
 					aria-label={label}
-					className={cn(CHIP, "px-2")}
+					className={cn(CHIP, "gap-2 px-2")}
 					data-testid="composer-agent-ready"
 					data-state={state}
 				>
-					{mark}
+					{body}
 				</Link>
 			)}
 		</Hint>

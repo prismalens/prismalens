@@ -9,7 +9,11 @@
 import type { AttentionEvent } from "@prismalens/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { kindStatus } from "@/components/home/AwayView";
+import {
+	currentEvent,
+	kindStatus,
+	unreadThreadCount,
+} from "@/components/home/AwayView";
 import { StartedByMark } from "@/components/kit/MarkBadges";
 import { relTime } from "@/components/kit/rel-time";
 import { Status } from "@/components/kit/Status";
@@ -27,15 +31,21 @@ import { cn } from "@/lib/utils";
 
 const LIST_LIMIT = 50;
 
-/** The unread count the sidebar's Events entry carries. */
+/** The unread threads the sidebar's Events entry carries: one per row of the Unread list. */
 export function useUnreadEvents(enabled = true): number {
-	return useUnreadAttention(enabled).data?.unread ?? 0;
+	const data = useUnreadAttention(enabled).data;
+	if (!data) return 0;
+	// The server counts events; past its page the count is all we have.
+	return data.events.length < data.unread
+		? data.unread
+		: unreadThreadCount(data.events);
 }
 
 export function EventListPanel() {
 	const [filter, setFilter] = useState<"unread" | "all">("unread");
 	// Unread is the shell's shared query; All is asked for only here.
-	const unread = useUnreadAttention(filter === "unread");
+	const unread = useUnreadAttention();
+	const unreadCount = useUnreadEvents();
 	const all = useAttentionEvents("all", LIST_LIMIT, filter === "all");
 	const events = filter === "unread" ? unread : all;
 	const markRead = useMarkEventsRead();
@@ -50,7 +60,7 @@ export function EventListPanel() {
 			onFilter={setFilter}
 			events={events.data?.events.slice(0, LIST_LIMIT)}
 			loading={events.isLoading}
-			unread={events.data?.unread ?? 0}
+			unread={unreadCount}
 			onMarkAll={() => markRead.mutate({})}
 			onOpenEvent={open}
 			now={Date.now()}
@@ -148,7 +158,7 @@ function byThread(
 		const first = all[0];
 		if (!first) return [];
 		const now = first.thread.status;
-		const event = all.find((e) => kindStatus(e.kind, now) === now) ?? first;
+		const event = currentEvent(all, now) ?? first;
 		return [{ event, all }];
 	});
 }

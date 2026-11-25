@@ -53,6 +53,8 @@ const ContextRepoSchema = /* @__PURE__ */ lazySchema(() =>
 		/** The worktree's live commit, and whether it is on no branch (#1176 F2). */
 		tip: z.string().optional(),
 		detached: z.boolean().optional(),
+		/** The branch a detached run copy was cut from. */
+		from: z.string().optional(),
 		/** A worktree of the user's folder whose one push URL is the project's remote. */
 		pushable: z.boolean().optional(),
 	}),

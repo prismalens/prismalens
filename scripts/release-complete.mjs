@@ -21,6 +21,7 @@ export const TARGETS = [
 	"win32-x64",
 ];
 
+// GitHub, not the mirror: this checks the GitHub release the mirror is copied from.
 export const DEFAULT_BASE =
 	"https://github.com/prismalens/prismalens/releases/download";
 

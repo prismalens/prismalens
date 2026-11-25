@@ -28,13 +28,16 @@ const callIds = (/** @type {any[]} */ events) =>
 				: [],
 	);
 
-/** Tool calls among the events past `baseline` that the baseline already holds, so replayed. */
-export const replayedCalls = (
-	/** @type {any[]} */ baseline,
-	/** @type {any[]} */ after,
-) => {
-	const already = new Set(callIds(baseline));
-	return callIds(after.slice(baseline.length)).filter((c) => already.has(c));
+/**
+ * Tool calls named after the stop's `run_interrupted` mark that the run had already named before it.
+ * A call may stream as several steps within one turn, so only a repeat across the mark is a replay;
+ * reading the mark, not a read of the log, keeps a replay that landed before that read in view.
+ */
+export const replayedCalls = (/** @type {any[]} */ events) => {
+	const cut = events.findIndex((e) => e.kind === "run_interrupted");
+	if (cut < 0) return [];
+	const before = new Set(callIds(events.slice(0, cut)));
+	return callIds(events.slice(cut)).filter((c) => before.has(c));
 };
 
 /**
@@ -91,7 +94,8 @@ export const restartResumes = {
 
 		const cut = await target.api(`/investigations/${id}`);
 		assert.equal(cut.status, "pending");
-		// Nothing runs while the run is pending, so this holds every event the run had when it was cut.
+		// The events the run had when it was cut. A target that cannot hold recovery may have replayed
+		// into them already, so the replay check reads the whole stream.
 		const baseline = await eventsOf(target, id);
 		const listed = await target.api("/restart");
 		assert.ok(
@@ -138,10 +142,14 @@ export const restartResumes = {
 			after.slice(0, baseline.length).map(key),
 			baseline.map(key),
 		);
+		assert.ok(
+			after.some((e) => e.kind === "run_interrupted"),
+			"the run's log has no run_interrupted mark to tell what came before the stop",
+		);
 		const added = after.slice(baseline.length);
 		assert.ok(added.length > 0, "the resumed run added no event");
 		assert.deepEqual(
-			replayedCalls(baseline, after),
+			replayedCalls(after),
 			[],
 			"the resumed run replayed tool calls from before the stop",
 		);

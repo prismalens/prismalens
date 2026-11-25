@@ -89,6 +89,16 @@ export interface BrowseOptions {
 }
 
 /**
+ * WSL and Cygwin store a character Windows forbids in a name (`:`, `*`, `?`...) as the
+ * private-use U+F0xx; no font draws it, so the list names the character it stands for.
+ */
+export function readableName(name: string): string {
+	return name.replace(/[-]/g, (c) =>
+		String.fromCharCode(c.charCodeAt(0) - 0xf000),
+	);
+}
+
+/**
  * The folders directly inside `raw` (null: home), for the host's Add project browser (#1020).
  * File names never leave here, links and junctions are neither listed nor followed, and the
  * whole read shares one deadline; a read still in flight then closes its handle when it ends.
@@ -140,7 +150,7 @@ export async function browseFolders(
 				break;
 			}
 			entries.push({
-				name: d.name,
+				name: readableName(d.name),
 				path: join(path, d.name),
 				hidden: d.name.startsWith("."),
 				git: false,

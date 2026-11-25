@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { defineAgent, modeNamed, offers } from "../family.ts";
+
+export const claudeCode = defineAgent({
+	id: "agent.claude-code",
+	family: "agent",
+	name: "Claude Code",
+	mark: { brand: "claude-code" },
+	order: 20,
+	launch: "claude-code",
+	entryPoints: [
+		"settings.agents",
+		"composer.agent-picker",
+		"incidents.first-run",
+	],
+	stored: [
+		{ column: "Run.harness", value: "claude-code" },
+		{ column: "Schedule.harness", value: "claude-code" },
+	],
+	auth: {
+		methods: [
+			{
+				id: "login",
+				label: "Claude account",
+				steps: ["terminal", "browser"],
+				unattended: true,
+			},
+			{
+				id: "api-key",
+				label: "ANTHROPIC_API_KEY",
+				steps: ["credentials"],
+				unattended: true,
+			},
+		],
+	},
+	facts: {
+		// claude-agent-acp 0.99.1 handles `/compact` but has no idle self-compaction, and states no cache
+		// lifetime; a later adapter compacts idle sessions before its one-hour cache expires (#1024).
+		cacheTtlMinutes: null,
+		autoCompactPercent: null,
+		compactsWhenIdle: false,
+		compactCommand: "compact",
+		// Claude Code documents `/compact [instructions]`; claude-agent-acp 0.100.0 passes the prompt text through.
+		compactTakesFocus: true,
+		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
+		acpRegistryIds: ["claude-acp"],
+		vendor: "anthropic",
+		usageReports: ["cache", "cost", "limits"],
+		modelWindow: { alias: "[1m]", base: "200k", large: "1M" },
+		settingsFile: "~/.claude/settings.json",
+		ownSettingsNote: () =>
+			"Your ~/.claude/settings.json allow and deny rules, hooks and sandbox apply, as in your terminal. The terminal's own default may be Auto on Claude Code 2.1.228 and later; PrismaLens reads the key, not that default.",
+		install:
+			"curl -fsSL https://claude.ai/install.sh | bash  (or: npm i -g @anthropic-ai/claude-code; then `claude /login`, or set ANTHROPIC_API_KEY)",
+		channel: { npm: "@anthropic-ai/claude-code" },
+		// claude-agent-acp 0.81.1 reports `acceptEdits` when the model has no `auto`, and
+		// leaves `bypassPermissions` unoffered when the user's settings turn it off (#673 w21).
+		lines: {
+			supervised: (c) =>
+				`Claude Code runs in ${modeNamed(c, "default", "Manual")}.`,
+			"auto-edits": (c) =>
+				`Claude Code runs in ${modeNamed(c, "acceptEdits", "Accept Edits")}.`,
+			auto: (c) =>
+				`Claude Code runs in ${modeNamed(c, "auto", "Auto")}; with a model that has no Auto it runs ${modeNamed(c, "acceptEdits", "Accept Edits")}.`,
+			"full-access": (c) => {
+				const bypass = modeNamed(c, "bypassPermissions", "Bypass Permissions");
+				const edits = modeNamed(c, "acceptEdits", "Accept Edits");
+				return c?.modes && !offers(c, "bypassPermissions")
+					? `Claude Code runs in ${edits}: your settings turn ${bypass} off.`
+					: `Claude Code runs in ${bypass}, or ${edits} where your settings turn it off.`;
+			},
+		},
+		// The pin-bump PR moved this on 2026-11-23: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "0.109.0", date: "2026-11-23", companion: "2.1.329" },
+		loginHint: "`claude auth login`, or `ANTHROPIC_API_KEY` in env",
+		signInArgs: ["auth", "login"],
+		loginEnvKeys: ["CLAUDE_CONFIG_DIR"],
+		reportsLimits: true,
+	},
+});

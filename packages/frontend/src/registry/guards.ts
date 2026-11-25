@@ -1,16 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import {
-	fieldAt,
-	g1,
-	g2,
-	g3,
-	g5,
-	g6,
-	guard,
-	stringsIn,
-} from "@prismalens/registry";
+import { fieldAt, guard, stringsIn } from "@prismalens/registry";
+import { g1, g2, g3, g5, g6 } from "@prismalens/registry/ui";
 
 const today = () => new Date().toISOString().slice(0, 10);
 

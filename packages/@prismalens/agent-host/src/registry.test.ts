@@ -2,12 +2,14 @@
 // Copyright 2026 Sumit Patel
 
 import { readdirSync, readFileSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	ACCESS_LEVELS,
 	AGENT_IDS,
 	AGENT_REGISTRY,
+	AGENT_ROWS,
 	factMismatches,
 	GATEWAY_RUN_FILE,
 	PROBED_AT,
@@ -107,6 +109,17 @@ describe("levels", () => {
 	});
 });
 
+describe("agent rows", () => {
+	it("list every file under registry/agents, in AGENT_IDS order, each keyed by its own id", () => {
+		const files = readdirSync(join(import.meta.dirname, "registry/agents"))
+			.map((f) => f.replace(/[.]ts$/, ""))
+			.sort();
+		expect(AGENT_ROWS.map((r) => r.id).sort()).toEqual(files);
+		expect(AGENT_ROWS.map((r) => r.id)).toEqual([...AGENT_IDS]);
+		expect(Object.entries(AGENT_REGISTRY).map(([k, r]) => k === r.id)).toEqual(AGENT_IDS.map(() => true));
+	});
+});
+
 describe("registry facts", () => {
 	it("keep today's rulings: Claude loads user, project and local settings, no plan-mode tools", () => {
 		// cea3a5938: a stopped turn's background sub-agents stop too unless the user picked "finish".
@@ -177,10 +190,28 @@ describe("registry facts", () => {
 		expect(isSafeGatewayUrl("http://gw.example")).toBe(false);
 	});
 
-	it("imports no node: module, so the registry is safe for the browser", () => {
+	it("imports no Node built-in, with or without node:, so the registry is safe for the browser", () => {
 		const dir = join(import.meta.dirname, "registry");
-		for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")))
-			expect(readFileSync(join(dir, file), "utf8")).not.toMatch(/from "node:/);
+		const files = readdirSync(dir, { recursive: true })
+			.map(String)
+			.filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+		expect(files).toContain(join("agents", "opencode.ts"));
+		// Static, side-effect, dynamic and require forms; a comment naming `node:` is not one.
+		const nodeImport = new RegExp(
+			String.raw`(?:from|import|require)\s*\(?\s*["'](?:node:|(?:${builtinModules.join("|")})["'])`,
+		);
+		const builtins = [
+			'import { readFileSync } from "fs";',
+			"import { readFile } from 'fs/promises';",
+			'import "fs";',
+			'await import("fs");',
+			'require("fs");',
+			'import { join } from "node:path";',
+		];
+		expect(builtins.filter((line) => nodeImport.test(line))).toEqual(builtins);
+		const others = ['from "fs-extra";', 'from "./path";', 'from "@scope/events";'];
+		expect(others.filter((line) => nodeImport.test(line))).toEqual([]);
+		expect(files.filter((f) => nodeImport.test(readFileSync(join(dir, f), "utf8")))).toEqual([]);
 	});
 });
 

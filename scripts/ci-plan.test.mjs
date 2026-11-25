@@ -19,7 +19,16 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { parse } from "yaml";
-import { plan, TIER_PACKAGES, turboPackages } from "./ci-plan.mjs";
+import {
+	countsAsProof,
+	DRAFT_PLAN_JOB,
+	DRAFT_REASON,
+	firstProof,
+	PLAN_JOB,
+	plan,
+	TIER_PACKAGES,
+	turboPackages,
+} from "./ci-plan.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const WORKFLOWS = join(ROOT, ".github", "workflows");
@@ -306,6 +315,84 @@ test("a renamed file counts under both names, so a source file moved into docs s
 	assert.deepEqual(tiers(p), [false, true, true, true, false, false]);
 });
 
+test("a diff touching install.ps1 plans every tier, the Windows installer test with them", () => {
+	assert.deepEqual(planFor(["scripts/install/install.ps1"]), {
+		affected: [],
+		skip: false,
+		code: true,
+		e2e: true,
+		intake: true,
+		full: true,
+		agents: true,
+		installer: true,
+		reason: "scripts/install/install.ps1 is on no plan rule: everything runs",
+	});
+});
+
+test("a diff touching only packages/ leaves the installer test off", () => {
+	const p = planFor(["packages/api/src/a.ts"]);
+	assert.deepEqual(
+		{ ...p, affected: p.affected.sort() },
+		{
+			affected: ["@prismalens/api", "prismalens"],
+			skip: false,
+			code: true,
+			e2e: true,
+			intake: true,
+			full: false,
+			agents: false,
+			installer: false,
+			reason: "affected packages and path rules",
+		},
+	);
+});
+
+test("the full tier runs the installer test: a full-ci label, a CLI source change, a push and a merge group", () => {
+	const labelled = pr({
+		files: ["packages/api/src/a.ts"],
+		packages: PACKAGES,
+		affected: ["@prismalens/api"],
+		labels: ["full-ci"],
+	});
+	assert.deepEqual(labelled, {
+		skip: false,
+		code: true,
+		e2e: true,
+		intake: true,
+		full: true,
+		agents: true,
+		installer: true,
+		reason: "label full-ci: everything runs",
+	});
+	const cli = planFor(["packages/cli/src/cli/service.ts"]);
+	assert.deepEqual([cli.full, cli.installer], [true, true]);
+	for (const event of ["push", "merge_group"])
+		assert.equal(plan({ event, files: [] }).installer, true, event);
+});
+
+test("a draft PR and a docs-only PR leave the installer test off", () => {
+	const draft = pr({ files: ["scripts/install/install.ps1"], draft: true });
+	assert.equal(draft.installer, false);
+	assert.equal(pr({ files: ["README.md"] }).installer, false);
+});
+
+test("ci.yml runs the installer test on Windows when the plan says so, and CI gate waits for it", () => {
+	const { jobs } = parse(readFileSync(join(WORKFLOWS, "ci.yml"), "utf8"));
+	assert.equal(
+		jobs.changes.outputs.installer,
+		"${{ steps.plan.outputs.installer }}",
+	);
+	assert.equal(jobs.installer.needs, "changes");
+	assert.equal(jobs.installer.if, "needs.changes.outputs.installer == 'true'");
+	assert.equal(jobs.installer["runs-on"], "windows-latest");
+	assert.equal(jobs.installer.steps.at(-1).shell, "powershell");
+	assert.equal(
+		jobs.installer.steps.at(-1).run.trim().split("\n").at(-1),
+		"Invoke-Pester scripts/install -Output Detailed -CI",
+	);
+	assert.equal(jobs["ci-gate"].needs.includes("installer"), true);
+});
+
 test("a push to main runs the PR checks and leaves the release proofs to the nightly", () => {
 	for (const event of ["push", "schedule"]) {
 		const p = plan({ event, files: ["README.md"] });
@@ -393,6 +480,108 @@ test("a draft release PR defers everything; the same PR ready, or a draft featur
 		draft: true,
 	});
 	assert.deepEqual([feature.skip, feature.defer], [false, undefined]);
+});
+
+const FRONTEND_AND_API = [
+	"packages/frontend/src/routes/index.tsx",
+	"packages/api/src/main.ts",
+];
+
+test("a draft PR plans the fast tier only; the same PR ready plans the browser suite and the intake, and the reason says so", () => {
+	const draft = planFor(FRONTEND_AND_API, { draft: true, headRef: "feat/x" });
+	assert.deepEqual(tiers(draft), [false, true, false, false, false, false]);
+	assert.equal(draft.draft, true);
+	assert.equal(
+		draft.reason,
+		"draft: the fast tier only; marking it ready runs the full plan",
+	);
+	assert.equal(draft.reason, DRAFT_REASON);
+	const ready = planFor(FRONTEND_AND_API, { draft: false, headRef: "feat/x" });
+	assert.deepEqual(tiers(ready), [false, true, true, true, false, false]);
+	assert.equal(ready.draft, undefined);
+});
+
+test("a draft keeps `code` off when only CI-only paths changed, and a push is never planned as a draft", () => {
+	const ciOnly = planFor(["scripts/ci-plan.mjs"], { draft: true });
+	assert.deepEqual(tiers(ciOnly), [false, false, false, false, false, false]);
+	assert.equal(ciOnly.draft, true);
+	const push = plan({ event: "push", files: [], draft: true });
+	assert.equal(push.draft, undefined);
+	assert.equal(push.e2e, true);
+});
+
+test("a draft docs-only PR still skips, and a draft whose tree already passed still skips", () => {
+	const docs = pr({ files: ["README.md"], draft: true });
+	assert.deepEqual(tiers(docs), NOTHING);
+	assert.equal(docs.draft, undefined);
+	assert.equal(docs.reason, "docs only: nothing to build or test");
+	const same = pr({
+		files: ["packages/cli/src/a.ts"],
+		sameTreeAs: "abc123",
+		draft: true,
+	});
+	assert.deepEqual(tiers(same), NOTHING);
+	assert.equal(same.draft, undefined);
+});
+
+test("a draft release PR still defers, not the draft tier", () => {
+	const d = pr({
+		headRef: "release-please--branches--main",
+		files: ["package.json"],
+		draft: true,
+	});
+	assert.equal(d.defer, true);
+	assert.equal(d.draft, undefined);
+	assert.equal(
+		d.reason,
+		"draft release PR: CI waits until it is marked ready for review",
+	);
+});
+
+test("a draft with a path on no plan rule still plans the fast tier only", () => {
+	const p = pr({ files: ["Dockerfile"], draft: true });
+	assert.deepEqual(tiers(p), [false, true, false, false, false, false]);
+	assert.equal(p.reason, DRAFT_REASON);
+});
+
+test("a run whose plan job was the draft one is no proof for a ready PR; one whose plan job was not, is", () => {
+	assert.equal(DRAFT_PLAN_JOB, "Plan (draft)");
+	assert.equal(countsAsProof([PLAN_JOB, "Build & typecheck"]), true);
+	assert.equal(countsAsProof([DRAFT_PLAN_JOB, "Build & typecheck"]), false);
+	assert.equal(countsAsProof([PLAN_JOB, DRAFT_PLAN_JOB]), false);
+	// A run with no plan job in its list (a failed lookup's empty page) is not trusted either.
+	assert.equal(countsAsProof([]), false);
+	assert.equal(countsAsProof(["Build & typecheck"]), false);
+});
+
+test("the first full run is the proof; draft runs before it are passed over, and a lookup that throws propagates", () => {
+	const jobs = {
+		draft1: [DRAFT_PLAN_JOB, "Lint (Biome)"],
+		draft2: [DRAFT_PLAN_JOB],
+		full: [PLAN_JOB, "Lint (Biome)", "E2E / shard 1"],
+	};
+	const names = (/** @type {keyof typeof jobs} */ id) => jobs[id];
+	assert.equal(firstProof(["draft1", "draft2", "full"], names), "full");
+	assert.equal(firstProof(["draft1", "draft2"], names), undefined);
+	assert.equal(firstProof([], names), undefined);
+	assert.throws(
+		() =>
+			firstProof(["full"], () => {
+				throw new Error("gh api failed");
+			}),
+		/gh api failed/,
+	);
+});
+
+test("ci.yml names the plan job so the draft filter can read a run's mode, and exposes `draft`", () => {
+	const { changes } = parse(
+		readFileSync(join(WORKFLOWS, "ci.yml"), "utf8"),
+	).jobs;
+	assert.equal(
+		changes.name,
+		`\${{ github.event.pull_request.draft && '${DRAFT_PLAN_JOB}' || '${PLAN_JOB}' }}`,
+	);
+	assert.equal(changes.outputs.draft, `\${{ steps.plan.outputs.draft }}`);
 });
 
 test("marking a PR ready after its head passed CI runs nothing; without that pass it plans as usual", () => {

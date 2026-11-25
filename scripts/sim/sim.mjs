@@ -26,7 +26,7 @@ import {
 } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { cpuLoad } from "../../packages/@prismalens/registry/src/stamp.ts";
+import { cpuLoad } from "../../packages/@prismalens/registry/src/ui/stamp.ts";
 import { buildForSim } from "../build-cache.mjs";
 import { freePort } from "../fakes/conditions/lib.mjs";
 import { installFakeAgent } from "../fakes/fake-acp-agent.mjs";

@@ -219,7 +219,10 @@ export class SchedulesService
 		let outcome: TickOutcome = decision.outcome;
 		let reason: string | null = decision.gap;
 		if (STARTING.has(outcome)) {
-			const ready = await this.harness.ensureReady(s.harness as HarnessId);
+			const ready = await this.harness.ensureReady(
+				s.harness as HarnessId,
+				s.model ?? undefined,
+			);
 			if (!ready.ready) {
 				outcome = "skipped_agent_not_ready";
 				reason = ready.reason;
@@ -831,7 +834,10 @@ export class SchedulesService
 		return this.serial(async () => {
 			const s = await this.prisma.schedule.findUnique({ where: { id } });
 			if (!s) throw new ScheduleError("NOT_FOUND", "No such schedule.");
-			const ready = await this.harness.ensureReady(s.harness as HarnessId);
+			const ready = await this.harness.ensureReady(
+				s.harness as HarnessId,
+				s.model ?? undefined,
+			);
 			if (!ready.ready)
 				throw new ScheduleError("PRECONDITION_FAILED", ready.reason);
 			const slot = now;

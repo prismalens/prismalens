@@ -80,7 +80,7 @@ test("a green probe closes every open probe issue; a red one closes none", () =>
 		openTitles,
 	});
 	assert.deepEqual(
-		red.map((item) => item.title),
-		["Agent probe failing: x on a"],
+		red.map((item) => [item.title, item.ok]),
+		[["Agent probe failing: x on a", false]],
 	);
 });

@@ -5,43 +5,30 @@ import { projectKindOf } from "@prismalens/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { PathTail } from "@/components/shared/PathTail";
 import { ProjectMark } from "@/components/shared/ProjectMark";
-import { Empty, Loading, Problem } from "@/components/shared/State";
+import { Blank, Loading, Problem } from "@/components/shared/State";
 import { PlaceTabs } from "@/components/shell/PlaceTabs";
 import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/hooks/use-page-title";
-import {
-	useAddRepositorySource,
-	useRepositories,
-} from "@/lib/api/hooks/use-repositories-orpc";
+import { useRepositories } from "@/lib/api/hooks/use-repositories-orpc";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { KIND_ICON, KIND_WORD } from "@/lib/project-source";
-import { AddProjectDialog } from "./AddProjectDialog";
+import { AddProjectFlow } from "./AddProjectFlow";
 
 /** Every project: a folder or git URL, with or without a service (#1020). */
 export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 	usePageTitle("Projects");
 	const repos = useRepositories({ limit: 100 });
-	const add = useAddRepositorySource();
 	const navigate = useNavigate();
 	const [open, setOpen] = useState(openAtStart);
 	useEffect(() => {
 		if (openAtStart) setOpen(true);
 	}, [openAtStart]);
-	const [error, setError] = useState<string | null>(null);
-
-	const onAdd = async (source: string) => {
-		setError(null);
-		try {
-			const repo = await add.mutateAsync({ source });
-			setOpen(false);
-			await navigate({ to: "/projects/$id", params: { id: repo.id } });
-		} catch (err) {
-			setError(getErrorMessage(err));
-		}
-	};
 
 	const rows = repos.data?.data ?? [];
+	// The empty page carries the one Add, so the header does not repeat it.
+	const none = !!repos.data && rows.length === 0;
 	return (
 		<div className="flex h-full flex-col bg-canvas" data-testid="projects-page">
 			<header
@@ -53,23 +40,24 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 				<div className="min-w-0 flex-1">
 					<PlaceTabs id="projects" />
 				</div>
-				<Button onClick={() => setOpen(true)} data-testid="add-project">
-					<Plus />
-					Add project
-				</Button>
+				{!none && (
+					<Button onClick={() => setOpen(true)} data-testid="add-project">
+						<Plus />
+						Add project
+					</Button>
+				)}
 			</header>
 			{open && (
-				<AddProjectDialog
-					open
+				<AddProjectFlow
 					onOpenChange={(o) => {
 						setOpen(o);
-						setError(null);
 						if (!o && openAtStart)
 							void navigate({ to: "/projects", search: {}, replace: true });
 					}}
-					onChoose={(s) => void onAdd(s)}
-					pending={add.isPending}
-					error={error}
+					onAdded={(id) => {
+						setOpen(false);
+						void navigate({ to: "/projects/$id", params: { id } });
+					}}
 				/>
 			)}
 			<div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
@@ -81,8 +69,20 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 							text={getErrorMessage(repos.error)}
 							onRetry={() => void repos.refetch()}
 						/>
-					) : rows.length === 0 ? (
-						<Empty text="No projects yet" />
+					) : none ? (
+						<Blank
+							title="Add your first project"
+							testId="projects-none"
+							className="pt-[12vh]"
+						>
+							<p className="-mt-2 text-body text-text-2">
+								Give each thread its code.
+							</p>
+							<Button onClick={() => setOpen(true)} data-testid="add-project">
+								<Plus />
+								Add project
+							</Button>
+						</Blank>
 					) : (
 						<ul className="grid gap-1" data-testid="project-rows">
 							{rows.map((r) => (
@@ -90,7 +90,7 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 									<Link
 										to="/projects/$id"
 										params={{ id: r.id }}
-										className="flex h-10 items-center gap-2 rounded-control px-2 text-body text-text-1 hover:bg-surface-2"
+										className="flex min-h-12 items-center gap-2 rounded-control px-2 py-1.5 text-body text-text-1 hover:bg-surface-2"
 										data-testid="project-row"
 									>
 										<ProjectMark
@@ -98,8 +98,13 @@ export function ProjectList({ add: openAtStart = false }: { add?: boolean }) {
 											iconUrl={r.iconUrl}
 											size="sm"
 										/>
-										<span className="min-w-0 flex-1 truncate">
-											{r.fullName}
+										<span className="grid min-w-0 flex-1">
+											<span className="truncate">{r.fullName}</span>
+											<PathTail
+												path={r.subPath ? `${r.url}/${r.subPath}` : r.url}
+												className="font-mono text-meta text-text-3"
+												testId="project-row-url"
+											/>
 										</span>
 										{r.syncBranch && (
 											<span className="text-meta text-text-3">
