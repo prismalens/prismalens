@@ -119,10 +119,11 @@ function service(opts: {
 	return { s, admission, drain, handoff, installer, settings };
 }
 
+// The install waits only on the fake installer's setImmediate, so one fake tick ends it.
+// vi.waitFor would poll on a real 50 ms timer.
 async function settled(s: UpdateService) {
-	await vi.waitFor(() =>
-		expect(["restarting", "failed"]).toContain(s.getStatus().phase),
-	);
+	await vi.advanceTimersByTimeAsync(1);
+	expect(["restarting", "failed"]).toContain(s.getStatus().phase);
 	return s.getStatus();
 }
 
