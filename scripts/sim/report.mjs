@@ -15,6 +15,7 @@ import {
 	readdirSync,
 	readFileSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -76,10 +77,36 @@ function readStamps(/** @type {string} */ dir) {
 		});
 }
 
+/**
+ * `pnpm sim up` writes each run's stamps to `stamps/<run>/`: a stamps root means the run
+ * whose stamp was written last, whatever its id (`PRISMALENS_RUN_ID` may name it).
+ */
+export function runDir(/** @type {string} */ dir) {
+	if (!existsSync(dir) || readStamps(dir).length) return dir;
+	const newest = readdirSync(dir, { withFileTypes: true })
+		.filter((d) => d.isDirectory())
+		.map((d) => join(dir, d.name))
+		.filter((run) => readStamps(run).length)
+		// A rewritten stamp leaves its directory's time alone: the newest stamp file dates a run.
+		.map((run) => ({
+			run,
+			at: Math.max(
+				...readdirSync(run)
+					.filter((f) => f.includes("__") && f.endsWith(".json"))
+					.map((f) => statSync(join(run, f)).mtimeMs),
+			),
+		}))
+		.sort((a, b) => b.at - a.at)[0];
+	return newest?.run ?? dir;
+}
+
 /** The conditions the run selected: its sheet's rows, else whatever its stamps name. */
 function selected(/** @type {string} */ dir, /** @type {Stamp[]} */ stamps) {
-	const sheet = join(dirname(dir), "sheet.json");
-	if (existsSync(sheet)) {
+	// The run's own sheet, else the one `sim up` writes beside its stamps root (.sim/sheet.json).
+	const sheet = [dir, dirname(dir), dirname(dirname(dir))]
+		.map((d) => join(d, "sheet.json"))
+		.find((f) => existsSync(f));
+	if (sheet) {
 		const rows = JSON.parse(readFileSync(sheet, "utf8")).rows ?? [];
 		// A profile's seeds (`seed: long-thread`) share the sheet but are data, not conditions.
 		const ids = rows
@@ -135,6 +162,7 @@ export function summarize(
 	/** @type {Summary | null} */ base = null,
 	noisy = false,
 ) {
+	dir = runDir(dir);
 	const stamps = readStamps(dir);
 	const ids = selected(dir, stamps);
 	const known = new Map(entries("all").map((e) => [e.id, e]));
@@ -325,7 +353,7 @@ function loadBase(/** @type {string} */ base) {
 	const dir = resolve(base);
 	if (existsSync(join(dir, "summary.json")))
 		return JSON.parse(readFileSync(join(dir, "summary.json"), "utf8"));
-	if (existsSync(dir) && readStamps(dir).length) return summarize(dir);
+	if (existsSync(dir) && readStamps(runDir(dir)).length) return summarize(dir);
 	const hit = existsSync(HISTORY)
 		? readdirSync(HISTORY).find((d) => d.startsWith(base) || base.startsWith(d))
 		: undefined;

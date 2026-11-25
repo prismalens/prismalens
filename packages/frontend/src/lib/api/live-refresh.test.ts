@@ -108,6 +108,52 @@ describe("live refresh and query invalidation (#1181)", () => {
 		unsubscribe();
 	});
 
+	it("a hint re-reads the thread list first and every other matched query only once the list lands", async () => {
+		const queryClient = new QueryClient();
+		const feedKey = orpc.threads.feed.key({ input: { cursor: 0 } });
+		const asksKey = orpc.threads.asks.key({ input: {} });
+		const order: string[] = [];
+		let landList!: () => void;
+		const observe = (key: unknown[], name: string, wait?: Promise<void>) => {
+			let n = 0;
+			const o = new QueryObserver(queryClient, {
+				queryKey: key,
+				queryFn: async () => {
+					if (n++ > 0) {
+						order.push(name);
+						if (wait) await wait;
+					}
+					return { name };
+				},
+			});
+			return o.subscribe(() => {});
+		};
+		const listLands = new Promise<void>((r) => {
+			landList = r;
+		});
+		const offFeed = observe(feedKey, "feed", listLands);
+		const offAsks = observe(asksKey, "asks");
+		await vi.waitFor(() =>
+			expect(queryClient.getQueryState(asksKey)?.status).toBe("success"),
+		);
+		await vi.waitFor(() =>
+			expect(queryClient.getQueryState(feedKey)?.status).toBe("success"),
+		);
+
+		invalidateTopics(queryClient, ["threads"]);
+
+		expect(queryClient.getQueryState(asksKey)?.isInvalidated).toBe(true);
+		await vi.waitFor(() => expect(order).toEqual(["feed"]));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(order).toEqual(["feed"]);
+		landList();
+		await vi.waitFor(() => expect(order).toEqual(["feed", "asks"]));
+		expect(queryClient.getQueryState(asksKey)?.isInvalidated).toBe(false);
+
+		offFeed();
+		offAsks();
+	});
+
 	it("scope: hint threads/investigations scoped to ['a'] skips get({id:'b'}) and getStatus({id:'b'}) but refreshes get({id:'a'}) and non-per-thread queries", () => {
 		const queryClient = new QueryClient();
 		const keyGetA = orpc.investigations.get.key({ input: { id: "a" } });
@@ -397,6 +443,20 @@ describe("live refresh and query invalidation (#1181)", () => {
 		);
 		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(true);
 		expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
+	});
+});
+
+describe("hintComing", () => {
+	it("is true before the stream's first connect and while it is up, and false once it drops", async () => {
+		vi.resetModules();
+		const m = await import("./live-refresh");
+		expect(m.hintComing()).toBe(true);
+		m.setConnected(true);
+		expect(m.hintComing()).toBe(true);
+		m.setConnected(false);
+		expect(m.hintComing()).toBe(false);
+		m.setConnected(true);
+		expect(m.hintComing()).toBe(true);
 	});
 });
 
