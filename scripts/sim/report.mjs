@@ -15,6 +15,7 @@ import {
 	readdirSync,
 	readFileSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -76,21 +77,28 @@ function readStamps(/** @type {string} */ dir) {
 		});
 }
 
-/** `pnpm sim up` writes each run's stamps to `stamps/<run>/`: a stamps root means its newest run. */
+/**
+ * `pnpm sim up` writes each run's stamps to `stamps/<run>/`: a stamps root means the run
+ * that stamped last, whatever its id (`PRISMALENS_RUN_ID` may name it).
+ */
 export function runDir(/** @type {string} */ dir) {
 	if (!existsSync(dir) || readStamps(dir).length) return dir;
-	const runs = readdirSync(dir, { withFileTypes: true })
-		.filter((d) => d.isDirectory() && d.name.startsWith("sim-"))
-		.map((d) => d.name)
-		.sort();
-	return runs.length ? join(dir, runs[runs.length - 1]) : dir;
+	const newest = readdirSync(dir, { withFileTypes: true })
+		.filter((d) => d.isDirectory())
+		.map((d) => join(dir, d.name))
+		.filter((run) => readStamps(run).length)
+		.map((run) => ({ run, at: statSync(run).mtimeMs }))
+		.sort((a, b) => b.at - a.at)[0];
+	return newest?.run ?? dir;
 }
 
 /** The conditions the run selected: its sheet's rows, else whatever its stamps name. */
 function selected(/** @type {string} */ dir, /** @type {Stamp[]} */ stamps) {
-	const own = join(dir, "sheet.json");
-	const sheet = existsSync(own) ? own : join(dirname(dir), "sheet.json");
-	if (existsSync(sheet)) {
+	// The run's own sheet, else the one `sim up` writes beside its stamps root (.sim/sheet.json).
+	const sheet = [dir, dirname(dir), dirname(dirname(dir))]
+		.map((d) => join(d, "sheet.json"))
+		.find((f) => existsSync(f));
+	if (sheet) {
 		const rows = JSON.parse(readFileSync(sheet, "utf8")).rows ?? [];
 		// A profile's seeds (`seed: long-thread`) share the sheet but are data, not conditions.
 		const ids = rows

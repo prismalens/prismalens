@@ -5,23 +5,32 @@ import { STREAM_SILENT_MS } from "@prismalens/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { STALL_MS, TICK_MS, watchSilence } from "./stream-liveness";
 
-/** A clock the test moves, and the watch's tick, run by hand: a stall is time with no tick. */
+/** A clock the test moves, and the watch's tick at the interval it asked for: a stall is time with no tick. */
 function harness() {
 	let now = 0;
 	let tick: () => void = () => {};
+	let every = Number.POSITIVE_INFINITY;
 	vi.spyOn(performance, "now").mockImplementation(() => now);
-	vi.spyOn(globalThis, "setInterval").mockImplementation(((fn: () => void) => {
+	vi.spyOn(globalThis, "setInterval").mockImplementation(((
+		fn: () => void,
+		ms: number,
+	) => {
 		tick = fn;
+		every = ms;
 		return 1;
 	}) as typeof setInterval);
 	vi.spyOn(globalThis, "clearInterval").mockImplementation(() => {});
 	return {
-		/** Ticks every TICK_MS up to `to`. */
+		/** Ticks at the watch's own interval up to `to`. */
 		runTo(to: number) {
-			while (now + TICK_MS <= to) {
-				now += TICK_MS;
+			while (now + every <= to) {
+				now += every;
 				tick();
 			}
+		},
+		/** Time passes with no tick: a frame can arrive mid-stall. */
+		at(t: number) {
+			now = t;
 		},
 		/** The page is busy until `to`, then one late tick runs. */
 		stallTo(to: number) {
@@ -68,6 +77,21 @@ describe("watchSilence (#1181)", () => {
 		watchSilence(onSilent).open();
 		h.runTo(400);
 		h.stallTo(1300);
+		expect(onSilent).toHaveBeenCalledTimes(1);
+	});
+
+	it("a frame heard 100 ms before a stall's late tick restarts the count there: it fires at 3,200 ms, not at 3,100 ms", () => {
+		const h = harness();
+		const onSilent = vi.fn();
+		const watch = watchSilence(onSilent);
+		watch.open();
+		h.runTo(500);
+		h.at(1900);
+		watch.beat();
+		h.stallTo(2000);
+		h.runTo(3100);
+		expect(onSilent).not.toHaveBeenCalled();
+		h.runTo(3200);
 		expect(onSilent).toHaveBeenCalledTimes(1);
 	});
 

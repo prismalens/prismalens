@@ -42,12 +42,13 @@ export function watchSilence(onSilent: () => void): SilenceWatch {
 		}
 	}, TICK_MS);
 	return {
+		// The stall line runs from here too: a frame heard mid-stall already moved `last` past it.
 		beat: () => {
-			last = performance.now();
+			last = tick = performance.now();
 		},
 		open: () => {
 			limit = STREAM_SILENT_MS;
-			last = performance.now();
+			last = tick = performance.now();
 		},
 		stop: () => clearInterval(timer),
 	};
