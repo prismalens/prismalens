@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, posix, relative, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { appendLedger, ledgerProblems, parseLedger } from "../ledger.ts";
 import type {
 	Manifest,
