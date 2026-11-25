@@ -51,7 +51,7 @@ It probes each agent row at its channel's latest release and at its pin on Linux
 - A red scheduled leg (or a dispatch with `file-issues`) opens or rewrites one issue per agent and OS titled `Agent probe failing: <agent> on <os>`.
 - The `bump` job calls `gh-workflows:.github/workflows/pin-bump.yml`: a release that has been public 3 days moves its pin on one rolling pull request, `pin-bump/agents`. A pin whose probe fails is held back. The call's `sync` input refreshes the adapter SDK, the lockfile, each row's `tested` and the model list.
 - `RELEASE_PAT` opens that PR so CI starts on it; a PR opened with `GITHUB_TOKEN` gets no checks.
-- The pins live in `scripts/agent-pins.json` and `@prismalens/agent-adapters`.
+- Pins: `scripts/agent-pins.json`, `@prismalens/agent-adapters`; locks: `docs/contributing/testing.md`.
 
 ## Review is advisory; unresolved threads block
 

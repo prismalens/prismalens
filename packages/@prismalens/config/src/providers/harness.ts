@@ -321,8 +321,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 					: `Claude Code runs in ${bypass}, or ${edits} where your settings turn it off.`;
 			},
 		},
-		// The pin-bump PR moved this on 2026-11-21: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "0.108.0", date: "2026-11-21", companion: "2.1.327" },
+		// The pin-bump PR moved this on 2026-11-23: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "0.109.0", date: "2026-11-23", companion: "2.1.329" },
 		loginHint: "`claude auth login`, or `ANTHROPIC_API_KEY` in env",
 		signInArgs: ["auth", "login"],
 		loginEnvKeys: ["CLAUDE_CONFIG_DIR"],
@@ -367,8 +367,8 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 				`Codex runs in ${modeNamed(c, "agent-full-access", "Full access")}, outside its sandbox.`,
 		},
 		// Real-model runs were on codex 0.163.0: scripts/acp-admission.ts 3 of 3, gpt-6-luna (#846), and #848 live runs. Must equal @prismalens/agent-adapters' pin.
-		// The pin-bump PR moved this on 2026-11-21: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "2.7.0", date: "2026-11-21", companion: "0.170.0" },
+		// The pin-bump PR moved this on 2026-11-23: zero-token probe and aimock CI, no real-model run yet (#914).
+		tested: { version: "2.8.0", date: "2026-11-23", companion: "0.171.0" },
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 		signInArgs: ["login"],
 		loginEnvKeys: ["CODEX_HOME"],

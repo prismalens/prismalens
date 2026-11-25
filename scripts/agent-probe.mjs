@@ -28,6 +28,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { installLocked } from "./agent-locks.mjs";
 
 const WINDOWS = process.platform === "win32";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -102,7 +103,7 @@ export const PIN_CONSTRAINTS = {
 
 /**
  * The `uv pip install` arguments for a probe's Python CLI. The cap goes to any probe whose version is the
- * pin, a combined "latest, pin" one included, never to a version that is not (#1204).
+ * pin, a latest leg that names the pin's version included, never to a version that is not (#1204).
  */
 export function uvInstallArgs(probe, python, pins = PINS) {
 	const [cli, ...extras] = probe.channel.uv;
@@ -118,9 +119,10 @@ export function uvInstallArgs(probe, python, pins = PINS) {
 	];
 }
 
-/** One entry per version: a latest that is also the pin runs once. */
+/** A latest leg and a pin leg, even when they name the same version. */
 function atLatestAndPin(latest, pin, make) {
-	if (!pin || pin === latest) return [make(latest, "latest, pin")];
+	// The same version still runs twice: the pin installs as CI does, latest as users do.
+	if (!pin) return [make(latest, "latest")];
 	return [make(latest, "latest"), make(pin, "pin")];
 }
 
@@ -207,9 +209,14 @@ async function install(built, row, probe, dir) {
 			adapter = binScript(prefix, row.adapterPackage, row.binary);
 		}
 		const cli = join(dir, "cli");
+		if (probe.label === "pin")
+			return { bin: installLocked(channel.npm, cli), adapter };
 		npmInstall(cli, [`${channel.npm}@${probe.companion}`]);
 		return { bin: join(cli, "node_modules", ".bin"), adapter };
 	}
+	// A pin installs from its committed lock, the same bytes everywhere (#1154).
+	if (probe.label === "pin")
+		return { bin: installLocked(channelPackage(channel), join(dir, "pin")) };
 	if (channel.npm) {
 		npmInstall(dir, [`${channel.npm}@${probe.version}`]);
 		return { bin: join(dir, "node_modules", ".bin") };
@@ -369,6 +376,7 @@ async function main() {
 					channel: row.channel,
 					adapter: values.version,
 					companion: values.companion ?? PINS[channelPackage(row.channel)],
+					...(!values.companion ? { label: "pin" } : {}),
 				}
 			: {
 					id: row.id,
