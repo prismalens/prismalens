@@ -1,0 +1,35 @@
+{
+	"row": "brief-placement",
+	"kind": "happy",
+	"title": "Brief in the system prompt",
+	"run": {},
+	"expect": "report",
+	"fact": {
+		"name": "systemPromptVia",
+		"value": "claude-meta",
+		"else": "error"
+	},
+	"fixtures": [
+		{
+			"match": {
+				"inConversation": "[row:brief-placement]",
+				"systemMessage": "LIVE investigation of a firing production alert"
+			},
+			"response": {
+				"content": "$report"
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:brief-placement]"
+			},
+			"response": {
+				"error": {
+					"message": "scripted: the brief was not in the system prompt",
+					"type": "invalid_request_error"
+				},
+				"status": 400
+			}
+		}
+	]
+}

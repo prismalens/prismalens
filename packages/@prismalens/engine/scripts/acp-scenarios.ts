@@ -316,17 +316,36 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
 	}
 }
 
-/** The outcome a row expects of this agent, and why it differs from the row's, if it does. */
+/**
+ * The outcome a row expects of this agent, and why it differs from the row's, if it does. A row
+ * that observes a source-read fact expects `expect` where the agent's descriptor declares the
+ * fact's value and `fact.else` where it does not, so a wrong declaration fails the row.
+ */
 export function expectationFor(
 	row: Row,
 	harness: string,
 ): { expect: Expectation; why?: string; failure?: string | null } {
-	return (
-		row.agents?.[harness] ?? {
-			expect: row.expect,
-			...(row.failure ? { failure: row.failure } : {}),
-		}
-	);
+	const own = row.agents?.[harness];
+	if (own) return own;
+	if (row.fact) {
+		const facts = HARNESS_REGISTRY[harness as HarnessId]?.facts as
+			| Record<string, { value: unknown } | undefined>
+			| undefined;
+		const declared = facts?.[row.fact.name]?.value;
+		return declared === row.fact.value
+			? {
+					expect: row.expect,
+					why: `${row.fact.name} is ${String(row.fact.value)}`,
+				}
+			: {
+					expect: row.fact.else,
+					why: `${row.fact.name} is ${declared === undefined ? "not declared" : String(declared)}`,
+				};
+	}
+	return {
+		expect: row.expect,
+		...(row.failure ? { failure: row.failure } : {}),
+	};
 }
 
 /** `null` when the run's last error was classified as `failure` (#1101), else what it was. */

@@ -87,6 +87,8 @@ export interface Row {
 	failure?: string;
 	/** A fault this agent's wire cannot express, and why. */
 	na?: Record<string, string>;
+	/** The source-read fact this row observes: `expect` where an agent declares `value`, `else` where it does not. */
+	fact?: { name: string; value: unknown; else: Expectation };
 	gateway?: GatewayExpectation;
 	fixtures: FixtureFileEntry[];
 }
