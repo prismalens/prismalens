@@ -179,6 +179,8 @@ export default defineConfig({
 					include: ["src/**/*.spec.ts", "test/**/*.spec.ts"],
 					exclude: ["**/*.int.spec.ts", "**/node_modules/**", ...LEGACY_MEDIUM],
 					setupFiles: ["./vitest.small.setup.ts"],
+					// Without this a node:timers or node:timers/promises sleep stays real.
+					fakeTimers: { fakeNodeBuiltins: true },
 					testTimeout: 1_000,
 				},
 			},
