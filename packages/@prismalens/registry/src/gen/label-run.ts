@@ -23,9 +23,10 @@ export function labelCheck(
 ): string[] {
 	if (!base) return ["label-check needs --base <sha>"];
 	const top = git(cfg.root, ["rev-parse", "--show-toplevel"]).trim();
-	const ratchet = relative(top, join(cfg.root, cfg.ratchet ?? ""))
-		.split("\\")
-		.join("/");
+	// A host may keep no ratchet; reading "" would `git show` the host's own folder.
+	const ratchet = cfg.ratchet
+		? relative(top, join(cfg.root, cfg.ratchet)).split("\\").join("/")
+		: "";
 	const showAt = (ref: string, path: string) => {
 		try {
 			return git(top, ["show", `${ref}:${path}`]);
@@ -33,7 +34,7 @@ export function labelCheck(
 			return "";
 		}
 	};
-	const show = (ref: string) => showAt(ref, ratchet);
+	const show = (ref: string) => (ratchet ? showAt(ref, ratchet) : "");
 	const labelList = labels
 		.split(",")
 		.map((l) => l.trim())
