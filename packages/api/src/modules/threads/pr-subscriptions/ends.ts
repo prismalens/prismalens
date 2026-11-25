@@ -9,6 +9,7 @@
  */
 import { PR_SUB_END_WORDS, type PrSubEndReason } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
+import * as clock from "../../../core/clock.js";
 import type { PrismaService } from "../../../core/prisma/prisma.service.js";
 
 export const LIVE_SUB_STATES = ["active", "disconnected"] as const;
@@ -70,7 +71,7 @@ export async function endSubscriptions(
 	tx: Tx,
 	where: Prisma.PrSubscriptionWhereInput,
 	reason: PrSubEndReason,
-	now: Date = new Date(),
+	now: Date = clock.date(),
 ): Promise<Ended[]> {
 	const subs = await tx.prSubscription.findMany({
 		where: { ...where, state: { in: [...LIVE_SUB_STATES] } },

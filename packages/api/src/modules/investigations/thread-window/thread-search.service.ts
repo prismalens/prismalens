@@ -17,6 +17,7 @@ import {
 	searchableText,
 } from "@prismalens/contracts";
 import { Prisma } from "@prismalens/database";
+import * as clock from "../../../core/clock.js";
 import { PrismaService } from "../../../core/prisma/prisma.service.js";
 import { SCAN_ROWS, ThreadWindowService } from "./thread-window.service.js";
 
@@ -173,7 +174,7 @@ export class ThreadSearchService {
 	 * {@link CROSS_THREAD_BUDGET_MS} and hands back `next`, so older threads stay findable.
 	 */
 	async searchMessages(input: SearchMessagesInput): Promise<SearchMessages> {
-		const started = Date.now();
+		const started = clock.now();
 		const caseSensitive = !!input.caseSensitive;
 		const filter = prefilter(input.q, caseSensitive);
 		const total = await this.prisma.investigation.count();
@@ -197,9 +198,9 @@ export class ThreadSearchService {
 				const hit = await this.firstHit(t.id, input.q, caseSensitive, filter);
 				if (hit) hits.push({ threadId: t.id, title: t.title, ...hit });
 				if (hits.length >= input.limit) break;
-				if (Date.now() - started > CROSS_THREAD_BUDGET_MS) break;
+				if (clock.now() - started > CROSS_THREAD_BUDGET_MS) break;
 			}
-			if (Date.now() - started > CROSS_THREAD_BUDGET_MS) break;
+			if (clock.now() - started > CROSS_THREAD_BUDGET_MS) break;
 		}
 		return {
 			hits,

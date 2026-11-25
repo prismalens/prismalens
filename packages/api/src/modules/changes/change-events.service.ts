@@ -15,6 +15,7 @@ import type {
 	RunCredential,
 } from "@prismalens/contracts/schemas";
 import { findDeploymentAdapterForHost } from "@prismalens/integrations";
+import * as clock from "../../core/clock.js";
 import { repoLabel, urlHost } from "../../core/harness/git-credential.js";
 import {
 	GitFailure,
@@ -121,7 +122,7 @@ export class ChangeEventsService {
 		await Promise.race([
 			sync.run,
 			new Promise<void>((r) => {
-				timer = setTimeout(r, WAIT_MS);
+				timer = clock.setTimeout(r, WAIT_MS);
 			}),
 		]);
 		clearTimeout(timer);
@@ -156,7 +157,7 @@ export class ChangeEventsService {
 
 	/** Reads every linked repository unless a read of this incident is running or fresh. */
 	private sync(scope: Scope, refresh = false): Sync {
-		const now = Date.now();
+		const now = clock.now();
 		for (const [id, s] of this.syncs)
 			if (s.done && now - s.at > FRESH_MS) this.syncs.delete(id);
 		const current = this.syncs.get(scope.incidentId);
@@ -217,7 +218,7 @@ export class ChangeEventsService {
 			startedAt: start,
 			window: {
 				start: new Date(start.getTime() - LOOKBACK_MS),
-				end: incident.closedAt ?? new Date(),
+				end: incident.closedAt ?? clock.date(),
 			},
 			services: new Map(services.map((s) => [s.id, s.name])),
 			links: services.flatMap((s) =>
@@ -282,7 +283,7 @@ export class ChangeEventsService {
 				status: "ok",
 				credential,
 				problem: null,
-				checkedAt: new Date().toISOString(),
+				checkedAt: clock.date().toISOString(),
 			});
 		} catch (err) {
 			this.logger.warn(
@@ -292,7 +293,7 @@ export class ChangeEventsService {
 				...base,
 				status: "failed",
 				problem: problemOf(err),
-				checkedAt: new Date().toISOString(),
+				checkedAt: clock.date().toISOString(),
 			});
 		}
 	}

@@ -26,6 +26,7 @@ import {
 	type TickOutcome,
 } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RuntimeLifecycleService } from "../../core/lifecycle/runtime-lifecycle.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -151,7 +152,7 @@ export class SchedulesService
 	) {}
 
 	onApplicationBootstrap(): void {
-		this.timer = setInterval(() => void this.kick(), LOOP_MS);
+		this.timer = clock.setInterval(() => void this.kick(), LOOP_MS);
 		this.timer.unref();
 		void this.kick();
 	}
@@ -162,7 +163,7 @@ export class SchedulesService
 
 	/** Queue one evaluation; resolves when it ran. */
 	kick(now?: Date): Promise<void> {
-		const run = this.chain.then(() => this.evaluate(now ?? new Date()));
+		const run = this.chain.then(() => this.evaluate(now ?? clock.date()));
 		this.chain = run.catch((error) =>
 			this.logger.error("Schedule evaluation failed", error as Error),
 		);
@@ -680,7 +681,7 @@ export class SchedulesService
 		};
 	}
 
-	preview(recurrence: ScheduleInput["recurrence"], now = new Date()) {
+	preview(recurrence: ScheduleInput["recurrence"], now = clock.date()) {
 		const r = toRecurrence(recurrence);
 		const error = recurrenceError(r);
 		if (error)
@@ -699,7 +700,7 @@ export class SchedulesService
 	create(
 		input: ScheduleInput,
 		deviceId: string | null,
-		now = new Date(),
+		now = clock.date(),
 	): Promise<ScheduleDto> {
 		return this.serial(async () => {
 			const r = this.validRecurrence(input);
@@ -736,7 +737,7 @@ export class SchedulesService
 		revision: number,
 		input: ScheduleInput,
 		deviceId: string | null,
-		now = new Date(),
+		now = clock.date(),
 	) {
 		return this.serial(async () => {
 			const r = this.validRecurrence(input);
@@ -784,7 +785,7 @@ export class SchedulesService
 		id: string,
 		enabled: boolean,
 		deviceId: string | null,
-		now = new Date(),
+		now = clock.date(),
 	) {
 		return this.serial(async () => {
 			const s = await this.prisma.schedule.findUnique({ where: { id } });
@@ -828,7 +829,7 @@ export class SchedulesService
 	runNow(
 		id: string,
 		deviceId: string | null,
-		now = new Date(),
+		now = clock.date(),
 	): Promise<ScheduleTickDto> {
 		return this.serial(async () => {
 			const s = await this.prisma.schedule.findUnique({ where: { id } });

@@ -8,6 +8,7 @@ import {
 	registered,
 } from "@prismalens/integrations/harness";
 import { z } from "zod";
+import * as clock from "../../../core/clock.js";
 import { INCIDENT_ONLY } from "./serves.js";
 
 export interface TimelineItem {
@@ -101,7 +102,7 @@ export function incidentTools(data: IncidentRecordData): HarnessTool[] {
 						"This thread has no service recorded.",
 						"Pass `services` with names from pl_service_get.",
 					);
-				const now = Date.now();
+				const now = clock.now();
 				const base =
 					(scope?.triggeredAt ? Date.parse(scope.triggeredAt) : now) - DAY_MS;
 				const start = from

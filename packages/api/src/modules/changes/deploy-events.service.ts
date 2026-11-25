@@ -10,6 +10,7 @@ import type {
 	DeployWebhook,
 	DeployWebhookResponse,
 } from "@prismalens/contracts/schemas";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 
 export interface DeployRecord {
@@ -64,7 +65,7 @@ export class DeployEventsService {
 			select: { id: true, name: true },
 		});
 		if (!service) return null;
-		const at = input.timestamp ? new Date(input.timestamp) : new Date();
+		const at = input.timestamp ? new Date(input.timestamp) : clock.date();
 		const row = deployRow({
 			service,
 			version: input.version,
@@ -74,7 +75,7 @@ export class DeployEventsService {
 			actor: input.actor,
 			url: input.url,
 			sha: input.sha,
-			at: Number.isNaN(at.getTime()) ? new Date() : at,
+			at: Number.isNaN(at.getTime()) ? clock.date() : at,
 		});
 		const existing = await this.prisma.changeEvent.findUnique({
 			where: { dedupeKey: row.dedupeKey },

@@ -20,6 +20,7 @@ import {
 	type OnModuleInit,
 } from "@nestjs/common";
 import { getAllTemplates } from "@prismalens/integrations";
+import * as clock from "../../core/clock.js";
 // Constructor-injected — Nest's reflection-based DI needs the runtime class
 // reference from a value import to populate emitDecoratorMetadata. `import
 // type` here breaks boot with UnknownDependenciesException.
@@ -60,7 +61,7 @@ export class TokenRefreshProcessor implements OnModuleInit, OnModuleDestroy {
 	) {}
 
 	onModuleInit() {
-		this.timer = setInterval(() => {
+		this.timer = clock.setInterval(() => {
 			void this.runSweep();
 		}, REFRESH_INTERVAL_MS);
 		// A background sweep must never be the reason the process stays alive.
@@ -99,7 +100,7 @@ export class TokenRefreshProcessor implements OnModuleInit, OnModuleDestroy {
 	async process(): Promise<void> {
 		this.logger.debug("Starting proactive token refresh scan");
 
-		const cutoff = new Date(Date.now() + EXPIRY_BUFFER_MS);
+		const cutoff = new Date(clock.now() + EXPIRY_BUFFER_MS);
 
 		const expiringConnections = await this.prisma.connection.findMany({
 			where: {

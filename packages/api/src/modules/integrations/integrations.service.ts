@@ -28,6 +28,7 @@ import {
 	getTemplate,
 	isLegacyTemplateId,
 } from "@prismalens/integrations";
+import * as clock from "../../core/clock.js";
 import {
 	GIT_HOST_RULE,
 	GitCredential,
@@ -208,7 +209,7 @@ export class IntegrationsService implements OnModuleInit {
 					data: {
 						status,
 						lastErrorMessage: error,
-						lastErrorAt: new Date(),
+						lastErrorAt: clock.date(),
 						consecutiveErrors: { increment: 1 },
 					},
 				});
@@ -555,7 +556,7 @@ export class IntegrationsService implements OnModuleInit {
 			data: {
 				status,
 				lastErrorMessage: message,
-				lastErrorAt: new Date(),
+				lastErrorAt: clock.date(),
 				consecutiveErrors: { increment: 1 },
 			},
 		});
@@ -671,15 +672,15 @@ export class IntegrationsService implements OnModuleInit {
 						: testResult.rejected
 							? "CREDENTIALS_INVALID"
 							: "ERROR",
-					lastUsedAt: new Date(),
+					lastUsedAt: clock.date(),
 					lastErrorMessage: testResult.success
 						? null
 						: errorMarker(marker.kind, marker.status),
-					lastErrorAt: testResult.success ? null : new Date(),
+					lastErrorAt: testResult.success ? null : clock.date(),
 					consecutiveErrors: testResult.success
 						? 0
 						: connection.consecutiveErrors + 1,
-					...(testResult.success ? { testedAt: new Date() } : {}),
+					...(testResult.success ? { testedAt: clock.date() } : {}),
 				},
 			});
 
@@ -698,7 +699,7 @@ export class IntegrationsService implements OnModuleInit {
 				data: {
 					status: "ERROR",
 					lastErrorMessage: errorMarker(caught.kind, caught.status),
-					lastErrorAt: new Date(),
+					lastErrorAt: clock.date(),
 					consecutiveErrors: connection.consecutiveErrors + 1,
 				},
 			});

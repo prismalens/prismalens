@@ -38,6 +38,7 @@ import {
 	Prisma,
 	type Recommendation,
 } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	ResetInProgressError,
@@ -416,15 +417,15 @@ export class InvestigationsService {
 		try {
 			const updateData: Record<string, unknown> = {
 				status,
-				updatedAt: new Date(),
+				updatedAt: clock.date(),
 			};
 
 			if (status === "running") {
-				updateData.startedAt = new Date();
+				updateData.startedAt = clock.date();
 			}
 
 			if (isWorkflowTerminal(status)) {
-				updateData.completedAt = new Date();
+				updateData.completedAt = clock.date();
 			}
 
 			return await this.applyStatusUpdate(id, status, updateData);
@@ -459,17 +460,17 @@ export class InvestigationsService {
 		try {
 			const updateData: Record<string, unknown> = {
 				status,
-				updatedAt: new Date(),
+				updatedAt: clock.date(),
 			};
 
 			if (status === "running" && startedAt) {
 				updateData.startedAt = startedAt;
 			} else if (status === "running") {
-				updateData.startedAt = new Date();
+				updateData.startedAt = clock.date();
 			}
 
 			if (isWorkflowTerminal(status)) {
-				updateData.completedAt = new Date();
+				updateData.completedAt = clock.date();
 			}
 
 			if (error) {
@@ -505,7 +506,7 @@ export class InvestigationsService {
 				stopRequestedAt: null,
 				status: { in: [...LIVE_WORKFLOW_STATUSES] },
 			},
-			data: { stopRequestedAt: new Date() },
+			data: { stopRequestedAt: clock.date() },
 		});
 	}
 
@@ -582,7 +583,7 @@ export class InvestigationsService {
 				...end,
 				liveTurn: null,
 				stopRequestedAt: null,
-				updatedAt: new Date(),
+				updatedAt: clock.date(),
 			},
 		});
 		if (count === 0)
@@ -660,8 +661,8 @@ export class InvestigationsService {
 						report: dto.report ? JSON.stringify(dto.report) : null,
 						error: dto.error,
 						status: dto.status,
-						completedAt: new Date(),
-						updatedAt: new Date(),
+						completedAt: clock.date(),
+						updatedAt: clock.date(),
 						liveTurn: null,
 						stopRequestedAt: null,
 						...(dto.lastTurnOutcome
@@ -907,7 +908,7 @@ export class InvestigationsService {
 				await this.prisma.investigation
 					.updateMany({
 						where: { id: investigationId },
-						data: { lastActivityAt: new Date() },
+						data: { lastActivityAt: clock.date() },
 					})
 					.catch(() => undefined);
 			}
@@ -989,7 +990,7 @@ export class InvestigationsService {
 		// One write: the pause ends and the day's admitted units stop counting (OBJ-043).
 		await this.prisma.investigation.updateMany({
 			where: { id, autoPause: { contains: '"reason":"ceiling"' } },
-			data: { autoPause: null, unitsReleasedAt: new Date() },
+			data: { autoPause: null, unitsReleasedAt: clock.date() },
 		});
 	}
 

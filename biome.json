@@ -219,8 +219,7 @@
 		{
 			"path": "./tools/lint/no-direct-clock.grit",
 			"includes": [
-				"packages/api/src/core/**/*.ts",
-				"packages/api/src/infrastructure/**/*.ts",
+				"packages/api/src/**/*.ts",
 				"!packages/api/src/**/*.spec.ts",
 				"!packages/api/src/core/clock.ts",
 				"!packages/api/src/infrastructure/dispatch/process-signals.ts"

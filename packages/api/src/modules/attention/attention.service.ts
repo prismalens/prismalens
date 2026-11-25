@@ -38,6 +38,7 @@ import {
 	ThreadStatusSchema,
 } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { stepText } from "../incidents/incidents.service.js";
@@ -157,7 +158,7 @@ export class AttentionService
 			this.firstUnseen(id, p).then((u) => u.key),
 		);
 		void this.follow();
-		this.timer = setInterval(() => this.soon(), TICK_MS);
+		this.timer = clock.setInterval(() => this.soon(), TICK_MS);
 		this.timer.unref();
 		this.soon();
 	}
@@ -186,7 +187,7 @@ export class AttentionService
 
 	private soon(): void {
 		clearTimeout(this.debounce);
-		this.debounce = setTimeout(() => {
+		this.debounce = clock.setTimeout(() => {
 			void this.scan().catch((error: unknown) =>
 				this.logger.warn(`Attention scan failed: ${String(error)}`),
 			);
@@ -195,7 +196,7 @@ export class AttentionService
 	}
 
 	/** One scan at a time; a hint during a scan runs one more after it. */
-	scan(now = new Date()): Promise<number> {
+	scan(now = clock.date()): Promise<number> {
 		if (this.scanning) {
 			this.again = true;
 			return this.scanning;
@@ -465,7 +466,7 @@ export class AttentionService
 		return { events: await this.views(rows), unread };
 	}
 
-	async markRead(ids?: string[], now = new Date()): Promise<number> {
+	async markRead(ids?: string[], now = clock.date()): Promise<number> {
 		const { count } = await this.prisma.attentionEvent.updateMany({
 			where: { readAt: null, ...(ids ? { id: { in: ids } } : {}) },
 			data: { readAt: now },
@@ -543,7 +544,7 @@ export class AttentionService
 	}
 
 	/** What a card or a notification says about each thread. */
-	async threads(ids: string[], now = new Date()): Promise<AttentionThread[]> {
+	async threads(ids: string[], now = clock.date()): Promise<AttentionThread[]> {
 		if (!ids.length) return [];
 		const rows = await this.prisma.investigation.findMany({
 			where: { id: { in: ids } },
@@ -679,7 +680,7 @@ export class AttentionService
 	async markThreadRead(
 		id: string,
 		key: string,
-		now = new Date(),
+		now = clock.date(),
 	): Promise<boolean> {
 		const at = parseEventKey(key);
 		if (!at) return false;
@@ -742,7 +743,7 @@ export class AttentionService
 		deviceId: string,
 		threadId: string | null,
 		visible: boolean,
-		now = new Date(),
+		now = clock.date(),
 	): Promise<{ ttlMs: number }> {
 		if (!visible) {
 			this.presence.drop(deviceId);
@@ -754,7 +755,7 @@ export class AttentionService
 	}
 
 	/** Notes the operator is here; a gap since the last visible tab starts a new away. */
-	async touch(now = new Date()): Promise<Activity> {
+	async touch(now = clock.date()): Promise<Activity> {
 		const a = await this.activity();
 		const last = a.lastActiveAt ? Date.parse(a.lastActiveAt) : null;
 		const gap = last === null ? 0 : now.getTime() - last;

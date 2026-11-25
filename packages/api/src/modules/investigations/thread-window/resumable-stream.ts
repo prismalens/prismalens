@@ -8,6 +8,7 @@ import {
 	isWorkflowTerminal,
 	rowKey,
 } from "@prismalens/contracts";
+import * as clock from "../../../core/clock.js";
 
 /** Live events held while the gap replays; past this the client reloads its window instead. */
 export const REPLAY_BUFFER_EVENTS = 1_000;
@@ -117,7 +118,7 @@ export class ResumableStream {
 		this.buffered = [];
 		for (const event of held) this.sendLive(event);
 		if (this.terminal) return this.finish(this.terminal);
-		this.tick = setInterval(() => this.pull(), PULL_TICK_MS);
+		this.tick = clock.setInterval(() => this.pull(), PULL_TICK_MS);
 		this.tick.unref?.();
 	}
 

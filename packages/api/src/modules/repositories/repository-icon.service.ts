@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import type { IconSource } from "@prismalens/contracts";
 import type { Repository as PrismaRepository } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { mirrorRoots } from "../../core/harness/mirror-location.js";
 import { mirrorPathFor } from "../../core/harness/repo-source.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
@@ -101,7 +102,7 @@ export class RepositoryIconService {
 
 	// Fields rather than constructor parameters: Nest would try to inject them. Tests set them.
 	fetchImpl: typeof fetch = fetch;
-	now: () => number = Date.now;
+	now: () => number = clock.now;
 	mirrorRootsFn: () => string[] = mirrorRoots;
 
 	constructor(

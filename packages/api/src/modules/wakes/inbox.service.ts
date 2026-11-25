@@ -24,6 +24,7 @@ import {
 	RunFailureSchema,
 	type WakeKind,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { StreamRelayService } from "../investigations/stream-relay.service.js";
@@ -205,7 +206,7 @@ export class InboxService implements OnModuleInit {
 					runId: threadId,
 					branchId: TREE_BRANCH,
 					path: [],
-					ts: new Date().toISOString(),
+					ts: clock.date().toISOString(),
 					seq: (await this.investigations.lastEventSeq(threadId)) + 1,
 				} as CanonicalEvent;
 				const { inserted } = await this.investigations.appendEvents(threadId, [

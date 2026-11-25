@@ -21,6 +21,7 @@ import { HarnessService } from "../../core/harness/harness.service.js";
 import { SessionLifecycleService } from "../wakes/session-lifecycle.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
+import { onFakeTime } from "../../../test/support/fake-time.js";
 
 const mockInvestigationsService = {
 	findById: vi.fn(),
@@ -95,11 +96,14 @@ describe("InvestigationsController.cancel (CANCEL slice, ADR-0018)", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
 		const procs = controller.investigations() as Record<string, any>;
 		const h = procs.cancel["~orpc"].handler;
+		// The handler retries on a timer; the fake clock runs it so the test waits on none.
 		return (args) =>
-			h({
-				context: { request: operateRequest },
-				...args,
-			});
+			onFakeTime(
+				h({
+					context: { request: operateRequest },
+					...args,
+				}),
+			);
 	}
 
 	it("running run: publishes to the cancel channel and returns the run unchanged (no status flip)", async () => {

@@ -13,6 +13,7 @@ import {
 	type GitState,
 	type RunWorkspace,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import {
 	GIT_PROBE_TIMEOUT_MS,
 	spawnGit,
@@ -174,7 +175,7 @@ onRemoteHead(() => cache.clear());
 /** The workspace's worst state across its own repos, kept a few seconds per workspace. */
 export function workspaceGitState(
 	ws: RunWorkspace | null,
-	now = Date.now(),
+	now = clock.now(),
 ): Promise<GitState | null> {
 	if (!ws || !GIT_LAYOUTS.has(ws.layout)) return Promise.resolve(null);
 	const key = ws.repos.map((r) => r.dir).join("\0");

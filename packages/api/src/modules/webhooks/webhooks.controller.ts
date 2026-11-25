@@ -13,6 +13,7 @@ import { Implement, implement, ORPCError } from "@orpc/nest";
 import type { PrometheusAlert } from "@prismalens/contracts";
 import { webhooksContract } from "@prismalens/contracts";
 import { Public } from "../../core/auth/public.decorator.js";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { WEBHOOK_LAST_DELIVERY_KEY } from "../../shared/constants/routes.js";
@@ -232,7 +233,7 @@ export class WebhooksController {
 	/** Settings, Alert sources reads this back as "Last delivery" (study-v3 §7). Advisory. */
 	private async rememberDelivery(received: number, accepted: number) {
 		const value = JSON.stringify({
-			at: new Date().toISOString(),
+			at: clock.date().toISOString(),
 			received,
 			accepted,
 		});

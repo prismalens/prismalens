@@ -15,6 +15,7 @@ import {
 	type ToolOutcome,
 } from "@prismalens/integrations/harness";
 import { Logger } from "@prismalens/logger";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	ASKS_PORT,
@@ -156,8 +157,8 @@ export class PendingActionsService {
 				where: { id: row.id },
 				data: {
 					state: "expired",
-					decidedAt: new Date(),
-					deliveredAt: new Date(),
+					decidedAt: clock.date(),
+					deliveredAt: clock.date(),
 				},
 			});
 			return fail(
@@ -200,7 +201,7 @@ export class PendingActionsService {
 					args: JSON.stringify(call.args),
 					requestId: call.requestId,
 					state,
-					...(state === "approved" ? { decidedAt: new Date() } : {}),
+					...(state === "approved" ? { decidedAt: clock.date() } : {}),
 				},
 			});
 		} catch (e) {
@@ -225,7 +226,7 @@ export class PendingActionsService {
 		const ran = await this.executeNow(created.id);
 		await this.prisma.pendingAction.update({
 			where: { id: created.id },
-			data: { deliveredAt: new Date() },
+			data: { deliveredAt: clock.date() },
 		});
 		return ran;
 	}
@@ -307,7 +308,7 @@ export class PendingActionsService {
 			where: { id: row.id, state: "pending" },
 			data: {
 				state: next,
-				decidedAt: new Date(),
+				decidedAt: clock.date(),
 				...(next === "denied" && answer?.kind === "permission" && answer.reason
 					? { error: answer.reason }
 					: {}),
@@ -384,12 +385,12 @@ export class PendingActionsService {
 						state: "failed",
 						result: JSON.stringify(outcome),
 						error: outcome.failure.message,
-						executedAt: new Date(),
+						executedAt: clock.date(),
 					}
 				: {
 						state: "done",
 						result: JSON.stringify(outcome.value),
-						executedAt: new Date(),
+						executedAt: clock.date(),
 					},
 		});
 		return outcome;
@@ -405,8 +406,8 @@ export class PendingActionsService {
 				where: { id: row.id, state: "pending" },
 				data: {
 					state: "cancelled",
-					decidedAt: new Date(),
-					deliveredAt: new Date(),
+					decidedAt: clock.date(),
+					deliveredAt: clock.date(),
 				},
 			});
 			if (row.askId) {
@@ -520,7 +521,7 @@ export class PendingActionsService {
 		this.gaveUp.delete(row.id);
 		await this.prisma.pendingAction.update({
 			where: { id: row.id },
-			data: { deliveredAt: new Date() },
+			data: { deliveredAt: clock.date() },
 		});
 		return got;
 	}
@@ -565,7 +566,7 @@ export class PendingActionsService {
 			if (!got) {
 				await this.prisma.pendingAction.updateMany({
 					where: { id: row.id, state: "pending" },
-					data: { state: "expired", decidedAt: new Date() },
+					data: { state: "expired", decidedAt: clock.date() },
 				});
 				continue;
 			}

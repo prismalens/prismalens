@@ -30,6 +30,7 @@ import {
 	type WorktreeFile,
 	type WorktreeRepoChanges,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
 	GIT_PROBE_TIMEOUT_MS,
@@ -327,12 +328,12 @@ async function withScratch<T>(
 		s = {
 			gitDir: scratchRepo(objects, config),
 			turn: Promise.resolve(),
-			used: Date.now(),
+			used: clock.now(),
 			memo: {},
 		};
 		scratches.set(key, s);
 	}
-	s.used = Date.now();
+	s.used = clock.now();
 	const mine = s;
 	const run = mine.turn.then(async () =>
 		use(await mine.gitDir, fresh, mine.memo),
@@ -430,11 +431,11 @@ export async function linkedPath(root: string, path: string): Promise<boolean> {
 
 /** The work's result, or null once the request's deadline passes first. */
 function beforeDeadline<T>(work: Promise<T>, until: number): Promise<T | null> {
-	const left = until - Date.now();
+	const left = until - clock.now();
 	if (left <= 0) return Promise.resolve(null);
 	let timer: NodeJS.Timeout | undefined;
 	const late = new Promise<null>((resolve) => {
-		timer = setTimeout(() => resolve(null), left);
+		timer = clock.setTimeout(() => resolve(null), left);
 	});
 	return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
@@ -523,7 +524,7 @@ async function repoChanges(
 	deadlineMs: number,
 	withPatch = true,
 ): Promise<WorktreeRepoChanges> {
-	const until = Date.now() + deadlineMs;
+	const until = clock.now() + deadlineMs;
 	const gone = (reason: "removed" | "not-a-workspace" | "commit-gone") =>
 		({ state: "unavailable", repo: repo.name, reason }) as const;
 	if (!isAbsolute(repo.dir)) return gone("not-a-workspace");
@@ -610,7 +611,7 @@ async function readRepo(
 			// Names only, within what is left of the deadline; a late listing says truncated.
 			git(
 				["ls-files", "-z", "--others", "--exclude-standard"],
-				Math.max(1, until - Date.now()),
+				Math.max(1, until - clock.now()),
 			)
 				.then((r) => r.stdout.split("\0").filter(Boolean))
 				.catch(() => null),
@@ -698,7 +699,7 @@ async function readRepo(
 							deletions: null,
 						})
 					: // Past the deadline no more reads start.
-						Date.now() >= until
+						clock.now() >= until
 						? Promise.resolve(null)
 						: beforeDeadline(untrackedEntry(root, path), until),
 		);

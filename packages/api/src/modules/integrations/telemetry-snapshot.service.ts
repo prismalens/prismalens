@@ -8,6 +8,7 @@ import {
 	sourceType,
 } from "@prismalens/contracts/schemas";
 import type { ResolvedConnector } from "@prismalens/engine";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import {
@@ -125,7 +126,7 @@ export function envSource(kind: QueryKind, env: Env): SnapshotSource | null {
 function within<T>(ms: number, work: Promise<T>): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const late = new Promise<never>((_, reject) => {
-		timer = setTimeout(
+		timer = clock.setTimeout(
 			() => reject(new DOMException("timed out", "TimeoutError")),
 			ms,
 		);

@@ -24,6 +24,7 @@ import {
 	type WorktreePatch,
 	type WorktreeRepoChanges,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import {
 	WORKTREE_PREFIX,
 	worktreeRoots,
@@ -621,7 +622,7 @@ export async function revertChanges(
 			if (!turn?.start || !turn.end) return refused("no-snapshot");
 			known = [turn.start, turn.end];
 		}
-		const id = String(Date.now());
+		const id = String(clock.now());
 		const before = await takeSnapshot(store, {
 			ref: `${REVERT_REF}/${id}/before`,
 		});
