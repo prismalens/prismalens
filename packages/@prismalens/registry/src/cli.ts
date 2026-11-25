@@ -30,7 +30,9 @@ import {
 } from "./ui/quality-run.ts";
 
 export const USAGE = `usage: registry [--config <file>] <command>
-  gen                           write registry.gen.ts and registry.manifest.json (not in git)
+  gen [--write-ledger] [--own-host]
+                                write registry.gen.ts and registry.manifest.json (not in git) for
+                                every host, or only this config's; --write-ledger appends new claims
   where "<thing>"               which kind it is, the file to create, an example and the guards
   ls [kind] [--surface <id>]    what exists
   new <kind> <object.name> [--said "<quote>" --date <utc> --where <source>]
@@ -123,9 +125,10 @@ export function main(argv: string[]): number {
 	if (cmd === "gen") {
 		const ws = workspaceOf(cfg);
 		const writeLedger = rest.includes("--write-ledger");
+		const only = rest.includes("--own-host") ? cfg.root : undefined;
 		const code = fail(
 			ws
-				? generateWorkspace(ws, { writeLedger }).problems
+				? generateWorkspace(ws, { writeLedger, only }).problems
 				: generate(cfg, { writeLedger }).problems,
 		);
 		if (!code) console.log("registry: generated");

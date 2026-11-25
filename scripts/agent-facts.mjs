@@ -20,9 +20,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const AGENTS = join(
+/** The file `sync` rewrites: the probed versions every launch row reads. */
+export const AGENTS = join(
 	ROOT,
-	"packages/@prismalens/agent-host/src/registry/agents.ts",
+	"packages/@prismalens/agent-host/src/registry/row.ts",
 );
 const json = (path) => JSON.parse(readFileSync(join(ROOT, path), "utf8"));
 

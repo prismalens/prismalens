@@ -10,11 +10,16 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./agents": {
+			"types": "./dist/agents.d.ts",
+			"import": "./dist/agents.js"
+		},
 		"./kinds": "./src/kinds/index.ts",
 		"./conformance": "./src/conformance/index.ts"
 	},
 	"scripts": {
-		"build": "tsc -p tsconfig.build.json",
+		"registry:gen": "node ../registry/src/cli.ts --config registry.config.json gen --own-host",
+		"build": "pnpm run registry:gen && tsc -p tsconfig.build.json",
 		"test": "vitest run --coverage",
 		"typecheck": "tsc --noEmit",
 		"clean": "rm -rf dist && rm -rf node_modules"

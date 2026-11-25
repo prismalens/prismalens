@@ -39,7 +39,7 @@ const PYTHON = "3.14";
 /** Days a release soaks before its pin moves; an npm lock resolves its dependencies as of then. */
 export const PIN_SOAK_DAYS = 3;
 
-/** Python pins and the packages installed beside the CLI, as `harness.ts` names its uv channel. */
+/** Python pins and the packages installed beside the CLI, as the deepagents descriptor names its uv channel. */
 export const PYTHON_PINS = { "deepagents-code": ["deepagents-acp"] };
 
 /**

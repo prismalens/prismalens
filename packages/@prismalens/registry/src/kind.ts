@@ -58,13 +58,22 @@ export interface Scaffold {
 	readonly file?: string;
 	/**
 	 * Files written beside a new entry, such as an adapter stub and fixtures. Placeholders also
-	 * take {{member}} (the id after its first dot), {{Member}} and {{required}} (the ids of the
+	 * take {{member}} (the id after its first dot), {{Member}}, {{memberName}} and {{required}} (the ids of the
 	 * entries whose `required` is true and whose `family` is the new entry's object, as JSON).
 	 */
 	readonly files?: readonly {
 		readonly path: string;
 		readonly template: string;
 	}[];
+	/** Steps the scaffold cannot write, printed after it, e.g. adding the member to a list a test holds. */
+	readonly next?: readonly string[];
+	/** Per object, the parts that differ, e.g. an agent descriptor's define call; the rest is shared. */
+	readonly variants?: Readonly<
+		Record<
+			string,
+			Partial<Pick<Scaffold, "imports" | "entry" | "files" | "next">>
+		>
+	>;
 	/** Import lines the entry needs. */
 	readonly imports: readonly string[];
 	readonly entry: string;

@@ -28,6 +28,7 @@ export function namesOf(id: string) {
 		object,
 		member,
 		Member: memberCamel,
+		memberName: `${memberCamel[0]?.toLowerCase() ?? ""}${memberCamel.slice(1)}`,
 		name: camel,
 		Object: `${object[0]?.toUpperCase()}${object.slice(1)}`,
 		label: `${words[0]?.toUpperCase()}${words.slice(1)}`,
@@ -198,7 +199,12 @@ export function planEntry(
 		required: JSON.stringify(required),
 		...opts.extra,
 	};
-	if (k.scaffold.file) return planFiles(k.scaffold, names, read);
+	if (k.scaffold.file)
+		return planFiles(
+			{ ...k.scaffold, ...k.scaffold.variants?.[names.object] },
+			names,
+			read,
+		);
 	const sameObject = (e: { id: string }) => e.id.split(".")[0] === names.object;
 	const own = manifest.entries[kind]?.find(sameObject)?.file;
 	const sibling = Object.values(manifest.entries).flat().find(sameObject)?.file;
@@ -278,6 +284,7 @@ function planFiles(
 		edits,
 		next: [
 			`Fill in ${edits.map((e) => e.file).join(", ")}.`,
+			...(scaffold.next ?? []).map((n) => fill(n, names)),
 			"Then run pnpm registry gen; its guards name anything the new entry still lacks.",
 		],
 	};

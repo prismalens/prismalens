@@ -119,6 +119,58 @@ export const provider = defineKind({
 	order: 1000,
 	entryPoints: {{required}},
 });`,
+		variants: {
+			agent: {
+				imports: ['import { defineAgent, noModeLines } from "../family.ts";'],
+				entry: `export const {{memberName}} = defineAgent({
+	id: "{{id}}",
+	family: "agent",
+	name: "{{Member}}",
+	mark: { letters: "{{Member}}".slice(0, 2).toUpperCase() },
+	order: 1000,
+	launch: "{{member}}",
+	entryPoints: {{required}},
+	stored: [
+		{ column: "Run.harness", value: "{{member}}" },
+		{ column: "Schedule.harness", value: "{{member}}" },
+	],
+	auth: { methods: [] },
+	facts: {
+		install: "TODO: the command that installs its CLI",
+		loginHint: "TODO: how to sign it in",
+		cacheTtlMinutes: null,
+		autoCompactPercent: null,
+		compactsWhenIdle: false,
+		compactCommand: null,
+		compactTakesFocus: false,
+		lines: noModeLines("{{Member}}"),
+	},
+});`,
+				files: [
+					{
+						path: "../agent-host/src/registry/agents/{{member}}.ts",
+						template: `import type { AgentDescriptor } from "../agents.js";
+import { noMode } from "../row.js";
+
+export const {{memberName}} = {
+	id: "{{member}}",
+	label: "{{Member}}",
+	binary: "TODO: the ACP binary on PATH",
+	acpArgs: () => [],
+	acpEnv: () => ({}),
+	providerKeys: [],
+	levels: noMode(),
+	modeNames: {},
+	modeMechanism: "none",
+	modelVia: "acp",
+} satisfies AgentDescriptor;`,
+					},
+				],
+				next: [
+					'Add "{{member}}" to AGENT_IDS and {{memberName}} to AGENT_ROWS in packages/@prismalens/agent-host/src/registry/agents.ts; its registry test holds that list to the folder.',
+				],
+			},
+		},
 		files: [
 			{
 				path: "src/{{object}}/{{member}}/fixtures/ok.json",

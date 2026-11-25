@@ -58,7 +58,10 @@ export const projectsAdd = defineEntryPoint({
 	);
 });
 
-afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
+afterAll(() => {
+	rmSync(ROOT, { recursive: true, force: true });
+	rmSync(join(ROOT, "../agent-host"), { recursive: true, force: true });
+});
 
 describe("pnpm registry new provider", () => {
 	it("writes a descriptor that lists its family's required entry points, its fixtures, and a barrel the registry loads", async () => {
@@ -90,5 +93,30 @@ describe("pnpm registry new provider", () => {
 		expect(gen.err.join("\n")).toContain(
 			"[provider/entry-point-required] code-host.fixturehost misses projects.add",
 		);
+		writeFileSync(DESCRIPTOR, text);
+	});
+});
+
+describe("pnpm registry new provider agent.<id>", () => {
+	it("writes an agent descriptor through the family's variant: its launch row, the agent entry points and its stored ids", () => {
+		const made = run("new", "provider", "agent.fixtureagent");
+		expect(made.err).toEqual([]);
+		expect(made.code).toBe(0);
+		const text = readFileSync(join(ROOT, "src/agent/fixtureagent/fixtureagent.provider.ts"), "utf8");
+		expect(text).toContain('import { defineAgent, noModeLines } from "../family.ts";');
+		expect(text).toContain('launch: "fixtureagent",');
+		expect(text).toContain(
+			'entryPoints: ["composer.agent-picker","incidents.first-run","settings.agents"],',
+		);
+		expect(text).toContain('{ column: "Run.harness", value: "fixtureagent" },');
+		expect(text).toContain("export const fixtureagent = defineAgent({");
+		const row = readFileSync(join(ROOT, "../agent-host/src/registry/agents/fixtureagent.ts"), "utf8");
+		expect(row).toContain('export const fixtureagent = {\n\tid: "fixtureagent",');
+		expect(made.out.join("\n")).toContain(
+			'Add "fixtureagent" to AGENT_IDS and fixtureagent to AGENT_ROWS in packages/@prismalens/agent-host/src/registry/agents.ts; its registry test holds that list to the folder.',
+		);
+		const gen = run("gen");
+		expect(gen.err).toEqual([]);
+		expect(gen.code).toBe(0);
 	});
 });

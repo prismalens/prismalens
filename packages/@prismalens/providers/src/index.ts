@@ -2,6 +2,22 @@
 // Copyright 2026 Sumit Patel
 
 export {
+	type AccessLevel,
+	type AgentDef,
+	type AgentFacts,
+	type AgentSpec,
+	type CatalogueSource,
+	type CheckedModes,
+	defineAgent,
+	type InstallChannel,
+	installCommand,
+	isAgent,
+	type Lines,
+	modeNamed,
+	noModeLines,
+	offers,
+} from "./agent/family.ts";
+export {
 	type AuthApply,
 	type AuthScheme,
 	defineEntryPoint,
@@ -26,3 +42,11 @@ export {
 	ProviderRegistry,
 	type Resolved,
 } from "./registry.ts";
+
+import { builtIn } from "./registry.gen.ts";
+import { ProviderRegistry } from "./registry.ts";
+
+export { agents } from "./agents.ts";
+
+/** The built-in members; a module's members join through `contribute`. */
+export const providers = new ProviderRegistry(builtIn);

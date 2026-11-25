@@ -445,10 +445,10 @@ export const OUT_MANIFEST = "registry.manifest.json";
  * Generates both files. `check` compares instead of writing and returns the
  * stale ones; problems in source fail either way.
  */
-/** Writes the two generated files, each only when it changed; they are not in git (#1101). */
+/** Writes the two generated files, each only when it changed; they are not in git (#1101). `write: false` only reads. */
 export function generate(
 	cfg: Config,
-	opts: { writeLedger?: boolean } = {},
+	opts: { writeLedger?: boolean; write?: boolean } = {},
 ): {
 	problems: string[];
 	manifest: Manifest;
@@ -458,7 +458,7 @@ export function generate(
 		const file = join(cfg.root, cfg.ledger.file);
 		const entries = manifest.entries[cfg.ledger.kind] ?? [];
 		let text = existsSync(file) ? readFileSync(file, "utf8") : "";
-		if (opts.writeLedger) {
+		if (opts.writeLedger && opts.write !== false) {
 			const next = appendLedger(text, entries, cfg.ledger.field);
 			if (next !== text) writeFileSync(file, next);
 			text = next;
@@ -478,7 +478,7 @@ export function generate(
 		[posix.join(cfg.out, OUT_TYPES)]: emitTypes(cfg, manifest),
 		[posix.join(cfg.out, OUT_MANIFEST)]: emitManifest(manifest),
 	};
-	for (const [f, text] of Object.entries(files)) {
+	for (const [f, text] of Object.entries(opts.write === false ? {} : files)) {
 		const abs = join(cfg.root, f);
 		const now = existsSync(abs)
 			? readFileSync(abs, "utf8").replace(/\r\n/g, "\n")

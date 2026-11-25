@@ -185,7 +185,10 @@ test("installing a pin whose lock is stale throws instead of installing the old 
 
 test("the Python extras match the uv channel the install hint names", () => {
 	const harness = readFileSync(
-		join(REPO, "packages/@prismalens/config/src/providers/harness.ts"),
+		join(
+			REPO,
+			"packages/@prismalens/providers/src/agent/deepagents/deepagents.provider.ts",
+		),
 		"utf8",
 	);
 	const [pin, extras] = Object.entries(PYTHON_PINS)[0];
