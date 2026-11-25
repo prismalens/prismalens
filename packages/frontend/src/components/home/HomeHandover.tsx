@@ -2,8 +2,8 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Home's handover (#1101 F3): under the composer, without a click, the threads
- * that need you, most urgent first with each one's fix, then what changed while
+ * Home's handover (#1101 F3): under the composer, the threads that need you with
+ * each one's fix while the sidebar's list is off screen, then what changed while
  * you were away as one digest that opens Events.
  */
 import type { HarnessId } from "@prismalens/config/harness";
@@ -14,22 +14,11 @@ import { useState } from "react";
 import { AwayDigest } from "@/components/home/AwayView";
 import type { NeedsCtx } from "@/components/home/needs.actions";
 import { fact } from "@/components/kit/fact";
-import { ListCard, ListGrid } from "@/components/kit/ListCard";
-import {
-	AgentBadge,
-	BranchMark,
-	PrMark,
-	StartedByMark,
-} from "@/components/kit/MarkBadges";
+import { AgentBadge, StartedByMark } from "@/components/kit/MarkBadges";
+import { ContextMenu } from "@/components/kit/Menu";
 import { FAMILY_CLASS, SURFACE } from "@/components/kit/Popover";
 import { entryOf, surfaceEntries } from "@/components/kit/registry";
-import {
-	fixActionId,
-	Status,
-	type StatusKind,
-	statusUrgency,
-	statusWord,
-} from "@/components/kit/Status";
+import { fixActionId, Status } from "@/components/kit/Status";
 import { Time } from "@/components/kit/Time";
 import { RowAsk, type RowAskEntry, useRowAsk } from "@/components/shell/RowAsk";
 import {
@@ -49,14 +38,18 @@ import type { ListNode } from "@/lib/thread-list";
 import { threadLink } from "@/lib/thread-rows";
 import { cn } from "@/lib/utils";
 
-/** Needs-you cards before the rest folds into status bands: two rows of the grid at desktop width. */
-const NEEDS_SHOWN = 4;
+/** Rows before "N more": a phone screen keeps the composer and the first rows in view. */
+const NEEDS_SHOWN = 5;
+
+/** Shown only while the sidebar's own Needs you is off screen: below 1280 px, folded or hidden (`use-layout-prefs`). */
+const SIDEBAR_OFF =
+	"xl:hidden [[data-sidebar-folded]_&]:flex [[data-sidebar-hidden]_&]:flex";
 
 export function HomeHandover() {
 	const { model } = useThreadListModel();
 	const asks = useAsksByThread();
 	const now = useNow(30_000) ?? 0;
-	// What waits on you shows once, here; the digest keeps the rest.
+	// The digest leaves out what waits on you at every width, so phone and desktop list the same changes (bar 3.1).
 	const waiting = new Set(model.needs.map((n) => n.id));
 	return (
 		<div className="flex w-full flex-col gap-6" data-testid="home-handover">
@@ -71,52 +64,9 @@ export function HomeHandover() {
 	);
 }
 
-/** The needs-you threads by status, most urgent band first. */
-function bandsOf(needs: ListNode[]): { kind: StatusKind; n: number }[] {
-	const bands: { kind: StatusKind; n: number }[] = [];
-	for (const n of needs) {
-		const kind = n.info.status;
-		const band = bands.find((b) => b.kind === kind);
-		if (band) band.n += 1;
-		else bands.push({ kind, n: 1 });
-	}
-	return bands.sort((a, b) => statusUrgency(a.kind) - statusUrgency(b.kind));
-}
-
-/** One band as a toggle: the kit's Status shape, its count and its word. */
-function BandButton({
-	kind,
-	n,
-	on,
-	onPick,
-}: {
-	kind: StatusKind;
-	n: number;
-	on: boolean;
-	onPick: () => void;
-}) {
-	return (
-		<button
-			type="button"
-			aria-pressed={on}
-			onClick={onPick}
-			className={cn(
-				"inline-flex h-7 items-center gap-1.5 rounded-control px-2 text-meta text-text-2 tabular-nums outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent",
-				on && "bg-surface-3 text-text-1",
-			)}
-			data-testid="home-needs-band"
-			data-band={kind}
-		>
-			<Status kind={kind} showWord={false} />
-			{n}
-			<span {...fact("status")}>{statusWord(kind)}</span>
-		</button>
-	);
-}
-
 /**
- * The trees that need you as cards, from data, for Home and the gallery: the
- * most urgent few, then the rest grouped by status, one band per kind (#1101 cat 3).
+ * The threads that need you as rows, most urgent first, each with its cause and one fix,
+ * for when the sidebar's Needs you is off screen (one list calls for attention, GUIDELINES rule 3).
  */
 export function HomeNeeds({
 	needs,
@@ -129,83 +79,36 @@ export function HomeNeeds({
 	asks: ReadonlyMap<string, RowAskEntry[]>;
 	now: number;
 }) {
-	const [kind, setKind] = useState<StatusKind | null>(null);
-	// "N more" opens every card here, so the overflow is one click from its answers (#1101 Ops fit).
 	const [all, setAll] = useState(false);
-	const bands = bandsOf(needs);
-	const picked = kind && bands.some((b) => b.kind === kind) ? kind : null;
-	const shown = picked
-		? needs.filter((n) => n.info.status === picked)
-		: all
-			? needs
-			: needs.slice(0, NEEDS_SHOWN);
-	const rest = picked || all ? [] : bandsOf(needs.slice(NEEDS_SHOWN));
 	if (needs.length === 0) return null;
+	const shown = all ? needs : needs.slice(0, NEEDS_SHOWN);
+	const left = needs.length - shown.length;
 	return (
 		<section
 			aria-label="Needs you"
-			className="flex flex-col gap-2"
+			className={cn("flex flex-col gap-1", SIDEBAR_OFF)}
 			data-testid="home-needs"
 		>
-			<h2 className="flex items-center gap-3 text-heading text-text-1">
-				<span className="flex items-center gap-2">
-					Needs you
-					<span className="text-meta font-medium text-warn tabular-nums">
-						{count}
-					</span>
+			<h2 className="flex items-center gap-2 text-heading text-text-1">
+				Needs you
+				<span className="text-meta font-medium text-warn tabular-nums">
+					{count}
 				</span>
-				{all && !picked && needs.length > NEEDS_SHOWN && (
-					<button
-						type="button"
-						onClick={() => setAll(false)}
-						className="inline-flex h-7 items-center rounded-control px-2 text-meta font-normal text-text-2 outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
-						data-testid="home-needs-fewer"
-					>
-						Show fewer
-					</button>
-				)}
-				{picked && (
-					<BandButton
-						kind={picked}
-						n={shown.length}
-						on
-						onPick={() => setKind(null)}
-					/>
-				)}
 			</h2>
-			<ListGrid label="Needs you">
+			<ul aria-label="Needs you" className="flex flex-col">
 				{shown.map((n) => (
-					<NeedsCard
-						key={n.id}
-						node={n}
-						asks={asks.get(n.id) ?? []}
-						now={now}
-					/>
+					<NeedsRow key={n.id} node={n} asks={asks.get(n.id) ?? []} now={now} />
 				))}
-			</ListGrid>
-			{rest.length > 0 && (
-				<div
-					className="flex flex-wrap items-center gap-1"
-					data-testid="home-needs-more"
+			</ul>
+			{(left > 0 || (all && needs.length > NEEDS_SHOWN)) && (
+				<button
+					type="button"
+					onClick={() => setAll(!all)}
+					className="-mx-1.5 flex min-h-8 items-center self-start rounded-control px-1.5 text-meta text-text-3 tabular-nums outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent max-sm:min-h-11"
+					data-testid={all ? "home-needs-fewer" : "home-needs-all"}
 				>
-					<button
-						type="button"
-						onClick={() => setAll(true)}
-						className="inline-flex h-7 items-center rounded-control px-2 text-meta text-text-2 tabular-nums outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
-						data-testid="home-needs-all"
-					>
-						{needs.length - shown.length} more
-					</button>
-					{rest.map((b) => (
-						<BandButton
-							key={b.kind}
-							kind={b.kind}
-							n={b.n}
-							on={false}
-							onPick={() => setKind(b.kind)}
-						/>
-					))}
-				</div>
+					{all ? "Show fewer" : `${left} more`}
+				</button>
 			)}
 		</section>
 	);
@@ -273,8 +176,8 @@ function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
 	};
 }
 
-/** One thread that needs you: its state, its marks, its age and its one fix. */
-function NeedsCard({
+/** One thread that needs you: its status, title, cause, marks and age, and its one fix. */
+function NeedsRow({
 	node,
 	asks,
 	now,
@@ -297,78 +200,104 @@ function NeedsCard({
 	const found =
 		(fixId && entryOf(fixId, ctx)) ?? entryOf("needs.open", ctx) ?? null;
 	const fix = found && !("separator" in found) ? found : null;
+	const detail = detailLine(node, now, entry);
 	const button = fix && (
 		<Button
 			size="sm"
 			variant="secondary"
 			disabled={fix.disabled}
 			onClick={fix.id === "answer" ? undefined : fix.onSelect}
+			className="max-w-44"
 			data-testid="home-fix"
 			data-fix={fix.id}
 		>
 			{fix.icon && <fix.icon aria-hidden />}
-			{fix.label}
+			<span className="truncate">{fix.label}</span>
 		</Button>
 	);
+	const action =
+		fix?.id === "answer" && entry && state.can ? (
+			<P.Root open={asking} onOpenChange={setAsking}>
+				<P.Trigger asChild>{button}</P.Trigger>
+				<P.Portal>
+					<P.Content
+						side="bottom"
+						align="end"
+						sideOffset={6}
+						collisionPadding={8}
+						aria-label="Waiting ask"
+						data-float="pop"
+						className={cn(SURFACE, FAMILY_CLASS.card, "p-2.5")}
+						data-testid="home-ask-card"
+					>
+						<RowAsk
+							state={state}
+							ended={entry.ended}
+							accessLevel={entry.accessLevel}
+							now={now}
+							count={asks.length}
+							openHref={ctx.open}
+						/>
+					</P.Content>
+				</P.Portal>
+			</P.Root>
+		) : fix?.id === "answer" ? (
+			// An ask this device can't answer opens the thread.
+			entryOf("needs.open", ctx) && (
+				<Button size="sm" variant="secondary" onClick={ctx.open}>
+					Open
+				</Button>
+			)
+		) : (
+			button
+		);
 	return (
-		<ListCard
-			title={title}
-			status={node.info.status}
-			meta={
-				<span className="inline-flex items-center gap-2">
-					{t.harness && agent && (
-						<AgentBadge agent={t.harness} label={agent} model={t.model} inRow />
-					)}
-					{t.startedBy && <StartedByMark by={t.startedBy} />}
-					{t.pr && (
-						<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
-					)}
-					{t.branch && <BranchMark branch={t.branch} />}
-					<Time at={node.at} now={now || null} className="text-text-3" past />
-				</span>
-			}
-			detail={detailLine(node, now, entry)}
-			footer={
-				fix?.id === "answer" && entry && state.can ? (
-					<P.Root open={asking} onOpenChange={setAsking}>
-						<P.Trigger asChild>{button}</P.Trigger>
-						<P.Portal>
-							<P.Content
-								side="bottom"
-								align="start"
-								sideOffset={6}
-								collisionPadding={8}
-								aria-label="Waiting ask"
-								data-float="pop"
-								className={cn(SURFACE, FAMILY_CLASS.card, "p-2.5")}
-								data-testid="home-ask-card"
-							>
-								<RowAsk
-									state={state}
-									ended={entry.ended}
-									accessLevel={entry.accessLevel}
-									now={now}
-									count={asks.length}
-									openHref={ctx.open}
-								/>
-							</P.Content>
-						</P.Portal>
-					</P.Root>
-				) : fix?.id === "answer" ? (
-					// An ask this device can't answer opens the thread.
-					entryOf("needs.open", ctx) && (
-						<Button size="sm" variant="secondary" onClick={ctx.open}>
-							Open
-						</Button>
-					)
-				) : (
-					button
-				)
-			}
-			link={(heading) => <Link {...link}>{heading}</Link>}
-			menu={surfaceEntries("needs.card", "context", ctx)}
-			mirrored
-			testId="home-needs-card"
-		/>
+		<ContextMenu
+			label={`${title} actions`}
+			entries={surfaceEntries("needs.card", "context", ctx)}
+		>
+			<li
+				className="group/row relative -mx-1.5 flex min-w-0 items-center gap-3 rounded-control px-1.5 py-1.5 hover:bg-surface-2"
+				data-testid="home-needs-row"
+				data-id={node.id}
+				data-status={node.info.status}
+			>
+				<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+					<span className="flex min-w-0 items-center gap-2">
+						<Link
+							{...link}
+							className="min-w-0 truncate text-body font-medium text-text-1 outline-none after:absolute after:inset-0 after:rounded-control focus-visible:after:ring-2 focus-visible:after:ring-accent"
+							{...fact("title")}
+						>
+							{title}
+						</Link>
+						<Time
+							at={node.at}
+							now={now || null}
+							className="ml-auto shrink-0 text-meta text-text-3"
+							past
+						/>
+					</span>
+					<span className="flex min-w-0 items-center gap-1.5 text-meta text-text-3">
+						<Status kind={node.info.status} className="shrink-0" />
+						{t.harness && agent && (
+							<AgentBadge
+								agent={t.harness}
+								label={agent}
+								model={t.model}
+								inRow
+							/>
+						)}
+						{t.startedBy && <StartedByMark by={t.startedBy} />}
+						{detail && (
+							<span className="min-w-0 truncate" {...fact("cause")}>
+								{detail}
+							</span>
+						)}
+					</span>
+				</div>
+				{action && <div className="relative z-10 shrink-0">{action}</div>}
+			</li>
+		</ContextMenu>
 	);
 }

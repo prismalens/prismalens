@@ -78,23 +78,23 @@ export default defineChecks([
 			const needsSection = phone.getByTestId("home-needs");
 			await expect(needsSection).toBeVisible();
 
-			const cards = phone.getByTestId("home-needs-card");
-			await expect(cards.first()).toBeVisible({ timeout: 30_000 });
-			// A card offers Answer once its ask has loaded, which the slow link delays (#1101).
+			const rows = phone.getByTestId("home-needs-row");
+			await expect(rows.first()).toBeVisible({ timeout: 30_000 });
+			// A row offers Answer once its ask has loaded, which the slow link delays (#1101).
 			await phone
 				.locator('[data-testid="home-fix"][data-fix="answer"]')
 				.first()
 				.waitFor({ timeout: 30_000 })
 				.catch(() => undefined);
-			const count = await cards.count();
+			const count = await rows.count();
 			if (count === 0) {
-				fails.push("no needs-you cards on Phone Home");
+				fails.push("no needs-you rows on Phone Home");
 			}
 
-			// Every card links to its thread; an answerable one opens its ask on a tap.
+			// Every row links to its thread; an answerable one opens its ask on a tap.
 			let unlinked = 0;
 			for (let i = 0; i < count; i++) {
-				const href = await cards
+				const href = await rows
 					.nth(i)
 					.locator("a")
 					.first()
@@ -106,9 +106,8 @@ export default defineChecks([
 					unlinked++;
 				}
 			}
-			if (unlinked > 0)
-				fails.push(`${unlinked} of ${count} cards link nowhere`);
-			const fixes = await cards
+			if (unlinked > 0) fails.push(`${unlinked} of ${count} rows link nowhere`);
+			const fixes = await rows
 				.getByTestId("home-fix")
 				.evaluateAll((els) => els.map((e) => e.getAttribute("data-fix")));
 			const answer = phone.locator(
@@ -117,7 +116,7 @@ export default defineChecks([
 			const answerable = await answer.count();
 			if (answerable === 0) {
 				fails.push(
-					`no card offers Answer; the cards' fixes are ${fixes.join(", ")}`,
+					`no row offers Answer; the rows' fixes are ${fixes.join(", ")}`,
 				);
 			} else {
 				await answer.first().click();
@@ -126,7 +125,7 @@ export default defineChecks([
 
 			return verdict(
 				fails,
-				`${count} attention cards on Phone Home, ${count - unlinked} link to their thread; ${answerable} offer Answer and the first opened its ask`,
+				`${count} attention rows on Phone Home, ${count - unlinked} link to their thread; ${answerable} offer Answer and the first opened its ask`,
 			);
 		},
 	},
@@ -246,14 +245,14 @@ export default defineChecks([
 			await expect(phone.getByTestId("new-thread-page")).toBeVisible();
 			const fails: string[] = [];
 
-			// Open ask from needs card
-			const cards = phone.getByTestId("home-needs-card");
-			await expect(cards.first()).toBeVisible();
-			const cardCount = await cards.count();
+			// Open each ask from its needs row
+			const rows = phone.getByTestId("home-needs-row");
+			await expect(rows.first()).toBeVisible();
+			const rowCount = await rows.count();
 
 			const seen: string[] = [];
-			for (let i = 0; i < cardCount; i++) {
-				const fix = cards.nth(i).getByTestId("home-fix");
+			for (let i = 0; i < rowCount; i++) {
+				const fix = rows.nth(i).getByTestId("home-fix");
 				if (
 					(await fix
 						.getAttribute("data-fix", { timeout: 2000 })
@@ -274,12 +273,12 @@ export default defineChecks([
 				} else if ((await askCard.getByTestId("row-ask-option").count()) > 0) {
 					seen.push("answer options");
 				} else {
-					fails.push(`card ${i + 1}: ask opened with no Approve or option`);
+					fails.push(`row ${i + 1}: ask opened with no Approve or option`);
 				}
 				await phone.keyboard.press("Escape");
 			}
 			if (seen.length === 0)
-				fails.push(`none of ${cardCount} cards offers Answer`);
+				fails.push(`none of ${rowCount} rows offers Answer`);
 			if (!seen.some((x) => x.startsWith("approve"))) {
 				fails.push("no approval ask on Home showed Approve, Decline and Deny");
 			}
@@ -304,7 +303,7 @@ export default defineChecks([
 
 			return verdict(
 				fails,
-				`${seen.length} asks opened from cards (${Array.from(new Set(seen)).join(", ")}); the refusal function says "${refusalText}"`,
+				`${seen.length} asks opened from rows (${Array.from(new Set(seen)).join(", ")}); the refusal function says "${refusalText}"`,
 			);
 		},
 	},

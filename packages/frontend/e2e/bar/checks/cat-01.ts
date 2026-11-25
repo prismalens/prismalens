@@ -173,7 +173,13 @@ export default defineChecks([
 				fails.push(
 					"the armed limit thread (limit.mid-turn) sits in the sidebar's Needs you",
 				);
+			// With the sidebar's Needs you on screen, Home does not list it again (GUIDELINES rule 3).
 			const home = page.getByTestId("home-needs");
+			const homeBeside = await home.isVisible();
+			if (homeBeside)
+				fails.push("Home lists Needs you beside the sidebar's own Needs you");
+			// With the sidebar hidden, Home's list takes over with the same count.
+			await page.getByTestId("sidebar-hide").click();
 			await expect(home).toBeVisible();
 			const homeCount = Number.parseInt(
 				(
@@ -185,15 +191,22 @@ export default defineChecks([
 				fails.push(
 					`Home's Needs you counts ${homeCount}, the sidebar's ${headerCount}`,
 				);
-			const homeText = (await home.textContent()) ?? "";
-			if (/\d+\s*Limited/.test(homeText))
+			const allRows = home.getByTestId("home-needs-all");
+			if (await allRows.isVisible()) await allRows.click();
+			if (
+				(await home
+					.locator(`[data-testid="home-needs-row"][data-id="${limitId}"]`)
+					.count()) > 0
+			)
 				fails.push(
-					`Home's Needs you counts Limited threads: "${/\d+\s*Limited/.exec(homeText)?.[0]}"`,
+					"the armed limit thread (limit.mid-turn) sits in Home's Needs you",
 				);
+			await page.getByTestId("sidebar-show").click();
+			await expect(needsSection).toBeVisible();
 
 			return verdict(
 				fails,
-				`needs-you section sits on top with full count ${headerCount} matching ${rowsCount} rows and Home's ${homeCount}; the armed limit thread is out of Needs you`,
+				`needs-you section sits on top with full count ${headerCount} matching ${rowsCount} rows; Home ${homeBeside ? "repeats" : "leaves out"} it beside the sidebar and counts ${homeCount} with the sidebar hidden; the armed limit thread is out of Needs you`,
 			);
 		},
 	},

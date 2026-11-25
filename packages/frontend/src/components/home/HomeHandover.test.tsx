@@ -93,15 +93,14 @@ afterEach(async () => {
 	container.remove();
 });
 
-const cards = () =>
-	Array.from(container.querySelectorAll('[data-testid="home-needs-card"]')).map(
-		(c) => c.querySelector("[data-card-title]")?.textContent,
+const rows = () =>
+	Array.from(container.querySelectorAll('[data-testid="home-needs-row"]')).map(
+		(c) => c.querySelector("[data-fact=title]")?.textContent,
 	);
 
 // 869f02a4e put the trees that need you on Home, answerable in place.
 describe("Home's Needs you (#1101 F3)", () => {
-	// a27fab175: four cards, then the rest as one band per status that filters to it.
-	it("shows four cards, then a 4 more Approval needed band that opens all eight", async () => {
+	it("shows five rows, then 3 more opens all eight and Show fewer folds them back", async () => {
 		const model = threadList(
 			Array.from({ length: 8 }, (_, i) => unit(thread(`n${i}`, "approval"))),
 		);
@@ -115,23 +114,58 @@ describe("Home's Needs you (#1101 F3)", () => {
 				}),
 			),
 		);
-		expect(cards()).toHaveLength(4);
+		expect(rows()).toEqual([
+			"Thread n0",
+			"Thread n1",
+			"Thread n2",
+			"Thread n3",
+			"Thread n4",
+		]);
 		const more = container.querySelector(
-			'[data-testid="home-needs-more"]',
-		) as HTMLElement;
-		expect(more.firstElementChild?.textContent).toBe("4 more");
-		const band = more.querySelector(
-			'[data-testid="home-needs-band"]',
+			'[data-testid="home-needs-all"]',
 		) as HTMLButtonElement;
-		expect(band.dataset.band).toBe("approval");
-		// The status mark's label, then the count and the word.
-		expect(band.textContent).toBe("Approval needed4Approval needed");
-		await act(async () => band.click());
-		expect(cards()).toHaveLength(8);
+		expect(more.textContent).toBe("3 more");
+		await act(async () => more.click());
+		expect(rows()).toHaveLength(8);
+		const fewer = container.querySelector(
+			'[data-testid="home-needs-fewer"]',
+		) as HTMLButtonElement;
+		expect(fewer.textContent).toBe("Show fewer");
+		await act(async () => fewer.click());
+		expect(rows()).toHaveLength(5);
 	});
 
-	// 546388e43: the card's one fix is Answer, which opens the ask beside it.
-	it("answers a waiting permission with Approve from the card's Answer", async () => {
+	it("words a row's status and its ask beside the title", async () => {
+		const model = threadList([unit(thread("p", "approval"))]);
+		await act(async () =>
+			root.render(
+				createElement(HomeNeeds, {
+					needs: model.needs,
+					count: model.needsCount,
+					asks: new Map([["p", [permission("p")]]]),
+					now: NOW,
+				}),
+			),
+		);
+		const row = container.querySelector(
+			'[data-testid="home-needs-row"]',
+		) as HTMLElement;
+		expect(row.querySelector("[data-fact=title]")?.textContent).toBe(
+			"Thread p",
+		);
+		expect(row.querySelector("[data-status=approval]")?.textContent).toBe(
+			"Approval needed",
+		);
+		expect(row.querySelector("[data-fact=cause]")?.textContent).toBe(
+			"Run kubectl rollout restart",
+		);
+		expect(
+			container.querySelector('[data-testid="home-needs"] h2')?.textContent,
+		).toBe("Needs you1");
+	});
+
+	// 546388e43: the row's one fix is Answer, which opens the ask beside it.
+	it("answers a waiting permission with Approve from the row's Answer", async () => {
 		const model = threadList([unit(thread("p", "approval"))]);
 		await act(async () =>
 			root.render(
