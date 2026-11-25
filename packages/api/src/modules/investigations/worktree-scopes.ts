@@ -1087,6 +1087,11 @@ async function classify(
 	for (const p of paths) {
 		const turns = changedBy.get(p) ?? [];
 		const last = turns.at(-1);
+		// A changed path under a linked folder refuses the repo's whole operation (R17), not just that path.
+		if (!(await ancestorsPlain(store.root, p))) {
+			out.linkedAncestor = true;
+			continue;
+		}
 		if (
 			skipped.has(p) ||
 			(await linkedPath(store.root, p)) ||
@@ -1111,7 +1116,6 @@ async function classify(
 			out.duringTurn.push(p);
 			continue;
 		}
-		if (!(await ancestorsPlain(store.root, p))) out.linkedAncestor = true;
 		const before = atT.get(p) ?? "absent";
 		const nowState = atNow.get(p) ?? "absent";
 		out.targets.set(p, before);

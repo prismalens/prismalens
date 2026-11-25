@@ -457,7 +457,7 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 		expect(readFileSync(join(outside, "f.txt"), "utf8")).toBe("OUTSIDE\n");
 	});
 
-	it("a path under a folder the user replaced by a link is never written by a rewind, and the link's target is untouched", async () => {
+	it("a changed path under a folder the user replaced by a link makes the preview unavailable and refuses the rewind as linked, writing nothing (R17)", async () => {
 		mkdirSync(join(root, "sub"));
 		writeFileSync(join(root, "sub", "f.txt"), "s0\n");
 		git(["add", "-A"]);
@@ -473,22 +473,24 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 		writeFileSync(join(outside, "f.txt"), "OUTSIDE\n");
 		rmSync(join(root, "sub"), { recursive: true });
 		dirLink(outside, join(root, "sub"));
-		const p = await okPreview(named);
+		const [preview] = await previewRewindFiles(ws, MESSAGE_SEQ, named, ctx);
+		expect(preview).toEqual({ repo: "repo", state: "unavailable", reason: "linked" });
 
-		const r = done(
-			await rewindFiles(ws, "repo", ctx, {
-				op: randomUUID(),
-				rewindId: randomUUID(),
-				fromSeq: MESSAGE_SEQ,
-				named,
-				include: new Set(),
-				expect: { head: p.head, tree: p.tree },
-			}),
-		);
+		const s = await store();
+		const now = await takeSnapshot(s, { ref: "refs/pl/test/now" });
+		const tree = (await storeGit(s.gitDir, ["rev-parse", `${now.commit}^{tree}`])).trim();
+		const r = await rewindFiles(ws, "repo", ctx, {
+			op: randomUUID(),
+			rewindId: randomUUID(),
+			fromSeq: MESSAGE_SEQ,
+			named,
+			include: new Set(),
+			expect: { head: now.head, tree },
+		});
 
-		expect(r.reverted).toEqual(["a.txt"]);
+		expect(r).toEqual({ state: "refused", repo: "repo", reason: "linked", paths: [] });
 		expect(readFileSync(join(outside, "f.txt"), "utf8")).toBe("OUTSIDE\n");
-		expect(read("a.txt")).toBe(A0);
+		expect(read("a.txt")).toBe(A1);
 	});
 
 	it(`preview caps revert and duringTurn at REWIND_PATHS_MAX (${REWIND_PATHS_MAX}) paths each`, async () => {
