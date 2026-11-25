@@ -1,0 +1,11 @@
+{
+	"cli": {
+		"package": "opencode-ai",
+		"version": "1.19.6",
+		"channel": "npm"
+	},
+	"tested": {
+		"version": "1.19.6",
+		"date": "2026-11-21"
+	}
+}

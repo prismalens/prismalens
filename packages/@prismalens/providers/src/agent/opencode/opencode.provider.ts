@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineAgent } from "../family.ts";
+import { channelOf, defineAgent, testedOf } from "../family.ts";
+import pin from "./pin.json" with { type: "json" };
 
 export const opencode = defineAgent({
 	id: "agent.opencode",
@@ -56,8 +57,9 @@ export const opencode = defineAgent({
 		permissionRulesNote:
 			"A run sets each tool's default rule to match its permission level. Your other rules in opencode.json stay as they are.",
 		// npm only: the curl installer ships releases npm and the pin have not reached (#1013).
+		channel: channelOf(pin),
+		...testedOf(pin),
 		install: "npm i -g opencode-ai",
-		channel: { npm: "opencode-ai" },
 		// OpenCode 2's docs install it as `npm install -g @opencode/cli`.
 		nextChannel: { npm: "@opencode/cli" },
 		// @opencode/cli 2.3.2 answers `additionalDirectories`; opencode-ai 1.19.x does not.
@@ -72,8 +74,6 @@ export const opencode = defineAgent({
 			"full-access": () =>
 				"OpenCode runs its build agent with each tool's catch-all allowed; your own deny rules stay.",
 		},
-		// The pin-bump PR moved this on 2026-11-21: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "1.19.6", date: "2026-11-21" },
 		loginHint: "`opencode auth login`, or a provider key in env",
 		signInArgs: ["auth", "login"],
 		providerAuth: { args: ["auth", "list"], keyless: ["opencode"] },

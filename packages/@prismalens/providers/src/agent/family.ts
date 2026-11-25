@@ -149,3 +149,31 @@ export const defineAgent = (spec: AgentSpec): AgentDef =>
 
 export const isAgent = (p: ProviderDef): p is AgentDef =>
 	p.family === "agent" && typeof (p as AgentDef).launch === "string";
+
+/** An agent's `pin.json`: the CLI CI installs, the adapter it moves with, and what a compatibility run passed on. */
+export interface AgentPin {
+	/** `channel` is `npm` or `pypi`; JSON imports widen it, so `channelOf` checks it. */
+	cli: { package: string; version: string; channel: string };
+	/** Mirrors `agent-adapters/package.json`, which pnpm installs from; a script test holds the two equal. */
+	adapter?: { package: string; version: string };
+	/** Packages a Python CLI installs beside it. */
+	with?: readonly string[];
+	constraints?: readonly string[];
+	why?: string;
+	minimumReleaseAgeDays?: number;
+	tested?: { version: string; date: string; companion?: string };
+}
+
+/** The channel the install hint names, from the pin: users install what CI pins (#1013). */
+export function channelOf(pin: AgentPin): InstallChannel {
+	if (pin.cli.channel === "npm") return { npm: pin.cli.package };
+	if (pin.cli.channel === "pypi")
+		return { uv: [pin.cli.package, ...(pin.with ?? [])] };
+	throw new Error(
+		`${pin.cli.package}: channel ${pin.cli.channel} is not npm or pypi`,
+	);
+}
+
+/** The pin's `tested`, spread into the facts only when a compatibility run recorded one. */
+export const testedOf = (pin: AgentPin): Pick<AgentFacts, "tested"> =>
+	pin.tested ? { tested: pin.tested } : {};

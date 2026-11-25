@@ -26,6 +26,7 @@ import {
 	readPins,
 	resolvedAsOf,
 } from "./agent-locks.mjs";
+import { agentPins, pinFile } from "./agent-pins.mjs";
 
 const REPO = join(import.meta.dirname, "..");
 const SCRIPT = join(import.meta.dirname, "agent-locks.mjs");
@@ -34,18 +35,17 @@ const SCRIPT = join(import.meta.dirname, "agent-locks.mjs");
 function fixtureRoot() {
 	const root = mkdtempSync(join(tmpdir(), "pl-locks-fixture-"));
 	mkdirSync(join(root, "scripts"), { recursive: true });
-	cpSync(
-		join(REPO, "scripts/agent-pins.json"),
-		join(root, "scripts/agent-pins.json"),
-	);
+	for (const { agent } of agentPins())
+		cpSync(join(REPO, pinFile(agent)), join(root, pinFile(agent)));
 	cpSync(LOCKS, join(root, "scripts/agent-locks"), { recursive: true });
 	return root;
 }
 
 const movePin = (root, pin, version) => {
-	const file = join(root, "scripts/agent-pins.json");
+	const { agent } = agentPins(root).find((p) => p.cli.package === pin);
+	const file = join(root, pinFile(agent));
 	const json = JSON.parse(readFileSync(file, "utf8"));
-	json.pins[pin] = version;
+	json.cli.version = version;
 	writeFileSync(file, JSON.stringify(json));
 };
 
@@ -54,7 +54,7 @@ const checkCli = (root) =>
 		encoding: "utf8",
 	});
 
-test("every pin in agent-pins.json has a lock at its version", () => {
+test("every agent pin.json has a lock at its version", () => {
 	assert.deepEqual(checkLocks(readPins()), []);
 });
 
@@ -124,7 +124,7 @@ test("a pin with no lock folder, and a lock folder with no pin, are both stale",
 		assert.match(result.stderr, /^agent-locks\/gemini-cli: no lock folder$/m);
 		assert.match(
 			result.stderr,
-			/^agent-locks\/retired-agent: has no pin in agent-pins\.json$/m,
+			/^agent-locks\/retired-agent: has no agent pin\.json$/m,
 		);
 	} finally {
 		rmSync(root, { recursive: true, force: true });

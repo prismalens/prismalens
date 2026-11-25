@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineAgent, modeNamed, offers } from "../family.ts";
+import {
+	channelOf,
+	defineAgent,
+	modeNamed,
+	offers,
+	testedOf,
+} from "../family.ts";
+import pin from "./pin.json" with { type: "json" };
 
 export const claudeCode = defineAgent({
 	id: "agent.claude-code",
@@ -52,9 +59,10 @@ export const claudeCode = defineAgent({
 		settingsFile: "~/.claude/settings.json",
 		ownSettingsNote: () =>
 			"Your ~/.claude/settings.json allow and deny rules, hooks and sandbox apply, as in your terminal. The terminal's own default may be Auto on Claude Code 2.1.228 and later; PrismaLens reads the key, not that default.",
+		channel: channelOf(pin),
+		...testedOf(pin),
 		install:
 			"curl -fsSL https://claude.ai/install.sh | bash  (or: npm i -g @anthropic-ai/claude-code; then `claude /login`, or set ANTHROPIC_API_KEY)",
-		channel: { npm: "@anthropic-ai/claude-code" },
 		// claude-agent-acp 0.81.1 reports `acceptEdits` when the model has no `auto`, and
 		// leaves `bypassPermissions` unoffered when the user's settings turn it off (#673 w21).
 		lines: {
@@ -72,8 +80,6 @@ export const claudeCode = defineAgent({
 					: `Claude Code runs in ${bypass}, or ${edits} where your settings turn it off.`;
 			},
 		},
-		// The pin-bump PR moved this on 2026-11-23: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "0.109.0", date: "2026-11-23", companion: "2.1.329" },
 		loginHint: "`claude auth login`, or `ANTHROPIC_API_KEY` in env",
 		signInArgs: ["auth", "login"],
 		loginEnvKeys: ["CLAUDE_CONFIG_DIR"],

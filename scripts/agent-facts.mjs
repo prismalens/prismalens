@@ -18,6 +18,7 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { readPins } from "./agent-pins.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** The file `sync` rewrites: the probed versions every launch row reads. */
@@ -185,7 +186,7 @@ async function main() {
 		options: { built: { type: "string" }, body: { type: "string" } },
 	});
 	const [command] = positionals;
-	const pins = json("scripts/agent-pins.json").pins;
+	const pins = readPins();
 	const adapters = json(
 		"packages/@prismalens/agent-adapters/package.json",
 	).devDependencies;
