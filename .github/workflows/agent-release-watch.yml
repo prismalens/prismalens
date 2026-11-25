@@ -223,15 +223,14 @@ jobs:
       soak-days: 3
       # The probe loads the built agent host. It builds once, from a clean copy of the commit,
       # because a moved adapter pin leaves this checkout's lockfile stale. No install scripts: the
-      # root `prepare` needs packages this filter leaves out, and its failure held every pin back;
-      # the providers barrel it would generate is generated here instead.
+      # root `prepare` needs packages this filter leaves out, and its failure held every pin back.
       probe: |
         set -e
         built="$RUNNER_TEMP/built"
         if [ ! -f "$built/packages/@prismalens/agent-host/dist/index.js" ]; then
           pnpm=(npx --yes "$(node -p "require('./package.json').packageManager")")
           [ -d "$built" ] || git worktree add --detach "$built" HEAD
-          (cd "$built" && "${pnpm[@]}" install --frozen-lockfile --ignore-scripts --filter "@prismalens/config..." && "${pnpm[@]}" --filter @prismalens/providers registry:gen && "${pnpm[@]}" --filter "@prismalens/config..." build)
+          (cd "$built" && "${pnpm[@]}" install --frozen-lockfile --ignore-scripts --filter "@prismalens/config..." && "${pnpm[@]}" --filter "@prismalens/config..." build)
         fi
         probe() { node scripts/agent-probe.mjs --built "$built" "$@"; }
         adapter() { node -p "require('./packages/@prismalens/agent-adapters/package.json').devDependencies['$1']"; }
