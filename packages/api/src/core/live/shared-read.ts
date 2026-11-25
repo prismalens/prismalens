@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { Request } from "express";
+import * as clock from "../clock.js";
 import { liveChanges } from "./live-changes.js";
 
 const MEMO_MS = 1_000;
@@ -31,7 +32,7 @@ export function sharedRead<T>(
 	const done = settled.get(key);
 	const shared =
 		pending.get(key) ??
-		(done && Date.now() - done.at <= MEMO_MS ? done.promise : undefined);
+		(done && clock.now() - done.at <= MEMO_MS ? done.promise : undefined);
 	request?.res?.setHeader(
 		"server-timing",
 		`shared;desc="${shared ? "hit" : "miss"}"`,
@@ -46,7 +47,7 @@ export function sharedRead<T>(
 			settled.delete(key);
 			if (settled.size >= CAP)
 				settled.delete(settled.keys().next().value as string);
-			settled.set(key, { at: Date.now(), promise });
+			settled.set(key, { at: clock.now(), promise });
 		},
 		() => {
 			if (pending.get(key) === promise) pending.delete(key);

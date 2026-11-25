@@ -1,0 +1,2312 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+/**
+ * DispatchService over a real SQLite database (#673 w59): the boot-time
+ * reconciliation that replaces reclaim (0005 §2), follow-up admission as one
+ * transaction, the ports' refused writes, and an upgrade from a database that
+ * predates `investigation_turns`. The workspace is set before anything reads
+ * the config, the way the API scenarios do it.
+ */
+import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import type { InvestigationJobData } from "@prismalens/contracts";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RunPorts } from "./run-ports.js";
+
+vi.setConfig({ testTimeout: 5_000 }); // slowest test 1162 ms; 3x, rounded up to the second, at least 5 s (#1154)
+
+const env = await vi.hoisted(async () => {
+	const fs = await import("node:fs");
+	const os = await import("node:os");
+	const path = await import("node:path");
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pl-dispatch-spec-"));
+	process.env.PRISMALENS_WORKSPACE_DIR = path.join(root, "data");
+	return { root, ports: null as RunPorts | null };
+});
+
+vi.mock("./in-process-runner.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("./in-process-runner.js")>();
+	return {
+		...actual,
+		createInProcessRunner: (ports: RunPorts) => {
+			env.ports = ports;
+			return actual.createInProcessRunner(ports);
+		},
+	};
+});
+
+const { PrismaService } = await import("../../core/prisma/prisma.service.js");
+const { InvestigationsService } = await import(
+	"../../modules/investigations/investigations.service.js"
+);
+const {
+	CheckoutGone,
+	DispatchService,
+	FollowUpRefused,
+	isCustomModel,
+	resolveHarnessRunModel,
+} = await import("./dispatch.service.js");
+const { PrismaJobStore } = await import("./job-store.js");
+const { createPrismaInvestigationStore } = await import(
+	"./prisma-investigation-store.js"
+);
+const { agentSessionsOf } = await import(
+	"../../modules/investigations/follow-up-route.js"
+);
+
+type Row = Record<string, unknown>;
+
+/** A minimal in-memory Prisma `job` delegate, for the tests that never reach the database. */
+class FakeJobDelegate {
+	rows: Row[];
+	constructor(rows: Row[]) {
+		this.rows = rows;
+	}
+	async create() {
+		throw new Error("not used");
+	}
+	async findMany(): Promise<Row[]> {
+		return [];
+	}
+	async findUnique(): Promise<Row | null> {
+		return null;
+	}
+	async updateMany(): Promise<{ count: number }> {
+		return { count: 0 };
+	}
+}
+
+function fakePrisma(rows: Row[]) {
+	return { job: new FakeJobDelegate(rows) } as unknown as import("../../core/prisma/prisma.service.js").PrismaService;
+}
+
+function fakeBus() {
+	return { publish: vi.fn(() => 0), subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })) };
+}
+
+const RESTART_REASON = "API restarted while the run was in flight";
+const restoreDone = { status: "completed" as const, completedAt: "2026-09-30T10:00:00.000Z", error: null };
+
+let prisma: InstanceType<typeof PrismaService>;
+let investigations: InstanceType<typeof InvestigationsService>;
+const timeline = { create: vi.fn(async () => ({})) };
+let incidentNo = 0;
+/** Legacy rows seeded before `investigation_turns` ran (T14), kept across tests. */
+const legacy: Record<"initial" | "chat" | "ask" | "continue", string> = {
+	initial: "",
+	chat: "",
+	ask: "",
+	continue: "",
+};
+
+beforeAll(async () => {
+	const { getConfig } = await import("@prismalens/config");
+	if (!getConfig().PRISMALENS_DB_URL.includes(env.root))
+		throw new Error(`refusing to run: the config was read first (${getConfig().PRISMALENS_DB_URL})`);
+	const { resolveMigrationsDir, runMigrations } = await import("@prismalens/database/migrator");
+	// The database as 0.5.0 left it: every migration but investigation_turns.
+	const shipped = resolveMigrationsDir();
+	const before = mkdtempSync(join(env.root, "before-"));
+	for (const name of readdirSync(shipped)) {
+		if (name >= "20261008200000_investigation_turns" || !existsSync(join(shipped, name, "migration.sql"))) continue;
+		cpSync(join(shipped, name), join(before, name), { recursive: true });
+	}
+	await runMigrations({ migrationsDir: before, log: () => {} });
+	const { prisma: raw } = await import("@prismalens/database");
+	const seed = async (form: keyof typeof legacy, kind: string, payload: (id: string) => Row) => {
+		incidentNo++;
+		const incidentId = `00000000-0000-4000-8000-0000000000${String(incidentNo).padStart(2, "0")}`;
+		const id = `10000000-0000-4000-8000-0000000000${String(incidentNo).padStart(2, "0")}`;
+		await raw.$executeRawUnsafe(
+			`INSERT INTO "incidents" ("id","number","title","updatedAt") VALUES (?,?,?,?)`,
+			incidentId,
+			incidentNo,
+			`legacy ${form}`,
+			Date.now(),
+		);
+		await raw.$executeRawUnsafe(
+			`INSERT INTO "investigations" ("id","incidentId","status","kind","harness","acpSessionId","workspace","updatedAt") VALUES (?,?,?,?,?,?,?,?)`,
+			id,
+			incidentId,
+			"pending",
+			kind,
+			"opencode",
+			"ses_legacy",
+			JSON.stringify({ layout: "unmapped", cwd: "/x", repos: [] }),
+			Date.now(),
+		);
+		await raw.$executeRawUnsafe(
+			`INSERT INTO "jobs" ("id","investigationId","incidentId","payload","status","updatedAt") VALUES (?,?,?,?,?,?)`,
+			`job-legacy-${form}`,
+			id,
+			incidentId,
+			JSON.stringify({ incidentId, investigationId: id, ...payload(id) }),
+			"pending",
+			Date.now(),
+		);
+		legacy[form] = id;
+	};
+	const ask = { text: "why?", mode: "queue", restore: restoreDone };
+	await seed("initial", "investigation", () => ({}));
+	await seed("chat", "chat", () => ({ kind: "chat", chat: { text: "what fired?" } }));
+	await seed("ask", "investigation", () => ({ resume: ask }));
+	await seed("continue", "investigation", () => ({
+		resume: { ...ask, kind: "continue", restore: { status: "cancelled", completedAt: null, error: null } },
+	}));
+	// The upgrade itself.
+	await runMigrations({ log: () => {} });
+	prisma = new PrismaService();
+	investigations = new InvestigationsService(
+		prisma,
+		timeline as never,
+		{ computeOverlay: vi.fn(async () => undefined) } as never,
+		{ isResetting: () => false, resetGeneration: () => 0, resetSince: () => false } as never,
+		{} as never,
+	);
+});
+
+afterAll(async () => {
+	await prisma?.$disconnect();
+	try {
+		rmSync(env.root, { recursive: true, force: true, maxRetries: 3 });
+	} catch {
+		// Windows file lock
+	}
+});
+
+beforeEach(async () => {
+	const keep = Object.values(legacy);
+	await prisma.threadWait.deleteMany();
+	await prisma.threadMessage.deleteMany();
+	await prisma.job.deleteMany({ where: { investigationId: { notIn: keep } } });
+	await prisma.incident.deleteMany({ where: { NOT: { title: { startsWith: "legacy " } } } });
+	await prisma.investigation.deleteMany({ where: { incidentId: null } });
+	timeline.create.mockClear();
+});
+
+function realDispatch(
+	resolveSelection: (asked: { harness?: string }) => Promise<unknown> = async (asked) => ({ runnable: true, harness: asked.harness ?? "opencode", auto: false }),
+	checkedOutcome: () => string | null = () => null,
+) {
+	const deliver = vi.fn(async () => {});
+	const telemetry = {
+		isEnabled: vi.fn(async () => true),
+		capture: vi.fn(async () => {}),
+		captureFinished: vi.fn(async () => {}),
+	};
+	const attach = vi.fn();
+	const service = new DispatchService(
+		fakeBus() as never,
+		{ attach } as never,
+		investigations,
+		{ findById: vi.fn(async () => null) } as never,
+		timeline as never,
+		{
+			resolveSelection,
+			checkedOutcome,
+			getSettings: vi.fn(async () => ({})),
+			effectiveChoice: vi.fn(async () => ({ accessLevel: "supervised" })),
+		} as never,
+		{} as never,
+		prisma,
+		{} as never,
+		{} as never,
+		{} as never,
+		telemetry as never,
+		{ deliver } as never,
+	);
+	vi.spyOn(service["dispatcher"], "tick").mockResolvedValue(undefined);
+	vi.spyOn(service["dispatcher"], "start").mockImplementation(() => {});
+	return { service, deliver, telemetry, attach, ports: env.ports as RunPorts };
+}
+
+async function incident(title = `INC ${incidentNo + 1}`) {
+	incidentNo++;
+	return prisma.incident.create({ data: { number: incidentNo, title } });
+}
+
+async function thread(incidentId: string, data: Row = {}, at = Date.now()) {
+	return prisma.investigation.create({
+		data: {
+			incidentId,
+			status: "completed",
+			harness: "opencode",
+			acpSessionId: "ses_1",
+			workspace: JSON.stringify({ layout: "unmapped", cwd: "/x", repos: [] }),
+			createdAt: new Date(at),
+			...data,
+		},
+	});
+}
+
+async function job(investigationId: string, incidentId: string, payload: Partial<InvestigationJobData>, status: string) {
+	return prisma.job.create({
+		data: {
+			investigationId,
+			incidentId,
+			payload: JSON.stringify({ incidentId, investigationId, ...payload }),
+			status,
+		},
+	});
+}
+
+const read = (id: string) => prisma.investigation.findUniqueOrThrow({ where: { id } });
+
+describe("resolveHarnessRunModel (#634, #639)", () => {
+	it("resolves a model and its source for a harness that can take one", () => {
+		expect(resolveHarnessRunModel("opencode", "synthetic/model-a")).toEqual({
+			model: "synthetic/model-a",
+			modelSource: "operator",
+		});
+	});
+
+	it("claims no model and no source for a modelVia: unsupported harness", () => {
+		expect(resolveHarnessRunModel("gemini", undefined)).toEqual({});
+	});
+});
+
+describe("isCustomModel truth table (#673 w57)", () => {
+	it("claude-code custom operator -> true", () => {
+		expect(
+			isCustomModel(
+				{ model: "gw-1", modelSource: "operator" },
+				["gw-1"],
+			),
+		).toBe(true);
+	});
+
+	it("same id not in list -> false", () => {
+		expect(
+			isCustomModel(
+				{ model: "gw-1", modelSource: "operator" },
+				["other-model"],
+			),
+		).toBe(false);
+	});
+
+	it("modelSource 'env' -> false", () => {
+		expect(
+			isCustomModel(
+				{ model: "gw-1", modelSource: "env" },
+				["gw-1"],
+			),
+		).toBe(false);
+	});
+
+	it("codex with the id in its list is now true", () => {
+		expect(
+			isCustomModel(
+				{ model: "gw-1", modelSource: "operator" },
+				["gw-1"],
+			),
+		).toBe(true);
+	});
+});
+
+describe("DispatchService.resolveHarness: the run's chips over Settings (#673 w52)", () => {
+	function withSettings(settings: Row, runModel: string | null = null) {
+		const harnessService = {
+			runModelOverride: vi.fn(() => runModel),
+			resolveSelection: vi.fn(async (asked: { harness?: string }) => ({
+				runnable: true,
+				harness: asked.harness ?? settings.harness,
+				auto: false,
+			})),
+			getSettings: vi.fn(async () => settings),
+			localDefaultOf: vi.fn(() => ({ permission: null })),
+			runtimeFor: vi.fn(async () => ({ env: {}, note: null })),
+		};
+		const service = new DispatchService(
+			// biome-ignore lint/suspicious/noExplicitAny: constructing directly, bypassing Nest DI.
+			fakeBus() as any,
+			{ attach: vi.fn() } as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			harnessService as any,
+			{} as any,
+			fakePrisma([]),
+			{} as any,
+			{} as any,
+			{} as any,
+			{} as any,
+			{} as any,
+		);
+		return { service, harnessService };
+	}
+	const settings = {
+		harness: "opencode",
+		models: { opencode: "vendor/stored", codex: "gpt-stored" },
+		efforts: { opencode: "low", codex: "medium" },
+		accessLevels: { codex: "auto" },
+	};
+
+	it("starts a run with no starred model on the agent's run-model override (HarnessService picks a signed-in one)", async () => {
+		const { service } = withSettings(
+			{ harness: "opencode", models: {} },
+			"ollama-cloud/qwen",
+		);
+		await expect(service.resolveHarness()).resolves.toMatchObject({
+			model: "ollama-cloud/qwen",
+		});
+	});
+
+	it("reads Settings when the run names nothing (an alert's run)", async () => {
+		const { service, harnessService } = withSettings(settings);
+		await expect(service.resolveHarness()).resolves.toMatchObject({
+			selection: { harness: "opencode" },
+			model: "vendor/stored",
+			modelSource: "operator",
+			effort: "low",
+		});
+		expect(harnessService.resolveSelection).toHaveBeenCalledWith({});
+	});
+
+	it("prefers each field the run named, and falls back per field for the rest", async () => {
+		const { service, harnessService } = withSettings(settings);
+		await expect(
+			service.resolveHarness({ harness: "codex", effort: "high" }),
+		).resolves.toMatchObject({
+			selection: { harness: "codex" },
+			model: "gpt-stored",
+			effort: "high",
+			accessLevel: "auto",
+		});
+		expect(harnessService.resolveSelection).toHaveBeenCalledWith({
+			harness: "codex",
+			effort: "high",
+		});
+		await expect(
+			service.resolveHarness({ model: "vendor/asked" }),
+		).resolves.toMatchObject({ model: "vendor/asked", effort: "low" });
+	});
+
+	it("takes null as the agent's own default, not Settings'", async () => {
+		const { service } = withSettings(settings);
+		const r = await service.resolveHarness({ model: null, effort: null });
+		expect(r.model).toBeUndefined();
+		expect(r.effort).toBeUndefined();
+	});
+
+	it("returns customModel true for custom operator model in customModels list (#673 w57)", async () => {
+		const { service } = withSettings({
+			models: { "claude-code": "gw-1" },
+			customModels: { "claude-code": ["gw-1"] },
+		});
+		await expect(
+			service.resolveHarness({ harness: "claude-code" }),
+		).resolves.toMatchObject({
+			model: "gw-1",
+			modelSource: "operator",
+			customModel: true,
+		});
+	});
+});
+
+describe("DispatchService.resumeInvestigation (#747, #673 w59)", () => {
+	it("reopens a finished run as pending with an answer turn, and rearms its job with what to put back", async () => {
+		const { service, attach } = realDispatch();
+		const inc = await incident();
+		const done = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt), report: "{}" });
+		await job(done.id, inc.id, {}, "succeeded");
+
+		expect(await service.resumeInvestigation(done.id, "why the pool?", "queue")).toBe(true);
+
+		expect(await read(done.id)).toMatchObject({ status: "pending", completedAt: null, liveTurn: "answer" });
+		const rearmed = await prisma.job.findUniqueOrThrow({ where: { investigationId: done.id } });
+		expect(rearmed.status).toBe("pending");
+		expect(JSON.parse(rearmed.payload).resume).toEqual({
+			text: "why the pool?",
+			mode: "queue",
+			kind: "chat",
+			restore: restoreDone,
+			to: { harness: "opencode" },
+		});
+		expect(attach).toHaveBeenCalledWith(done.id);
+	});
+
+	it("resumeInvestigation: live check, CAS, liveTurn and job rearm are one transaction; a failing rearm leaves the row and liveTurn untouched (T11)", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const done = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+		await job(done.id, inc.id, {}, "succeeded");
+		const rearm = vi
+			.spyOn(PrismaJobStore.prototype, "enqueue")
+			.mockRejectedValueOnce(new Error("disk full"));
+
+		await expect(service.resumeInvestigation(done.id, "why?", "queue")).rejects.toThrow("disk full");
+
+		rearm.mockRestore();
+		expect(await read(done.id)).toMatchObject({
+			status: "completed",
+			completedAt: new Date(restoreDone.completedAt),
+			liveTurn: null,
+		});
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: done.id } })).status).toBe("succeeded");
+	});
+
+	it("keeps the level the run asked for, and none on a row from before levels (#673 w21)", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const ran = await thread(inc.id, { agentMode: "acceptEdits", accessLevel: "auto-edits" });
+		await service.resumeInvestigation(ran.id, "and now?", "queue");
+		const kept = await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } });
+		expect(JSON.parse(kept.payload)).toMatchObject({ accessLevel: "auto-edits" });
+
+		const inc2 = await incident();
+		const old = await thread(inc2.id, { agentMode: "acceptEdits" });
+		await job(old.id, inc2.id, { access: "workspace-write" } as never, "succeeded");
+		await service.resumeInvestigation(old.id, "and now?", "queue");
+		const dropped = await prisma.job.findUniqueOrThrow({ where: { investigationId: old.id } });
+		expect(JSON.parse(dropped.payload)).not.toHaveProperty("accessLevel");
+		expect(JSON.parse(dropped.payload)).not.toHaveProperty("agentMode");
+	});
+
+	it("gives a follow-up on an alert-started run your level, not its Auto (#818)", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const ran = await thread(inc.id, { triggerType: "auto_critical", accessLevel: "auto", agentMode: "build" });
+		await service.resumeInvestigation(ran.id, "and now?", "queue");
+		const rearmed = await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } });
+		expect(JSON.parse(rearmed.payload)).toMatchObject({ accessLevel: "supervised" });
+		expect(JSON.parse(rearmed.payload)).not.toHaveProperty("unattended");
+	});
+
+	it("keeps an alert-started thread's follow-up an alert's run for its GitHub token; a person's stays a person's (#1020 R41)", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const ran = await thread(inc.id, { triggerType: "auto_critical", accessLevel: "auto", agentMode: "build" });
+		await service.resumeInvestigation(ran.id, "and now?", "queue");
+		const rearmed = await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } });
+		expect(JSON.parse(rearmed.payload)).toMatchObject({ startedBy: "alert" });
+
+		const inc2 = await incident();
+		const mine = await thread(inc2.id, { triggerType: "manual", accessLevel: "auto" });
+		await service.resumeInvestigation(mine.id, "and now?", "queue");
+		const own = await prisma.job.findUniqueOrThrow({ where: { investigationId: mine.id } });
+		expect(JSON.parse(own.payload)).toMatchObject({ startedBy: "person" });
+	});
+
+	describe("a follow-up in another agent, or after a restart (never a dead end)", () => {
+		it("hands off to a fresh session of the agent the chips name, at the run's own level", async () => {
+			const { service } = realDispatch();
+			const inc = await incident();
+			const ran = await thread(inc.id, { accessLevel: "auto-edits" });
+			await service.resumeInvestigation(ran.id, "second opinion?", "queue", "chat", [], { harness: "codex", model: "gpt-x" });
+			const payload = JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } })).payload);
+			expect(payload.accessLevel).toBe("auto-edits");
+			expect(payload.resume).toMatchObject({ handoff: true, to: { harness: "codex", model: "gpt-x" } });
+		});
+
+		it("loads the run's own session when the chips keep its agent", async () => {
+			const { service } = realDispatch();
+			const inc = await incident();
+			const ran = await thread(inc.id);
+			await service.resumeInvestigation(ran.id, "and?", "queue", "chat", [], { effort: "high" });
+			const payload = JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: ran.id } })).payload);
+			expect(payload.resume).not.toHaveProperty("handoff");
+			expect(payload.resume.to).toEqual({ harness: "opencode", effort: "high" });
+		});
+
+		it("tells the agent a restart may have cut its last command short", async () => {
+			const { service } = realDispatch();
+			const inc = await incident();
+			const cut = await thread(inc.id, { status: "failed", endReason: "interrupted", acpSessionId: null });
+			await service.resumeInvestigation(cut.id, "carry on", "queue", "continue");
+			const payload = JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: cut.id } })).payload);
+			expect(payload.resume).toMatchObject({ kind: "continue", handoff: true, afterRestart: true });
+		});
+
+		it("handoff-L9: omits afterRestart on follow-up when an earlier follow-up already ran", async () => {
+			const { service } = realDispatch();
+			const inc = await incident();
+			const cut = await thread(inc.id, { status: "failed", endReason: "interrupted", acpSessionId: null });
+			await prisma.investigationEvent.create({
+				data: {
+					investigationId: cut.id,
+					seq: 1,
+					branchId: "run",
+					event: JSON.stringify({ kind: "operator_message", resumed: [], text: "earlier", mode: "queue", delivered: true }),
+				},
+			});
+			await service.resumeInvestigation(cut.id, "carry on", "queue", "continue");
+			const payload = JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: cut.id } })).payload);
+			expect(payload.resume).not.toHaveProperty("afterRestart");
+		});
+
+		it("handoff-L9: afterRestart resolves false for non-interrupted and true for interrupted without follow-up events", async () => {
+			const { service } = realDispatch();
+			const inc = await incident();
+			const run = await thread(inc.id);
+			expect(await service.afterRestart(run.id, "limited")).toBe(false);
+			expect(await service.afterRestart(run.id, "interrupted")).toBe(true);
+		});
+
+		it("refuses a recipient the preflight fails, with the problem and the fix, and leaves the row alone", async () => {
+			const { service } = realDispatch(
+				vi.fn(async () => ({ runnable: false, failure: "pinned-harness-missing", reason: "Codex is not on this machine. Install: npm i -g @openai/codex", harness: "codex" })),
+			);
+			const inc = await incident();
+			const ran = await thread(inc.id);
+			await expect(
+				service.resumeInvestigation(ran.id, "and?", "queue", "chat", [], { harness: "codex" }),
+			).rejects.toThrow("Codex is not on this machine. Install: npm i -g @openai/codex Install it (");
+			expect(await read(ran.id)).toMatchObject({ status: "completed" });
+		});
+
+		it("refuses an agent whose last check asked for a sign-in", async () => {
+			const { service } = realDispatch(undefined, vi.fn(() => "sign-in-needed"));
+			const inc = await incident();
+			const ran = await thread(inc.id);
+			await expect(
+				service.resumeInvestigation(ran.id, "and?", "queue", "chat", [], { harness: "claude-code" }),
+			).rejects.toThrow("Claude Code is not signed in. Sign in:");
+		});
+	});
+
+	it("admits one of two follow-ups sent together", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const failed = await thread(inc.id, { status: "failed", error: "boom" });
+
+		const results = await Promise.all([
+			service.resumeInvestigation(failed.id, "a", "queue"),
+			service.resumeInvestigation(failed.id, "b", "queue"),
+		]);
+
+		expect(results.filter(Boolean)).toHaveLength(1);
+		expect(await prisma.job.count({ where: { investigationId: failed.id } })).toBe(1);
+	});
+
+	it("with session.claims naming two queued thread messages to the thread, admission returns true, both rows read delivered, and a threadWait from the thread to the sender of a result claim is deleted", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const done = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+		const sender = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-msg-1",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "result",
+				text: "result payload",
+				requestId: "req-1",
+				state: "queued",
+			},
+		});
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-msg-2",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "handoff",
+				text: "handoff payload",
+				requestId: "req-2",
+				state: "queued",
+			},
+		});
+		await prisma.threadWait.create({
+			data: {
+				waiterId: done.id,
+				targetId: sender.id,
+				mode: "any",
+			},
+		});
+
+		const admitted = await service.resumeInvestigation(
+			done.id,
+			"resuming with claims",
+			"queue",
+			"chat",
+			[],
+			{},
+			undefined,
+			{ claims: ["claim-msg-1", "claim-msg-2"] },
+		);
+
+		expect(admitted).toBe(true);
+		const m1 = await prisma.threadMessage.findUniqueOrThrow({ where: { id: "claim-msg-1" } });
+		const m2 = await prisma.threadMessage.findUniqueOrThrow({ where: { id: "claim-msg-2" } });
+		expect(m1.state).toBe("delivered");
+		expect(m1.deliveredAt).not.toBeNull();
+		expect(m2.state).toBe("delivered");
+		expect(m2.deliveredAt).not.toBeNull();
+
+		const waitCount = await prisma.threadWait.count({
+			where: { waiterId: done.id, targetId: sender.id },
+		});
+		expect(waitCount).toBe(0);
+	});
+
+	it("when one claimed row is already delivered, admission returns false, the thread's status is unchanged, no job is enqueued, and the other row is still queued", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const done = await thread(inc.id, { status: "completed", completedAt: new Date(restoreDone.completedAt) });
+		const sender = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-already-delivered",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "result",
+				text: "already delivered",
+				requestId: "req-delivered",
+				state: "delivered",
+				deliveredAt: new Date(),
+			},
+		});
+		await prisma.threadMessage.create({
+			data: {
+				id: "claim-still-queued",
+				rootId: done.id,
+				fromId: sender.id,
+				toId: done.id,
+				type: "handoff",
+				text: "still queued",
+				requestId: "req-queued",
+				state: "queued",
+			},
+		});
+
+		const admitted = await service.resumeInvestigation(
+			done.id,
+			"resuming with stale claim",
+			"queue",
+			"chat",
+			[],
+			{},
+			undefined,
+			{ claims: ["claim-already-delivered", "claim-still-queued"] },
+		);
+
+		expect(admitted).toBe(false);
+		expect((await read(done.id)).status).toBe("completed");
+		expect(await prisma.job.count({ where: { investigationId: done.id } })).toBe(0);
+		const stillQueued = await prisma.threadMessage.findUniqueOrThrow({ where: { id: "claim-still-queued" } });
+		expect(stillQueued.state).toBe("queued");
+		expect(stillQueued.deliveredAt).toBeNull();
+	});
+
+	describe("continue is admitted only on a reportless stopped or failed investigation (T16)", () => {
+		it.each([
+			["a cancelled chat", { kind: "chat", status: "cancelled" }, "A chat has no report to continue to"],
+			["a completed investigation", { status: "completed", report: "{}" }, "This run has its report"],
+			["a stopped investigation that has a report", { status: "cancelled", report: "{}" }, "This run has its report"],
+		])("refuses %s", async (_name, data, sentence) => {
+			const { service } = realDispatch();
+			const inc = await incident();
+			const row = await thread(inc.id, data);
+
+			await expect(service.resumeInvestigation(row.id, "go on", "queue", "continue")).rejects.toThrow(
+				sentence,
+			);
+			await expect(service.resumeInvestigation(row.id, "go on", "queue", "continue")).rejects.toBeInstanceOf(
+				FollowUpRefused,
+			);
+			expect((await read(row.id)).status).toBe(data.status);
+		});
+
+		it("admits a failed reportless investigation, owing a report", async () => {
+			const { service } = realDispatch();
+			const inc = await incident();
+			const row = await thread(inc.id, { status: "failed", error: "report did not validate" });
+
+			expect(await service.resumeInvestigation(row.id, "try the report again", "queue", "continue")).toBe(true);
+
+			expect(await read(row.id)).toMatchObject({ status: "pending", liveTurn: "report", error: null });
+			const queued = await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } });
+			expect(JSON.parse(queued.payload).resume).toMatchObject({
+				kind: "continue",
+				restore: { status: "failed", error: "report did not validate" },
+			});
+		});
+	});
+
+	it("refuses a follow-up in a plain folder while another thread works in it or a folder inside it (#1020)", async () => {
+		const { service } = realDispatch();
+		const stamp = Date.now();
+		const outer = await prisma.repository.create({
+			data: { sourceKind: "folder", fullName: `notes-${stamp}`, url: `/plain-${stamp}/notes`, plain: true },
+		});
+		const inner = await prisma.repository.create({
+			data: { sourceKind: "folder", fullName: `sub-${stamp}`, url: `/plain-${stamp}/notes/sub`, plain: true },
+		});
+		const done = await prisma.investigation.create({
+			data: {
+				incidentId: null,
+				repositoryId: outer.id,
+				kind: "chat",
+				status: "completed",
+				harness: "opencode",
+				acpSessionId: "ses_1",
+				workspace: JSON.stringify({ layout: "folder", cwd: outer.url, repos: [] }),
+			},
+		});
+		await prisma.investigation.create({
+			data: { incidentId: null, repositoryId: inner.id, kind: "chat", status: "running" },
+		});
+
+		await expect(service.resumeInvestigation(done.id, "tidy up", "queue")).rejects.toThrow(
+			"A thread is already working in this folder.",
+		);
+		expect((await read(done.id)).status).toBe("completed");
+	});
+
+	describe("one live thread per incident (T17, OBJ-007)", () => {
+		it("refuses a resume while another row on the incident is live, with the sentence", async () => {
+			const { service } = realDispatch();
+			const inc = await incident();
+			const older = await thread(inc.id, {}, Date.now() - 60_000);
+			await thread(inc.id, { status: "running", liveTurn: "report" });
+
+			await expect(service.resumeInvestigation(older.id, "why?", "queue")).rejects.toThrow(
+				"Run #2 is working; message it or stop it.",
+			);
+			expect((await read(older.id)).status).toBe("completed");
+		});
+
+		it("a race between a start and a resume leaves one live row", async () => {
+			const { service } = realDispatch();
+			for (let round = 0; round < 5; round++) {
+				const inc = await incident();
+				const older = await thread(inc.id, {}, Date.now() - 60_000);
+				const settled = await Promise.allSettled([
+					investigations.startOrGet({ incidentId: inc.id }),
+					service.resumeInvestigation(older.id, "why?", "queue"),
+				]);
+				const live = await prisma.investigation.count({
+					where: { incidentId: inc.id, status: { in: ["pending", "running"] } },
+				});
+				expect(live, JSON.stringify(settled.map((s) => s.status))).toBe(1);
+			}
+		});
+	});
+});
+
+describe("a stale Stop never relabels a finished run (#804 OBJ-025)", () => {
+	it("Cancel read the run live, the report landed, then Cancel's fallback ran: completed stands, no Stop lingers", async () => {
+		const inc = await incident();
+		const completedAt = new Date("2026-10-08T17:02:00.000Z");
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		// The run finishes between Cancel's live read and its writes.
+		await prisma.investigation.update({
+			where: { id: row.id },
+			data: { status: "completed", report: "{}", summary: "s", completedAt, liveTurn: null },
+		});
+		timeline.create.mockClear();
+
+		// What the controller's fallback does next, with no receiver for the publish.
+		await investigations.markStopRequested(row.id);
+		const cancelled = await investigations.cancelPending(row.id, inc.id, "no run held it");
+
+		expect(cancelled).toBeNull();
+		expect(await read(row.id)).toMatchObject({ status: "completed", completedAt, stopRequestedAt: null, report: "{}" });
+		expect(timeline.create).not.toHaveBeenCalled();
+	});
+
+	it("Stop on an unclaimed Ask whose event read throws once: completed standing, original time and error, stopped, live columns cleared (#804 OBJ-031)", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const completedAt = new Date(restoreDone.completedAt);
+		const row = await thread(inc.id, { status: "pending", liveTurn: "answer", report: "{}", summary: "s" });
+		await job(row.id, inc.id, { resume: { text: "why?", mode: "queue", restore: restoreDone } }, "cancelled");
+		const seq = vi.spyOn(investigations, "lastEventSeq").mockRejectedValueOnce(new Error("SQLITE_BUSY"));
+
+		expect(await service.restoreFollowUp(row.id, "Stopped before the follow-up started.", "stopped")).toBe(true);
+
+		seq.mockRestore();
+		expect(await read(row.id)).toMatchObject({
+			status: "completed",
+			completedAt,
+			error: null,
+			lastTurnOutcome: "stopped",
+			liveTurn: null,
+			stopRequestedAt: null,
+			report: "{}",
+		});
+	});
+
+	it("a pending follow-up that ended meanwhile is not put back, and nothing is said in the conversation", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const completedAt = new Date("2026-10-08T17:40:00.000Z");
+		const row = await thread(inc.id, { status: "completed", report: "{}", completedAt, lastTurnOutcome: "answered" });
+		await job(row.id, inc.id, { resume: { text: "why?", mode: "queue", restore: restoreDone } }, "cancelled");
+
+		await service.restoreFollowUp(row.id, "Stopped before the follow-up started.", "stopped");
+
+		expect(await read(row.id)).toMatchObject({ status: "completed", completedAt, lastTurnOutcome: "answered" });
+		expect(await prisma.investigationEvent.count({ where: { investigationId: row.id } })).toBe(0);
+	});
+});
+
+describe("ports: a refused write delivers nothing (T5, OBJ-010 a)", () => {
+	it("a failed status write after Stop: false back, no delivery, no telemetry, the row stays live", async () => {
+		const { ports, deliver, telemetry } = realDispatch();
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", stopRequestedAt: new Date() });
+
+		expect(await ports.updateStatus(row.id, { status: "failed", error: "boom" })).toBe(false);
+
+		expect(deliver).not.toHaveBeenCalled();
+		expect(telemetry.captureFinished).not.toHaveBeenCalled();
+		expect(await read(row.id)).toMatchObject({ status: "running", liveTurn: "report" });
+	});
+
+	it("a result write after Stop: false back, no recommendation, no timeline entry, no delivery", async () => {
+		const { ports, deliver } = realDispatch();
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", stopRequestedAt: new Date() });
+
+		const applied = await ports.writeResult(row.id, {
+			status: "completed",
+			incidentId: inc.id,
+			summary: "pool exhausted",
+			report: { summary: "pool exhausted" } as never,
+			recommendations: [{ title: "raise the pool" }],
+		});
+
+		expect(applied).toBe(false);
+		expect(deliver).not.toHaveBeenCalled();
+		expect(await prisma.recommendation.count({ where: { investigationId: row.id } })).toBe(0);
+		expect(await prisma.timelineEntry.count({ where: { incidentId: inc.id } })).toBe(0);
+		expect((await read(row.id)).report).toBeNull();
+	});
+
+	it("a result write on an ended row: false back, the row and its timeline untouched", async () => {
+		const { ports, deliver } = realDispatch();
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "failed", error: "boom" });
+
+		const applied = await ports.writeResult(row.id, { status: "completed", incidentId: inc.id, summary: "late" });
+
+		expect(applied).toBe(false);
+		expect(deliver).not.toHaveBeenCalled();
+		expect(await prisma.timelineEntry.count({ where: { incidentId: inc.id } })).toBe(0);
+		expect(await read(row.id)).toMatchObject({ status: "failed", error: "boom" });
+	});
+
+	it("an applied write ends the live columns and delivers once", async () => {
+		const { ports, deliver } = realDispatch();
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+
+		expect(await ports.updateStatus(row.id, { status: "failed", error: "boom" })).toBe(true);
+
+		expect(deliver).toHaveBeenCalledTimes(1);
+		expect(await read(row.id)).toMatchObject({ status: "failed", liveTurn: null, stopRequestedAt: null });
+	});
+
+	it("newerRun: two runs on one incident, the newer with a workspace of one repo -> {number: 2, heads:[{name:'repo', head}]}; the newest run itself -> null (#673 w27)", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const head = "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d";
+		const run1 = await thread(inc.id, {}, Date.now() - 10_000);
+		const run2 = await thread(
+			inc.id,
+			{
+				workspace: JSON.stringify({
+					layout: "single",
+					cwd: "/x/repo",
+					repos: [
+						{
+							name: "repo",
+							dir: "/x/repo",
+							sourceKind: "url",
+							url: "https://github.com/acme/repo",
+							subPath: null,
+							connectionId: null,
+							head,
+							branch: "main",
+							services: ["api"],
+						},
+					],
+				}),
+			},
+			Date.now(),
+		);
+
+		const newer = await ports.newerRun(run1.id);
+		expect(newer).toEqual({
+			number: 2,
+			heads: [{ name: "repo", head }],
+		});
+
+		const newest = await ports.newerRun(run2.id);
+		expect(newest).toBeNull();
+	});
+
+	it("snapshotWith port reads the pick from Repository.metadata and delegates to withCredential and repoSource.snapshot", async () => {
+		const { ports, service } = realDispatch();
+		const mockGitCredentials = {
+			withCredential: vi.fn(async (_ref, fn) => {
+				const cred = { display: { source: "connection", label: "token A", via: "git-host-token" } };
+				const result = await fn(cred);
+				return { result, credential: { source: "connection", label: "token A", via: "git-host-token" } };
+			}),
+		};
+		const mockRepoSource = {
+			snapshot: vi.fn(async () => ({
+				path: "/mock/dest",
+				head: "abcd1234ef5678",
+				branch: "main",
+			})),
+		};
+		(service as any).gitCredentials = mockGitCredentials;
+		(service as any).repoSource = mockRepoSource;
+
+		await prisma.repository.create({
+			data: {
+				sourceKind: "url",
+				url: "https://github.com/acme/dispatch-test.git",
+				fullName: "acme/dispatch-test",
+				metadata: JSON.stringify({ credentialConnectionId: "pinned-conn-id" }),
+			},
+		});
+
+		const res = await ports.snapshotWith(
+			{
+				sourceKind: "url",
+				url: "https://github.com/acme/dispatch-test.git",
+				connectionId: null,
+				defaultBranch: "main",
+			},
+			"/target/dest",
+		);
+
+		expect(mockGitCredentials.withCredential).toHaveBeenCalledWith(
+			{
+				sourceKind: "url",
+				url: "https://github.com/acme/dispatch-test.git",
+				connectionId: null,
+				pick: "pinned-conn-id",
+			},
+			expect.any(Function),
+			undefined,
+		);
+		expect(mockRepoSource.snapshot).toHaveBeenCalledWith(
+			{
+				kind: "url",
+				source: "https://github.com/acme/dispatch-test.git",
+				defaultBranch: "main",
+				credential: expect.anything(),
+			},
+			"/target/dest",
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+		);
+		expect(res).toEqual({
+			snap: {
+				path: "/mock/dest",
+				head: "abcd1234ef5678",
+				branch: "main",
+			},
+			credential: {
+				source: "connection",
+				label: "token A",
+				via: "git-host-token",
+			},
+		});
+	});
+
+	describe("ports: recordHandoff updates agent details and clears usage (handoff-L10)", () => {
+		it("updates harness, model, effort, acpSessionId and nulls usage (handoff-L10)", async () => {
+			const { ports } = realDispatch();
+			const inc = await incident();
+			const row = await thread(inc.id);
+
+			await prisma.investigation.update({
+				where: { id: row.id },
+				data: { usage: JSON.stringify({ used: 5, size: 10, at: "2026-10-21T08:00:00.000Z" }) },
+			});
+
+			await ports.recordHandoff(row.id, {
+				harness: "codex",
+				model: "gpt-x",
+				effort: "high",
+				acpSessionId: "s-2",
+			});
+
+			const updated = await read(row.id);
+			expect(updated.harness).toBe("codex");
+			expect(updated.model).toBe("gpt-x");
+			expect(updated.effort).toBe("high");
+			expect(updated.acpSessionId).toBe("s-2");
+			expect(updated.usage).toBeNull();
+		});
+	});
+});
+
+describe("boot reconciliation of live rows against their jobs (T12, OBJ-020 window B)", () => {
+	const ask = { text: "why the pool?", mode: "queue" as const, restore: restoreDone };
+
+	async function boot() {
+		const { service } = realDispatch();
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+	}
+
+	it("a pending follow-up whose job was cancelled is restored as stopped", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "answer", report: "{}" });
+		await job(row.id, inc.id, { resume: ask }, "cancelled");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({
+			status: "completed",
+			completedAt: new Date(restoreDone.completedAt),
+			lastTurnOutcome: "stopped",
+			liveTurn: null,
+		});
+	});
+
+	it("a pending first run with no job ends failed: restarted before it was queued", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report" });
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({
+			status: "failed",
+			error: "PrismaLens restarted before the run was queued",
+			liveTurn: null,
+		});
+	});
+
+	it("a running job whose row recorded a Stop ends cancelled, row and job alike (T6 after a restart, #804 OBJ-027)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", stopRequestedAt: new Date() });
+		await job(row.id, inc.id, {}, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({
+			status: "cancelled",
+			error: "Investigation cancelled",
+			stopRequestedAt: null,
+			liveTurn: null,
+		});
+		// What GET /investigations/:id/status serves as `job.state`.
+		expect(await realDispatch().service.getJobStatus(row.id)).toMatchObject({ status: "cancelled" });
+	});
+
+	it.each([
+		["a first run settled cancelled", { status: "cancelled", error: "Investigation cancelled", completedAt: new Date() }, { resume: false }, "cancelled"],
+		["a first run settled completed", { status: "completed", report: "{}", completedAt: new Date() }, { resume: false }, "succeeded"],
+		["an Ask settled stopped", { status: "completed", report: "{}", lastTurnOutcome: "stopped" }, { resume: true }, "cancelled"],
+		["an Ask settled answered", { status: "completed", report: "{}", lastTurnOutcome: "answered" }, { resume: true }, "succeeded"],
+		["an Ask settled in error", { status: "completed", report: "{}", lastTurnOutcome: "error" }, { resume: true }, "failed"],
+	] as const)(
+		"%s, killed before its job completed: the job takes the row's outcome, no restart failure (#804 OBJ-027)",
+		async (_name, settled, payload, outcome) => {
+			const inc = await incident();
+			const row = await thread(inc.id, settled);
+			await job(row.id, inc.id, payload.resume ? { resume: ask } : {}, "running");
+
+			await boot();
+
+			expect(await read(row.id)).toMatchObject({ status: settled.status });
+			const status = await realDispatch().service.getJobStatus(row.id);
+			expect(status?.status).toBe(outcome);
+			if (outcome !== "failed") expect(status?.error).not.toBe(RESTART_REASON);
+		},
+	);
+
+	it("a follow-up whose Stop was recorded before the restart: standing put back, job cancelled (#804 OBJ-027)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "answer", report: "{}", stopRequestedAt: new Date() });
+		await job(row.id, inc.id, { resume: ask }, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "completed", lastTurnOutcome: "stopped", stopRequestedAt: null });
+		expect(await realDispatch().service.getJobStatus(row.id)).toMatchObject({ status: "cancelled" });
+	});
+
+	it("a running first run without a Stop ends failed with the restart reason", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", error: RESTART_REASON, endReason: "interrupted" });
+	});
+
+	it("a follow-up cut off by a restart puts the finished run back with an error turn, and says so in the conversation", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "answer", report: "{}" });
+		await job(row.id, inc.id, { resume: ask }, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "completed", lastTurnOutcome: "error", liveTurn: null });
+		const events = await prisma.investigationEvent.findMany({ where: { investigationId: row.id }, orderBy: { seq: "asc" } });
+		expect(events.map((e) => JSON.parse(e.event).kind)).toEqual(["run_interrupted", "operator_message", "error"]);
+		expect(JSON.parse(events[0]?.event ?? "{}").reason).toBe("restart");
+	});
+
+	it("an Ask on a stopped reportless run cut off by a restart keeps it cancelled (T9 restart)", async () => {
+		const inc = await incident();
+		const stopped = { status: "cancelled" as const, completedAt: "2026-10-08T17:04:00.000Z", error: "Investigation cancelled" };
+		const row = await thread(inc.id, { status: "running", liveTurn: "answer" });
+		await job(row.id, inc.id, { resume: { ...ask, restore: stopped } }, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({
+			status: "cancelled",
+			error: "Investigation cancelled",
+			lastTurnOutcome: "error",
+			liveTurn: null,
+		});
+	});
+
+	it("leaves a row whose job is still pending to be claimed", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "pending");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "pending", liveTurn: "report" });
+	});
+
+	it("two live rows on one incident from old data: the newest stays, the other is settled", async () => {
+		const inc = await incident();
+		const older = await thread(inc.id, { status: "pending", liveTurn: "answer", report: "{}" }, Date.now() - 60_000);
+		await job(older.id, inc.id, { resume: ask }, "pending");
+		const newer = await thread(inc.id, { status: "pending", liveTurn: "report" });
+		await job(newer.id, inc.id, {}, "pending");
+
+		await boot();
+
+		expect(await read(newer.id)).toMatchObject({ status: "pending" });
+		expect(await read(older.id)).toMatchObject({ status: "completed", lastTurnOutcome: "error", liveTurn: null });
+	});
+});
+
+describe("denyAsksLeftWaiting and answerAsk (#673 w21)", () => {
+	it("denyAsksLeftWaiting at onModuleInit appends exactly one restarted answer per unanswered ask (an answered one gets none), clears awaitingApprovalAt, and runs before failRunning", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const row = await thread(inc.id, {
+			status: "running",
+			liveTurn: "report",
+			awaitingApprovalAt: new Date("2026-10-09T10:00:00Z"),
+		});
+		await job(row.id, inc.id, {}, "running");
+
+		const answeredAskId = "11111111-1111-4111-8111-111111111111";
+		const unansweredAskId = "22222222-2222-4222-8222-222222222222";
+		const now = new Date().toISOString();
+
+		await investigations.appendEvents(row.id, [
+			{
+				kind: "permission_ask",
+				runId: row.id,
+				branchId: "main",
+				path: [],
+				seq: 1,
+				ts: now,
+				askId: answeredAskId,
+				title: "run command",
+				detail: "npm test",
+				toolKind: "bash",
+				expiresAt: now,
+			},
+			{
+				kind: "permission_answer",
+				runId: row.id,
+				branchId: "main",
+				path: [],
+				seq: 2,
+				ts: now,
+				askId: answeredAskId,
+				outcome: "approved",
+			},
+			{
+				kind: "permission_ask",
+				runId: row.id,
+				branchId: "main",
+				path: [],
+				seq: 3,
+				ts: now,
+				askId: unansweredAskId,
+				title: "run command",
+				detail: "npm build",
+				toolKind: "bash",
+				expiresAt: now,
+			},
+		]);
+
+		const callOrder: string[] = [];
+		let awaitingApprovalAtWhenFailRunningCalled: Date | null = new Date();
+
+		const originalFailRunning = service["store"].failRunning.bind(service["store"]);
+		vi.spyOn(service["store"], "failRunning").mockImplementation(async (reason) => {
+			callOrder.push("failRunning");
+			const r = await prisma.investigation.findUnique({
+				where: { id: row.id },
+				select: { awaitingApprovalAt: true },
+			});
+			awaitingApprovalAtWhenFailRunningCalled = r?.awaitingApprovalAt ?? null;
+			return originalFailRunning(reason);
+		});
+
+		const originalDeny = (service as unknown as { denyAsksLeftWaiting: () => Promise<void> })["denyAsksLeftWaiting"].bind(service);
+		vi.spyOn(service as unknown as { denyAsksLeftWaiting: () => Promise<void> }, "denyAsksLeftWaiting").mockImplementation(async () => {
+			callOrder.push("denyAsksLeftWaiting");
+			return originalDeny();
+		});
+
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+
+		expect(callOrder).toEqual(["denyAsksLeftWaiting", "failRunning"]);
+		expect(awaitingApprovalAtWhenFailRunningCalled).toBeNull();
+
+		const updatedRow = await read(row.id);
+		expect(updatedRow.awaitingApprovalAt).toBeNull();
+
+		const events = await prisma.investigationEvent.findMany({
+			where: { investigationId: row.id },
+			orderBy: { seq: "asc" },
+		});
+		const parsedEvents = events.map((e) => JSON.parse(e.event));
+		const answers = parsedEvents.filter((e: { kind: string }) => e.kind === "permission_answer");
+
+		expect(answers).toHaveLength(2);
+		expect(answers[0]).toMatchObject({
+			askId: answeredAskId,
+			outcome: "approved",
+		});
+		expect(answers[1]).toMatchObject({
+			askId: unansweredAskId,
+			outcome: "restarted",
+			branchId: "main",
+		});
+	});
+
+	it("answerAsk returns null with no receiver", () => {
+		const { service } = realDispatch();
+		expect(service.answerAsk("inv-unknown", "ask-1", {
+				kind: "permission",
+				decision: "approve",
+			})).toBeNull();
+	});
+});
+
+describe("upgrade from a database before investigation_turns (T14, OBJ-021)", () => {
+	it("one pending job of each form boots, claims, shows the right liveTurn, and refuses a mismatched explicit kind", async () => {
+		const { service, ports } = realDispatch();
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+
+		// Booted: every legacy row still waits for its claim, intent unknown.
+		for (const id of Object.values(legacy)) expect(await read(id)).toMatchObject({ status: "pending", liveTurn: null });
+		const ask = await read(legacy.ask);
+		expect(await investigations.liveKindRefusal(ask, "chat")).toMatch(/^Run #\d+ is starting; wait$/);
+
+		const claimed = await new PrismaJobStore(prisma.job as never).claim("spec", 10);
+		expect(claimed.map((j) => j.investigationId).sort()).toEqual(Object.values(legacy).sort());
+		for (const j of claimed) {
+			const payload = JSON.parse(j.payload) as InvestigationJobData;
+			await createPrismaInvestigationStore(ports, {
+				investigationId: j.investigationId,
+				incidentId: j.incidentId,
+				runId: j.investigationId,
+				...(payload.chat ? { chat: true } : {}),
+				...(payload.resume ? { resume: { note: "", continuing: payload.resume.kind === "continue" } } : {}),
+			}).create();
+		}
+
+		expect((await read(legacy.initial)).liveTurn).toBe("report");
+		expect((await read(legacy.chat)).liveTurn).toBe("answer");
+		expect((await read(legacy.ask)).liveTurn).toBe("answer");
+		expect((await read(legacy.continue)).liveTurn).toBe("report");
+
+		expect(await investigations.liveKindRefusal(await read(legacy.ask), "continue")).toMatch(
+			/^Run #\d+ is working on an answer; wait or stop it$/,
+		);
+		expect(await investigations.liveKindRefusal(await read(legacy.continue), "chat")).toMatch(
+			/^Run #\d+ is working toward a report; wait or stop it$/,
+		);
+		expect(await investigations.liveKindRefusal(await read(legacy.ask), "chat")).toBeNull();
+	});
+});
+
+describe("service checks with no incident never see each other (#979)", () => {
+	const SINGLE = JSON.stringify({
+		layout: "single",
+		cwd: "/x/repo",
+		repos: [
+			{
+				name: "repo",
+				dir: "/x/repo",
+				sourceKind: "url",
+				url: "https://github.com/acme/repo",
+				subPath: null,
+				connectionId: null,
+				head: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+				branch: "main",
+				services: ["api"],
+			},
+		],
+	});
+
+	async function check(scheduleId: string, data: Row = {}, at = Date.now()) {
+		return prisma.investigation.create({
+			data: {
+				incidentId: null,
+				scheduleId,
+				status: "completed",
+				triggerType: "scheduled",
+				harness: "opencode",
+				acpSessionId: "ses_1",
+				workspace: JSON.stringify({ layout: "unmapped", cwd: "/x", repos: [] }),
+				createdAt: new Date(at),
+				...data,
+			},
+		});
+	}
+
+	it("startOrGet returns only the same schedule's live run, and starts one for another schedule", async () => {
+		const a = await check("sch-a", { status: "running" });
+
+		const same = await investigations.startOrGet({ incidentId: null, scheduleId: "sch-a" } as never);
+		const other = await investigations.startOrGet({ incidentId: null, scheduleId: "sch-b" } as never);
+
+		expect(same).toMatchObject({ created: false, investigation: { id: a.id } });
+		expect(other.created).toBe(true);
+		expect(other.investigation).toMatchObject({ scheduleId: "sch-b", incidentId: null });
+	});
+
+	it("startOrGet on an incident ignores a live check", async () => {
+		await check("sch-a", { status: "running" });
+		const inc = await incident();
+
+		const got = await investigations.startOrGet({ incidentId: inc.id });
+
+		expect(got.created).toBe(true);
+	});
+
+	it("Run #N counts only the schedule's own runs", async () => {
+		const a1 = await check("sch-a", {}, Date.now() - 30_000);
+		await check("sch-b", {}, Date.now() - 20_000);
+		const a2 = await check("sch-a", {}, Date.now() - 10_000);
+
+		expect(await investigations.runNumber(a1)).toBe(1);
+		expect(await investigations.runNumber(a2)).toBe(2);
+		expect(await investigations.liveKindRefusal({ ...a2, liveTurn: null }, "chat")).toBe("Run #2 is starting; wait");
+	});
+
+	it("newerRun looks at the schedule's own newer run, not another schedule's", async () => {
+		const { ports } = realDispatch();
+		const a1 = await check("sch-a", {}, Date.now() - 30_000);
+		await check("sch-b", { workspace: SINGLE }, Date.now() - 10_000);
+
+		expect(await ports.newerRun(a1.id)).toBeNull();
+
+		const a2 = await check("sch-a", { workspace: SINGLE }, Date.now() - 5_000);
+		expect(await ports.newerRun(a1.id)).toMatchObject({ number: 2 });
+		expect(await ports.newerRun(a2.id)).toBeNull();
+	});
+
+	it("a resume is blocked only by a live run of the same schedule", async () => {
+		const { service } = realDispatch();
+		const older = await check("sch-a", {}, Date.now() - 60_000);
+		await check("sch-b", { status: "running", liveTurn: "report" });
+
+		expect(await service.resumeInvestigation(older.id, "why?", "queue")).toBe(true);
+		await prisma.investigation.update({ where: { id: older.id }, data: { status: "completed", liveTurn: null } });
+		await check("sch-a", { status: "running", liveTurn: "report" });
+
+		await expect(service.resumeInvestigation(older.id, "why?", "queue")).rejects.toThrow(
+			"Run #2 is working; message it or stop it.",
+		);
+	});
+
+	it("a resume of a check carries its frozen subject, so the follow-up is still a service check", async () => {
+		const { service } = realDispatch();
+		const scheduled = {
+			scheduleId: "sch-a",
+			revision: 2,
+			serviceId: "svc-1",
+			serviceName: "checkout",
+			serviceNotes: "Restart is safe.",
+			runbook: "runbooks/latency.md",
+			repos: [],
+		};
+		const run = await check("sch-a", {
+			configSnapshot: JSON.stringify({ ...scheduled, brief: "Look at p99.", harness: "opencode", model: null, effort: null }),
+		});
+		await prisma.job.create({
+			data: { investigationId: run.id, incidentId: null, payload: "{}", status: "succeeded" },
+		});
+
+		expect(await service.resumeInvestigation(run.id, "and now?", "queue")).toBe(true);
+
+		const payload = JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: run.id } })).payload);
+		expect(payload).toMatchObject({ incidentId: null, scheduled, brief: "Look at p99." });
+	});
+
+	it("boot keeps one live run per schedule, not per null incident", async () => {
+		const { service } = realDispatch();
+		const aOld = await check("sch-a", { status: "pending", liveTurn: "report" }, Date.now() - 60_000);
+		const aNew = await check("sch-a", { status: "pending", liveTurn: "report" });
+		const b = await check("sch-b", { status: "pending", liveTurn: "report" }, Date.now() - 30_000);
+		for (const r of [aOld, aNew, b])
+			await prisma.job.create({ data: { investigationId: r.id, incidentId: null, payload: "{}", status: "pending" } });
+
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+
+		expect((await read(aNew.id)).status).toBe("pending");
+		expect((await read(b.id)).status).toBe("pending");
+		expect((await read(aOld.id)).status).not.toBe("pending");
+	});
+});
+
+describe("boot takes up the runs a restart cut off (#981)", () => {
+	const ask = { text: "why the pool?", mode: "queue" as const, restore: restoreDone };
+
+	function recovering(opts: { enabled?: boolean; contained?: boolean; previous?: { startedAt: Date; lastAliveAt: Date; stoppedCleanly: boolean } | null } = {}) {
+		const attach = vi.fn();
+		const service = new DispatchService(
+			fakeBus() as never,
+			{ attach } as never,
+			investigations,
+			{ findById: vi.fn(async () => null) } as never,
+			timeline as never,
+			{
+				resolveSelection: async (asked: { harness?: string }) => ({ runnable: true, harness: asked.harness ?? "opencode", auto: false }),
+				checkedOutcome: () => null,
+				getSettings: vi.fn(async () => ({})),
+				effectiveChoice: vi.fn(async () => ({ accessLevel: "full" })),
+				resumeAfterRestart: vi.fn(async () => opts.enabled ?? true),
+			} as never,
+			{} as never,
+			prisma,
+			{} as never,
+			{} as never,
+			{} as never,
+			{ isEnabled: vi.fn(async () => true), capture: vi.fn(async () => {}), captureFinished: vi.fn(async () => {}) } as never,
+			{ deliver: vi.fn(async () => {}) } as never,
+			undefined,
+			undefined,
+			undefined,
+			{
+				lastRestart: () => ({
+					bootedAt: new Date(),
+					previous:
+						opts.previous === undefined
+							? { startedAt: new Date(Date.now() - 3_600_000), lastAliveAt: new Date(Date.now() - 22 * 60_000), stoppedCleanly: false }
+							: opts.previous,
+				}),
+			} as never,
+		);
+		vi.spyOn(service["dispatcher"], "tick").mockResolvedValue(undefined);
+		vi.spyOn(service["dispatcher"], "start").mockImplementation(() => {});
+		// The receipt rule has its own tests; here the old agent is gone unless a test says otherwise.
+		vi.spyOn(service, "previousGone").mockResolvedValue(opts.contained ?? true);
+		return { service, attach };
+	}
+
+	async function boot(opts?: Parameters<typeof recovering>[0]) {
+		const { service } = recovering(opts);
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+		return service;
+	}
+
+	const payloadOf = async (id: string) =>
+		JSON.parse((await prisma.job.findUniqueOrThrow({ where: { investigationId: id } })).payload) as InvestigationJobData;
+
+	async function event(investigationId: string, seq: number, body: Record<string, unknown>, at = new Date()) {
+		await prisma.investigationEvent.create({
+			data: { investigationId, seq, branchId: "run", event: JSON.stringify(body), createdAt: at },
+		});
+	}
+
+	const auto = (attempt: number) => ({
+		attempt,
+		by: "auto" as const,
+		stoppedAt: new Date().toISOString(),
+		lastActivityAt: new Date().toISOString(),
+	});
+	const recoveryOf = (attempt: number) => ({
+		text: "PrismaLens restarted.",
+		mode: "queue" as const,
+		kind: "continue" as const,
+		restore: { status: "failed" as const, completedAt: null, error: RESTART_REASON },
+		restart: auto(attempt),
+	});
+
+	it("a first run cut off mid-work is re-armed as the same turn, row and job in one go, after the catch-up delay", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, { accessLevel: "supervised" }, "running");
+		const before = Date.now();
+
+		const service = await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "pending", endReason: "interrupted", liveTurn: "report", error: null });
+		const j = await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } });
+		expect(j.status).toBe("pending");
+		expect(j.runAt.getTime()).toBeGreaterThanOrEqual(before + 29_000);
+		const p = await payloadOf(row.id);
+		expect(p.accessLevel).toBe("supervised");
+		expect(p.resume).toMatchObject({
+			kind: "continue",
+			mode: "queue",
+			to: { harness: "opencode" },
+			restore: { status: "failed", error: RESTART_REASON },
+			restart: { attempt: 1, by: "auto" },
+		});
+		const summary = await service.restartSummary();
+		expect(summary?.resumed.find((r) => r.investigationId === row.id)).toMatchObject({ incidentNumber: inc.number, title: inc.title });
+	});
+
+	it("a crash's stop is no earlier than the run's last event, so the last minute is not called the gap", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		const heartbeat = new Date(Date.now() - 22 * 60_000);
+		const lastEvent = new Date(heartbeat.getTime() + 40_000);
+		await event(row.id, 0, { kind: "agent_step", text: "reading", toolCalls: [] }, lastEvent);
+
+		await boot({ previous: { startedAt: new Date(Date.now() - 3_600_000), lastAliveAt: heartbeat, stoppedCleanly: false } });
+
+		expect((await payloadOf(row.id)).resume?.restart).toMatchObject({
+			stoppedAt: lastEvent.toISOString(),
+			lastActivityAt: lastEvent.toISOString(),
+		});
+	});
+
+	it("wakes the dispatch loop once the catch-up delay is over, since the loop has no poll timer", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		const timers = vi.spyOn(globalThis, "setTimeout");
+		const { service } = recovering();
+
+		await service.onModuleInit();
+		const wake = timers.mock.calls.find(([, ms]) => (ms ?? 0) > 30_000 && (ms ?? 0) <= 35_000);
+		timers.mockRestore();
+		await service.onApplicationShutdown();
+
+		expect(wake).toBeDefined();
+		const tick = vi.mocked(service["dispatcher"].tick);
+		tick.mockClear();
+		(wake?.[0] as () => void)();
+		expect(tick).toHaveBeenCalledTimes(1);
+	});
+
+	it("a scheduled check with no incident is named in the summary with a null incident, not an empty id", async () => {
+		const row = await prisma.investigation.create({
+			data: { incidentId: null, scheduleId: "sch-a", triggerType: "scheduled", status: "running", liveTurn: "report", harness: "opencode", acpSessionId: "ses_1", workspace: JSON.stringify({ layout: "unmapped", cwd: "/x", repos: [] }) },
+		});
+		await prisma.job.create({ data: { investigationId: row.id, incidentId: null, payload: JSON.stringify({ incidentId: null, investigationId: row.id }), status: "running" } });
+
+		const service = await boot();
+
+		const summary = await service.restartSummary();
+		const ref = [...(summary?.resumed ?? []), ...(summary?.skipped ?? [])].find((r) => r.investigationId === row.id);
+		expect(ref).toMatchObject({ incidentId: null, incidentNumber: null });
+	});
+
+	it("a run the operator stopped stays stopped", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", stopRequestedAt: new Date() });
+		await job(row.id, inc.id, {}, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "cancelled", error: "Investigation cancelled" });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } })).status).toBe("cancelled");
+	});
+
+	it("a run waiting on the operator's answer: the ask is closed as restarted, and the run resumes", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", awaitingApprovalAt: new Date() });
+		await job(row.id, inc.id, {}, "running");
+		const askId = "33333333-3333-4333-8333-333333333333";
+		const ts = new Date().toISOString();
+		await investigations.appendEvents(row.id, [
+			{ kind: "permission_ask", runId: row.id, branchId: "main", path: [], seq: 1, ts, askId, title: "Run kubectl rollout restart", detail: null, toolKind: "bash", expiresAt: ts } as never,
+		]);
+
+		await boot();
+
+		const events = await prisma.investigationEvent.findMany({ where: { investigationId: row.id } });
+		expect(events.map((e) => JSON.parse(e.event)).find((e) => e.kind === "permission_answer")).toMatchObject({ askId, outcome: "restarted" });
+		expect(await read(row.id)).toMatchObject({ status: "pending", awaitingApprovalAt: null });
+	});
+
+	it("an alert-started run keeps its unattended pin, its agent and its own level, never Settings' (#818)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", triggerType: "auto_critical", accessLevel: "auto" });
+		await job(row.id, inc.id, { unattended: true, accessLevel: "auto", harness: "opencode", model: "fake/scripted" }, "running");
+
+		await boot();
+
+		expect(await payloadOf(row.id)).toMatchObject({ unattended: true, accessLevel: "auto", harness: "opencode", model: "fake/scripted" });
+	});
+
+	it("an interrupted Ask on a finished run keeps the run's own standing to fall back to, and asks the question again (OBJ-012)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "answer", report: "{}" });
+		await job(row.id, inc.id, { resume: ask }, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "pending", liveTurn: "answer" });
+		expect((await payloadOf(row.id)).resume).toMatchObject({ kind: "chat", text: "why the pool?", restore: restoreDone, restart: { attempt: 1 } });
+	});
+
+	it("not resumed when the setting is off: interrupted, with the reason", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+
+		const service = await boot({ enabled: false });
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted", error: "Not resumed: Resume after a restart is off in Settings." });
+		expect((await service.restartSummary())?.skipped.map((s) => s.investigationId)).toContain(row.id);
+	});
+
+	it("not resumed when it stopped working more than a day ago", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		await event(row.id, 1, { kind: "agent_step", text: "x", toolCalls: [] }, new Date(Date.now() - 50 * 3_600_000));
+
+		await boot();
+
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for 2 days/);
+	});
+
+	it("a crash loop stops at the cap: a fourth recovery of the same turn is not made", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(3) }, "running");
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted" });
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens stopped again during each of the last 3 resumes/);
+	});
+
+	it("a crash loop: a start within two minutes of one that resumed runs resumes none", async () => {
+		const previousStart = new Date(Date.now() - 60_000);
+		const value = JSON.stringify({ at: previousStart.toISOString(), stoppedAt: null, resumed: [{ investigationId: "x", incidentId: "y", incidentNumber: 1, title: "t" }], skipped: [] });
+		await prisma.setting.upsert({
+			where: { key: "runtime.lastRecovery" },
+			update: { value },
+			create: { key: "runtime.lastRecovery", type: "json", category: "general", value },
+		});
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+
+		await boot({ previous: { startedAt: previousStart, lastAliveAt: new Date(Date.now() - 10_000), stoppedCleanly: false } });
+
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens stopped again within 2 minutes/);
+	});
+
+	it("a turn that recorded its report before the stop is not run again (OBJ-004)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		const j = await job(row.id, inc.id, {}, "running");
+		await prisma.job.update({ where: { id: j.id }, data: { claimedAt: new Date(Date.now() - 60_000) } });
+		await event(row.id, 9, { kind: "report", report: {} });
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", error: RESTART_REASON, endReason: "interrupted" });
+	});
+
+	it("a recovery an earlier boot re-armed but never started is checked again (OBJ-013)", async () => {
+		const inc = await incident();
+		const kept = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(kept.id, inc.id, { resume: recoveryOf(1) }, "pending");
+
+		await boot({ enabled: false });
+
+		expect(await read(kept.id)).toMatchObject({ status: "failed", endReason: "interrupted", error: "Not resumed: Resume after a restart is off in Settings." });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: kept.id } })).status).toBe("cancelled");
+
+		const inc2 = await incident();
+		const again = await thread(inc2.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(again.id, inc2.id, { resume: recoveryOf(1) }, "pending");
+		const before = Date.now();
+		await boot();
+		expect(await read(again.id)).toMatchObject({ status: "pending" });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: again.id } })).runAt.getTime()).toBeGreaterThanOrEqual(before + 29_000);
+	});
+
+	it("a report turn that recorded branch_done before the stop is not run again (OBJ-004)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		await prisma.job.update({ where: { investigationId: row.id }, data: { claimedAt: new Date(Date.now() - 60_000) } });
+		await event(row.id, 0, { kind: "branch_done" });
+
+		await boot();
+
+		expect((await read(row.id)).status).not.toBe("pending");
+		expect((await payloadOf(row.id)).resume?.restart).toBeUndefined();
+	});
+
+	it("a run with no event is as old as its claim, not as new as the boot (OBJ-006)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+		await job(row.id, inc.id, {}, "running");
+		await prisma.job.update({ where: { investigationId: row.id }, data: { claimedAt: new Date(Date.now() - 2 * 24 * 3_600_000) } });
+
+		await boot();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted" });
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for 2 days/);
+	});
+
+	it("a recovery that left no agent event keeps the age it carried, not its new claim's (OBJ-006)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", endReason: "interrupted" });
+		const carried = { ...auto(1), lastActivityAt: new Date(Date.now() - 46 * 3_600_000).toISOString() };
+		await job(row.id, inc.id, { resume: { ...recoveryOf(1), restart: carried } }, "running");
+		await prisma.job.update({ where: { investigationId: row.id }, data: { claimedAt: new Date(Date.now() - 23 * 3_600_000) } });
+
+		await boot();
+
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for/);
+	});
+
+	it("a refused recovery writes no line as the user's, and a pending one whose run ended is cancelled (OBJ-009, OBJ-013)", async () => {
+		const inc = await incident();
+		const kept = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(kept.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const inc2 = await incident();
+		const ended = await thread(inc2.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
+		await job(ended.id, inc2.id, { resume: recoveryOf(1) }, "pending");
+
+		await boot({ enabled: false });
+
+		const kinds = (await prisma.investigationEvent.findMany({ where: { investigationId: kept.id } })).map((e) => JSON.parse(e.event).kind);
+		expect(kinds).toEqual(["error"]);
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: ended.id } })).status).toBe("cancelled");
+		expect((await read(ended.id)).error).toBe("Not resumed: x");
+	});
+
+	it("a pending recovery whose check throws is refused, never run unchecked (OBJ-013)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const { service } = recovering();
+		vi.spyOn(service as never as { planFollowUp: () => Promise<never> }, "planFollowUp").mockRejectedValue(new Error("db busy"));
+
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+
+		expect(await read(row.id)).toMatchObject({ status: "failed", error: "Not resumed: the check before resuming could not run: db busy" });
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } })).status).toBe("cancelled");
+	});
+
+	it("only a pull this boot made counts as the catch-up, not one between the last heartbeat and the crash (OBJ-008)", async () => {
+		const inc = await incident();
+		const { service } = recovering();
+		const bootedAt = new Date();
+		const stoppedAt = new Date(bootedAt.getTime() - 10 * 60_000);
+		Object.assign(service, { lifecycle: { lastRestart: () => ({ bootedAt, previous: null }) } });
+		vi.spyOn(prisma.connection, "count").mockResolvedValue(1);
+		await prisma.setting.upsert({
+			where: { key: "ALERT_PULL" },
+			update: { value: JSON.stringify({ lastCompleteAt: new Date(stoppedAt.getTime() + 10_000).toISOString() }) },
+			create: { key: "ALERT_PULL", value: JSON.stringify({ lastCompleteAt: new Date(stoppedAt.getTime() + 10_000).toISOString() }), type: "json", category: "general" },
+		});
+		const restartAlerts = (service as never as { restartAlerts: (...a: unknown[]) => Promise<{ catchUp: string }> }).restartAlerts.bind(service);
+
+		expect((await restartAlerts(inc.id, stoppedAt, bootedAt, stoppedAt)).catchUp).toBe("unchecked");
+		await prisma.setting.update({ where: { key: "ALERT_PULL" }, data: { value: JSON.stringify({ lastCompleteAt: new Date(bootedAt.getTime() + 1_000).toISOString() }) } });
+		expect((await restartAlerts(inc.id, stoppedAt, bootedAt, stoppedAt)).catchUp).toBe("done");
+		vi.mocked(prisma.connection.count).mockRestore();
+	});
+
+	it("PrismaLens's own restart message is not activity: a recovery chain keeps the age of the agent's last step (OBJ-006)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "running", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: { ...recoveryOf(1), restart: { ...auto(1), lastActivityAt: new Date(Date.now() - 46 * 3_600_000).toISOString() } } }, "running");
+		await event(row.id, 0, { kind: "agent_step", text: "x", toolCalls: [] }, new Date(Date.now() - 46 * 3_600_000));
+		await event(row.id, 1, { kind: "operator_message", text: "PrismaLens stopped at…", mode: "queue", via: { restart: { stoppedAt: "x", resumedAt: "y", by: "auto" } } }, new Date(Date.now() - 23 * 3_600_000));
+
+		await boot();
+
+		expect((await read(row.id)).error).toMatch(/^Not resumed: PrismaLens was off for/);
+	});
+
+	it("an interrupted Ask put back to its finished run keeps its files until the incident ends (OBJ-019)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "completed", endReason: "interrupted" });
+		const { service } = recovering();
+		const ctx = await (service as never as { bootContext: () => Promise<{ keep: Set<string> }> }).bootContext();
+		expect(ctx.keep.has(row.id)).toBe(true);
+	});
+
+	it("when the pending recoveries cannot even be listed, they are held for the next start, never run unchecked (OBJ-013)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const { service } = recovering();
+		const findMany = prisma.job.findMany.bind(prisma.job);
+		const spy = vi.spyOn(prisma.job, "findMany").mockImplementation(((args: { select?: { payload?: boolean } }) =>
+			args?.select?.payload ? Promise.reject(new Error("database is locked")) : findMany(args as never)) as never);
+
+		await service.onModuleInit();
+		await service.onApplicationShutdown();
+		spy.mockRestore();
+
+		const j = await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } });
+		expect(j.status).toBe("pending");
+		expect(j.runAt.getUTCFullYear()).toBe(9999);
+	});
+
+	it("when recoveries can be neither checked nor parked, dispatch is held until a check succeeds (OBJ-013)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const { service } = recovering();
+		const findMany = prisma.job.findMany.bind(prisma.job);
+		const listing = vi.spyOn(prisma.job, "findMany").mockImplementation(((args: { select?: { payload?: boolean } }) =>
+			args?.select?.payload ? Promise.reject(new Error("database is locked")) : findMany(args as never)) as never);
+		const updateMany = prisma.job.updateMany.bind(prisma.job);
+		const parking = vi.spyOn(prisma.job, "updateMany").mockImplementation(((args: { data?: { runAt?: Date } }) =>
+			args?.data?.runAt ? Promise.reject(new Error("database is locked")) : updateMany(args as never)) as never);
+		const timers = vi.spyOn(globalThis, "setInterval");
+
+		await service.onModuleInit();
+
+		expect(service["dispatcher"]["held"]).toBe(true);
+		listing.mockRestore();
+		parking.mockRestore();
+		const retry = timers.mock.calls.find(([, ms]) => ms === 10_000)?.[0] as () => void;
+		timers.mockRestore();
+		retry();
+		await vi.waitFor(() => expect(service["dispatcher"]["held"]).toBe(false));
+		await service.onApplicationShutdown();
+	});
+
+	it("a refusal that could be neither written nor parked is tried again before dispatch is let go (OBJ-013)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "pending", liveTurn: "report", endReason: "interrupted" });
+		await job(row.id, inc.id, { resume: recoveryOf(1) }, "pending");
+		const { service } = recovering({ enabled: false });
+		const transaction = vi.spyOn(prisma, "$transaction").mockRejectedValue(new Error("database is locked"));
+		const updateMany = prisma.job.updateMany.bind(prisma.job);
+		const parking = vi.spyOn(prisma.job, "updateMany").mockImplementation(((args: { data?: { runAt?: Date } }) =>
+			args?.data?.runAt ? Promise.reject(new Error("database is locked")) : updateMany(args as never)) as never);
+		const timers = vi.spyOn(globalThis, "setInterval");
+
+		await service.onModuleInit();
+		expect(service["dispatcher"]["held"]).toBe(true);
+		transaction.mockRestore();
+		parking.mockRestore();
+		const retry = timers.mock.calls.find(([, ms]) => ms === 10_000)?.[0] as () => void;
+		timers.mockRestore();
+		retry();
+
+		await vi.waitFor(() => expect(service["dispatcher"]["held"]).toBe(false));
+		expect((await prisma.job.findUniqueOrThrow({ where: { investigationId: row.id } })).status).toBe("cancelled");
+		expect((await read(row.id)).error).toBe("Not resumed: Resume after a restart is off in Settings.");
+		await service.onApplicationShutdown();
+	});
+
+	it("an agent that had a session but left no pid receipt is not proven gone (OBJ-010)", async () => {
+		const service = new DispatchService(fakeBus() as never, {} as never, investigations, {} as never, timeline as never, {} as never, {} as never, prisma, {} as never, {} as never, {} as never, {} as never, {} as never);
+		expect(await service.previousGone("no-receipt-run", "ses_1")).toBe(false);
+		expect(await service.previousGone("no-receipt-run", null)).toBe(true);
+	});
+
+	it("many runs at once are all re-armed; the dispatcher's cap paces them", async () => {
+		const ids: string[] = [];
+		for (let i = 0; i < 6; i++) {
+			const inc = await incident();
+			const row = await thread(inc.id, { status: "running", liveTurn: "report" });
+			await job(row.id, inc.id, {}, "running");
+			ids.push(row.id);
+		}
+
+		await boot();
+
+		for (const id of ids) expect(await read(id)).toMatchObject({ status: "pending" });
+	});
+
+	it("Resume on a run left interrupted re-arms it as the operator's, now; any other run is refused", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
+		await job(row.id, inc.id, {}, "failed");
+		const { service } = recovering();
+
+		await service.resumeInterrupted(row.id);
+
+		expect(await read(row.id)).toMatchObject({ status: "pending", endReason: "interrupted" });
+		expect((await payloadOf(row.id)).resume).toMatchObject({ restart: { attempt: 1, by: "operator" } });
+
+		const inc2 = await incident();
+		const done = await thread(inc2.id, { status: "completed" });
+		await job(done.id, inc2.id, {}, "succeeded");
+		await expect(service.resumeInterrupted(done.id)).rejects.toBeInstanceOf(FollowUpRefused);
+	});
+
+	it("Resume on an interrupted run in a busy plain folder says so, and the run stays interrupted (#1020)", async () => {
+		const stamp = Date.now();
+		const repo = await prisma.repository.create({
+			data: { sourceKind: "folder", fullName: `busy-${stamp}`, url: `/plain-${stamp}/busy`, plain: true },
+		});
+		const inc = await incident();
+		const row = await thread(inc.id, {
+			status: "failed",
+			endReason: "interrupted",
+			error: "Not resumed: x",
+			repositoryId: repo.id,
+		});
+		await job(row.id, inc.id, {}, "failed");
+		await prisma.investigation.create({
+			data: { incidentId: null, repositoryId: repo.id, kind: "chat", status: "running" },
+		});
+		const { service } = recovering();
+
+		await expect(service.resumeInterrupted(row.id)).rejects.toThrow("A thread is already working in this folder.");
+		expect(await read(row.id)).toMatchObject({ status: "failed", endReason: "interrupted" });
+	});
+
+	it("Resume on a run with a session but no pid receipt is refused, the same rule boot applies (OBJ-010)", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
+		await job(row.id, inc.id, {}, "failed");
+		const { service } = recovering();
+		vi.mocked(service.previousGone).mockRestore();
+
+		await expect(service.resumeInterrupted(row.id)).rejects.toThrow(/may still be running/);
+		expect(await read(row.id)).toMatchObject({ status: "failed" });
+	});
+
+	it("an interrupted run with no incident (a scheduled check) re-arms with none, and its gap has no alert source to check", async () => {
+		const inc = await incident();
+		const row = await thread(inc.id, { status: "failed", endReason: "interrupted", error: "Not resumed: x" });
+		await job(row.id, inc.id, {}, "failed");
+		const { service } = recovering();
+		// This schema still requires an incident, so the row is read the way #984's reads it.
+		const findUnique = prisma.investigation.findUnique.bind(prisma.investigation);
+		const read1 = vi.spyOn(prisma.investigation, "findUnique").mockImplementation((async (args: { where: { id?: string } }) => {
+			const r = await findUnique(args as never);
+			return r && args.where.id === row.id ? { ...r, incidentId: null } : r;
+		}) as never);
+		const enqueue = vi.spyOn(PrismaJobStore.prototype, "enqueue").mockResolvedValue("job-1");
+
+		await service.resumeInterrupted(row.id);
+
+		expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ investigationId: row.id, incidentId: null }));
+		expect(await read(row.id)).toMatchObject({ status: "pending", endReason: "interrupted" });
+		enqueue.mockRestore();
+		read1.mockRestore();
+
+		const bootedAt = new Date();
+		const stoppedAt = new Date(bootedAt.getTime() - 10 * 60_000);
+		await prisma.alert.create({ data: { dedupKey: "unlinked", title: "Someone else's alert", triggeredAt: new Date(stoppedAt.getTime() + 60_000) } });
+		const count = vi.spyOn(prisma.connection, "count").mockResolvedValue(1);
+		const restartAlerts = (service as never as { restartAlerts: (...a: unknown[]) => Promise<unknown> }).restartAlerts.bind(service);
+		expect(await restartAlerts(null, stoppedAt, bootedAt, stoppedAt)).toEqual({ catchUp: "none", fired: [], resolved: [] });
+		count.mockRestore();
+	});
+});
+
+describe("project, service and no-subject threads (#1020)", () => {
+	it("a follow-up on a project thread carries its subject and code, and a live sibling thread never blocks it", async () => {
+		const { service } = realDispatch();
+		const repo = await prisma.repository.create({
+			data: { sourceKind: "folder", fullName: "shop", url: "/code/shop", defaultBranch: "main" },
+		});
+		const live = await prisma.investigation.create({
+			data: { incidentId: null, repositoryId: repo.id, status: "running", kind: "chat" },
+		});
+		const done = await prisma.investigation.create({
+			data: {
+				incidentId: null,
+				repositoryId: repo.id,
+				status: "completed",
+				kind: "chat",
+				harness: "opencode",
+				acpSessionId: "ses_1",
+				workspace: JSON.stringify({ layout: "unmapped", cwd: "/x", repos: [] }),
+			},
+		});
+
+		expect(await service.resumeInvestigation(done.id, "and the tests?", "queue")).toBe(true);
+
+		const rearmed = await prisma.job.findUniqueOrThrow({ where: { investigationId: done.id } });
+		expect(JSON.parse(rearmed.payload)).toMatchObject({
+			incidentId: null,
+			thread: {
+				subject: "project",
+				repositoryId: repo.id,
+				name: "shop",
+				repos: [{ sourceKind: "folder", url: "/code/shop", serviceName: "shop" }],
+			},
+		});
+		expect((await read(live.id)).status).toBe("running");
+		await prisma.investigation.deleteMany({ where: { repositoryId: repo.id } });
+		await prisma.repository.delete({ where: { id: repo.id } });
+	});
+
+	it("never hands the agent a legacy project name's credentials", async () => {
+		const { service } = realDispatch();
+		const secrets = ["hunter2", "tok3n", "innerpw"];
+		for (const fullName of [
+			"https://bob:hunter2@git.example.com/acme/shop.git",
+			"https://git.example.com/acme/shop.git?access_token=tok3n",
+			"git.example.com/https://eve:innerpw@other.example/x",
+		]) {
+			const repo = await prisma.repository.create({
+				data: { sourceKind: "url", fullName, url: fullName, defaultBranch: "main" },
+			});
+			const run = await service.threadRunOf({ repositoryId: repo.id, serviceId: null });
+			const shown = JSON.stringify({ name: run.name, names: run.repos.map((r) => r.serviceName) });
+			for (const secret of secrets) expect(shown).not.toContain(secret);
+			await prisma.repository.delete({ where: { id: repo.id } });
+		}
+	});
+
+	it("reads a service thread's repositories, and gives a no-subject thread none", async () => {
+		const { service } = realDispatch();
+		const svc = await prisma.service.create({ data: { name: "checkout" } });
+		const repo = await prisma.repository.create({
+			data: { sourceKind: "url", fullName: "acme/checkout", url: "https://github.com/acme/checkout", defaultBranch: "main" },
+		});
+		await prisma.serviceRepository.create({ data: { serviceId: svc.id, repositoryId: repo.id, subPath: "api" } });
+
+		expect(await service.threadRunOf({ repositoryId: null, serviceId: svc.id })).toMatchObject({
+			subject: "service",
+			serviceId: svc.id,
+			name: "checkout",
+			repos: [{ sourceKind: "url", subPath: "api", serviceName: "checkout" }],
+		});
+		expect(await service.threadRunOf({ repositoryId: null, serviceId: null })).toEqual({
+			subject: "none",
+			repositoryId: null,
+			serviceId: null,
+			name: null,
+			repos: [],
+		});
+		// A helper's page rides on a no-subject thread; an unknown value is dropped (#1020).
+		expect(
+			(await service.threadRunOf({ repositoryId: null, serviceId: null, helperPlace: "alerts" })).place,
+		).toBe("alerts");
+		expect(
+			await service.threadRunOf({ repositoryId: null, serviceId: null, helperPlace: "elsewhere" }),
+		).not.toHaveProperty("place");
+		// A project or service deleted since is a no-subject thread now.
+		expect((await service.threadRunOf({ repositoryId: "gone", serviceId: null })).subject).toBe("none");
+		await prisma.service.delete({ where: { id: svc.id } });
+		await prisma.repository.delete({ where: { id: repo.id } });
+	});
+});
+
+describe("DispatchService.abandonUnstarted: an admission that stored no job (#1024)", () => {
+	it("fails a pending run that has no job and frees its checkout lease", async () => {
+		const { service } = realDispatch();
+		const run = await prisma.investigation.create({
+			data: { status: "pending", kind: "chat" },
+		});
+		await prisma.checkoutLease.create({
+			data: { canonicalPath: "/code/abandoned", investigationId: run.id },
+		});
+
+		await service.abandonUnstarted(run.id, "The thread could not be started.");
+
+		expect(await read(run.id)).toMatchObject({
+			status: "failed",
+			error: "The thread could not be started.",
+		});
+		expect(await prisma.checkoutLease.count({ where: { investigationId: run.id } })).toBe(0);
+	});
+
+	it("keeps both when a job was stored, since it runs or is reconciled at boot", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const run = await thread(inc.id, { status: "pending", completedAt: null });
+		await job(run.id, inc.id, {}, "pending");
+		await prisma.checkoutLease.create({
+			data: { canonicalPath: "/code/queued", investigationId: run.id },
+		});
+
+		await service.abandonUnstarted(run.id, "The thread could not be queued.");
+
+		expect((await read(run.id)).status).toBe("pending");
+		expect(await prisma.checkoutLease.count({ where: { investigationId: run.id } })).toBe(1);
+		await prisma.checkoutLease.deleteMany({ where: { investigationId: run.id } });
+	});
+
+	it("leaves a run that already ended as it was", async () => {
+		const { service } = realDispatch();
+		const inc = await incident();
+		const done = await thread(inc.id, { completedAt: new Date(restoreDone.completedAt) });
+
+		await service.abandonUnstarted(done.id, "The thread could not be started.");
+
+		expect((await read(done.id)).status).toBe("completed");
+	});
+});
+
+describe("DispatchService.borrowedCheckout: a checkout that cannot be read right now (#1024)", () => {
+	it("is refused as retryable, not as gone, so a wake tries again", async () => {
+		const { service } = realDispatch();
+		const lease = await import("./checkout-lease.js");
+		const { GitSpawnError } = await import("../../core/harness/git-spawn.js");
+		vi.spyOn(service, "recordedCheckout").mockResolvedValue("/code/shop");
+		vi.spyOn(prisma.repository, "findUnique").mockResolvedValue({ url: "/code/shop" } as never);
+		lease.setCheckoutGit(async () =>
+			Promise.reject(new GitSpawnError("git rev-parse timed out", null, "", true)),
+		);
+		try {
+			const refused = await service
+				.borrowedCheckout("any-id", "repo-id")
+				.catch((e: unknown) => e);
+			expect(refused).toBeInstanceOf(FollowUpRefused);
+			expect(refused).not.toBeInstanceOf(CheckoutGone);
+			// A checkout git says is not a work tree is still gone for good.
+			lease.setCheckoutGit(async () =>
+				Promise.reject(new GitSpawnError("git rev-parse failed (exit 128)", 128, "", false)),
+			);
+			await expect(service.borrowedCheckout("any-id", "repo-id")).rejects.toBeInstanceOf(CheckoutGone);
+		} finally {
+			lease.setCheckoutGit(null);
+			vi.restoreAllMocks();
+		}
+	});
+});
+
+describe("DispatchService agent sessions recordSeen and recordAccepted (#1168)", () => {
+	it("recordSeen is monotonic: seq 10 then seq 7 leaves 10", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const t = await thread(inc.id, { harness: "opencode", acpSessionId: "ses_1" });
+
+		await ports.recordSeen?.(t.id, {
+			harness: "opencode",
+			sessionId: "ses_1",
+			seq: 10,
+			checkpoint: "chk-10",
+		});
+		await ports.recordSeen?.(t.id, {
+			harness: "opencode",
+			sessionId: "ses_1",
+			seq: 7,
+			checkpoint: "chk-7",
+		});
+
+		const row = await read(t.id);
+		const sessions = agentSessionsOf(row.agentSessions);
+		expect(sessions.opencode?.seenSeq).toBe(10);
+		expect(sessions.opencode?.receipts).toBe(2);
+		expect(sessions.opencode?.checkpoint).toBe("chk-7");
+	});
+
+	it("recordSeen for a session id that no longer matches the entry's acpSessionId changes nothing", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const sessions = JSON.stringify({
+			opencode: { acpSessionId: "ses_1", seenSeq: 5, receipts: 1, checkpoint: "chk-5", model: null, effort: null },
+		});
+		const t = await thread(inc.id, { harness: "opencode", acpSessionId: "ses_2", agentSessions: sessions });
+
+		await ports.recordSeen?.(t.id, {
+			harness: "opencode",
+			sessionId: "ses_stale",
+			seq: 20,
+			checkpoint: "chk-stale",
+		});
+
+		const row = await read(t.id);
+		const after = agentSessionsOf(row.agentSessions);
+		expect(after.opencode?.seenSeq).toBe(5);
+		expect(after.opencode?.receipts).toBe(1);
+		expect(after.opencode?.acpSessionId).toBe("ses_1");
+	});
+
+	it("recordAccepted writes model and effort to row and entry only while harness is current; no-op otherwise", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const sessions = JSON.stringify({
+			opencode: { acpSessionId: "ses_1", seenSeq: 5, receipts: 1, checkpoint: "chk", model: null, effort: null },
+			codex: { acpSessionId: "ses_codex", seenSeq: 3, receipts: 1, checkpoint: "chk", model: null, effort: null },
+		});
+		const t = await thread(inc.id, {
+			harness: "opencode",
+			acpSessionId: "ses_1",
+			model: "initial-model",
+			effort: "low",
+			agentSessions: sessions,
+		});
+
+		// Non-current harness codex: no-op
+		await ports.recordAccepted?.(t.id, "codex", { model: "codex-new", effort: "high" });
+		const row1 = await read(t.id);
+		expect(row1.model).toBe("initial-model");
+		expect(row1.effort).toBe("low");
+		expect(agentSessionsOf(row1.agentSessions).codex?.model).toBeNull();
+
+		// Current harness opencode: writes to row and entry
+		await ports.recordAccepted?.(t.id, "opencode", { model: "opencode-new", effort: "high" });
+		const row2 = await read(t.id);
+		expect(row2.model).toBe("opencode-new");
+		expect(row2.effort).toBe("high");
+		expect(agentSessionsOf(row2.agentSessions).opencode?.model).toBe("opencode-new");
+		expect(agentSessionsOf(row2.agentSessions).opencode?.effort).toBe("high");
+	});
+
+	it("two concurrent edits (for example recordSeen and recordAccepted fired together) both land", async () => {
+		const { ports } = realDispatch();
+		const inc = await incident();
+		const sessions = JSON.stringify({
+			opencode: { acpSessionId: "ses_1", seenSeq: 5, receipts: 1, checkpoint: "chk-5", model: null, effort: null },
+		});
+		const t = await thread(inc.id, {
+			harness: "opencode",
+			acpSessionId: "ses_1",
+			agentSessions: sessions,
+		});
+
+		await Promise.all([
+			ports.recordSeen?.(t.id, {
+				harness: "opencode",
+				sessionId: "ses_1",
+				seq: 15,
+				checkpoint: "chk-15",
+			}),
+			ports.recordAccepted?.(t.id, "opencode", {
+				model: "concurrent-model",
+				effort: "medium",
+			}),
+		]);
+
+		const row = await read(t.id);
+		expect(row.model).toBe("concurrent-model");
+		expect(row.effort).toBe("medium");
+		const entry = agentSessionsOf(row.agentSessions).opencode;
+		expect(entry?.seenSeq).toBe(15);
+		expect(entry?.receipts).toBe(2);
+		expect(entry?.checkpoint).toBe("chk-15");
+		expect(entry?.model).toBe("concurrent-model");
+		expect(entry?.effort).toBe("medium");
+	});
+});

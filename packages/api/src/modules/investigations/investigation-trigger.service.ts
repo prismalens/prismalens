@@ -29,6 +29,7 @@ import type {
 	Investigation,
 	Service,
 } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
@@ -211,7 +212,7 @@ export class InvestigationTriggerService {
 				where: {
 					incidentId: incident.id,
 					triggerType: "re_trigger",
-					createdAt: { gte: new Date(Date.now() - REOPEN_RUN_SPACING_MS) },
+					createdAt: { gte: new Date(clock.now() - REOPEN_RUN_SPACING_MS) },
 				},
 				orderBy: { createdAt: "desc" },
 				select: { createdAt: true },

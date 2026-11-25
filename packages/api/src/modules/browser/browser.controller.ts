@@ -8,6 +8,7 @@ import { browserContract } from "@prismalens/contracts";
 import type { Request } from "express";
 import { OperatorResolver } from "../../core/auth/operator.resolver.js";
 import { isOwner, requireOwner } from "../../core/auth/owner.js";
+import * as clock from "../../core/clock.js";
 import { MutationThrottleGuard } from "../../core/throttle/mutation-throttle.guard.js";
 import { BrowserError, BrowserHostService } from "./browser-host.service.js";
 
@@ -130,7 +131,7 @@ export class BrowserController {
 	) {
 		const stop = new AbortController();
 		const both = signal ? AbortSignal.any([signal, stop.signal]) : stop.signal;
-		const timer = setInterval(() => {
+		const timer = clock.setInterval(() => {
 			void this.operator
 				.resolve(request)
 				.catch(() => null)

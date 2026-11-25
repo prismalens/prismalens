@@ -4,6 +4,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { Service, ServiceDependency } from "@prismalens/database";
 import { Prisma } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	IncidentStatus,
@@ -251,7 +252,7 @@ export class ServicesService {
 	async update(id: string, dto: UpdateServiceDto): Promise<Service | null> {
 		try {
 			const updateData: Record<string, unknown> = {
-				updatedAt: new Date(),
+				updatedAt: clock.date(),
 			};
 
 			const allowedFields = [

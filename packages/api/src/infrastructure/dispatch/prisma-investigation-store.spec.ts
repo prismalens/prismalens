@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
 import { createPrismaInvestigationStore } from "./prisma-investigation-store.js";
 import type { RunPorts } from "./run-ports.js";
+import { onFakeTime } from "../../../test/support/fake-time.js";
 
 const INVESTIGATION_ID = "11111111-1111-4111-8111-111111111111";
 const INCIDENT_ID = "22222222-2222-4222-8222-222222222222";
@@ -273,7 +274,7 @@ describe("createPrismaInvestigationStore — batched durable append", () => {
 		expect(appendEvents).toHaveBeenCalledTimes(1);
 
 		// The run still completes: finish resolves and still writes the result.
-		await expect(store.finish(REPORT)).resolves.toBeUndefined();
+		await expect(onFakeTime(store.finish(REPORT))).resolves.toBeUndefined();
 		expect(writeResult).toHaveBeenCalledTimes(1);
 
 		// The drop was logged with a count (per-flush + the terminal total).
@@ -530,7 +531,7 @@ describe("claim initialises liveTurn from each legacy payload form (#673 w59, T1
 
 		await store.append(evt(1));
 		await store.append(evt(2));
-		await store.finish(REPORT);
+		await onFakeTime(store.finish(REPORT));
 
 		expect(ports.recordLostEvents).toHaveBeenCalledTimes(1);
 		expect(ports.recordLostEvents).toHaveBeenCalledWith(INVESTIGATION_ID, 2);

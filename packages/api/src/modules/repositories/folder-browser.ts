@@ -11,6 +11,7 @@ import {
 	FOLDER_READ_MS,
 	type FolderEntry,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { sameAsDisk } from "../../infrastructure/dispatch/folder-lock.js";
 
 class ReadTimeout extends Error {}
@@ -34,7 +35,7 @@ interface Budget {
 
 /** Starts `make` only inside the deadline, then races it against the deadline. */
 function timed<T>(make: () => Promise<T>, b: Budget): Promise<T> {
-	const left = b.deadline - Date.now();
+	const left = b.deadline - clock.now();
 	if (left <= 0) return Promise.reject(new ReadTimeout());
 	const op = make();
 	b.inflight = op;
@@ -42,7 +43,7 @@ function timed<T>(make: () => Promise<T>, b: Budget): Promise<T> {
 	return Promise.race([
 		op,
 		new Promise<never>((_, reject) => {
-			timer = setTimeout(() => reject(new ReadTimeout()), left);
+			timer = clock.setTimeout(() => reject(new ReadTimeout()), left);
 		}),
 	]).finally(() => clearTimeout(timer));
 }
@@ -122,7 +123,7 @@ export async function browseFolders(
 		return { ok: false, path, error: "busy" };
 	outstanding++;
 	const max = opts.max ?? FOLDER_LIST_MAX;
-	const b: Budget = { deadline: Date.now() + (opts.readMs ?? FOLDER_READ_MS) };
+	const b: Budget = { deadline: clock.now() + (opts.readMs ?? FOLDER_READ_MS) };
 	const entries: FolderEntry[] = [];
 	let truncated = false;
 	let git = false;

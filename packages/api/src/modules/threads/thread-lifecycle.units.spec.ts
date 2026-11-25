@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endedLine, endedNote } from "./settled.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
+import { onFakeTime } from "../../../test/support/fake-time.js";
 
 function lifecycle(prisma: Record<string, unknown>, dispatch: Record<string, unknown> = {}, investigations: Record<string, unknown> = {}) {
 	return new ThreadLifecycleService(
@@ -70,7 +71,7 @@ describe("ThreadLifecycleService seams (#1024 surface F)", () => {
 		const investigations = { markStopRequested: vi.fn().mockResolvedValue(undefined) };
 		const svc = lifecycle({ investigation: { findMany } }, dispatch, investigations);
 
-		expect(await svc.stopRunning(["held"])).toBe(1);
+		expect(await onFakeTime(svc.stopRunning(["held"]))).toBe(1);
 
 		expect(findMany).toHaveBeenCalledTimes(3);
 		expect(findMany.mock.calls[1]?.[0]).toMatchObject({ where: { id: { in: ["held"] } } });

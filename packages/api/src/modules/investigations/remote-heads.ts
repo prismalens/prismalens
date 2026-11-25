@@ -9,6 +9,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { PR_WATCH_EVERY_MS } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
 	GIT_LS_REMOTE_TIMEOUT_MS,
@@ -41,7 +42,10 @@ export function setRemoteHead(dir: string, head: RemoteHead): void {
 }
 
 /** The worktree's last remote reading, while fresh. */
-export function remoteHeadOf(dir: string, now = Date.now()): RemoteHead | null {
+export function remoteHeadOf(
+	dir: string,
+	now = clock.now(),
+): RemoteHead | null {
 	const h = heads.get(dir);
 	return h && now - h.at < FRESH_MS ? h : null;
 }
@@ -133,6 +137,6 @@ export async function lsRemoteHead(dir: string): Promise<RemoteHead | null> {
 		sha: sha && SHA.test(sha) ? sha : null,
 		forcePushed: false,
 		source: "ls-remote",
-		at: Date.now(),
+		at: clock.now(),
 	};
 }

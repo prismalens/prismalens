@@ -47,6 +47,7 @@ import type {
 	UpdatePrefs,
 } from "@prismalens/contracts";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
+import * as clock from "../clock.js";
 import { AdmissionService } from "../lifecycle/admission.service.js";
 import { requestRestartExit } from "../lifecycle/restart-exit.js";
 import { PrismaService } from "../prisma/prisma.service.js";
@@ -91,18 +92,18 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 		phase: "idle",
 		version: this.version,
 	};
-	private quietSince = Date.now();
+	private quietSince = clock.now();
 	private timer: NodeJS.Timeout | undefined;
 
 	// Fields rather than constructor parameters: Nest would try to inject them. Tests set them.
 	env: NodeJS.ProcessEnv = process.env;
 	platform: NodeJS.Platform = process.platform;
 	fetchImpl: typeof fetch = fetch;
-	now: () => number = Date.now;
+	now: () => number = clock.now;
 	spawnImpl: typeof spawn = spawn;
 	/** Starts Nest's ordinary shutdown; the lock hook then exits with the restart code. */
 	shutdown: () => void = () => {
-		setTimeout(() => process.emit("SIGTERM", "SIGTERM"), 500).unref();
+		clock.setTimeout(() => process.emit("SIGTERM", "SIGTERM"), 500).unref();
 	};
 	/** The detached handoff; its own file, run by this Node after the API is gone. */
 	handoffScript = fileURLToPath(
@@ -116,7 +117,10 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 	) {}
 
 	onModuleInit(): void {
-		this.timer = setInterval(() => void this.autoInstallTick(), AUTO_CHECK_MS);
+		this.timer = clock.setInterval(
+			() => void this.autoInstallTick(),
+			AUTO_CHECK_MS,
+		);
 		this.timer.unref();
 	}
 
@@ -426,7 +430,7 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 			};
 			child.stdout?.on("data", read);
 			child.stderr?.on("data", read);
-			const timer = setTimeout(() => {
+			const timer = clock.setTimeout(() => {
 				child.kill();
 				resolve("The installer took longer than 10 minutes and was stopped.");
 			}, INSTALL_TIMEOUT_MS);

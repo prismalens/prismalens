@@ -27,6 +27,7 @@ import {
 	usageWindowState,
 } from "@prismalens/contracts";
 import { classifyFailure, parseReset, retryDelayMs } from "@prismalens/engine";
+import * as clock from "../../core/clock.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
@@ -119,7 +120,7 @@ export class SessionLifecycleService implements OnModuleInit {
 	private readonly logger = new Logger(SessionLifecycleService.name);
 	/** Injectable for tests: an agent that qualifies for idle compaction exists in none of today's rows. */
 	facts: (harness: string | null) => AgentSessionFacts | null = registryFacts;
-	now: () => Date = () => new Date();
+	now: () => Date = () => clock.date();
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -591,7 +592,7 @@ export class SessionLifecycleService implements OnModuleInit {
 			let at = now;
 			if (!already) {
 				// Units admitted before a person's release stop counting (OBJ-043).
-				const countedAt = new Date();
+				const countedAt = clock.date();
 				const released = (
 					await this.prisma.investigation.findUnique({
 						where: { id: row.id },

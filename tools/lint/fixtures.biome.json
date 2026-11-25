@@ -1,0 +1,16 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+	"formatter": { "enabled": false },
+	"assist": { "enabled": false },
+	"linter": { "rules": { "preset": "none" } },
+	"plugins": [
+		{
+			"path": "./no-direct-clock.grit",
+			"includes": ["**/fixtures/direct-clock.ts"]
+		},
+		{
+			"path": "./small-spec-no-child-process.grit",
+			"includes": ["**/fixtures/small-spec-child-process.ts"]
+		}
+	]
+}

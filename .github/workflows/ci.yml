@@ -232,7 +232,7 @@ jobs:
         # (FAKETIME_SKIP_CMDS), it disagrees with the api and the scenario hangs. It runs on the real clock.
         run: >-
           LD_PRELOAD="$(dpkg -L libfaketime | grep 'libfaketime.so.1$')"
-          pnpm exec vitest run --exclude test/scenarios/agent-browser.spec.ts
+          pnpm exec vitest run --exclude test/scenarios/agent-browser.int.spec.ts
 
   # Packed-artifact smoke (work-005 R0.d): pack the single published tarball
   # (prismalens — the @prismalens/* closure is bundled into it, issue #193) and

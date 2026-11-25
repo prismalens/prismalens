@@ -16,6 +16,7 @@ import {
 import { ThrottlerGuard } from "@nestjs/throttler";
 import { parseCursor, STREAM_BEAT_MS } from "@prismalens/contracts";
 import type { Response } from "express";
+import * as clock from "../../core/clock.js";
 import { InvestigationsService } from "./investigations.service.js";
 import { BoundedSseWriter } from "./sse-writer.js";
 import { StreamRelayService } from "./stream-relay.service.js";
@@ -95,7 +96,7 @@ export class InvestigationStreamController {
 			() => {
 				// Final marker so the client knows the stream ended cleanly.
 				writer.send(JSON.stringify({ type: "done" }));
-				setTimeout(() => writer.close(), 100);
+				clock.setTimeout(() => writer.close(), 100);
 			},
 			() => {
 				// UNKNOWN topic: this process has no buffer for the id, which is what a
@@ -161,11 +162,11 @@ export class InvestigationStreamController {
 			{
 				send: (name, data, eventId) =>
 					writer.sendNamed(name, JSON.stringify(data), eventId),
-				close: () => setTimeout(() => writer.close(), 50),
+				close: () => clock.setTimeout(() => writer.close(), 50),
 			},
 		);
 		// A frame with no cursor every beat: the client counts a silent stream down (#1101 category 12).
-		const beat = setInterval(() => {
+		const beat = clock.setInterval(() => {
 			if (writer.isClosed) clearInterval(beat);
 			else writer.sendNamed("beat", "{}");
 		}, STREAM_BEAT_MS);

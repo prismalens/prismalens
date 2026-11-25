@@ -8,6 +8,7 @@ import type { EnvironmentVariables } from "@prismalens/config";
 import { httpUrlOrNull } from "@prismalens/contracts";
 import { UNASSIGNED_ALERT_STATUSES } from "@prismalens/contracts/schemas";
 import type { Alert } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	AlertStatus,
@@ -161,7 +162,7 @@ export class AlertsService {
 	async create(dto: CreateAlertDto): Promise<CreatedAlert> {
 		const dedupKey = this.generateDedupKey(dto);
 		const fingerprint = this.generateFingerprint(dto);
-		const now = new Date();
+		const now = clock.date();
 		// A link keeps no userinfo and only http(s), whichever door the alert came through (#848).
 		const sourceUrl = httpUrlOrNull(dto.sourceUrl) ?? undefined;
 
@@ -242,13 +243,13 @@ export class AlertsService {
 				labels: dto.labels ? JSON.stringify(dto.labels) : null,
 				serviceId: dto.serviceId,
 				status: "triggered",
-				triggeredAt: new Date(),
+				triggeredAt: clock.date(),
 				occurrenceCount: 1,
-				lastOccurrence: new Date(),
+				lastOccurrence: clock.date(),
 			},
 		});
 
-		await this.rememberSourceAlert(alert.id, dto.sourceAlertId, new Date());
+		await this.rememberSourceAlert(alert.id, dto.sourceAlertId, clock.date());
 
 		this.logger.log(`Created alert ${alert.id}: ${alert.title}`);
 		return { ...alert, outcome: existing ? "new-episode" : "created" };
@@ -416,7 +417,7 @@ export class AlertsService {
 
 		await this.prisma.alertSourceAlert.update({
 			where: { id: member.id },
-			data: { resolvedAt: new Date() },
+			data: { resolvedAt: clock.date() },
 		});
 
 		const stillFiring = await this.prisma.alertSourceAlert.count({
@@ -544,7 +545,7 @@ export class AlertsService {
 		try {
 			const updateData: Record<string, unknown> = {
 				...dto,
-				updatedAt: new Date(),
+				updatedAt: clock.date(),
 			};
 
 			if (dto.tags) {
@@ -569,14 +570,14 @@ export class AlertsService {
 	async updateStatus(id: string, status: string): Promise<Alert | null> {
 		const updateData: Record<string, unknown> = {
 			status,
-			updatedAt: new Date(),
+			updatedAt: clock.date(),
 		};
 
 		if (status === "acknowledged") {
-			updateData.acknowledgedAt = new Date();
+			updateData.acknowledgedAt = clock.date();
 		}
 		if (status === "resolved") {
-			updateData.resolvedAt = new Date();
+			updateData.resolvedAt = clock.date();
 		}
 
 		try {

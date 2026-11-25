@@ -23,6 +23,7 @@ import {
 	type QueryBudget,
 	QueryBudgetExceededError,
 } from "@prismalens/integrations";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { ChangeEventsService } from "../changes/change-events.service.js";
@@ -269,7 +270,7 @@ export class ImpactService {
 					target.request,
 					{
 						expr: shape.series,
-						time: new Date(),
+						time: clock.date(),
 						lookbackDeltaSeconds: LOOKBACK_SECONDS,
 					},
 					this.budget(signal),
@@ -313,7 +314,7 @@ export class ImpactService {
 		incident: NonNullable<Awaited<ReturnType<ImpactService["incident"]>>>,
 		alert: AlertRow | null,
 	): Promise<ImpactChart> {
-		const end = new Date();
+		const end = clock.date();
 		const start = new Date(end.getTime() - CHART_WINDOW_MS);
 		const stepSeconds = Math.max(60, Math.ceil(CHART_WINDOW_MS / 1000 / 300));
 		const serviceId = alert?.serviceId ?? incident.serviceId;
@@ -585,7 +586,7 @@ export class ImpactService {
 		const episodes = await this.prisma.alert.findMany({
 			where: {
 				dedupKey: alert.dedupKey,
-				triggeredAt: { gte: new Date(Date.now() - WEEK_MS) },
+				triggeredAt: { gte: new Date(clock.now() - WEEK_MS) },
 			},
 			select: { triggeredAt: true, resolvedAt: true },
 			orderBy: { triggeredAt: "asc" },

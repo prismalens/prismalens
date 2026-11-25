@@ -65,7 +65,28 @@ export default defineConfig({
 		globals: true,
 		environment: "node",
 		root: "./",
-		include: ["src/**/*.spec.ts", "test/**/*.spec.ts"],
+		// Two sizes by file name (#1154): `*.spec.ts` is small, `*.int.spec.ts` medium.
+		projects: [
+			{
+				extends: true,
+				test: {
+					name: "small",
+					include: ["src/**/*.spec.ts", "test/**/*.spec.ts"],
+					exclude: ["**/*.int.spec.ts", "**/node_modules/**"],
+					setupFiles: ["./vitest.small.setup.ts"],
+					// Without this a node:timers or node:timers/promises sleep stays real.
+					fakeTimers: { fakeNodeBuiltins: true },
+					testTimeout: 1_000,
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: "medium",
+					include: ["src/**/*.int.spec.ts", "test/**/*.int.spec.ts"],
+				},
+			},
+		],
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "lcov", "html"],

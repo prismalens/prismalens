@@ -13,6 +13,7 @@ import {
 	PrometheusMetricsSegment,
 	type RangeSeries,
 } from "@prismalens/integrations";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import {
@@ -205,7 +206,7 @@ export class AlertPullService implements OnApplicationBootstrap {
 		);
 	}
 
-	async pull(now: Date = new Date()): Promise<PullResult> {
+	async pull(now: Date = clock.date()): Promise<PullResult> {
 		const result: PullResult = {
 			sources: 0,
 			received: 0,
@@ -615,7 +616,7 @@ export class AlertPullService implements OnApplicationBootstrap {
 	 * fired by webhook resolve after a night with the lid closed. Never awaited by
 	 * the webhook; one run at a time, at most one queued behind it.
 	 */
-	onWebhook(now: () => Date = () => new Date()): Promise<void> {
+	onWebhook(now: () => Date = () => clock.date()): Promise<void> {
 		if (offline()) return Promise.resolve();
 		if (this.webhookCheck) {
 			this.webhookCheckQueued = true;

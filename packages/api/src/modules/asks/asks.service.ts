@@ -15,6 +15,7 @@ import {
 	projectAsks,
 } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import {
@@ -60,7 +61,7 @@ function closedOf(row: Row): ClosedAsk | null {
 		ask: PendingAskSchema.parse(JSON.parse(row.ask)),
 		outcome: row.outcome as AskClosedOutcome,
 		...(answer?.success ? { answer: answer.data } : {}),
-		closedAt: (row.closedAt ?? new Date()).toISOString(),
+		closedAt: (row.closedAt ?? clock.date()).toISOString(),
 	};
 }
 
@@ -88,7 +89,7 @@ export class AsksService implements AsksPort {
 			...input,
 			askId,
 			threadId,
-			openedAt: new Date().toISOString(),
+			openedAt: clock.date().toISOString(),
 			// ADR 0004 §6: what a PrismaLens tool would do is the host's to allow.
 			requiresHost: input.requiresHost || input.source.kind === "tool",
 		});
@@ -133,7 +134,7 @@ export class AsksService implements AsksPort {
 			ask,
 			outcome: result.outcome,
 			answer,
-			closedAt: new Date().toISOString(),
+			closedAt: clock.date().toISOString(),
 		};
 		this.notify(closed);
 		return closed;
@@ -256,7 +257,7 @@ export class AsksService implements AsksPort {
 		const ask = PendingAskSchema.parse(JSON.parse(row.ask));
 		// A secret's value is never kept (#1024).
 		const kept = answer && ask.kind !== "secret" ? answer : undefined;
-		const closedAt = new Date();
+		const closedAt = clock.date();
 		const won = await this.commit(
 			row.threadId,
 			{
@@ -293,7 +294,7 @@ export class AsksService implements AsksPort {
 	private async expireIfDue(row: Row): Promise<Row | null> {
 		if (row.status !== "open") return null;
 		const ask = PendingAskSchema.parse(JSON.parse(row.ask));
-		if (!ask.expiresAt || Date.parse(ask.expiresAt) > Date.now()) return null;
+		if (!ask.expiresAt || Date.parse(ask.expiresAt) > clock.now()) return null;
 		await this.settle(row, "expired");
 		return this.prisma.toolAsk.findUnique({ where: { askId: row.askId } });
 	}
@@ -341,7 +342,7 @@ export class AsksService implements AsksPort {
 						path: [],
 						seq: (_max.seq ?? -1) + 1,
 						label: null,
-						ts: new Date().toISOString(),
+						ts: clock.date().toISOString(),
 					} as CanonicalEvent;
 					await tx.investigationEvent.create({
 						data: {
@@ -388,6 +389,6 @@ function agentAsk(
 		requiresHost: false,
 		source: { kind: "agent" },
 		title: "",
-		openedAt: new Date().toISOString(),
+		openedAt: clock.date().toISOString(),
 	};
 }

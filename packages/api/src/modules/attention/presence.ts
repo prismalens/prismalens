@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import * as clock from "../../core/clock.js";
+
 /**
  * Per-device foreground leases (#1101 category 4): a visible tab holds one and
  * renews it; a hidden tab or a revoked device holds none. Kept in memory: after a
@@ -18,7 +20,7 @@ export class PresenceLeases {
 
 	constructor(private readonly ttlMs = PRESENCE_TTL_MS) {}
 
-	hold(deviceId: string, threadId: string | null, now = Date.now()): void {
+	hold(deviceId: string, threadId: string | null, now = clock.now()): void {
 		this.leases.set(deviceId, { threadId, expiresAt: now + this.ttlMs });
 	}
 
@@ -29,7 +31,7 @@ export class PresenceLeases {
 	/** Devices holding a live lease on this thread, revoked ones left out. */
 	viewers(
 		threadId: string,
-		now = Date.now(),
+		now = clock.now(),
 		revoked: ReadonlySet<string> = new Set(),
 	): string[] {
 		const out: string[] = [];
@@ -45,7 +47,7 @@ export class PresenceLeases {
 	}
 
 	/** Every device holding a live lease, on any page. */
-	holders(now = Date.now()): string[] {
+	holders(now = clock.now()): string[] {
 		const out: string[] = [];
 		for (const [deviceId, lease] of this.leases)
 			if (lease.expiresAt > now) out.push(deviceId);

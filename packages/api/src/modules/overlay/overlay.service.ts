@@ -7,6 +7,7 @@ import {
 	type InvestigationReport,
 	type Overlay,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import {
@@ -146,7 +147,7 @@ export class OverlayService {
 		}
 
 		// --- (a) CORRELATE against the deploy/change timeline -------------------
-		const reportTime = investigation.completedAt ?? new Date();
+		const reportTime = investigation.completedAt ?? clock.date();
 		const window = computeWindow(
 			alerts.map((a) => a.triggeredAt),
 			reportTime,
@@ -254,7 +255,7 @@ export class OverlayService {
 			matchedChanges,
 			serviceProximity,
 			similarIncidents: similarIncidents.map(({ score: _score, ...s }) => s),
-			computedAt: new Date().toISOString(),
+			computedAt: clock.date().toISOString(),
 		};
 		await this.prisma.investigation.update({
 			where: { id: investigationId },
@@ -297,7 +298,7 @@ export class OverlayService {
 				update: {
 					similarityScore,
 					matchFactors,
-					calculatedAt: new Date(),
+					calculatedAt: clock.date(),
 				},
 			});
 		}

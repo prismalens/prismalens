@@ -69,6 +69,7 @@ import {
 } from "@prismalens/contracts/schemas";
 import { localDefault, prismalensLaunchPolicy } from "@prismalens/engine";
 import { CredentialsService } from "../../modules/integrations/crypto/credentials.service.js";
+import * as clock from "../clock.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import {
 	ChecksSnapshotSchema,
@@ -852,7 +853,7 @@ export class HarnessService implements OnApplicationBootstrap {
 		const remembered = this.models.checked(id);
 		const fresh =
 			remembered?.outcome === "answers-acp" &&
-			Date.now() - Date.parse(remembered.at) < READY_CHECK_TTL_MS;
+			clock.now() - Date.parse(remembered.at) < READY_CHECK_TTL_MS;
 		const check = fresh ? remembered : await this.checkOnce(id);
 		if (!check)
 			return {

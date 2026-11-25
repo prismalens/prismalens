@@ -4,6 +4,7 @@
 import { EventEmitter } from "node:events";
 import { Inject, Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import type { CanonicalEvent } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import {
 	EVENT_BUS,
 	type EventBus,
@@ -133,7 +134,7 @@ export class StreamRelayService implements OnModuleDestroy {
 		this.emitter.setMaxListeners(0);
 
 		// Periodic sweep for stale active buffers
-		this.sweepInterval = setInterval(
+		this.sweepInterval = clock.setInterval(
 			() => this.sweepStaleBuffers(),
 			SWEEP_INTERVAL_MS,
 		);
@@ -181,7 +182,7 @@ export class StreamRelayService implements OnModuleDestroy {
 		this.buffers.set(investigationId, {
 			events: [],
 			done: false,
-			lastActivityAt: Date.now(),
+			lastActivityAt: clock.now(),
 		});
 		const { unsubscribe } = this.bus.subscribe<RelayMessage>(
 			runEventsTopic(investigationId),
@@ -221,7 +222,7 @@ export class StreamRelayService implements OnModuleDestroy {
 	emit(investigationId: string, event: CanonicalEvent): void {
 		let buffer = this.buffers.get(investigationId);
 		if (!buffer) {
-			buffer = { events: [], done: false, lastActivityAt: Date.now() };
+			buffer = { events: [], done: false, lastActivityAt: clock.now() };
 			this.buffers.set(investigationId, buffer);
 		}
 
@@ -232,7 +233,7 @@ export class StreamRelayService implements OnModuleDestroy {
 		}
 		// Proof of life for the idle sweep: a run that is still emitting is not wedged,
 		// however long it has been going.
-		buffer.lastActivityAt = Date.now();
+		buffer.lastActivityAt = clock.now();
 
 		this.emitter.emit(`event:${investigationId}`, event);
 	}
@@ -255,7 +256,7 @@ export class StreamRelayService implements OnModuleDestroy {
 		// stale sweep), and overwriting the map entry would strand the earlier handle
 		// with nothing left able to clear it.
 		this.clearCleanupTimer(investigationId);
-		const timer = setTimeout(() => {
+		const timer = clock.setTimeout(() => {
 			this.buffers.delete(investigationId);
 			this.cleanupTimers.delete(investigationId);
 		}, BUFFER_TTL_MS);
@@ -334,7 +335,7 @@ export class StreamRelayService implements OnModuleDestroy {
 	 * knows nothing about what the topic is claiming.
 	 */
 	private closeWithoutStream(end: () => void): { unsubscribe: () => void } {
-		const timer = setTimeout(() => {
+		const timer = clock.setTimeout(() => {
 			this.terminalTimers.delete(timer);
 			end();
 		}, TERMINAL_DELAY_MS);
@@ -368,7 +369,7 @@ export class StreamRelayService implements OnModuleDestroy {
 	 * that is still publishing is by definition not wedged, however long it runs.
 	 */
 	private sweepStaleBuffers(): void {
-		const now = Date.now();
+		const now = clock.now();
 		for (const [id, buffer] of this.buffers) {
 			if (buffer.done) continue;
 			if (now - buffer.lastActivityAt <= MAX_IDLE_BUFFER_MS) continue;
