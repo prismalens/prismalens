@@ -5,7 +5,9 @@ import { join, relative } from "node:path";
 import { labelProblems } from "../label.ts";
 import { ledgerDiff } from "../ledger.ts";
 import { git as runGit } from "./git.ts";
+import { PACKAGES_FILE, packageGlobs } from "./guard.ts";
 import type { Config } from "./index.ts";
+import type { Workspace } from "./workspace.ts";
 
 const git = (cwd: string, args: string[]) =>
 	runGit(args, {
@@ -14,9 +16,46 @@ const git = (cwd: string, args: string[]) =>
 		stdio: ["ignore", "pipe", "ignore"],
 	});
 
+export type LabelHost = Pick<
+	Config,
+	"root" | "ratchet" | "protected" | "label" | "budgets" | "ledger"
+>;
+
+const labelList = (labels: string) =>
+	labels
+		.split(",")
+		.map((l) => l.trim())
+		.filter(Boolean);
+
+/** The files `range` renames, old to new, as paths under `prefix` (a host's repo-relative root). */
+function renames(
+	top: string,
+	range: string,
+	prefix: string,
+): Map<string, string> {
+	const parts = git(top, [
+		"diff",
+		"--name-status",
+		"--find-renames",
+		"-l0",
+		"--diff-filter=R",
+		"-z",
+		range,
+	]).split("\0");
+	const under = (p: string) =>
+		prefix ? (p.startsWith(`${prefix}/`) ? p.slice(prefix.length + 1) : "") : p;
+	const out = new Map<string, string>();
+	for (let i = 0; i + 2 < parts.length; i += 3) {
+		const from = under(parts[i + 1] ?? "");
+		const to = under(parts[i + 2] ?? "");
+		if (from && to) out.set(from, to);
+	}
+	return out;
+}
+
 /** Diffs `base...head` and the ratchet at both ends, without checking the head out, then asks whether the PR needs the label. */
 export function labelCheck(
-	cfg: Config,
+	cfg: LabelHost,
 	base: string,
 	head: string,
 	labels: string,
@@ -35,16 +74,13 @@ export function labelCheck(
 		}
 	};
 	const show = (ref: string) => (ratchet ? showAt(ref, ratchet) : "");
-	const labelList = labels
-		.split(",")
-		.map((l) => l.trim())
-		.filter(Boolean);
+	const named = labelList(labels);
 	const label = cfg.label ?? "registry-approved";
 	const ledgerFile = cfg.ledger
 		? relative(top, join(cfg.root, cfg.ledger.file)).split("\\").join("/")
 		: "";
 	const ledger =
-		ledgerFile && !labelList.includes(label)
+		ledgerFile && !named.includes(label)
 			? ledgerDiff(showAt(base, ledgerFile), showAt(head, ledgerFile)).map(
 					(p) =>
 						`${p}. Fix: undo it, or ask the operator to add the "${label}" label.`,
@@ -53,14 +89,25 @@ export function labelCheck(
 	return [
 		...ledger,
 		...labelProblems({
-			changed: git(top, ["diff", "--name-only", `${base}...${head}`])
+			// Without rename detection, a protected path renamed away is listed too.
+			changed: git(top, [
+				"diff",
+				"--name-only",
+				"--no-renames",
+				`${base}...${head}`,
+			])
 				.split("\n")
 				.filter(Boolean),
 			protectedPaths: cfg.protected ?? [],
 			ratchet,
 			baseTsv: show(base),
 			headTsv: show(head),
-			labels: labelList,
+			labels: named,
+			renames: renames(
+				top,
+				`${base}...${head}`,
+				relative(top, cfg.root).split("\\").join("/"),
+			),
 			label,
 			budgets: (cfg.budgets ?? []).map((path) => ({
 				path,
@@ -69,4 +116,44 @@ export function labelCheck(
 			})),
 		}),
 	];
+}
+
+/** The workspace guard's label check: its ratchet and protected paths, and the package list it scans. */
+export function guardLabelCheck(
+	ws: Workspace,
+	base: string,
+	head: string,
+	labels: string,
+): string[] {
+	const guard = ws.guard;
+	if (!guard) return [];
+	const label = guard.label ?? "registry-approved";
+	const out = labelCheck(
+		{
+			root: ws.root,
+			ratchet: guard.ratchet,
+			protected: guard.protected,
+			label,
+		},
+		base,
+		head,
+		labels,
+	);
+	if (!base || labelList(labels).includes(label)) return out;
+	const globs = (ref: string) => {
+		try {
+			return JSON.stringify(
+				packageGlobs(git(ws.root, ["show", `${ref}:./${PACKAGES_FILE}`])),
+			);
+		} catch {
+			return "";
+		}
+	};
+	// The merge base, as the diff's `base...head` reads it: a change on the base branch is not the PR's.
+	const from = git(ws.root, ["merge-base", base, head]).trim();
+	if (globs(from) !== globs(head))
+		out.push(
+			`${PACKAGES_FILE} changes the packages the guard scans. Fix: undo it, or ask the operator to add the "${label}" label.`,
+		);
+	return out;
 }

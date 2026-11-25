@@ -14,6 +14,8 @@ export interface LabelInput {
 	readonly headTsv: string;
 	readonly labels: readonly string[];
 	readonly label: string;
+	/** Files the PR renames, old to new, as the ratchet's rows name them: a row follows its file. */
+	readonly renames?: ReadonlyMap<string, string>;
 	/** JSON budget files whose numbers may only fall without the label, at the base and the head. */
 	readonly budgets?: readonly { path: string; base: string; head: string }[];
 }
@@ -54,7 +56,12 @@ export function labelProblems(i: LabelInput): string[] {
 			)
 		)
 			out.push(`${f} is a registry guard path`);
-	const base = parseTsv(i.baseTsv).facts;
+	const base = new Map<string, number>(
+		Array.from(parseTsv(i.baseTsv).facts, ([k, n]) => {
+			const [file = "", rule] = k.split("\t");
+			return [`${i.renames?.get(file) ?? file}\t${rule}`, n] as const;
+		}),
+	);
 	const head = parseTsv(i.headTsv);
 	// A duplicate record keeps only its last count, which can hide a raise.
 	for (const p of head.problems) out.push(`${i.ratchet}: ${p}`);

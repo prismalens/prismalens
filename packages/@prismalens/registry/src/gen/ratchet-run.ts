@@ -14,6 +14,7 @@ import {
 	parseTsv,
 } from "../ratchet.ts";
 import { g4Facts } from "../ui/quality.ts";
+import type { Forbid } from "./extract.ts";
 import { type Config, generate } from "./index.ts";
 
 /** Rows whose file starts with this are recorded by `scripts/measure`, never re-measured here. */
@@ -123,15 +124,13 @@ export function measure(cfg: Config, report?: Report): Map<string, number> {
 	return facts;
 }
 
-/** Checks today's facts against the TSV, or writes them with `write`. */
-export function ratchet(
-	cfg: Config,
+/** Checks `actual` against the TSV at `file`, or writes it there with `write`. */
+export function holdTsv(
+	file: string,
+	actual: ReadonlyMap<string, number>,
 	write: boolean,
-	report?: Report,
+	forbid: readonly Forbid[] = [],
 ): string[] {
-	if (!cfg.ratchet) return ["registry.config.json names no ratchet file"];
-	const file = join(cfg.root, cfg.ratchet);
-	const actual = measure(cfg, report);
 	const { facts, problems } = parseTsv(
 		existsSync(file) ? readFileSync(file, "utf8") : "",
 	);
@@ -142,6 +141,21 @@ export function ratchet(
 		return [];
 	}
 	const own = new Map([...facts].filter(([k]) => !k.startsWith(EXTERNAL)));
-	const fixes = new Map((cfg.forbid ?? []).map((f) => [f.rule, f.fix]));
+	const fixes = new Map(forbid.map((f) => [f.rule, f.fix]));
 	return [...problems, ...compare(own, actual, fixes)];
+}
+
+/** Checks one host's facts against its TSV, or writes them with `write`. */
+export function ratchet(
+	cfg: Config,
+	write: boolean,
+	report?: Report,
+): string[] {
+	if (!cfg.ratchet) return ["registry.config.json names no ratchet file"];
+	return holdTsv(
+		join(cfg.root, cfg.ratchet),
+		measure(cfg, report),
+		write,
+		cfg.forbid,
+	);
 }

@@ -432,3 +432,32 @@ describe("generate, with a kind only the checks read", () => {
 		expect(types).toContain('export const checkModules = import.meta.glob<Record<string, unknown>>(\n\t[\n\t\t"../**/*.notes.ts",\n\t],\n);');
 	});
 });
+
+describe("a forbid rule that reads a family's ids", () => {
+	const ids = new Map([["agent", ["codex", "gemini", "local"]]]);
+	const forbid = [{ rule: "id-handmade", fix: "f", ids: "agent" }];
+	const count = (src: string) =>
+		readForbidden("src/x.ts", src, forbid, ids)[0]?.count ?? 0;
+
+	it.each([
+		["an array element", 'const a = ["codex"];', 1],
+		["each element of a multi-line list", 'const a = [\n\t"codex", // one\n\t`gemini`,\n] as const;', 2],
+		["a cast element", 'const a = ["codex" as const];', 1],
+		["an enum value", 'enum A { C = "codex" }', 1],
+		["a bare and a quoted object key", 'const a = { codex: 1, "gemini": 2 };', 2],
+		["a shorthand key", "const a = { codex };", 1],
+		["a case label", 'switch (h) { case "codex": break; }', 1],
+		["a comparison, either side", 'if (h === "codex" || "gemini" !== h) {}', 2],
+		["a comment", "// codex and gemini\n", 0],
+		["a call argument", 'run("codex", "gemini");', 0],
+		["a type union", 'type A = "codex" | "gemini";', 0],
+		["a value under another key", 'const a = { harness: "codex" };', 0],
+		["`local` alone as a key", "const a = { local: 1 };", 0],
+		["`local` alone in a list", 'const a = ["local", "remote"];', 0],
+		["`local` compared with a mode", 'if (mode === "local") {}', 0],
+		["`local` beside another member", 'const a = ["codex", "local"];', 2],
+		["`local` compared with an id", 'if (harnessId === "local") {}', 1],
+	])("counts %s", (_what, src, n) => {
+		expect(count(src)).toBe(n);
+	});
+});
