@@ -4,7 +4,7 @@
 import { posix } from "node:path";
 import { labelProblems } from "../label.ts";
 import { ledgerDiff } from "../ledger.ts";
-import { git as runGit } from "./git.ts";
+import { repoPaths, git as runGit } from "./git.ts";
 import { PACKAGES_FILE, packageGlobs } from "./guard.ts";
 import type { Config } from "./index.ts";
 import type { Workspace } from "./workspace.ts";
@@ -29,11 +29,11 @@ const labelList = (labels: string) =>
 
 /** The files `range` (from, to) renames, old to new, as paths under `prefix` (a host's repo-relative root). */
 function renames(
-	top: string,
+	cwd: string,
 	range: readonly [string, string],
 	prefix: string,
 ): Map<string, string> {
-	const parts = git(top, [
+	const parts = git(cwd, [
 		"diff",
 		"--name-status",
 		"--find-renames",
@@ -61,21 +61,19 @@ export function labelCheck(
 	labels: string,
 ): string[] {
 	if (!base) return ["label-check needs --base <sha>"];
-	const top = git(cfg.root, ["rev-parse", "--show-toplevel"]).trim();
-	// Git's own prefix: `top` is a real path, which a linked `cfg.root` is not under.
-	const prefix = git(cfg.root, ["rev-parse", "--show-prefix"]).trim();
+	const { prefix } = repoPaths(cfg.root);
 	// A host may keep no ratchet; reading "" would `git show` the host's own folder.
 	const ratchet = cfg.ratchet ? posix.join(prefix, cfg.ratchet) : "";
 	const showAt = (ref: string, path: string) => {
 		try {
-			return git(top, ["show", `${ref}:${path}`]);
+			return git(cfg.root, ["show", `${ref}:${path}`]);
 		} catch {
 			return "";
 		}
 	};
 	const show = (ref: string) => (ratchet ? showAt(ref, ratchet) : "");
 	// Every read compares against the fork point: what the base branch did since is not the PR's.
-	const from = git(top, ["merge-base", base, head]).trim();
+	const from = git(cfg.root, ["merge-base", base, head]).trim();
 	const named = labelList(labels);
 	const label = cfg.label ?? "registry-approved";
 	const ledgerFile = cfg.ledger ? posix.join(prefix, cfg.ledger.file) : "";
@@ -91,7 +89,7 @@ export function labelCheck(
 		...labelProblems({
 			// Without rename detection, a protected path renamed away is listed too.
 			// `-z`: a quoted non-ASCII path would match no protected prefix.
-			changed: git(top, [
+			changed: git(cfg.root, [
 				"diff",
 				"--name-only",
 				"--no-renames",
@@ -106,7 +104,7 @@ export function labelCheck(
 			baseTsv: show(from),
 			headTsv: show(head),
 			labels: named,
-			renames: renames(top, [from, head], prefix.replace(/\/$/, "")),
+			renames: renames(cfg.root, [from, head], prefix),
 			label,
 			budgets: (cfg.budgets ?? []).map((path) => ({
 				path,
