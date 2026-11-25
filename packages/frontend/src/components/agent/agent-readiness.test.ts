@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { agentReadiness } from "@/components/home/HomeComposer";
 import { agentState } from "@/components/settings/AgentDetail";
 import {
+	composerGate,
 	defaultModel,
 	providerState,
 	unreadyLine,
@@ -73,7 +74,7 @@ describe("an agent that answers ACP but holds no login for its model's provider"
 		expect(agentState(withLogin("na"))).toEqual({ text: "Ready", tone: "ok" });
 	});
 
-	it("gates the composer's chip and the run box on the same login", () => {
+	it("reads the composer's chip and the readiness line from the same login", () => {
 		expect(agentReadiness(withLogin("signed-out"))).toBe("signIn");
 		expect(agentReadiness(withLogin("unchecked"))).toBe("signIn");
 		expect(agentReadiness(withLogin("signed-in"))).toBe("ready");
@@ -84,6 +85,31 @@ describe("an agent that answers ACP but holds no login for its model's provider"
 			"OpenCode is not signed in to Google. Sign in with its own CLI, then retry. Check it in Settings, Agent.",
 		);
 		expect(unreadyReason(withLogin("signed-in"))).toBeNull();
+	});
+
+	it("warns the composer on a signed-out or unchecked login, and blocks on a failed check", () => {
+		expect(composerGate(withLogin("signed-out"))).toEqual({
+			warning:
+				"OpenCode is not signed in to Google. Sign in with its own CLI, then retry. Check it in Settings, Agent.",
+		});
+		expect(composerGate(withLogin("unchecked"))).toEqual({
+			warning: "OpenCode: sign-in not checked. Check it in Settings, Agent.",
+		});
+		expect(composerGate(withLogin("signed-in"))).toEqual({
+			warning: undefined,
+		});
+		expect(composerGate(withLogin("na"))).toEqual({ warning: undefined });
+		const failed = {
+			...base,
+			checked: {
+				...base.checked,
+				outcome: "failed-to-start",
+				detail: "exited 1",
+			},
+		} as HarnessStatus;
+		expect(composerGate(failed)).toEqual({
+			blockedReason: "OpenCode: exited 1. Check it in Settings, Agent.",
+		});
 	});
 
 	it("re-reads the login against a model the picker names instead of the agent's own", () => {
@@ -101,7 +127,7 @@ describe("an agent that answers ACP but holds no login for its model's provider"
 		).toBe("signIn");
 	});
 
-	it("reads a folded model id as the agent's own pick, so a signed-out provider still gates the run", () => {
+	it("reads a folded model id as the agent's own pick, so a signed-out provider is still named", () => {
 		const out = withLogin("signed-out");
 		expect(providerState(out, "default")).toBe("signed-out");
 		expect(unreadyReason(out, "default")).toBe(

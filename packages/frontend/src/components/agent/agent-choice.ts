@@ -307,6 +307,21 @@ export function unreadyLine(
 	return why ? `${why}. Check it in Settings, Agent.` : null;
 }
 
+// A signed-out or unchecked provider login warns and still sends, as the server starts the run:
+// its login list misses config-file keys, AWS and ADC (#1222).
+export function composerGate(
+	h: HarnessStatus,
+	model?: string | null,
+): { blockedReason?: string; warning?: string } {
+	const line = unreadyLine(h, model) ?? undefined;
+	if (!h.installed || h.checked?.outcome !== "answers-acp")
+		return { blockedReason: line };
+	if (providerState(h, model) !== "unchecked") return { warning: line };
+	return {
+		warning: `${h.label}: sign-in not checked. Check it in Settings, Agent.`,
+	};
+}
+
 export function modelState(h: HarnessStatus): "list" | "pending" | "own" {
 	if (h.modelVia === "unsupported")
 		return agentFacts(h.id)?.picksOwnModel ? "own" : "pending";

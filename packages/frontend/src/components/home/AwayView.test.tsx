@@ -117,7 +117,6 @@ vi.mock("@/components/agent/AgentPicker", async (importOriginal) => ({
 		isLoading: false,
 	}),
 	defaultAccessOf: () => ({ level: { level: "supervised" } }),
-	unreadyLine: () => null,
 }));
 vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children: ReactNode }) => children,

@@ -37,7 +37,6 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 		isLoading: false,
 	}),
 	defaultAccessOf: () => ({ level: { level: "supervised" } }),
-	unreadyLine: () => null,
 }));
 vi.mock("@/lib/api/hooks", () => ({
 	useCreateIncident: () => ({ mutateAsync: createIncident }),

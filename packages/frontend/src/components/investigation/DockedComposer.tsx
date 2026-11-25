@@ -14,9 +14,9 @@ import { useQuery } from "@tanstack/react-query";
 import { type MutableRefObject, useEffect, useState } from "react";
 import {
 	defaultAccessOf,
-	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { composerGate } from "@/components/agent/agent-choice";
 import { modeOnSwitch } from "@/components/agent/agent-modes";
 import {
 	type DraftChoice,
@@ -367,7 +367,7 @@ export function DockedComposer({
 		...(agentMode ? { agentMode } : {}),
 	};
 
-	const unready = draft && harness ? unreadyLine(harness) : null;
+	const gate = draft && harness ? composerGate(harness, model) : {};
 	const otherLive =
 		record.liveRun && record.liveRun.id !== inv?.id ? record.liveRun : null;
 	const liveNumber = otherLive ? runNumber(runs, otherLive.id) : null;
@@ -379,8 +379,8 @@ export function DockedComposer({
 				? otherLive?.kind === "chat"
 					? "An Ask is answering; message it or stop it"
 					: `Run ${liveNumber} is working; message it or stop it`
-				: unready
-					? unready
+				: gate.blockedReason
+					? gate.blockedReason
 					: own.harness
 						? harness?.installed
 							? undefined
@@ -477,7 +477,7 @@ export function DockedComposer({
 					? ["Checking the session"]
 					: [];
 	const notice = !finished
-		? undefined
+		? gate.warning
 		: (handoff?.problem ??
 			(preview.isError ? "Not checked; sending still works" : undefined));
 	const above = hint.some(Boolean) ? (

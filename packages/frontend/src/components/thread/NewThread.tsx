@@ -12,9 +12,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useRef, useState } from "react";
 import {
 	defaultAccessOf,
-	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { composerGate } from "@/components/agent/agent-choice";
 import { modeOnSwitch } from "@/components/agent/agent-modes";
 import type { SchedulePrefill } from "@/components/schedules/ScheduleDialog";
 import {
@@ -144,7 +144,11 @@ export function NewThread({
 				: null;
 	const accessLevel =
 		picked.accessLevel ?? defaultAccessOf(harness, choice.axes).level.level;
-	const unready = harness ? unreadyLine(harness, model) : null;
+	// A note starts no run, so nothing about the agent applies to it.
+	const gate =
+		harness && !choice.isLoading && !(incident && note)
+			? composerGate(harness, model)
+			: {};
 
 	const agentMode = picked.agentMode ?? null;
 	const run = {
@@ -292,7 +296,8 @@ export function NewThread({
 				}))
 			}
 			branch={branch}
-			blockedReason={choice.isLoading || (incident && note) ? null : unready}
+			blockedReason={gate.blockedReason}
+			notice={gate.warning}
 			autoFocus={autoFocus}
 			top={
 				seed?.forkOf ? (

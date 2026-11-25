@@ -6,8 +6,7 @@ import { harnessWords } from "./report-view";
 import type { StopSource } from "./stop-causes";
 
 const MAX = 200;
-// biome-ignore lint/complexity/useRegexLiterals: a `u` literal does not type-check under this package's target.
-const SAYS = new RegExp("[\\p{L}\\p{N}]", "u");
+const SAYS = /[\p{L}\p{N}]/u;
 
 /** The first line that says something: not blank, a bare bracket or an `Error:` heading. */
 function firstWords(error: string | null | undefined): string {
