@@ -8,17 +8,15 @@
  */
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { kindStatus } from "@/components/home/AwayView";
 import { statusUrgency } from "@/components/kit/Status";
 import { useThreadListModel } from "@/components/shell/ThreadList";
-import {
-	Toast,
-	ToastClose,
-	ToastDescription,
-	ToastTitle,
-} from "@/components/ui/toast";
 import { client, orpc } from "@/lib/api/orpc-client";
+import {
+	setAttentionOpener,
+	setAttentionToasts,
+} from "@/lib/attention/attention-toasts";
 import { setNeedsCount, useNeedsCount } from "@/lib/attention/needs-count";
 import { decide, notificationText } from "@/lib/attention/notify-rules";
 import { playNeedsYou } from "@/lib/attention/sound";
@@ -106,16 +104,6 @@ function useBadge(n: number) {
 	}, [n]);
 }
 
-interface ShownToast {
-	id: string;
-	title: string;
-	body: string;
-	threadId: string;
-	tone: "default" | "neutral" | "destructive";
-	/** From kit `STATUS_DEFS`: two toasts at most, the most urgent kept. */
-	urgency: number;
-}
-
 export function AttentionRuntime() {
 	const viewing = useRouterState({
 		select: (s) =>
@@ -140,7 +128,6 @@ export function AttentionRuntime() {
 	const events = useUnreadAttention();
 	const navigate = useNavigate();
 	const seen = useRef<Set<string> | null>(null);
-	const [toasts, setToasts] = useState<ShownToast[]>([]);
 
 	const open = useCallback(
 		(threadId: string, eventId: string) => {
@@ -149,6 +136,10 @@ export function AttentionRuntime() {
 		},
 		[navigate],
 	);
+	useEffect(() => {
+		setAttentionOpener(open);
+		return () => setAttentionOpener(null);
+	}, [open]);
 
 	useEffect(() => {
 		const list = events.data?.events;
@@ -170,7 +161,7 @@ export function AttentionRuntime() {
 			});
 			const text = notificationText(e);
 			if (d.toast)
-				setToasts((t) =>
+				setAttentionToasts((t) =>
 					[
 						{
 							id: e.id,
@@ -216,33 +207,6 @@ export function AttentionRuntime() {
 		if (ring) playNeedsYou();
 	}, [events.data, prefs, focused, viewing, open]);
 
-	// The root Toaster's provider holds these, so the page keeps one toast landmark.
-	return (
-		<>
-			{toasts.map((t) => (
-				<Toast
-					key={t.id}
-					variant={t.tone}
-					duration={8000}
-					onOpenChange={(o) => {
-						if (!o) setToasts((all) => all.filter((x) => x.id !== t.id));
-					}}
-					data-testid="attention-toast"
-				>
-					<button
-						type="button"
-						className="flex min-w-0 flex-col items-start text-left focus-visible:outline-none"
-						onClick={() => {
-							setToasts((all) => all.filter((x) => x.id !== t.id));
-							open(t.threadId, t.id);
-						}}
-					>
-						<ToastTitle>{t.title}</ToastTitle>
-						{t.body && <ToastDescription>{t.body}</ToastDescription>}
-					</button>
-					<ToastClose />
-				</Toast>
-			))}
-		</>
-	);
+	// The toast layer draws them (AttentionToasts), so first paint ships no toast code.
+	return null;
 }

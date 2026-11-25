@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { notCopied } from "./clipboard-toast";
-
 /** Copies to the clipboard; a blocked clipboard tries the older copy, then offers a file. */
 export async function copyText(text: string, file?: string): Promise<boolean> {
 	return copyWith(
@@ -86,6 +84,8 @@ async function copyWith(
 			() => null,
 		);
 		if (got !== null && legacyCopy(got)) return true;
+		// The toast's code loads with the first failed copy, not with every page that copies.
+		const { notCopied } = await import("./clipboard-toast");
 		notCopied(got, got === null ? null : () => saveFile(got, file));
 		return false;
 	}
