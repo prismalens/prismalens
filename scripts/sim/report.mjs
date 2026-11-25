@@ -79,7 +79,7 @@ function readStamps(/** @type {string} */ dir) {
 
 /**
  * `pnpm sim up` writes each run's stamps to `stamps/<run>/`: a stamps root means the run
- * that stamped last, whatever its id (`PRISMALENS_RUN_ID` may name it).
+ * whose stamp was written last, whatever its id (`PRISMALENS_RUN_ID` may name it).
  */
 export function runDir(/** @type {string} */ dir) {
 	if (!existsSync(dir) || readStamps(dir).length) return dir;
@@ -87,7 +87,15 @@ export function runDir(/** @type {string} */ dir) {
 		.filter((d) => d.isDirectory())
 		.map((d) => join(dir, d.name))
 		.filter((run) => readStamps(run).length)
-		.map((run) => ({ run, at: statSync(run).mtimeMs }))
+		// A rewritten stamp leaves its directory's time alone: the newest stamp file dates a run.
+		.map((run) => ({
+			run,
+			at: Math.max(
+				...readdirSync(run)
+					.filter((f) => f.includes("__") && f.endsWith(".json"))
+					.map((f) => statSync(join(run, f)).mtimeMs),
+			),
+		}))
 		.sort((a, b) => b.at - a.at)[0];
 	return newest?.run ?? dir;
 }

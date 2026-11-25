@@ -14,7 +14,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { runDir, summarize } from "./report.mjs";
 
-/** A stamps root as `pnpm sim up` leaves it: one directory per run, each stamped after the last. */
+/** A stamps root as `pnpm sim up` leaves it: one directory per run, each stamped a minute after the last. */
 function stampsRoot(/** @type {Record<string, number>} */ byRun) {
 	const root = mkdtempSync(join(tmpdir(), "sim-report-"));
 	let at = Date.parse("2026-11-25T00:00:00Z") / 1000;
@@ -36,7 +36,7 @@ function stampsRoot(/** @type {Record<string, number>} */ byRun) {
 			}),
 		);
 		at += 60;
-		utimesSync(join(root, run), at, at);
+		utimesSync(join(root, run, "home__net.slow-link.json"), at, at);
 	}
 	return root;
 }
@@ -128,4 +128,35 @@ test("a stamps root takes the conditions from the sheet sim up writes beside it,
 			["mainThread.longestTask", "untested"],
 		],
 	);
+});
+
+test("a stamp rewritten in an older custom run makes that run the newest, though its directory time stays old", (t) => {
+	const root = stampsRoot({
+		"benchmark-42": 1230,
+		"sim-2026-11-25T14-13-27-405Z": 14,
+	});
+	t.after(() => rmSync(root, { recursive: true, force: true }));
+	const dir = join(root, "benchmark-42");
+	const stamp = join(dir, "home__net.slow-link.json");
+	writeFileSync(
+		stamp,
+		JSON.stringify({
+			version: 1,
+			condition: "net.slow-link",
+			walk: "home",
+			sha: "abc1234",
+			run: "benchmark-42",
+			at: "2026-11-25T01:00:00Z",
+			observed: {},
+			measures: [
+				{ metric: "census.liveRequestsPerMin", value: 22, page: "home" },
+			],
+		}),
+	);
+	const later = Date.parse("2026-11-26T00:00:00Z") / 1000;
+	const earlier = Date.parse("2026-11-24T00:00:00Z") / 1000;
+	utimesSync(stamp, later, later);
+	utimesSync(dir, earlier, earlier);
+	assert.equal(runDir(root), dir);
+	assert.equal(homeRequests(root)?.value, 22);
 });
