@@ -479,6 +479,8 @@ export default defineChecks([
 				}>(page, "/threads", {
 					subject: { kind: "none" },
 					text: "Why is the pool exhausted? fake-session:limit-with-child-reports",
+					// The fake sessions speak as Claude Code; the sim's default agent may be another.
+					harness: "claude-code",
 				});
 				const inbound = async () =>
 					(await eventsOf(page, id)).filter(
