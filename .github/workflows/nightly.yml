@@ -38,7 +38,7 @@ concurrency:
 
 env:
   # The live jobs' model: OpenCode's own free one. Their agent versions are the pins in
-  # scripts/agent-pins.json, which `agent-release-watch.yml` moves (#639, #712, #914).
+  # each agent's pin.json, which `agent-release-watch.yml` moves (#639, #712, #914).
   FREE_MODEL: opencode/deepseek-v4.1-flash-free
 
 jobs:

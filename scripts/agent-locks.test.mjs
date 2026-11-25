@@ -26,6 +26,7 @@ import {
 	readPins,
 	resolvedAsOf,
 } from "./agent-locks.mjs";
+import { agentPins, pinFile } from "./agent-pins.mjs";
 
 const REPO = join(import.meta.dirname, "..");
 const SCRIPT = join(import.meta.dirname, "agent-locks.mjs");
@@ -34,18 +35,17 @@ const SCRIPT = join(import.meta.dirname, "agent-locks.mjs");
 function fixtureRoot() {
 	const root = mkdtempSync(join(tmpdir(), "pl-locks-fixture-"));
 	mkdirSync(join(root, "scripts"), { recursive: true });
-	cpSync(
-		join(REPO, "scripts/agent-pins.json"),
-		join(root, "scripts/agent-pins.json"),
-	);
+	for (const { agent } of agentPins())
+		cpSync(join(REPO, pinFile(agent)), join(root, pinFile(agent)));
 	cpSync(LOCKS, join(root, "scripts/agent-locks"), { recursive: true });
 	return root;
 }
 
 const movePin = (root, pin, version) => {
-	const file = join(root, "scripts/agent-pins.json");
+	const { agent } = agentPins(root).find((p) => p.cli.package === pin);
+	const file = join(root, pinFile(agent));
 	const json = JSON.parse(readFileSync(file, "utf8"));
-	json.pins[pin] = version;
+	json.cli.version = version;
 	writeFileSync(file, JSON.stringify(json));
 };
 
@@ -54,7 +54,7 @@ const checkCli = (root) =>
 		encoding: "utf8",
 	});
 
-test("every pin in agent-pins.json has a lock at its version", () => {
+test("every agent pin.json has a lock at its version", () => {
 	assert.deepEqual(checkLocks(readPins()), []);
 });
 
@@ -124,7 +124,7 @@ test("a pin with no lock folder, and a lock folder with no pin, are both stale",
 		assert.match(result.stderr, /^agent-locks\/gemini-cli: no lock folder$/m);
 		assert.match(
 			result.stderr,
-			/^agent-locks\/retired-agent: has no pin in agent-pins\.json$/m,
+			/^agent-locks\/retired-agent: has no agent pin\.json$/m,
 		);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
@@ -132,21 +132,21 @@ test("a pin with no lock folder, and a lock folder with no pin, are both stale",
 });
 
 test("a lock folder missing its files names each one", () => {
-	assert.deepEqual(lockProblems("opencode-ai", "1.19.6", {}), [
+	assert.deepEqual(lockProblems("opencode-ai", "1.0.0", {}), [
 		"package.json is missing",
 		"package-lock.json is missing",
 	]);
-	assert.deepEqual(lockProblems("deepagents-code", "0.2.1", {}), [
+	assert.deepEqual(lockProblems("deepagents-code", "0.1.0", {}), [
 		"requirements.lock is missing",
 	]);
 });
 
 test("a Python lock matches on the whole pinned name, not a package that ends with it", () => {
 	assert.deepEqual(
-		lockProblems("deepagents-code", "0.2.1", {
-			"requirements.lock": "not-deepagents-code==0.2.1 \\\n",
+		lockProblems("deepagents-code", "0.1.0", {
+			"requirements.lock": "not-deepagents-code==0.1.0 \\\n",
 		}),
-		["requirements.lock has deepagents-code==nothing, the pin is 0.2.1"],
+		["requirements.lock has deepagents-code==nothing, the pin is 0.1.0"],
 	);
 });
 
@@ -183,24 +183,23 @@ test("installing a pin whose lock is stale throws instead of installing the old 
 	}
 });
 
-test("the Python extras match the uv channel the install hint names", () => {
-	const harness = readFileSync(
-		join(
-			REPO,
-			"packages/@prismalens/providers/src/agent/deepagents/deepagents.provider.ts",
-		),
-		"utf8",
+test("the Python extras the lock installs are the uv channel the install hint names", async () => {
+	const { channelOf } = await import(
+		"../packages/@prismalens/providers/src/agent/family.ts"
 	);
-	const [pin, extras] = Object.entries(PYTHON_PINS)[0];
-	assert.ok(
-		harness.includes(
-			`uv: [${[pin, ...extras].map((p) => `"${p}"`).join(", ")}]`,
-		),
+	const pypi = agentPins().filter((p) => p.cli.channel === "pypi");
+	assert.deepEqual(
+		pypi.map((p) => channelOf(p)),
+		pypi.map((p) => ({ uv: [p.cli.package, ...PYTHON_PINS[p.cli.package]] })),
+	);
+	assert.deepEqual(
+		pypi.map((p) => p.agent),
+		["deepagents"],
 	);
 });
 
 test("every pinned install in a workflow comes from its lock, never from the registry", () => {
-	for (const file of ["proofs.yml", "nightly.yml"]) {
+	for (const file of ["proofs.yml", "nightly.yml", "agent-bump.yml"]) {
 		const text = readFileSync(join(REPO, ".github/workflows", file), "utf8");
 		assert.match(text, /node scripts\/agent-locks\.mjs install /);
 		assert.doesNotMatch(text, /--before|--exclude-newer|uv tool install/);

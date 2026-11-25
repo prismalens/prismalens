@@ -2,12 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { AgentDescriptor } from "../agents.js";
-import {
-	customBaseUrl,
-	PROBED_AT,
-	probed,
-	SUBAGENTS_ON_STOP_DEFAULT,
-} from "../row.js";
+import { customBaseUrl, probed, SUBAGENTS_ON_STOP_DEFAULT } from "../row.js";
 
 export const claudeCode = {
 	id: "claude-code",
@@ -37,7 +32,7 @@ export const claudeCode = {
 		},
 	}),
 	facts: {
-		...probed(PROBED_AT["claude-code"], {
+		...probed({
 			loadSession: true,
 			images: true,
 			embeddedContext: true,

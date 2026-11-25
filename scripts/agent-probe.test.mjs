@@ -56,7 +56,7 @@ test("rows run at the channel's latest and pin, the next major's latest, and the
 	const pins = {
 		"opencode-ai": "1.19.5",
 		"@anthropic-ai/claude-code": "2.1.312",
-		"deepagents-code": "0.2.1",
+		"deepagents-code": "0.1.9",
 	};
 	const npm = (p) => ({ npm: p });
 	assert.deepEqual(plan(REGISTRY, pins, latest), [
@@ -102,7 +102,7 @@ test("rows run at the channel's latest and pin, the next major's latest, and the
 		{
 			id: "deepagents",
 			channel: REGISTRY.deepagents.channel,
-			version: "0.2.1",
+			version: "0.1.9",
 			label: "pin",
 		},
 	]);
@@ -150,9 +150,31 @@ test("sign-in-needed counts as started only on a row the probe hands no key", ()
 	assert.match(flag.text, /failed-to-start: ERROR Unrecognized flag/);
 });
 
+test("an agent that answers another protocol major is held, with the protocol line (class U)", () => {
+	const answer = (protocolVersion) =>
+		verdict(
+			{
+				outcome: "answers-acp",
+				protocolVersion,
+				agentInfo: { name: "fake", version: "9.9.9" },
+				modes: null,
+				detail: null,
+			},
+			{ keyless: false, protocol: 1 },
+		);
+	assert.deepEqual(answer(2), {
+		ok: false,
+		text: "answers ACP (protocol 2, fake 9.9.9; 0 modes); agent speaks protocol 2; client speaks 1",
+	});
+	assert.deepEqual(answer(1), {
+		ok: true,
+		text: "answers ACP (protocol 1, fake 9.9.9; 0 modes)",
+	});
+});
+
 test("a probed fact the initialize answer contradicts turns an answering agent red, and says which", () => {
 	const answered = {
-		agentInfo: { name: "gemini", version: "0.65.0" },
+		agentInfo: { name: "gemini", version: "0.60.0" },
 		protocolVersion: 1,
 		modes: null,
 		detail: null,
@@ -161,7 +183,7 @@ test("a probed fact the initialize answer contradicts turns an answering agent r
 	};
 	assert.deepEqual(verdict(answered, { keyless: false, mismatches: [] }), {
 		ok: true,
-		text: "answers ACP (protocol 1, gemini 0.65.0; 0 modes); facts hold",
+		text: "answers ACP (protocol 1, gemini 0.60.0; 0 modes); facts hold",
 	});
 	assert.deepEqual(
 		verdict(answered, {
@@ -170,7 +192,7 @@ test("a probed fact the initialize answer contradicts turns an answering agent r
 		}),
 		{
 			ok: false,
-			text: "answers ACP (protocol 1, gemini 0.65.0; 0 modes); facts differ: images: registry true, agent false",
+			text: "answers ACP (protocol 1, gemini 0.60.0; 0 modes); facts differ: images: registry true, agent false",
 		},
 	);
 });
@@ -213,7 +235,7 @@ test("native process arguments keep requirement operators literal on Windows", (
 
 test("a probe at the pinned Deep Agents version installs under the ACP cap its channel leaves off, whatever its label (#1204)", () => {
 	const channel = { uv: ["deepagents-code", "extra-pkg"] };
-	const pins = { "deepagents-code": "0.2.1" };
+	const pins = { "deepagents-code": "0.1.9" };
 	const args = (version, label) =>
 		uvInstallArgs({ channel, version, label }, "py", pins);
 	const capped = [
@@ -222,12 +244,12 @@ test("a probe at the pinned Deep Agents version installs under the ACP cap its c
 		"--quiet",
 		"--python",
 		"py",
-		"deepagents-code==0.2.1",
+		"deepagents-code==0.1.9",
 		"extra-pkg",
 		"agent-client-protocol<1",
 	];
-	assert.deepEqual(args("0.2.1", "pin"), capped);
-	assert.deepEqual(args("0.2.1", "latest, pin"), capped);
+	assert.deepEqual(args("0.1.9", "pin"), capped);
+	assert.deepEqual(args("0.1.9", "latest, pin"), capped);
 	assert.deepEqual(args("0.2.2", "latest"), [
 		"pip",
 		"install",

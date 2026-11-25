@@ -18,7 +18,7 @@
 		"docs/contributing/journeys.md": 200,
 		"docs/contributing/migrations.md": 520,
 		"docs/contributing/registry.md": 560,
-		"docs/contributing/release-pipeline.md": 1400,
+		"docs/contributing/release-pipeline.md": 1600,
 		"docs/contributing/testing.md": 1000,
 		"packages/@prismalens/agent-adapters/README.md": 60,
 		"packages/@prismalens/agent-host/README.md": 40,

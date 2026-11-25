@@ -41,6 +41,8 @@ const REQUEST_KEYS = new Set([
  * 80 characters is twice the longest marker in use. A response string is our own text.
  */
 const MATCH_STRING_MAX = 80;
+/** aimock's matcher on a few words of our own brief, held to MATCH_STRING_MAX like any match string. */
+const MATCHER_KEYS = new Set(["systemMessage"]);
 const STRING_MAX = 400;
 
 function problemsIn(
@@ -59,7 +61,9 @@ function problemsIn(
 		return value.flatMap((v, i) => problemsIn(v, [...path, String(i)], inMatch));
 	if (value && typeof value === "object")
 		return Object.entries(value).flatMap(([k, v]) => [
-			...(REQUEST_KEYS.has(k) ? [`${[...path, k].join(".")} is a request key`] : []),
+			...(REQUEST_KEYS.has(k) && !(path.at(-1) === "match" && MATCHER_KEYS.has(k))
+				? [`${[...path, k].join(".")} is a request key`]
+				: []),
 			...problemsIn(v, [...path, k], inMatch || k === "match"),
 		]);
 	return [];
@@ -79,6 +83,19 @@ describe("committed scenario fixtures hold only our text (#914)", () => {
 			expect(problemsIn(json, [], false)).toEqual([]);
 		},
 	);
+
+	it("lets a match name a few words of our brief, never a copied system prompt", () => {
+		const fixture = {
+			fixtures: [
+				{ match: { systemMessage: "LIVE investigation" }, response: { systemMessage: "x" } },
+				{ match: { systemMessage: "x".repeat(81) } },
+			],
+		};
+		expect(problemsIn(fixture, [], false)).toEqual([
+			"fixtures.0.response.systemMessage is a request key",
+			"fixtures.1.match.systemMessage is 81 characters (max 80)",
+		]);
+	});
 
 	it("fails on a fixture that copies a request", () => {
 		const copied = {
@@ -126,6 +143,19 @@ describe("the behaviour matrix is well formed (#914)", () => {
 		},
 	);
 
+	// The engine refuses a report from a turn in which no tool ran.
+	it.each(
+		rows.filter((r) => r.expect === "report").map((r) => [r.row, r]),
+	)("%s calls a tool before it answers with a report", (_, row) => {
+		const answers = row.fixtures.map((f) => f.response as Record<string, unknown>);
+		const report = answers.findIndex((a) => a.content === "$report");
+		const tool = answers.findIndex((a) => Array.isArray(a.toolCalls) && a.toolCalls.length > 0);
+		expect({ tool: tool > -1, first: tool < report }).toEqual({
+			tool: true,
+			first: true,
+		});
+	});
+
 	it("expects `cancelled` of the cancel row, and a known orphan only of codex and deepagents (#1153)", () => {
 		const cancel = rows.find((r) => r.row === "cancel");
 		expect(cancel?.expect).toBe("cancelled");
@@ -143,6 +173,7 @@ describe("the behaviour matrix is well formed (#914)", () => {
 		expect(rows.map((r) => r.row).sort()).toEqual(
 			[
 				"report",
+				"brief-placement",
 				"tool-call",
 				"permission-allowed",
 				"permission-declined",

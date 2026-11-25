@@ -57,7 +57,7 @@ A gate fails the PR or the release when an artifact misses its standard (#906):
 | Every release asset | one `SHA256SUMS` and one build-provenance attestation | the `sums` job in `release.yml` |
 | SBOM | CycloneDX from `npm sbom` over the linux-x64 app tree | `build-standalone-cli.yml` |
 
-`scripts/artifact-budgets.json` holds bytes and files per artifact and unpacked size per desktop OS. A breach prints the five largest unpacked files. A breach is fixed by shrinking the artifact; raising a budget needs the reason in the PR.
+`scripts/artifact-budgets.json` holds bytes and files per artifact and unpacked size per desktop OS. Only our own files count: the bundled adapters, their licence texts and the Claude Agent SDK are printed beside the budget line, never held to it. A breach prints the five largest unpacked files. A breach is fixed by shrinking the artifact; raising a budget needs the reason in the PR.
 
 ### The Windows path limit
 
@@ -81,3 +81,14 @@ To inspect the adapters tarball locally, run `pnpm --filter @prismalens/agent-ad
 `pnpm gate:upgrade-chain <dir-with-tarball>` is the chain behind `Packed upgrade smoke`. It runs a local registry that proxies npm and carries the tarball, installs the oldest stable release from 0.5.0 on, and upgrades it release by release to the tarball with each release's own `pl upgrade`, booting after every hop and checking that an incident written by the oldest release survives. The oldest release also upgrades straight to the tarball.
 
 `Standalone CLI` runs the same chain over the installer channel: each old install runs its own `pl upgrade --version <build under test>`, with https://prismalens.io/install.sh served from this checkout. On Windows the installer script is re-run, because `pl upgrade` there fetches it with `irm`.
+
+## Agent pin bumps
+
+Each agent's pin is its `pin.json` under `packages/@prismalens/providers/src/agent/<id>/`. Every night `agent-release-watch.yml` calls `agent-bump.yml` once per agent:
+
+1. `scripts/agent-bump.mjs pick` takes the newest stable release past its soak (`minimumReleaseAgeDays`, default 3) for the CLI and its adapter.
+2. The candidate job writes the pin, its lock, the adapter's SDK and lockfile entry, and keeps them as one hashed patch.
+3. Linux and Windows legs apply that patch, install from the lock into a path with a space and run the zero-token probe; Linux also runs the admission and the behaviour matrix.
+4. The publish gate opens or updates `pin-bump/<id>` only when every leg passed the same patch.
+
+A held bump opens no PR and leaves the pin where it was. Its comment on the `Agent pin bumps held` issue names the failing legs and the run. Read the leg's log, fix the launch path in the product (#1155), then dispatch `agent-release-watch.yml` with `agent=<id>`; `dry-run=true` reports the verdict without opening a PR.

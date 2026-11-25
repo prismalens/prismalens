@@ -4,7 +4,7 @@
 
 /**
  * Pinned agents install from a committed lock, the same bytes on every runner (#1085, #1154).
- * Each pin in `agent-pins.json` has a folder under `scripts/agent-locks/`: an npm pin a
+ * Each agent's `pin.json` (`agent-pins.mjs`) has a folder under `scripts/agent-locks/`: an npm pin a
  * `package.json` and `package-lock.json`, a Python pin a `requirements.in` and a hashed
  * `requirements.lock`. Latest legs are not locked; they mirror what users install today.
  *
@@ -31,27 +31,27 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import {
+	DEFAULT_RELEASE_AGE_DAYS,
+	pythonConstraints,
+	pythonPins,
+	readPins,
+} from "./agent-pins.mjs";
 
 const WINDOWS = process.platform === "win32";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const LOCKS = join(ROOT, "scripts/agent-locks");
 const PYTHON = "3.14";
 /** Days a release soaks before its pin moves; an npm lock resolves its dependencies as of then. */
-export const PIN_SOAK_DAYS = 3;
+export const PIN_SOAK_DAYS = DEFAULT_RELEASE_AGE_DAYS;
 
-/** Python pins and the packages installed beside the CLI, as the deepagents descriptor names its uv channel. */
-export const PYTHON_PINS = { "deepagents-code": ["deepagents-acp"] };
+/** Python pins and the packages installed beside the CLI, from each pypi agent's pin.json. */
+export const PYTHON_PINS = pythonPins();
 
-/**
- * What the pin needs that the channel does not cap. A Python lock resolves the rest as of its regen:
- * 0.2.1 as of its soak date fails the killed-mid-turn check (R11), and with today's passes (#1204).
- */
-export const PYTHON_PIN_CONSTRAINTS = {
-	"deepagents-code": ["agent-client-protocol<1"],
-};
+/** What a Python pin needs that its channel does not cap; each pin.json says why. */
+export const PYTHON_PIN_CONSTRAINTS = pythonConstraints();
 
-export const readPins = (root = ROOT) =>
-	JSON.parse(readFileSync(join(root, "scripts/agent-pins.json"), "utf8")).pins;
+export { readPins };
 
 /** `@anthropic-ai/claude-code` is `claude-code`. */
 export const lockName = (pin) => pin.replace(/^@[^/]+\//, "");
@@ -158,7 +158,7 @@ export function checkLocks(pins, locksDir = LOCKS) {
 			if (entry.isDirectory() && !known.has(entry.name))
 				stale.push({
 					name: entry.name,
-					problem: "has no pin in agent-pins.json",
+					problem: "has no agent pin.json",
 				});
 	return stale;
 }
@@ -286,7 +286,7 @@ async function main() {
 		const { positionals } = parseArgs({ args: rest, allowPositionals: true });
 		const which = positionals.length ? positionals : Object.keys(pins);
 		for (const pin of which) {
-			if (!pins[pin]) throw new Error(`no pin ${pin} in agent-pins.json`);
+			if (!pins[pin]) throw new Error(`no pin ${pin} in any agent pin.json`);
 			console.error(`regen ${pin}@${pins[pin]}`);
 			await regenOne(pin, pins[pin], LOCKS);
 		}

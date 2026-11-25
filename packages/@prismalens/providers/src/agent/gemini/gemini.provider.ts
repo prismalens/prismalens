@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineAgent, modeNamed } from "../family.ts";
+import { channelOf, defineAgent, modeNamed, testedOf } from "../family.ts";
+import pin from "./pin.json" with { type: "json" };
 
 export const gemini = defineAgent({
 	id: "agent.gemini",
@@ -52,8 +53,9 @@ export const gemini = defineAgent({
 		settingsFile: "~/.gemini/settings.json",
 		ownSettingsNote: () =>
 			"Gemini CLI's own folder trust and settings apply, as in your terminal.",
+		channel: channelOf(pin),
+		...testedOf(pin),
 		install: "npm i -g @google/gemini-cli",
-		channel: { npm: "@google/gemini-cli" },
 		lines: {
 			supervised: (c) =>
 				`Gemini CLI runs in ${modeNamed(c, "default", "Default")}.`,

@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { AgentDescriptor } from "../agents.js";
-import { PROBED_AT, probed } from "../row.js";
+import { probed } from "../row.js";
 
 export const codex = {
 	id: "codex",
@@ -47,7 +47,7 @@ export const codex = {
 		concurrency: { jsonEnv: "CODEX_CONFIG", path: ["agents", "max_threads"] },
 	},
 	facts: {
-		...probed(PROBED_AT.codex, {
+		...probed({
 			loadSession: true,
 			images: true,
 			embeddedContext: true,

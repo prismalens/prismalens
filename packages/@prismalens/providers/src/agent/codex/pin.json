@@ -1,0 +1,18 @@
+{
+	"cli": {
+		"package": "@openai/codex",
+		"version": "0.171.0",
+		"channel": "npm",
+		"bin": "codex"
+	},
+	"adapter": {
+		"package": "@agentclientprotocol/codex-acp",
+		"version": "2.8.0"
+	},
+	"tested": {
+		"version": "2.8.0",
+		"date": "2026-11-23",
+		"companion": "0.171.0"
+	},
+	"tier": 1
+}

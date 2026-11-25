@@ -12,7 +12,6 @@ import {
 	AGENT_ROWS,
 	factMismatches,
 	GATEWAY_RUN_FILE,
-	PROBED_AT,
 	isSafeGatewayUrl,
 	levelOfAgentMode,
 	MODE_NAMES,
@@ -144,7 +143,6 @@ describe("registry facts", () => {
 		expect(AGENT_REGISTRY["claude-code"].facts?.systemPromptVia).toMatchObject({
 			value: "claude-meta",
 			via: "source",
-			verifiedAt: PROBED_AT["claude-code"],
 		});
 		for (const id of AGENT_IDS.filter((a) => a !== "claude-code"))
 			expect(AGENT_REGISTRY[id].facts?.systemPromptVia, id).toBeUndefined();
@@ -216,14 +214,16 @@ describe("registry facts", () => {
 });
 
 describe("agent facts (#1101)", () => {
-	it("give every probed row its four probed facts on the row's PROBED_AT versions", () => {
+	it("give every probed row its four probed facts, with no version stamp: the probe asserts them live", () => {
 		const rows = AGENT_IDS.filter((id) => AGENT_REGISTRY[id].facts);
 		// deepagents gained its facts in 395d70363.
 		expect(rows).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents"]);
-		for (const id of rows) {
-			const at = PROBED_AT[id as keyof typeof PROBED_AT];
-			expect(staleFacts(AGENT_REGISTRY[id].facts, at, "probe"), id).toEqual([]);
-		}
+		const seen = rows.map((id) => {
+			const f = AGENT_REGISTRY[id].facts;
+			const probed = [f?.loadSession, f?.images, f?.embeddedContext, f?.directories];
+			return [id, probed.map((x) => [x?.via, x?.verifiedAt])];
+		});
+		expect(seen).toEqual(rows.map((id) => [id, [0, 1, 2, 3].map(() => ["probe", undefined])]));
 	});
 
 	it("read probed facts from initialize as the engine does, and name each one an answer contradicts", () => {
@@ -251,16 +251,26 @@ describe("agent facts (#1101)", () => {
 		expect(factMismatches(AGENT_REGISTRY.local.facts, init)).toEqual([]);
 	});
 
-	it("name each fact checked on other versions, optionally only one kind", () => {
-		const facts = AGENT_REGISTRY["claude-code"].facts;
-		const { cli, adapter } = PROBED_AT["claude-code"];
-		const at = { cli: "9.9.9", adapter };
-		expect(staleFacts(facts, at, "source")).toEqual([
-			`systemPromptVia (source, checked on cli ${cli}, adapter ${adapter})`,
-			`subagentsOnStop (source, checked on cli ${cli}, adapter ${adapter})`,
+	it("name each source-read fact read on other versions, and never a probed one", () => {
+		const read = { cli: "1.0.0", adapter: "0.1.0" };
+		const probe = { value: true, via: "probe" } as const;
+		const facts = {
+			loadSession: probe,
+			images: probe,
+			embeddedContext: probe,
+			directories: probe,
+			systemPromptVia: { value: "claude-meta", via: "source", verifiedAt: read },
+			regroupsLinks: { value: true, via: "source", verifiedAt: { cli: "1.1.0", adapter: null } },
+		} as const;
+		expect(staleFacts(facts, { cli: "9.9.9", adapter: read.adapter })).toEqual([
+			"systemPromptVia (source, checked on cli 1.0.0, adapter 0.1.0)",
+			"regroupsLinks (source, checked on cli 1.1.0)",
 		]);
-		expect(staleFacts(facts, at)).toHaveLength(6);
-		expect(staleFacts(facts, PROBED_AT["claude-code"])).toEqual([]);
+		expect(staleFacts(facts, read)).toEqual(["regroupsLinks (source, checked on cli 1.1.0)"]);
+		expect(staleFacts(facts, { cli: read.cli, adapter: "9.9.9" })).toEqual([
+			"systemPromptVia (source, checked on cli 1.0.0, adapter 0.1.0)",
+			"regroupsLinks (source, checked on cli 1.1.0)",
+		]);
 	});
 
 	it("reopen a finished run only where session load is a fact", () => {

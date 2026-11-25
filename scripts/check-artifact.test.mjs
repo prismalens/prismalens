@@ -3,12 +3,20 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { LIMIT, largest, pathModels } from "./check-artifact.mjs";
+import { gzipSync } from "node:zlib";
+import { isUpstream, LIMIT, largest, pathModels } from "./check-artifact.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./check-artifact.mjs", import.meta.url));
 const MIGRATION =
@@ -96,14 +104,27 @@ test("an npm tarball named prismalens is also measured as the archive it becomes
 	);
 });
 
-function fixture({ deep = 10, licence = true, inlined = false } = {}) {
+function fixture({
+	deep = 10,
+	licence = true,
+	inlined = false,
+	upstream = 0,
+	own = 0,
+	repeated = 0,
+	blob = 0,
+	packed = "",
+	name = "fixture",
+	texts = 0,
+} = {}) {
 	const dir = mkdtempSync(join(tmpdir(), "check-artifact-"));
 	const pkg = join(dir, "src", "package");
 	const write = (rel, body) => {
 		mkdirSync(dirname(join(pkg, rel)), { recursive: true });
 		writeFileSync(join(pkg, rel), body);
 	};
-	write("package.json", JSON.stringify({ name: "fixture", version: "1.0.0" }));
+	write("package.json", JSON.stringify({ name, version: "1.0.0" }));
+	for (let i = 0; i < texts; i++)
+		write(`THIRD_PARTY_LICENSES/dep${i}/LICENSE`, "MIT");
 	write(`${"d".repeat(deep)}/x.js`, "");
 	write(
 		"node_modules/dep/package.json",
@@ -115,10 +136,28 @@ function fixture({ deep = 10, licence = true, inlined = false } = {}) {
 			"dist/adapters/bundled.json",
 			JSON.stringify({ "a.mjs": { inlined: ["inl@1.0.0"] } }),
 		);
-	execFileSync("tar", ["-czf", "../fixture-1.0.0.tgz", "package"], {
-		cwd: join(dir, "src"),
-	});
-	return { tarball: join(dir, "fixture-1.0.0.tgz"), dir };
+	// Incompressible bytes, so growth shows in the archive's size.
+	const noise = (n) => randomBytes(n);
+	for (let i = 0; i < upstream; i++)
+		write(`dist/adapters/up${i}.mjs`, noise(4000 + i));
+	for (let i = 0; i < own; i++) write(`dist/own${i}.js`, noise(4000 + i));
+	const payload = noise(4000);
+	for (let i = 0; i < repeated; i++)
+		write(`dist/adapters/same${i}.mjs`, payload);
+	if (blob) write("dist/blob.js", noise(blob));
+	if (packed) write("dist/adapters/words.mjs", packed);
+	const src = join(dir, "src");
+	const tarball = join(dir, "fixture-1.0.0.tgz");
+	if (packed) {
+		// As npm packs: gzip at level 9, tighter than the checker's own estimate.
+		execFileSync("tar", ["-cf", "../fixture.tar", "package"], { cwd: src });
+		const tar = readFileSync(join(dir, "fixture.tar"));
+		writeFileSync(tarball, gzipSync(tar, { level: 9 }));
+	} else
+		execFileSync("tar", ["-czf", "../fixture-1.0.0.tgz", "package"], {
+			cwd: src,
+		});
+	return { tarball, dir };
 }
 
 function run(tarball, budgets, dir) {
@@ -179,5 +218,71 @@ test("a budget breach names the largest unpacked files, biggest first", () => {
 	assert.deepEqual(largest(root, ["small.js", "big.js", "mid.js"], 2), [
 		{ entry: "big.js", size: 100 },
 		{ entry: "mid.js", size: 10 },
+	]);
+});
+
+test("upstream agent packages are reported and never budgeted; the same growth in our own files fails", () => {
+	const base = fixture();
+	const budget = {
+		fixture: { bytes: statSync(base.tarball).size + 2000, files: 5 },
+	};
+	assert.equal(run(base.tarball, budget, base.dir).status, 0);
+	const up = fixture({ upstream: 6 });
+	let r = run(up.tarball, budget, up.dir);
+	assert.equal(r.status, 0, r.stdout);
+	assert.match(
+		r.stdout,
+		/upstream agent packages \d+ bytes, 6 files, not budgeted/,
+	);
+	const own = fixture({ own: 6 });
+	r = run(own.tarball, budget, own.dir);
+	assert.equal(r.status, 1);
+	assert.match(r.stdout, /fixture: \d+ bytes is over its budget/);
+	assert.match(r.stdout, /fixture: 10 files is over its budget of 5/);
+});
+
+test("repeated upstream payloads never hide our own growth past the byte budget", () => {
+	const { tarball, dir } = fixture({ repeated: 10, blob: 20_000 });
+	const r = run(tarball, { fixture: { bytes: 10_000, files: 10 } }, dir);
+	assert.equal(r.status, 1, r.stdout);
+	assert.match(r.stdout, /fixture: \d+ bytes is over its budget of 10000/);
+	assert.doesNotMatch(r.stdout, /files is over its budget/);
+});
+
+test("our own bytes stay counted when the archive packs upstream tighter than the estimate", () => {
+	// Two letters at random: level 9 packs them thousands of bytes tighter than level 6.
+	const letters = [...randomBytes(400_000)].map((b) => "ab"[b & 1]).join("");
+	const { tarball, dir } = fixture({ packed: letters });
+	const r = run(tarball, { fixture: { bytes: 1, files: 10 } }, dir);
+	assert.equal(r.status, 1, r.stdout);
+	assert.match(r.stdout, /fixture: [1-9]\d* bytes is over its budget of 1/);
+});
+
+test("the licence texts packed for upstream packages are upstream; any other file is ours", () => {
+	const upstream = [
+		"package/node_modules/@prismalens/agent-adapters/THIRD_PARTY_LICENSES/@anthropic-ai/claude-agent-sdk/LICENSE.md",
+		"prismalens-1.0.0-linux-x64/app/node_modules/@prismalens/agent-adapters/THIRD_PARTY_LICENSES/zod/LICENSE",
+	];
+	const ours = [
+		"package/LICENSE",
+		"package/THIRD_PARTY_LICENSES/zod/LICENSE",
+		"package/dist/THIRD_PARTY_LICENSES/x.js",
+		"package/node_modules/dep/THIRD_PARTY_LICENSES/x",
+	];
+	assert.deepEqual(
+		[...upstream, ...ours].filter((e) => isUpstream(e, "prismalens")),
+		upstream,
+	);
+});
+
+test("root licence texts are upstream in the adapters tarball alone; another package's are its own", () => {
+	const checked = (name) => {
+		const { tarball, dir } = fixture({ name, texts: 3 });
+		const r = run(tarball, { [name]: { bytes: 1e6, files: 4 } }, dir);
+		return [r.status, /(\d+) files of our own/.exec(r.stdout)?.[1]];
+	};
+	assert.deepEqual(["fixture", "@prismalens/agent-adapters"].map(checked), [
+		[1, "7"],
+		[0, "4"],
 	]);
 });

@@ -39,7 +39,7 @@ The suite runs as 4 shards, each on its own runner with its own stacks, within a
 
 - The schedule does nothing until the repository variable `NIGHTLY_ENABLED` is `true`. Publishing the nightly prerelease needs `NIGHTLY_PUBLISH` (RELEASING.md, "Nightly").
 - Its `report` job keeps one issue titled `Nightly CI failing`, found by that exact title: a red night opens or rewrites it, a recurrence reopens it, a green night closes it. A cancelled or skipped `proofs` run and a failed `Live:` job count as red. On dispatch `report` only prints what it would do unless its input is on.
-- The `Live:` jobs check that the pinned OpenCode and its own free model still complete an investigation, with no secret (#1085). The intake passes on 2 valid reports of 3, then one run cut off by a restart must resume. They run every scheduled night and on dispatch with `live`; the agent version is the pin in `scripts/agent-pins.json`, not the latest release (#639, #712).
+- The `Live:` jobs check that the pinned OpenCode and its own free model still complete an investigation, with no secret (#1085). The intake passes on 2 valid reports of 3, then one run cut off by a restart must resume. They run every scheduled night and on dispatch with `live`; the agent version is its pin, not the latest release (#639, #712).
 - Release gate: dispatch on `main`, not on a PR branch, with `ref` set to the release PR's base SHA, and link the run from the PR: `gh workflow run nightly.yml --ref main -f ref=<sha> -f live=true`.
 - Each packed-intake attempt uploads its event stream as `intake-events-attempt-<n>`, kept 30 days.
 - Agent qualification runs its 3 admissions one at a time, because each writes a probe file into the checkout. Its 3 behaviour matrices run at once on Linux only, where `/proc` lets the `cancel` row tell its own tool process from another run's (#885).
@@ -49,9 +49,9 @@ The suite runs as 4 shards, each on its own runner with its own stacks, within a
 It probes each agent row at its channel's latest release and at its pin on Linux, Windows and macOS, and moves the pins. No job spends a model call and none is required.
 
 - A red scheduled leg (or a dispatch with `file-issues`) opens or rewrites one issue per agent and OS titled `Agent probe failing: <agent> on <os>`.
-- The `bump` job calls `gh-workflows:.github/workflows/pin-bump.yml`: a release that has been public 3 days moves its pin on one rolling pull request, `pin-bump/agents`. A pin whose probe fails is held back. The call's `sync` input refreshes the adapter SDK, the lockfile, each row's `tested` and the model list.
+- The `bump` job calls `agent-bump.yml` once per agent. A release past its soak (default 3 days) that passes Linux and Windows moves `pin-bump/<agent>`'s pull request; else it is held on the issue `Agent pin bumps held`. `models` refreshes the catalogue.
 - `RELEASE_PAT` opens that PR so CI starts on it; a PR opened with `GITHUB_TOKEN` gets no checks.
-- Pins: `scripts/agent-pins.json`, `@prismalens/agent-adapters`; locks: `docs/contributing/testing.md`.
+- Pins: each agent's `pin.json` (`scripts/agent-pins.mjs`), `@prismalens/agent-adapters`; locks: `docs/contributing/testing.md`.
 
 ## Review is advisory; unresolved threads block
 

@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineAgent, modeNamed, offers } from "../family.ts";
+import {
+	channelOf,
+	defineAgent,
+	modeNamed,
+	offers,
+	testedOf,
+} from "../family.ts";
+import pin from "./pin.json" with { type: "json" };
 
 export const codex = defineAgent({
 	id: "agent.codex",
@@ -54,9 +61,10 @@ export const codex = defineAgent({
 			c?.modes && !offers(c, "workspace-write")
 				? "This codex-acp runs Ask always and Auto-accept edits in the same mode, Ask for approval; edits inside the copy need no ask."
 				: null,
+		channel: channelOf(pin),
+		...testedOf(pin),
 		install:
 			"npm i -g @openai/codex  (then `codex login`, or set OPENAI_API_KEY)",
-		channel: { npm: "@openai/codex" },
 		lines: {
 			supervised: (c) =>
 				`Codex runs in ${modeNamed(c, "read-only", "Ask for approval")}.`,
@@ -74,8 +82,6 @@ export const codex = defineAgent({
 				`Codex runs in ${modeNamed(c, "agent-full-access", "Full access")}, outside its sandbox.`,
 		},
 		// Real-model runs were on codex 0.163.0: scripts/acp-admission.ts 3 of 3, gpt-6-luna (#846), and #848 live runs. Must equal @prismalens/agent-adapters' pin.
-		// The pin-bump PR moved this on 2026-11-23: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "2.8.0", date: "2026-11-23", companion: "0.171.0" },
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 		signInArgs: ["login"],
 		loginEnvKeys: ["CODEX_HOME"],
