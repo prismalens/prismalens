@@ -167,19 +167,29 @@ export default defineChecks([
 			const values: string[] = [];
 
 			// Service: its card's menu holds its page's Edit and Delete, and Edit opens the page's dialog.
-			await open("/services");
-			const service = page.getByTestId("service-row").first();
-			await expect(service).toBeVisible({ timeout: 30_000 });
-			await service.click({ button: "right", position: { x: 4, y: 4 } });
-			const serviceRows = await menuRows(page);
-			for (const id of ["open", "edit", "delete", "link"])
-				if (!serviceRows.includes(id))
-					fails.push(`service row lacks ${id} (${serviceRows})`);
-			await page.getByTestId("menu-edit").click();
-			await expect(page.getByTestId("service-page")).toBeVisible();
-			await expect(page.getByRole("dialog")).toBeVisible({ timeout: 15_000 });
-			await page.keyboard.press("Escape");
-			values.push(`service: ${serviceRows.join(", ")}`);
+			// The sim seeds no service, so the check makes one and deletes it after.
+			const made = await page.request.post("/api/services", {
+				data: { name: `bar-20-4-${Date.now()}` },
+			});
+			expect(made.ok(), await made.text()).toBe(true);
+			const { id: serviceId } = (await made.json()) as { id: string };
+			try {
+				await open("/services");
+				const service = page.getByTestId("service-row").first();
+				await expect(service).toBeVisible({ timeout: 30_000 });
+				await service.click({ button: "right", position: { x: 4, y: 4 } });
+				const serviceRows = await menuRows(page);
+				for (const id of ["open", "edit", "delete", "link"])
+					if (!serviceRows.includes(id))
+						fails.push(`service row lacks ${id} (${serviceRows})`);
+				await page.getByTestId("menu-edit").click();
+				await expect(page.getByTestId("service-page")).toBeVisible();
+				await expect(page.getByRole("dialog")).toBeVisible({ timeout: 15_000 });
+				await page.keyboard.press("Escape");
+				values.push(`service: ${serviceRows.join(", ")}`);
+			} finally {
+				await page.request.delete(`/api/services/${serviceId}`);
+			}
 
 			// Incident: the row holds what its page's menu holds.
 			await open("/incidents?view=all");
