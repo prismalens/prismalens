@@ -6,13 +6,17 @@
  * One pin bump per agent (#1082 P1). Each agent's pin.json names its CLI and the adapter it
  * moves with; a release becomes a candidate only after it has soaked `minimumReleaseAgeDays`.
  *
- *   agent-bump.mjs matrix                       the agents with a pin, as a JSON array
- *   agent-bump.mjs pick --agent <id>            the candidate, as JSON: { agent, cli, adapter } or null
- *   agent-bump.mjs apply --agent <id> --cli <v> [--adapter <v>] [--date YYYY-MM-DD]
- *                                               write the pin, the adapter dependency and tested
+ *   agent-bump.mjs matrix                          the agents with a pin, as a JSON array
+ *   agent-bump.mjs pick --agent <id>               the candidate as JSON, { agent, cli, adapter }, or null
+ *   agent-bump.mjs apply --agent <id> [--cli <v>] [--adapter <v>] [--date <d>]
+ *                                                  write the pin, the adapter dependency and tested
+ *   agent-bump.mjs package|probe|body --agent <id> its CLI package; the zero-token probe at its pin; its PR body
+ *   agent-bump.mjs gate --legs <dir> --digest <d>  verdict=publish only when every OS leg passed this candidate
+ *   agent-bump.mjs hold --agent <id> --legs <dir> --run <url>
+ *                                                  edit or add the held candidate's comment on the pin-bump issue
  */
-import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -110,6 +114,131 @@ export function applied(pin, adapters, { cli, adapter, date }) {
 	return { pin: next, adapters: deps };
 }
 
+/** The OS legs a candidate must pass on before it publishes (A8). */
+export const REQUIRED_LEGS = ["ubuntu-latest", "windows-latest"];
+
+/**
+ * Publish only when every required leg ran, passed, and tested this same candidate; anything
+ * missing or stale holds it, so absent state never publishes.
+ */
+export function gateVerdict(legs, digest, required = REQUIRED_LEGS) {
+	const failing = required.filter((os) => {
+		const leg = legs.find((l) => l.os === os);
+		return leg?.ok !== true || leg.digest !== digest;
+	});
+	return { verdict: failing.length ? "hold" : "publish", failing };
+}
+
+/** The probe's arguments for a pin: the adapter with its CLI as companion, or the CLI alone. */
+export const probeArgs = (pin) =>
+	pin.adapter
+		? [
+				"--agent",
+				pin.agent,
+				"--version",
+				pin.adapter.version,
+				"--companion",
+				pin.cli.version,
+			]
+		: ["--agent", pin.agent, "--version", pin.cli.version];
+
+/** What a pin names, for a title or a comment: `claude-code 2.1.330 (adapter 0.109.1)`. */
+export const pinName = (pin) =>
+	`${pin.agent} ${pin.cli.version}${pin.adapter ? ` (adapter ${pin.adapter.version})` : ""}`;
+
+export const HELD_TITLE = "Agent pin bumps held";
+export const heldMarker = (pin) => `<!-- pin-held:${pinName(pin)} -->`;
+
+/** The one comment a held candidate keeps on the pin-bump issue, edited on each repeat. */
+export function heldComment(pin, failing, run) {
+	return [
+		heldMarker(pin),
+		`**${pinName(pin)} is held.** It failed conformance on ${failing.join(", ")}, so its pin.json stays where it was and no PR opens.`,
+		"",
+		`Run: ${run}. The legs' logs name each failing probe fact or matrix row.`,
+	].join("\n");
+}
+
+/** The pin-bump PR's body: what moved and what proved it. */
+export function prBody(pin) {
+	return [
+		`Moves ${pinName(pin)}: the newest release past its ${pin.minimumReleaseAgeDays}-day soak.`,
+		"",
+		"Before this PR opened, the candidate passed on Linux and Windows: its locks, an install into a path with a space, the zero-token probe held to the descriptor's facts, and on Linux the admission (R1-R11) and behaviour matrix against the scripted model.",
+		"",
+		"- [ ] A real-model recording on this pin (#914)",
+		"",
+		"Docs: none, not on the contract.",
+	].join("\n");
+}
+
+const readLegs = (dir) =>
+	readdirSync(dir)
+		.filter((f) => /^leg-.+\.json$/.test(f))
+		.map((f) => JSON.parse(readFileSync(join(dir, f), "utf8")));
+
+function gh(args, input) {
+	return execFileSync("gh", args, {
+		encoding: "utf8",
+		input,
+		stdio: [input ? "pipe" : "ignore", "pipe", "inherit"],
+	});
+}
+
+/** Finds or files the held-bumps issue, then edits this candidate's comment or adds it. */
+function reportHeld(pin, failing, run) {
+	const body = heldComment(pin, failing, run);
+	const found = JSON.parse(
+		gh([
+			"issue",
+			"list",
+			"--state",
+			"open",
+			"--search",
+			`"${HELD_TITLE}" in:title`,
+			"--json",
+			"number,title",
+		]),
+	);
+	const issue =
+		found.find((i) => i.title === HELD_TITLE)?.number ??
+		Number(
+			gh([
+				"issue",
+				"create",
+				"--title",
+				HELD_TITLE,
+				"--body",
+				"Each candidate the pin-bump pipeline held, one comment per agent and version (#1082).",
+			])
+				.trim()
+				.split("/")
+				.pop(),
+		);
+	const repo = gh([
+		"repo",
+		"view",
+		"--json",
+		"nameWithOwner",
+		"--jq",
+		".nameWithOwner",
+	]).trim();
+	const comments = JSON.parse(
+		gh(["api", `repos/${repo}/issues/${issue}/comments`, "--paginate"]),
+	);
+	const mine = comments.find((c) => c.body.startsWith(heldMarker(pin)));
+	if (mine)
+		gh([
+			"api",
+			"-X",
+			"PATCH",
+			`repos/${repo}/issues/comments/${mine.id}`,
+			"-f",
+			`body=${body}`,
+		]);
+	else gh(["issue", "comment", String(issue), "--body", body]);
+}
+
 async function main() {
 	const { values, positionals } = parseArgs({
 		allowPositionals: true,
@@ -118,6 +247,9 @@ async function main() {
 			cli: { type: "string" },
 			adapter: { type: "string" },
 			date: { type: "string" },
+			legs: { type: "string" },
+			digest: { type: "string" },
+			run: { type: "string" },
 		},
 	});
 	const [command] = positionals;
@@ -130,6 +262,31 @@ async function main() {
 			`agent-bump: no pin.json for agent ${values.agent ?? "(none)"}`,
 		);
 		process.exit(2);
+	}
+	if (command === "package") return console.log(pin.cli.package);
+	if (command === "body") return console.log(prBody(pin));
+	if (command === "probe") {
+		const r = spawnSync(
+			process.execPath,
+			[join(ROOT, "scripts/agent-probe.mjs"), ...probeArgs(pin)],
+			{ stdio: "inherit" },
+		);
+		process.exit(r.status ?? 1);
+	}
+	if (command === "gate") {
+		const { verdict, failing } = gateVerdict(
+			readLegs(values.legs),
+			values.digest,
+		);
+		console.log(`verdict=${verdict}`);
+		console.error(
+			verdict === "hold" ? `held: ${failing.join(", ")}` : "every leg passed",
+		);
+		return;
+	}
+	if (command === "hold") {
+		const { failing } = gateVerdict(readLegs(values.legs), null);
+		return reportHeld(pin, failing, values.run);
 	}
 	if (command === "pick") return console.log(JSON.stringify(await pick(pin)));
 	if (command === "apply") {
@@ -154,7 +311,7 @@ async function main() {
 		);
 	}
 	console.error(
-		"usage: agent-bump.mjs matrix | pick --agent <id> | apply --agent <id> --cli <v> [--adapter <v>]",
+		"usage: agent-bump.mjs matrix | package|pick|probe|body --agent <id> | apply --agent <id> --cli <v> [--adapter <v>] | gate --legs <dir> --digest <d> | hold --agent <id> --legs <dir> --run <url>",
 	);
 	process.exit(2);
 }

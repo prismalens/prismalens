@@ -3,19 +3,17 @@
 		"file": "agent-release-watch.yml",
 		"job": "bump",
 		"call": {
-			"uses": "prismalens/gh-workflows/.github/workflows/pin-bump.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e",
+			"uses": "./.github/workflows/agent-bump.yml",
 			"with": {
-				"pins": "[{\"package\": \"@agentclientprotocol/claude-agent-acp\", \"pin-path\": \"packages/@prismalens/agent-adapters/package.json\"}, {\"package\": \"@agentclientprotocol/codex-acp\", \"pin-path\": \"packages/@prismalens/agent-adapters/package.json\"}, {\"package\": \"opencode-ai\", \"pin-path\": \"scripts/agent-pins.json\", \"pin-key\": \"[\\\"pins\\\",\\\"opencode-ai\\\"]\"}, {\"package\": \"@anthropic-ai/claude-code\", \"pin-path\": \"scripts/agent-pins.json\", \"pin-key\": \"[\\\"pins\\\",\\\"@anthropic-ai/claude-code\\\"]\"}, {\"package\": \"@openai/codex\", \"pin-path\": \"scripts/agent-pins.json\", \"pin-key\": \"[\\\"pins\\\",\\\"@openai/codex\\\"]\"}]",
-				"soak-days": 3,
-				"probe": "set -e\nbuilt=\"$RUNNER_TEMP/built\"\nif [ ! -f \"$built/packages/@prismalens/agent-host/dist/index.js\" ]; then\n  pnpm=(npx --yes \"$(node -p \"require('./package.json').packageManager\")\")\n  [ -d \"$built\" ] || git worktree add --detach \"$built\" HEAD\n  (cd \"$built\" && \"${pnpm[@]}\" install --frozen-lockfile --ignore-scripts --filter \"@prismalens/config...\" && \"${pnpm[@]}\" --filter \"@prismalens/config...\" build)\nfi\nprobe() { node scripts/agent-probe.mjs --built \"$built\" \"$@\"; }\nadapter() { node -p \"require('./packages/@prismalens/agent-adapters/package.json').devDependencies['$1']\"; }\ncase \"$PIN_PACKAGE\" in\n  @agentclientprotocol/claude-agent-acp) probe --agent claude-code --version \"$PIN_VERSION\" ;;\n  @agentclientprotocol/codex-acp) probe --agent codex --version \"$PIN_VERSION\" ;;\n  opencode-ai) probe --agent opencode --version \"$PIN_VERSION\" ;;\n  @anthropic-ai/claude-code) probe --agent claude-code --version \"$(adapter @agentclientprotocol/claude-agent-acp)\" --companion \"$PIN_VERSION\" ;;\n  @openai/codex) probe --agent codex --version \"$(adapter @agentclientprotocol/codex-acp)\" --companion \"$PIN_VERSION\" ;;\n  *) echo \"no probe for $PIN_PACKAGE\"; exit 1 ;;\nesac\n",
-				"sync": "node scripts/agent-adapter-sdk.mjs && npx --yes \"$(node -p \"require('./package.json').packageManager\")\" install --lockfile-only --ignore-scripts && node scripts/agent-tested.mjs && node scripts/agent-facts.mjs sync --built \"$RUNNER_TEMP/built\" --body \"$RUNNER_TEMP/body.md\" && node scripts/sync-models.mjs"
+				"agent": "${{ matrix.agent }}",
+				"dry-run": "${{ inputs.dry-run == true }}"
 			},
 			"secrets": {
 				"token": "${{ secrets.RELEASE_PAT }}"
 			},
 			"permissions": {
-				"contents": "write",
-				"pull-requests": "write"
+				"contents": "read",
+				"issues": "write"
 			}
 		},
 		"steps": []

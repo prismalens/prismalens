@@ -3,7 +3,15 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applied, pick, pickVersion, pypiTimes } from "./agent-bump.mjs";
+import {
+	applied,
+	gateVerdict,
+	heldComment,
+	pick,
+	pickVersion,
+	probeArgs,
+	pypiTimes,
+} from "./agent-bump.mjs";
 
 const NOW = Date.parse("2026-11-25T00:00:00Z");
 const daysAgo = (n) => new Date(NOW - n * 86_400_000).toISOString();
@@ -132,5 +140,64 @@ test("apply leaves a Python pin's hand-recorded tested alone", () => {
 			cli: { package: "deepagents-code", version: "0.3.0", channel: "pypi" },
 			tested: { version: "0.1.75", date: "2026-09-23" },
 		},
+	);
+});
+
+const legs = (digest, okWin = true) => [
+	{ os: "ubuntu-latest", digest, ok: true },
+	{ os: "windows-latest", digest, ok: okWin },
+];
+
+test("each agent's gate reads only its own legs: one failing agent holds, the other publishes (class B)", () => {
+	assert.deepEqual(gateVerdict(legs("aaa"), "aaa"), {
+		verdict: "publish",
+		failing: [],
+	});
+	assert.deepEqual(gateVerdict(legs("bbb", false), "bbb"), {
+		verdict: "hold",
+		failing: ["windows-latest"],
+	});
+});
+
+test("a missing leg, or a leg that tested another candidate, holds the bump", () => {
+	assert.deepEqual(
+		gateVerdict([{ os: "ubuntu-latest", digest: "aaa", ok: true }], "aaa"),
+		{
+			verdict: "hold",
+			failing: ["windows-latest"],
+		},
+	);
+	assert.deepEqual(gateVerdict(legs("old"), "new"), {
+		verdict: "hold",
+		failing: ["ubuntu-latest", "windows-latest"],
+	});
+});
+
+test("the probe runs the adapter with its CLI as companion, or the CLI alone", () => {
+	assert.deepEqual(probeArgs(claude), [
+		"--agent",
+		"claude-code",
+		"--version",
+		"0.9.0",
+		"--companion",
+		"2.0.0",
+	]);
+	assert.deepEqual(probeArgs({ agent: "gemini", cli: { version: "0.65.0" } }), [
+		"--agent",
+		"gemini",
+		"--version",
+		"0.65.0",
+	]);
+});
+
+test("a held candidate's comment carries its marker, so a repeat edits it", () => {
+	assert.equal(
+		heldComment(claude, ["windows-latest"], "https://example.test/run/1"),
+		[
+			"<!-- pin-held:claude-code 2.0.0 (adapter 0.9.0) -->",
+			"**claude-code 2.0.0 (adapter 0.9.0) is held.** It failed conformance on windows-latest, so its pin.json stays where it was and no PR opens.",
+			"",
+			"Run: https://example.test/run/1. The legs' logs name each failing probe fact or matrix row.",
+		].join("\n"),
 	);
 });

@@ -14,12 +14,22 @@ on:
         description: "File or update the `Agent probe failing` issue for a red leg, as a scheduled run does"
         type: boolean
         default: false
+      agent:
+        description: "Bump only this agent (its folder under providers/src/agent); empty bumps every agent"
+        type: string
+        default: ""
+      dry-run:
+        description: "Run each bump's candidate and conformance legs, then report the verdict without opening a PR"
+        type: boolean
+        default: false
   # A change to the probe, or to how an agent starts, runs the probe before it merges.
   pull_request:
     paths:
       - ".github/workflows/agent-release-watch.yml"
       - "scripts/agent-probe.mjs"
-      - "scripts/agent-pins.json"
+      - "scripts/agent-pins.mjs"
+      - "scripts/agent-bump.mjs"
+      - ".github/workflows/agent-bump.yml"
       - "scripts/agent-locks.mjs"
       - "scripts/agent-locks/**"
       - "packages/@prismalens/agent-host/src/registry/agents.ts"
@@ -202,50 +212,44 @@ jobs:
           ok: "false"
           batch: ${{ runner.temp }}/batch.json
 
-  bump:
-    name: Pin bump
-    # From the default branch only: the rolling PR is rebuilt from the ref the run checked out.
+  # One bump per agent (#1082 P1): each runs its own candidate, conformance legs and publish gate,
+  # so one agent's break holds only that agent.
+  agents:
+    name: Agents with a pin
     if: >-
       github.repository == 'prismalens/prismalens' && github.event_name != 'pull_request' &&
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    uses: prismalens/gh-workflows/.github/workflows/pin-bump.yml@86342cb105815ce2ed6887fdcf23dd668643ab9e # main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: list
+        env:
+          ONLY: ${{ inputs.agent }}
+        run: |
+          if [ -n "$ONLY" ]; then list=$(node -e 'console.log(JSON.stringify([process.argv[1]]))' "$ONLY"); else list=$(node scripts/agent-bump.mjs matrix); fi
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
+  bump:
+    name: Pin bump
+    needs: agents
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: ${{ fromJSON(needs.agents.outputs.list) }}
+    uses: ./.github/workflows/agent-bump.yml
+    permissions:
+      contents: read
+      issues: write
     with:
-      # Adapters first: the claude-code probe reads the adapter pin, after a failed probe put it back.
-      pins: >-
-        [{"package": "@agentclientprotocol/claude-agent-acp", "pin-path": "packages/@prismalens/agent-adapters/package.json"},
-        {"package": "@agentclientprotocol/codex-acp", "pin-path": "packages/@prismalens/agent-adapters/package.json"},
-        {"package": "opencode-ai", "pin-path": "scripts/agent-pins.json", "pin-key": "[\"pins\",\"opencode-ai\"]"},
-        {"package": "@anthropic-ai/claude-code", "pin-path": "scripts/agent-pins.json", "pin-key": "[\"pins\",\"@anthropic-ai/claude-code\"]"},
-        {"package": "@openai/codex", "pin-path": "scripts/agent-pins.json", "pin-key": "[\"pins\",\"@openai/codex\"]"}]
-      soak-days: 3
-      # The probe loads the built agent host. It builds once, from a clean copy of the commit,
-      # because a moved adapter pin leaves this checkout's lockfile stale. No install scripts: the
-      # root `prepare` needs packages this filter leaves out, and its failure held every pin back.
-      probe: |
-        set -e
-        built="$RUNNER_TEMP/built"
-        if [ ! -f "$built/packages/@prismalens/agent-host/dist/index.js" ]; then
-          pnpm=(npx --yes "$(node -p "require('./package.json').packageManager")")
-          [ -d "$built" ] || git worktree add --detach "$built" HEAD
-          (cd "$built" && "${pnpm[@]}" install --frozen-lockfile --ignore-scripts --filter "@prismalens/config..." && "${pnpm[@]}" --filter "@prismalens/config..." build)
-        fi
-        probe() { node scripts/agent-probe.mjs --built "$built" "$@"; }
-        adapter() { node -p "require('./packages/@prismalens/agent-adapters/package.json').devDependencies['$1']"; }
-        case "$PIN_PACKAGE" in
-          @agentclientprotocol/claude-agent-acp) probe --agent claude-code --version "$PIN_VERSION" ;;
-          @agentclientprotocol/codex-acp) probe --agent codex --version "$PIN_VERSION" ;;
-          opencode-ai) probe --agent opencode --version "$PIN_VERSION" ;;
-          @anthropic-ai/claude-code) probe --agent claude-code --version "$(adapter @agentclientprotocol/claude-agent-acp)" --companion "$PIN_VERSION" ;;
-          @openai/codex) probe --agent codex --version "$(adapter @agentclientprotocol/codex-acp)" --companion "$PIN_VERSION" ;;
-          *) echo "no probe for $PIN_PACKAGE"; exit 1 ;;
-        esac
-      # An adapter pin needs its SDK and lockfile entry, and every pin its row's `tested`, or CI stays red.
-      # agent-facts moves the probed facts the probe just passed, and adds each moved adapter's
-      # cancel, session and sub-agent hunks to the PR body for whoever re-reads the source facts.
-      sync: node scripts/agent-adapter-sdk.mjs && npx --yes "$(node -p "require('./package.json').packageManager")" install --lockfile-only --ignore-scripts && node scripts/agent-tested.mjs && node scripts/agent-facts.mjs sync --built "$RUNNER_TEMP/built" --body "$RUNNER_TEMP/body.md" && node scripts/sync-models.mjs
+      agent: ${{ matrix.agent }}
+      dry-run: ${{ inputs.dry-run == true }}
     secrets:
       # A PR opened with GITHUB_TOKEN starts no checks, and the bump PR exists to run them.
       token: ${{ secrets.RELEASE_PAT }}

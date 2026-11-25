@@ -1,0 +1,227 @@
+# One agent's pin bump (#1082 P1), called once per agent by agent-release-watch.yml. The candidate is
+# the newest release past its soak; it lands nowhere until every conformance leg passes on the same
+# candidate, and a held one is reported on the pin-bump issue instead of opening a PR.
+name: Agent pin bump (one agent)
+
+on:
+  workflow_call:
+    inputs:
+      agent:
+        type: string
+        required: true
+      dry-run:
+        type: boolean
+        default: false
+    secrets:
+      token:
+        required: false
+
+permissions:
+  contents: read
+
+# One bump per agent at a time; a newer run waits rather than cancelling one that may be publishing.
+concurrency:
+  group: pin-bump-${{ inputs.agent }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    name: Candidate (${{ inputs.agent }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      found: ${{ steps.pick.outputs.found }}
+      cli: ${{ steps.pick.outputs.cli }}
+      adapter: ${{ steps.pick.outputs.adapter }}
+      digest: ${{ steps.patch.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: pnpm install --frozen-lockfile --ignore-scripts --filter prismalens-monorepo
+      - name: Pick the newest release past its soak
+        id: pick
+        env:
+          AGENT: ${{ inputs.agent }}
+        run: |
+          picked=$(node scripts/agent-bump.mjs pick --agent "$AGENT")
+          echo "picked: $picked"
+          if [ "$picked" = null ]; then echo "found=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          {
+            echo "found=true"
+            echo "cli=$(node -e 'console.log(JSON.parse(process.argv[1]).cli ?? "")' "$picked")"
+            echo "adapter=$(node -e 'console.log(JSON.parse(process.argv[1]).adapter ?? "")' "$picked")"
+          } >> "$GITHUB_OUTPUT"
+      - name: Write the pin, its lock and the adapter's SDK and lockfile entry
+        if: steps.pick.outputs.found == 'true'
+        env:
+          AGENT: ${{ inputs.agent }}
+          CLI: ${{ steps.pick.outputs.cli }}
+          ADAPTER: ${{ steps.pick.outputs.adapter }}
+        run: |
+          set -e
+          node scripts/agent-bump.mjs apply --agent "$AGENT" ${CLI:+--cli "$CLI"} ${ADAPTER:+--adapter "$ADAPTER"}
+          pkg=$(node scripts/agent-bump.mjs package --agent "$AGENT")
+          [ -z "$CLI" ] || node scripts/agent-locks.mjs regen "$pkg"
+          if [ -n "$ADAPTER" ]; then
+            node scripts/agent-adapter-sdk.mjs
+            npx --yes "$(node -p "require('./package.json').packageManager")" install --lockfile-only --ignore-scripts
+          fi
+      - name: Keep the candidate as a patch, named by its digest
+        id: patch
+        if: steps.pick.outputs.found == 'true'
+        run: |
+          git add -A
+          git diff --cached --binary > "$RUNNER_TEMP/candidate.patch"
+          echo "digest=$(sha256sum "$RUNNER_TEMP/candidate.patch" | cut -c1-16)" >> "$GITHUB_OUTPUT"
+          git diff --cached --stat
+      - if: steps.pick.outputs.found == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: candidate-${{ inputs.agent }}
+          path: ${{ runner.temp }}/candidate.patch
+          retention-days: 7
+
+  conformance:
+    name: Conformance (${{ inputs.agent }}, ${{ matrix.os }})
+    needs: candidate
+    if: needs.candidate.outputs.found == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    # Runs freshly published packages and their install scripts: read-only, no token.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: candidate-${{ inputs.agent }}
+          path: ${{ runner.temp }}/candidate
+      - name: Apply the candidate and check it is the one the candidate job hashed
+        shell: bash
+        env:
+          DIGEST: ${{ needs.candidate.outputs.digest }}
+        run: |
+          patch="$RUNNER_TEMP/candidate/candidate.patch"
+          [ "$(sha256sum "$patch" | cut -c1-16)" = "$DIGEST" ] || { echo "::error::candidate digest differs"; exit 1; }
+          git apply --binary "$patch"
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: pnpm install --frozen-lockfile
+      - name: Build what the product launches the agent with
+        run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." --filter "@prismalens/engine..." --filter "@prismalens/config..." --filter @prismalens/agent-adapters build
+      - name: The pin's locks hold, and install into a path with a space
+        shell: bash
+        env:
+          AGENT: ${{ inputs.agent }}
+        run: |
+          node scripts/agent-locks.mjs check
+          pkg=$(node scripts/agent-bump.mjs package --agent "$AGENT")
+          node scripts/agent-locks.mjs install "$pkg" --into "$RUNNER_TEMP/dir with space"
+      # initialize and session/new through agent-host, held to the descriptor's probed facts.
+      - name: Zero-token probe at the candidate pin
+        shell: bash
+        env:
+          AGENT: ${{ inputs.agent }}
+        run: node scripts/agent-bump.mjs probe --agent "$AGENT"
+      - name: Allow Codex's sandbox
+        if: inputs.agent == 'codex' && runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # The admission (R1-R11, R11 killed mid-turn) and this agent's behaviour-matrix rows against aimock.
+      - name: Admission and behaviour matrix against the scripted model
+        if: runner.os == 'Linux'
+        env:
+          AGENT: ${{ inputs.agent }}
+        run: |
+          bin=$(node scripts/agent-locks.mjs install "$(node scripts/agent-bump.mjs package --agent "$AGENT")")
+          PATH="$bin:$PATH" node scripts/admission-fake.mjs "$AGENT" "$GITHUB_WORKSPACE" --repeat 3
+      - name: Record this leg's result for the publish gate
+        if: always()
+        shell: bash
+        env:
+          OK: ${{ job.status == 'success' }}
+          DIGEST: ${{ needs.candidate.outputs.digest }}
+          OS: ${{ matrix.os }}
+        run: printf '{"os":"%s","digest":"%s","ok":%s}\n' "$OS" "$DIGEST" "$OK" > "$RUNNER_TEMP/leg-$OS.json"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: leg-${{ inputs.agent }}-${{ matrix.os }}
+          path: ${{ runner.temp }}/leg-${{ matrix.os }}.json
+          retention-days: 7
+
+  publish:
+    name: Publish or hold (${{ inputs.agent }})
+    needs: [candidate, conformance]
+    if: always() && needs.candidate.outputs.found == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.token || github.token }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "*-${{ inputs.agent }}*"
+          path: ${{ runner.temp }}/bump
+          merge-multiple: true
+      - name: Every required leg passed on this candidate, or the bump is held
+        id: gate
+        env:
+          DIGEST: ${{ needs.candidate.outputs.digest }}
+        run: node scripts/agent-bump.mjs gate --legs "$RUNNER_TEMP/bump" --digest "$DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Open or update the agent's pin-bump PR
+        if: steps.gate.outputs.verdict == 'publish' && !inputs.dry-run
+        env:
+          GH_TOKEN: ${{ secrets.token }}
+          AGENT: ${{ inputs.agent }}
+          CLI: ${{ needs.candidate.outputs.cli }}
+          ADAPTER: ${{ needs.candidate.outputs.adapter }}
+        run: |
+          set -e
+          git apply --binary "$RUNNER_TEMP/bump/candidate.patch"
+          branch="pin-bump/$AGENT"
+          title="chore(agents): $AGENT pin to ${CLI:-its pin}${ADAPTER:+, adapter $ADAPTER}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898729+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -qam "$title"
+          git push --force origin "$branch"
+          node scripts/agent-bump.mjs body --agent "$AGENT" > "$RUNNER_TEMP/body.md"
+          gh pr view "$branch" --json number >/dev/null 2>&1 \
+            && gh pr edit "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md" \
+            || gh pr create --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+      - name: Report the held candidate on the pin-bump issue
+        if: steps.gate.outputs.verdict == 'hold' && !inputs.dry-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AGENT: ${{ inputs.agent }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/agent-bump.mjs hold --agent "$AGENT" --legs "$RUNNER_TEMP/bump" --run "$RUN_URL"
+      - name: Dry run
+        if: inputs.dry-run
+        env:
+          VERDICT: ${{ steps.gate.outputs.verdict }}
+        run: |
+          echo "Dry run: the candidate would ${VERDICT}." >> "$GITHUB_STEP_SUMMARY"

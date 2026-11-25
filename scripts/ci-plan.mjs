@@ -98,7 +98,7 @@ const OUTSIDE = [
 		[],
 	],
 	[
-		/^scripts\/(agent-probe|agent-locks|agent-pins|agent-tested|agent-adapter-sdk|admission-fake)(\.test)?\.mjs$/,
+		/^scripts\/(agent-probe|agent-locks|agent-pins|agent-bump|agent-adapter-sdk|admission-fake)(\.test)?\.mjs$/,
 		["agents"],
 	],
 	[
