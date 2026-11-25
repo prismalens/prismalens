@@ -17,7 +17,7 @@ import { NotFound } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
 import { isNotFound } from "@/lib/not-found";
-import { panelSearch } from "@/lib/run-panel";
+import { panelSearch } from "@/lib/panel-search";
 
 export const Route = createFileRoute("/_authenticated/investigations/$id/")({
 	beforeLoad: async ({ context, params, location }) => {
