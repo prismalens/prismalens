@@ -84,9 +84,15 @@ async function copyWith(
 			() => null,
 		);
 		if (got !== null && legacyCopy(got)) return true;
-		// The toast's code loads with the first failed copy, not with every page that copies.
-		const { notCopied } = await import("./clipboard-toast");
-		notCopied(got, got === null ? null : () => saveFile(got, file));
+		// The toast's code loads with the first failed copy, not with every page that copies;
+		// when it cannot load either, the text still reaches the user as a file.
+		await import("./clipboard-toast").then(
+			({ notCopied }) =>
+				notCopied(got, got === null ? null : () => saveFile(got, file)),
+			() => {
+				if (got !== null) saveFile(got, file);
+			},
+		);
 		return false;
 	}
 }

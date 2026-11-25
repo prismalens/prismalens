@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { lazyPart } from "@/lib/lazy";
 
 /** The corner's slot for cards that stay until dismissed, such as the restart card. */
@@ -14,8 +14,21 @@ export const TOAST_SLOT_ID = "toast-slot";
 const ToastLayer = lazyPart(
 	() => import("./toast-layer").then((m) => m.ToastLayer),
 	null,
-	{ afterFirstContent: true },
+	{ afterFirstContent: true, failed: (retry) => <RetryLoad retry={retry} /> },
 );
+
+/** A failed load (a dropped link) tries again when the browser is back online, or in 10 s. */
+function RetryLoad({ retry }: { retry: () => void }) {
+	useEffect(() => {
+		const t = setTimeout(retry, 10_000);
+		window.addEventListener("online", retry);
+		return () => {
+			clearTimeout(t);
+			window.removeEventListener("online", retry);
+		};
+	}, [retry]);
+	return null;
+}
 
 /**
  * The app's one toast list, the page's only "Notifications" landmark, and the corner

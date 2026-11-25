@@ -140,6 +140,13 @@ export function AttentionRuntime() {
 		setAttentionOpener(open);
 		return () => setAttentionOpener(null);
 	}, [open]);
+	// Its toasts go with it: with no opener a click would only dismiss; a later mount's stay.
+	const raised = useRef(new Set<string>());
+	useEffect(() => {
+		const mine = raised.current;
+		return () =>
+			setAttentionToasts((all) => all.filter((t) => !mine.has(t.id)));
+	}, []);
 
 	useEffect(() => {
 		const list = events.data?.events;
@@ -160,6 +167,7 @@ export function AttentionRuntime() {
 				permission: permission(),
 			});
 			const text = notificationText(e);
+			if (d.toast) raised.current.add(e.id);
 			if (d.toast)
 				setAttentionToasts((t) =>
 					[

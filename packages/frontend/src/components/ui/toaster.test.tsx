@@ -9,6 +9,19 @@ import { toast } from "@/hooks/use-toast";
 import { setAttentionToasts } from "@/lib/attention/attention-toasts";
 import { Toaster } from "./toaster";
 
+// Holds the toast layer's code until the test lets it load.
+const gate = vi.hoisted(() => {
+	let open = () => {};
+	const loaded = new Promise<void>((r) => {
+		open = r;
+	});
+	return { loaded, open: () => open() };
+});
+vi.mock("./toast-layer", async (original) => {
+	await gate.loaded;
+	return original();
+});
+
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -46,7 +59,11 @@ describe("Toaster", () => {
 				createElement(Toaster, null, createElement("p", null, "Page")),
 			),
 		);
-		const page = container.textContent;
+		const before = [
+			container.textContent,
+			document.querySelectorAll('[role="region"]').length,
+		];
+		gate.open();
 
 		// The viewport mounts a render before Radix portals the toasts into it.
 		await vi.waitFor(
@@ -58,11 +75,11 @@ describe("Toaster", () => {
 		);
 		const regions = document.querySelectorAll('[role="region"]');
 		expect([
-			page,
+			before,
 			Array.from(regions, (r) => r.getAttribute("aria-label")),
 			regions[0]?.textContent,
 		]).toEqual([
-			"Page",
+			["Page", 0],
 			["Notifications (F8)"],
 			"CopiedNeeds you: Restart the pods",
 		]);
