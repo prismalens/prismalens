@@ -3,6 +3,7 @@
 
 import { join, relative } from "node:path";
 import { labelProblems } from "../label.ts";
+import { ledgerDiff } from "../ledger.ts";
 import { git as runGit } from "./git.ts";
 import type { Config } from "./index.ts";
 
@@ -33,23 +34,38 @@ export function labelCheck(
 		}
 	};
 	const show = (ref: string) => showAt(ref, ratchet);
-	return labelProblems({
-		changed: git(top, ["diff", "--name-only", `${base}...${head}`])
-			.split("\n")
-			.filter(Boolean),
-		protectedPaths: cfg.protected ?? [],
-		ratchet,
-		baseTsv: show(base),
-		headTsv: show(head),
-		labels: labels
-			.split(",")
-			.map((l) => l.trim())
-			.filter(Boolean),
-		label: cfg.label ?? "registry-approved",
-		budgets: (cfg.budgets ?? []).map((path) => ({
-			path,
-			base: showAt(base, path),
-			head: showAt(head, path),
-		})),
-	});
+	const labelList = labels
+		.split(",")
+		.map((l) => l.trim())
+		.filter(Boolean);
+	const label = cfg.label ?? "registry-approved";
+	const ledgerFile = cfg.ledger
+		? relative(top, join(cfg.root, cfg.ledger.file)).split("\\").join("/")
+		: "";
+	const ledger =
+		ledgerFile && !labelList.includes(label)
+			? ledgerDiff(showAt(base, ledgerFile), showAt(head, ledgerFile)).map(
+					(p) =>
+						`${p}. Fix: undo it, or ask the operator to add the "${label}" label.`,
+				)
+			: [];
+	return [
+		...ledger,
+		...labelProblems({
+			changed: git(top, ["diff", "--name-only", `${base}...${head}`])
+				.split("\n")
+				.filter(Boolean),
+			protectedPaths: cfg.protected ?? [],
+			ratchet,
+			baseTsv: show(base),
+			headTsv: show(head),
+			labels: labelList,
+			label,
+			budgets: (cfg.budgets ?? []).map((path) => ({
+				path,
+				base: showAt(base, path),
+				head: showAt(head, path),
+			})),
+		}),
+	];
 }

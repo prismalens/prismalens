@@ -19,6 +19,7 @@ import { git } from "./gen/git.ts";
 import { type Config, generate, loadConfig } from "./gen/index.ts";
 import { labelCheck } from "./gen/label-run.ts";
 import { ratchet } from "./gen/ratchet-run.ts";
+import { generateWorkspace, workspaceOf } from "./gen/workspace.ts";
 import type { Manifest } from "./manifest.ts";
 import { profileConditions, profileSeeds } from "./ui/quality.ts";
 import {
@@ -76,8 +77,15 @@ function intake(args: string[]): Record<string, string> {
 	};
 }
 
-/** Always fresh: the generated files are not in git, so a read regenerates them first. */
-const readManifest = (cfg: Config): Manifest => generate(cfg).manifest;
+/** Always fresh: the generated files are not in git, so a read regenerates them first; over the workspace when the host names one. */
+const readManifest = (cfg: Config): Manifest => {
+	const ws = workspaceOf(cfg);
+	return ws ? generateWorkspace(ws).manifest : generate(cfg).manifest;
+};
+
+/** The host that declares a kind: in a workspace, the one whose manifest lists it. */
+const hostOf = (cfg: Config, kind: string): Config =>
+	workspaceOf(cfg)?.hosts.find((h) => generate(h).manifest.kinds[kind]) ?? cfg;
 
 /** Formats what `new` wrote, the way the pre-commit hook would. */
 function format(cfg: Config, files: readonly string[]) {
@@ -113,7 +121,13 @@ export function main(argv: string[]): number {
 	const cfg = loadConfig(opt(args, "--config") ?? "registry.config.json");
 	const [cmd, ...rest] = args;
 	if (cmd === "gen") {
-		const code = fail(generate(cfg).problems);
+		const ws = workspaceOf(cfg);
+		const writeLedger = rest.includes("--write-ledger");
+		const code = fail(
+			ws
+				? generateWorkspace(ws, { writeLedger }).problems
+				: generate(cfg, { writeLedger }).problems,
+		);
 		if (!code) console.log("registry: generated");
 		return code;
 	}
@@ -241,17 +255,18 @@ export function main(argv: string[]): number {
 				);
 				return 0;
 			}
-			const plan = planEntry(readManifest(cfg), kind, id, read, {
+			const host = hostOf(cfg, kind);
+			const plan = planEntry(readManifest(cfg), kind, id, reader(host.root), {
 				dir: opt(rest, "--dir"),
-				gallery: cfg.newGallery,
+				gallery: host.newGallery,
 				extra: intake(rest),
 			});
-			apply(cfg.root, plan.edits);
+			apply(host.root, plan.edits);
 			format(
-				cfg,
-				plan.edits.map((e) => e.file),
+				host,
+				plan.edits.map((e) => e.file).filter((f) => /\.[jt]sx?$/.test(f)),
 			);
-			const { problems } = generate(cfg);
+			const { problems } = generate(host);
 			console.log(
 				[
 					...plan.edits.map(
@@ -276,12 +291,12 @@ export function main(argv: string[]): number {
 		return code;
 	}
 	if (cmd === "label-check") {
+		const base = opt(rest, "--base") ?? "";
+		const head = opt(rest, "--head") ?? "HEAD";
+		const hosts = workspaceOf(cfg)?.hosts ?? [cfg];
 		const code = fail(
-			labelCheck(
-				cfg,
-				opt(rest, "--base") ?? "",
-				opt(rest, "--head") ?? "HEAD",
-				process.env.PR_LABELS ?? "",
+			hosts.flatMap((h) =>
+				labelCheck(h, base, head, process.env.PR_LABELS ?? ""),
 			),
 		);
 		if (!code) console.log("label check: passes");

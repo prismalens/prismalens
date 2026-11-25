@@ -63,10 +63,12 @@ const manifest: Manifest = {
 };
 
 describe("names and templates", () => {
-	it("derives every placeholder from an id", () => {
+	it("derives every placeholder from an id, the member being the id after its first dot", () => {
 		expect(namesOf("diffFile.copyPath")).toEqual({
 			id: "diffFile.copyPath",
 			object: "diffFile",
+			member: "copyPath",
+			Member: "CopyPath",
 			Object: "DiffFile",
 			name: "diffFileCopyPath",
 			label: "Copy path",

@@ -18,9 +18,16 @@ export function namesOf(id: string) {
 		.join("");
 	const last = parts.at(-1) ?? id;
 	const words = last.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+	const member = id.slice(object.length + 1);
+	const memberCamel = member
+		.split("-")
+		.map((p) => `${p[0]?.toUpperCase()}${p.slice(1)}`)
+		.join("");
 	return {
 		id,
 		object,
+		member,
+		Member: memberCamel,
 		name: camel,
 		Object: `${object[0]?.toUpperCase()}${object.slice(1)}`,
 		label: `${words[0]?.toUpperCase()}${words.slice(1)}`,
@@ -178,7 +185,20 @@ export function planEntry(
 		);
 	if (manifest.entries[kind]?.some((e) => e.id === id))
 		throw new Error(`${kind} "${id}" already exists.`);
-	const names = { ...namesOf(id), ...opts.extra };
+	const required = Object.values(manifest.entries)
+		.flat()
+		.filter(
+			(e) =>
+				e.fields.required === true && e.fields.family === namesOf(id).object,
+		)
+		.map((e) => e.id)
+		.sort();
+	const names = {
+		...namesOf(id),
+		required: JSON.stringify(required),
+		...opts.extra,
+	};
+	if (k.scaffold.file) return planFiles(k.scaffold, names, read);
 	const sameObject = (e: { id: string }) => e.id.split(".")[0] === names.object;
 	const own = manifest.entries[kind]?.find(sameObject)?.file;
 	const sibling = Object.values(manifest.entries).flat().find(sameObject)?.file;
@@ -229,6 +249,38 @@ export function planEntry(
 		"Write the test in the stub, then run pnpm --filter @prismalens/frontend ui:check:static.",
 	);
 	return { edits, next };
+}
+
+/** A kind whose entries each get their own file, plus the files written beside it. */
+function planFiles(
+	scaffold: Scaffold,
+	names: Record<string, string>,
+	read: (file: string) => string | null,
+): { edits: Edit[]; next: string[] } {
+	const files = [
+		{
+			path: scaffold.file ?? "",
+			template: `${scaffold.imports.join("\n")}\n\n${scaffold.entry}`,
+		},
+		...(scaffold.files ?? []),
+	];
+	const edits = files.map(({ path, template }) => {
+		const file = fill(path, names);
+		if (read(file) !== null) throw new Error(`${file} exists.`);
+		const text = fill(template, names).replace(/\n*$/, "\n");
+		return {
+			file,
+			created: true,
+			text: file.endsWith(".ts") ? `${HEADER}${text}` : text,
+		};
+	});
+	return {
+		edits,
+		next: [
+			`Fill in ${edits.map((e) => e.file).join(", ")}.`,
+			"Then run pnpm registry gen; its guards name anything the new entry still lacks.",
+		],
+	};
 }
 
 /** `pnpm new kind <name>`: the kind file, its place in the kinds list, and its L1 lint plugin. */

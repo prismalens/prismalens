@@ -132,3 +132,6 @@ sim-report/
 # The registry's generated files: `pnpm install` and turbo regenerate them (#1101)
 packages/frontend/src/registry/registry.gen.ts
 packages/frontend/src/registry/registry.manifest.json
+packages/@prismalens/providers/src/registry.gen.ts
+packages/@prismalens/providers/src/registry.manifest.json
+packages/@prismalens/providers/.tmp/

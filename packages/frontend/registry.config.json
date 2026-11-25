@@ -1,4 +1,5 @@
 {
+	"workspace": "../../registry.workspace.json",
 	"src": "src",
 	"kinds": "src/registry/kinds",
 	"out": "src/registry",

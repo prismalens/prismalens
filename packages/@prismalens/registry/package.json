@@ -9,7 +9,8 @@
 		".": "./src/index.ts",
 		"./gen": "./src/gen/index.ts",
 		"./ui": "./src/ui/index.ts",
-		"./stamp": "./src/ui/stamp.ts"
+		"./stamp": "./src/ui/stamp.ts",
+		"./cli": "./src/cli.ts"
 	},
 	"bin": {
 		"prismalens-registry": "./src/cli.ts"

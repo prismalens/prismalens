@@ -53,6 +53,17 @@ export function guard(
 export interface Scaffold {
 	/** Where a new file goes when the object has none yet, e.g. `src/components/{{object}}`. */
 	readonly dir: string;
+	/** The entry's own file, when each entry gets one, e.g. `src/{{object}}/{{member}}/{{member}}.provider.ts`. */
+	readonly file?: string;
+	/**
+	 * Files written beside a new entry, such as an adapter stub and fixtures. Placeholders also
+	 * take {{member}} (the id after its first dot), {{Member}} and {{required}} (the ids of the
+	 * entries whose `required` is true and whose `family` is the new entry's object, as JSON).
+	 */
+	readonly files?: readonly {
+		readonly path: string;
+		readonly template: string;
+	}[];
 	/** Import lines the entry needs. */
 	readonly imports: readonly string[];
 	readonly entry: string;

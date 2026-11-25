@@ -3,6 +3,7 @@
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, relative, resolve } from "node:path";
+import { appendLedger, ledgerProblems, parseLedger } from "../ledger.ts";
 import type {
 	Manifest,
 	ManifestCase,
@@ -23,6 +24,7 @@ import {
 	readObjects,
 	readUses,
 } from "./extract.ts";
+import { scanModules } from "./modules.ts";
 
 export {
 	type KindSource,
@@ -40,7 +42,9 @@ export interface Config {
 	readonly src: string;
 	readonly kinds: string;
 	readonly out: string;
-	readonly gallery: string;
+	/** `source` (default) reads literals from source and collects through a Vite glob; `module` imports the files in Node. */
+	readonly collect?: "source" | "module";
+	readonly gallery?: string;
 	/** The ratchet TSV, and the dirs whose text rules it counts. */
 	readonly ratchet?: string;
 	readonly ratchetDirs?: readonly string[];
@@ -64,6 +68,14 @@ export interface Config {
 	readonly bar?: { readonly issue: number; readonly repo: string };
 	/** Patterns no component may use outside an allowlist; counted into the ratchet. */
 	readonly forbid?: readonly Forbid[];
+	/** The workspace this host belongs to: the CLI then reads and checks every host in it. */
+	readonly workspace?: string;
+	/** The stored-id ledger (`ledger.ts`): its file, and the kind and field whose claims it holds. */
+	readonly ledger?: {
+		readonly file: string;
+		readonly kind: string;
+		readonly field: string;
+	};
 }
 
 export function loadConfig(file: string): Config {
@@ -113,6 +125,7 @@ export function buildManifest(cfg: Config): {
 	kinds: KindSource[];
 	problems: string[];
 } {
+	if (cfg.collect === "module") return buildModuleManifest(cfg);
 	const problems: string[] = [];
 	const read = (f: string) => readFileSync(join(cfg.root, f), "utf8");
 	const kinds = sources(cfg.root, cfg.kinds)
@@ -150,7 +163,7 @@ export function buildManifest(cfg: Config): {
 			objects.push(...readObjects(f, text, problems));
 		for (const { rule, count } of readForbidden(f, text, cfg.forbid ?? []))
 			forbidden.push({ file: f, rule, count, fix: fixOf.get(rule) ?? "" });
-		if (f.startsWith(`${cfg.gallery}/`))
+		if (cfg.gallery && f.startsWith(`${cfg.gallery}/`))
 			for (const id of readGallery(f, text)) gallery.add(id);
 		if (hints.some((h) => text.includes(h)))
 			for (const { kind, use } of readUses(f, text, kinds))
@@ -198,6 +211,41 @@ export function buildManifest(cfg: Config): {
 		...(cfg.forbid ? { forbidden } : {}),
 	};
 	return { manifest, kinds, problems };
+}
+
+/** A module host's manifest: its kinds and entries as Node imports them, guards already run. */
+function buildModuleManifest(cfg: Config): {
+	manifest: Manifest;
+	kinds: KindSource[];
+	problems: string[];
+} {
+	const kindFiles = sources(cfg.root, cfg.kinds);
+	const entryFiles = sources(cfg.root, cfg.src).filter(
+		(f) => !kindFiles.includes(f),
+	);
+	const scanned = scanModules(cfg.root, kindFiles, entryFiles);
+	const fixOf = new Map((cfg.forbid ?? []).map((f) => [f.rule, f.fix]));
+	const forbidden = entryFiles.flatMap((f) =>
+		readForbidden(
+			f,
+			readFileSync(join(cfg.root, f), "utf8"),
+			cfg.forbid ?? [],
+		).map(({ rule, count }) => ({
+			file: f,
+			rule,
+			count,
+			fix: fixOf.get(rule) ?? "",
+		})),
+	);
+	const manifest: Manifest = {
+		version: 1,
+		kinds: sortKeys(scanned.kinds),
+		entries: sortKeys(scanned.entries),
+		gallery: [],
+		uses: {},
+		...(cfg.forbid ? { forbidden } : {}),
+	};
+	return { manifest, kinds: [], problems: [...scanned.problems] };
 }
 
 /** Marks each view that names a `path` with whether it exists under the repo root. */
@@ -320,6 +368,8 @@ export function emitTypes(cfg: Config, manifest: Manifest): string {
 			lines.push(`\t${JSON.stringify(o.name)}: StatesOf<${ref(o)}>;`);
 		lines.push("}\n");
 	}
+	if (cfg.collect === "module")
+		return `${lines.join("\n")}${emitBarrel(cfg, manifest)}`;
 	const rel = posix.relative(cfg.out, cfg.src) || ".";
 	const glob = (ks: string[]) =>
 		ks
@@ -359,6 +409,32 @@ export function emitTypes(cfg: Config, manifest: Manifest): string {
 	return `${lines.join("\n")}\n`;
 }
 
+/** A module host's runtime barrel: one static import per entry file, so Node and bundlers load it without a glob. */
+function emitBarrel(cfg: Config, manifest: Manifest): string {
+	const files = Array.from(
+		new Set(
+			Object.values(manifest.entries)
+				.flat()
+				.map((e) => e.file),
+		),
+	).sort();
+	const spec = (f: string) => {
+		const rel = posix.relative(cfg.out, f);
+		return rel.startsWith(".") ? rel : `./${rel}`;
+	};
+	const out = files.map(
+		(f, i) => `import * as m${i} from ${JSON.stringify(spec(f))};`,
+	);
+	out.push(
+		"",
+		"/** Every entry file this host declares, by path: what `collect` reads at runtime. */",
+		"export const builtIn = {",
+		...files.map((f, i) => `\t${JSON.stringify(f)}: m${i},`),
+		"} as const;",
+	);
+	return `${out.join("\n")}\n`;
+}
+
 export const emitManifest = (manifest: Manifest) =>
 	`${JSON.stringify(manifest, null, "\t")}\n`;
 
@@ -370,11 +446,34 @@ export const OUT_MANIFEST = "registry.manifest.json";
  * stale ones; problems in source fail either way.
  */
 /** Writes the two generated files, each only when it changed; they are not in git (#1101). */
-export function generate(cfg: Config): {
+export function generate(
+	cfg: Config,
+	opts: { writeLedger?: boolean } = {},
+): {
 	problems: string[];
 	manifest: Manifest;
 } {
 	const { manifest, problems } = buildManifest(cfg);
+	if (cfg.ledger) {
+		const file = join(cfg.root, cfg.ledger.file);
+		const entries = manifest.entries[cfg.ledger.kind] ?? [];
+		let text = existsSync(file) ? readFileSync(file, "utf8") : "";
+		if (opts.writeLedger) {
+			const next = appendLedger(text, entries, cfg.ledger.field);
+			if (next !== text) writeFileSync(file, next);
+			text = next;
+		}
+		const parsed = parseLedger(text);
+		problems.push(
+			...[
+				...parsed.problems,
+				...ledgerProblems(parsed.rows, entries, cfg.ledger.field),
+			].map(
+				(p) =>
+					`[${cfg.ledger?.kind}/stored-id] ${p}. Fix: a new claim gets its row from \`pnpm registry gen --write-ledger\`; a shipped value keeps its owner (rename through aliases).`,
+			),
+		);
+	}
 	const files = {
 		[posix.join(cfg.out, OUT_TYPES)]: emitTypes(cfg, manifest),
 		[posix.join(cfg.out, OUT_MANIFEST)]: emitManifest(manifest),
