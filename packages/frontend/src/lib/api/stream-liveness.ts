@@ -27,7 +27,9 @@ export function watchSilence(onSilent: () => void): SilenceWatch {
 	let fired = false;
 	const timer = setInterval(() => {
 		const now = performance.now();
-		if (now - tick > TICK_MS * 4) last = now;
+		// Only the stall itself is forgiven: a fresh window after it also forgave the
+		// silence before it, and a busy leader showed a drop after 3.4 s (#1181).
+		if (now - tick > TICK_MS * 4) last += now - tick - TICK_MS;
 		tick = now;
 		if (!fired && now - last > limit) {
 			fired = true;

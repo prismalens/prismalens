@@ -407,6 +407,7 @@ async function dropWord(page, during) {
 	const backMs = await until(page, b0, `!(${WORD})`, 30_000);
 	return {
 		happened: await happened,
+		droppedAt: d0,
 		wordMs,
 		dropToSilentMs: at.fired && Math.round(at.fired - d0),
 		silentToWordMs: at.fired && at.word && Math.round(at.word - at.fired),
@@ -441,6 +442,21 @@ async function tabsCensus(browser) {
 	await views[0].page.waitForTimeout(3000);
 	const c = await liveCensus(base, views);
 	const drop = await dropWord(views.at(-1).page);
+	// Each tab's silence mark against the drop: the word in a follower waits on the leader's.
+	drop.tabs = await Promise.all(
+		views.map(({ page }) =>
+			page.evaluate((d0) => {
+				const m = performance.getEntriesByName("pl:stream-silent").at(-1);
+				return {
+					role: globalThis.__plLiveRole ?? null,
+					visible: document.visibilityState,
+					silentMs: m
+						? Math.round(performance.timeOrigin + m.startTime - d0)
+						: null,
+				};
+			}, drop.droppedAt),
+		),
+	);
 	await until(views[0].page, Date.now(), `!(${WORD})`, 30_000);
 	const resumeShowsMs = await resumeProbe(base, views);
 	const handoffShowsMs = await handoffProbe(base, views);
