@@ -32,6 +32,7 @@ import {
 } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
 import { Logger } from "@prismalens/logger";
+import * as clock from "../../core/clock.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
@@ -656,7 +657,7 @@ export class RewindService {
 			}
 		});
 		if (!askIds.length) return [];
-		const at = new Date();
+		const at = clock.date();
 		await tx.pendingAction.updateMany({
 			where: { askId: { in: askIds }, state: "pending" },
 			data: { state: "cancelled", decidedAt: at, deliveredAt: at },
@@ -1141,7 +1142,7 @@ async function appendIn(
 		path: [],
 		seq: (_max.seq ?? -1) + 1,
 		label: null,
-		ts: new Date().toISOString(),
+		ts: clock.date().toISOString(),
 	} as CanonicalEvent;
 	await tx.investigationEvent.create({
 		data: {

@@ -66,6 +66,7 @@ import {
 	takeSnapshot,
 	turnSnapshots,
 	withStoreLock,
+	worktreeHead,
 } from "./worktree-snapshots.js";
 
 const DIFF = [

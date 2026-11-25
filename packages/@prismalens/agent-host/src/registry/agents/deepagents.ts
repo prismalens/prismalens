@@ -47,8 +47,7 @@ export const deepagents = {
 			value: "replay",
 			via: "source",
 			verifiedAt: { cli: "0.2.1", adapter: null },
-			where:
-				"libs/acp/deepagents_acp/server.py initialize: load_session only",
+			where: "libs/acp/deepagents_acp/server.py initialize: load_session only",
 		},
 	},
 } satisfies AgentDescriptor;
