@@ -17,6 +17,7 @@ import {
 	type LevelFacts,
 	reopens,
 } from "@prismalens/agent-host/registry";
+
 import {
 	type AgentFacts,
 	agents,
@@ -24,7 +25,7 @@ import {
 	type CheckedModes,
 	type AccessLevel as DescribedLevel,
 	type Lines,
-} from "@prismalens/providers";
+} from "@prismalens/providers/agents";
 import CATALOGUE_SOURCES from "./catalogue-sources.json" with { type: "json" };
 import { modelProvider, providerName } from "./model-makers.js";
 
@@ -55,7 +56,7 @@ export {
 	type CheckedModes,
 	type InstallChannel,
 	installCommand,
-} from "@prismalens/providers";
+} from "@prismalens/providers/agents";
 
 export const HARNESS_IDS = AGENT_IDS;
 export type HarnessId = AgentId;

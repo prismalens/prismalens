@@ -43,12 +43,10 @@ export {
 	type Resolved,
 } from "./registry.ts";
 
-import { isAgent } from "./agent/family.ts";
 import { builtIn } from "./registry.gen.ts";
 import { ProviderRegistry } from "./registry.ts";
 
+export { agents } from "./agents.ts";
+
 /** The built-in members; a module's members join through `contribute`. */
 export const providers = new ProviderRegistry(builtIn);
-
-/** The built-in agents in their declared order. */
-export const agents = () => providers.list("agent").filter(isAgent);

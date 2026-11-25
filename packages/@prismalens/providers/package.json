@@ -10,6 +10,10 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./agents": {
+			"types": "./dist/agents.d.ts",
+			"import": "./dist/agents.js"
+		},
 		"./kinds": "./src/kinds/index.ts",
 		"./conformance": "./src/conformance/index.ts"
 	},
