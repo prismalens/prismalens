@@ -4,6 +4,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import type { Manifest } from "../manifest.ts";
+import type { Forbid } from "./extract.ts";
 import { type Config, generate, loadConfig } from "./index.ts";
 
 /** One import boundary: no file under `from` may import a specifier starting with any of `deny`. */
@@ -13,12 +14,25 @@ export interface Boundary {
 	readonly why: string;
 }
 
+/** The checks every workspace package gets, host or not. Paths are repo-relative. */
+export interface Guard {
+	readonly ratchet: string;
+	/** The Biome config whose registry plugins run over every package. */
+	readonly lint: string;
+	readonly forbid?: readonly Forbid[];
+	readonly protected?: readonly string[];
+	readonly label?: string;
+}
+
 /** `registry.workspace.json`: every host the CLI reads, and the checks that span them. Paths are repo-relative. */
 export interface Workspace {
 	/** Absolute repo root: the workspace file's folder. */
 	readonly root: string;
 	readonly hosts: readonly Config[];
 	readonly boundaries: readonly Boundary[];
+	readonly guard?: Guard;
+	/** The host and kind whose `<family>.<member>` entries name the ids forbid rules read. */
+	readonly ids?: { readonly host: string; readonly kind: string };
 }
 
 export function loadWorkspace(file: string): Workspace {
@@ -27,11 +41,15 @@ export function loadWorkspace(file: string): Workspace {
 	const raw = JSON.parse(readFileSync(abs, "utf8")) as {
 		hosts: string[];
 		boundaries?: Boundary[];
+		guard?: Guard;
+		ids?: Workspace["ids"];
 	};
 	return {
 		root,
 		hosts: raw.hosts.map((h) => loadConfig(join(root, h))),
 		boundaries: raw.boundaries ?? [],
+		guard: raw.guard,
+		ids: raw.ids,
 	};
 }
 

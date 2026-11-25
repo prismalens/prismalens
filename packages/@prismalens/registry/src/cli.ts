@@ -3,9 +3,9 @@
 // Copyright 2026 Sumit Patel
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join, posix, relative } from "node:path";
+import { join, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
 	apply,
@@ -15,9 +15,10 @@ import {
 	reader,
 	where,
 } from "./gen/commands.ts";
-import { git } from "./gen/git.ts";
+import { repoPaths } from "./gen/git.ts";
+import { ratchetGuard } from "./gen/guard.ts";
 import { type Config, generate, loadConfig } from "./gen/index.ts";
-import { labelCheck } from "./gen/label-run.ts";
+import { guardLabelCheck, labelCheck } from "./gen/label-run.ts";
 import { ratchet } from "./gen/ratchet-run.ts";
 import { generateWorkspace, workspaceOf } from "./gen/workspace.ts";
 import type { Manifest } from "./manifest.ts";
@@ -38,9 +39,10 @@ export const USAGE = `usage: registry [--config <file>] <command>
   new <kind> <object.name> [--said "<quote>" --date <utc> --where <source>]
                                 scaffold an entry, a test stub and a gallery stub, then regenerate
   new kind <name>               scaffold a kind, its place in the kinds list and its L1 plugin
-  ratchet [--write] [--report <json> --report-cwd <dir>]
-                                check, or write, the lint and suppression counts; --report
-                                reads a Biome JSON report instead of running Biome again
+  ratchet [--write] [--own-host] [--report <json> --report-cwd <dir>]
+                                check, or write, the lint and suppression counts of every host that
+                                keeps them and of the workspace guard, or only this config's;
+                                --report reads a Biome JSON report instead of running Biome again
   label-check --base <sha> [--head <sha>]   does the PR need the operator's label (PR_LABELS=a,b)
   render bar [--apply]          print #1101's category, walk and condition tables and each category's
                                 numbered bar items (barItem); --apply writes them into the bar issue's
@@ -225,10 +227,7 @@ export function main(argv: string[]): number {
 		const read = reader(cfg.root);
 		try {
 			if (kind === "kind") {
-				const top = git(["rev-parse", "--show-toplevel"], {
-					cwd: cfg.root,
-				}).trim();
-				const prefix = relative(top, cfg.root).split("\\").join("/");
+				const { prefix, toRoot } = repoPaths(cfg.root);
 				const plan = planKind(
 					id,
 					{
@@ -240,12 +239,12 @@ export function main(argv: string[]): number {
 				);
 				apply(cfg.root, plan.edits);
 				addPlugin(
-					top,
+					join(realpathSync(cfg.root), toRoot),
 					posix.join(prefix, plan.plugin.path),
 					plan.plugin.includes,
 				);
 				format(cfg, [
-					relative(cfg.root, join(top, "biome.json")),
+					posix.join(toRoot, "biome.json"),
 					...plan.edits.map((e) => e.file),
 				]);
 				generate(cfg);
@@ -289,19 +288,29 @@ export function main(argv: string[]): number {
 		const report = file
 			? { file, cwd: opt(rest, "--report-cwd") ?? "." }
 			: undefined;
-		const code = fail(ratchet(cfg, write, report));
+		const ws = rest.includes("--own-host") ? undefined : workspaceOf(cfg);
+		const hosts = [
+			...(cfg.ratchet || !ws?.guard ? [cfg] : []),
+			...(ws?.hosts ?? []).filter((h) => h.ratchet && h.root !== cfg.root),
+		];
+		const code = fail([
+			...hosts.flatMap((h) =>
+				ratchet(h, write, h === cfg ? report : undefined),
+			),
+			...(ws ? ratchetGuard(ws, write) : []),
+		]);
 		if (!code) console.log(write ? "ratchet: written" : "ratchet: holds");
 		return code;
 	}
 	if (cmd === "label-check") {
 		const base = opt(rest, "--base") ?? "";
 		const head = opt(rest, "--head") ?? "HEAD";
-		const hosts = workspaceOf(cfg)?.hosts ?? [cfg];
-		const code = fail(
-			hosts.flatMap((h) =>
-				labelCheck(h, base, head, process.env.PR_LABELS ?? ""),
-			),
-		);
+		const ws = workspaceOf(cfg);
+		const labels = process.env.PR_LABELS ?? "";
+		const code = fail([
+			...(ws?.hosts ?? [cfg]).flatMap((h) => labelCheck(h, base, head, labels)),
+			...(ws ? guardLabelCheck(ws, base, head, labels) : []),
+		]);
 		if (!code) console.log("label check: passes");
 		return code;
 	}

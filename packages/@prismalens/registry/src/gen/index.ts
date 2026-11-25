@@ -24,7 +24,9 @@ import {
 	readObjects,
 	readUses,
 } from "./extract.ts";
+import { familyIds } from "./ids.ts";
 import { scanModules } from "./modules.ts";
+import { workspaceOf } from "./workspace.ts";
 
 export {
 	type KindSource,
@@ -152,6 +154,8 @@ export function buildManifest(cfg: Config): {
 	}[] = [];
 	const fixOf = new Map((cfg.forbid ?? []).map((f) => [f.rule, f.fix]));
 	const gallery = new Set<string>();
+	const families = familyIds(workspaceOf(cfg), cfg.forbid ?? []);
+	problems.push(...families.problems);
 	const aliases = kinds.flatMap((k) => k.aliases.map((a) => `|${a}`)).join("");
 	const calls = new RegExp(String.raw`\b(?:define\.\w+${aliases})\s*[<(]`);
 	for (const f of all) {
@@ -161,7 +165,12 @@ export function buildManifest(cfg: Config): {
 				entries[kind]?.push(entry);
 		if (kinds.some((k) => f.endsWith(k.suffix)))
 			objects.push(...readObjects(f, text, problems));
-		for (const { rule, count } of readForbidden(f, text, cfg.forbid ?? []))
+		for (const { rule, count } of readForbidden(
+			f,
+			text,
+			cfg.forbid ?? [],
+			families.ids,
+		))
 			forbidden.push({ file: f, rule, count, fix: fixOf.get(rule) ?? "" });
 		if (cfg.gallery && f.startsWith(`${cfg.gallery}/`))
 			for (const id of readGallery(f, text)) gallery.add(id);
@@ -225,11 +234,13 @@ function buildModuleManifest(cfg: Config): {
 	);
 	const scanned = scanModules(cfg.root, kindFiles, entryFiles);
 	const fixOf = new Map((cfg.forbid ?? []).map((f) => [f.rule, f.fix]));
+	const families = familyIds(workspaceOf(cfg), cfg.forbid ?? []);
 	const forbidden = entryFiles.flatMap((f) =>
 		readForbidden(
 			f,
 			readFileSync(join(cfg.root, f), "utf8"),
 			cfg.forbid ?? [],
+			families.ids,
 		).map(({ rule, count }) => ({
 			file: f,
 			rule,
@@ -245,7 +256,11 @@ function buildModuleManifest(cfg: Config): {
 		uses: {},
 		...(cfg.forbid ? { forbidden } : {}),
 	};
-	return { manifest, kinds: [], problems: [...scanned.problems] };
+	return {
+		manifest,
+		kinds: [],
+		problems: [...scanned.problems, ...families.problems],
+	};
 }
 
 /** Marks each view that names a `path` with whether it exists under the repo root. */

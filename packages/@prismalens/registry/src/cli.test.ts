@@ -5,13 +5,16 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readFileSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main, USAGE } from "./cli.ts";
+import { git } from "./gen/git.ts";
 
 // A minimal kind module that generate() can read.
 const KIND_SRC = `import { defineKind } from "@prismalens/registry";
@@ -279,6 +282,41 @@ describe("new", () => {
 		const code = main(["--config", cfgFile, "new"]);
 		expect(code).toBe(1);
 		expect(err.mock.calls).toEqual([[USAGE]]);
+	});
+
+	// Git answers with the real path, so the config's own may not be under it (macOS's /var).
+	it("new kind adds its plugin to the repo's biome.json by repo path when reached through a link", () => {
+		git(["init", "-q"], { cwd: root });
+		put("biome.json", '{ "plugins": [] }');
+		// The formatter is resolved from the host; this one does nothing.
+		put("app/node_modules/@biomejs/biome/bin/biome", "");
+		put("app/src/registry/kinds/widget.ts", KIND_SRC);
+		put("app/src/a/b.widgets.ts", ENTRY_SRC);
+		put("app/registry.config.json", readFileSync(cfgFile, "utf8"));
+		const links = mkdtempSync(join(tmpdir(), "registry-link-"));
+		try {
+			const link = join(links, "repo");
+			symlinkSync(root, link, "junction");
+			vi.spyOn(console, "log").mockReturnValue(undefined);
+			const cfg = join(link, "app/registry.config.json");
+			expect(main(["--config", cfg, "new", "kind", "chip"])).toBe(0);
+		} finally {
+			rmSync(links, { recursive: true, force: true });
+		}
+		const { plugins } = JSON.parse(
+			readFileSync(join(root, "biome.json"), "utf8"),
+		);
+		expect(plugins).toEqual([
+			{
+				path: "./app/biome-plugins/registry/l1-chip.grit",
+				includes: [
+					"app/src/**",
+					"!app/src/**/*.chips.ts",
+					"!app/src/**/*.test.ts",
+					"!app/src/**/*.test.tsx",
+				],
+			},
+		]);
 	});
 
 	it("prints why it cannot scaffold to stderr and returns 1 when the kind has no scaffold", () => {

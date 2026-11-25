@@ -23,6 +23,7 @@
 	"dependencies": {
 		"@prismalens/agent-host": "workspace:*",
 		"typescript": "catalog:",
+		"yaml": "^2.9.1",
 		"zod": "catalog:"
 	},
 	"devDependencies": {

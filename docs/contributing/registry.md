@@ -1,24 +1,25 @@
 # The registry
 
-Anything a user can see, run, set or bind is declared once, as an entry of a **kind**. Every package reads entries through one kernel, `@prismalens/registry`. Drift fails `pnpm registry gen`, which `pnpm install` runs, so it also fails CI.
+Anything a user can see, run, set or bind is declared once, as an entry of a **kind**. All read through one kernel, `@prismalens/registry`. Drift fails `pnpm registry gen`, which `pnpm install` runs, so it also fails CI.
 
 ## Hosts
 
-A host is a package with a `registry.config.json`. Its kinds live in its `kinds` folder and its entries in files with each kind's suffix. `registry.workspace.json` at the root lists every host and the import boundaries between packages. A host config that sets `workspace` makes the CLI read and check them all.
+A host is a package with a `registry.config.json`. Its kinds live in its `kinds` folder and its entries in files with each kind's suffix. `registry.workspace.json` at the root lists every host. A host config that sets `workspace` makes the CLI read and check them all.
 
 | Host | `collect` | Kinds | Read by |
 |---|---|---|---|
 | `packages/frontend` | `source` (default): literals read from source; a Vite glob loads the entries | action, block, condition, lens, setting, surface | the app, vitest |
 | `packages/@prismalens/providers` | `module`: Node imports the files and writes a static barrel (not in git) | provider, entryPoint | the API, the engine, scripts, the UI |
 
-The providers host joins `registry.workspace.json` with its first family, because the `populated` guard refuses a kind without entries. Pick `module` for a kind the server reads, and keep its entry files free of build-only imports. Descriptors import nothing built, so `gen` runs before any build.
+Pick `module` for a kind the server reads, and keep its entry files free of build-only imports. Descriptors import nothing built, so `gen` runs before any build.
+
+## The guard
+
+`guard` in `registry.workspace.json` covers every pnpm workspace package, skipping files a host's ratchet counts. `pnpm registry ratchet` holds agent ids, marks, model tables, L9 and T1-T3 at `registry.ratchet.tsv`. A rule's `ids` come from the providers registry.
 
 ## Add an entry
 
-Run `pnpm registry where "<thing>"` to see which kind it is, then `pnpm new <kind> <id>`. A provider is `pnpm new provider <family>.<member>`, for example `pnpm new provider code-host.gitea`. Once its host is in the workspace, that command writes three things:
-- the descriptor, with every required entry point of its family already listed;
-- its fixtures;
-- the barrel entry.
+Run `pnpm registry where "<thing>"` to see which kind it is, then `pnpm new <kind> <id>`. A provider is `pnpm new provider <family>.<member>`, for example `pnpm new provider code-host.gitea`. It writes the descriptor (its family's required entry points listed), its fixtures and the barrel entry.
 
 Fill the descriptor in, then run `pnpm registry gen`. Its guards name anything the entry still lacks. A member may skip a family check only through `skips: [{ case, reason }]`; the kit prints the reason in the test name.
 

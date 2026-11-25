@@ -206,7 +206,9 @@ src/components/usage/usage-math.ts	time-handmade	4
 src/design/gallery.attention.tsx	L7	1
 src/design/gallery.kit.tsx	L3	2
 src/design/gallery.kit.tsx	L7	1
+src/design/gallery.kit.tsx	agent-id-handmade	6
 src/design/gallery.phone.tsx	fact-unmarked	1
+src/design/gallery.usage.tsx	agent-id-handmade	5
 src/hooks/use-settle-undo.test.tsx	as-never	1
 src/hooks/use-shortcuts.ts	biome-ignore	1
 src/lib/analytics/incident-analytics.test.ts	T2	1
@@ -265,6 +267,7 @@ src/registry/conditions/twoDevices.conditions.ts	G4-debt	3
 src/registry/conditions/twoDevices.conditions.ts	G4-uncased	1
 src/registry/conditions/usage.conditions.ts	G4-debt	4
 src/registry/conditions/usage.conditions.ts	G4-uncased	1
+src/routes/[_]design.tsx	agent-id-handmade	4
 src/routes/_authenticated/automation.tsx	biome-ignore	2
 src/routes/_authenticated/incidents/$id/route.tsx	biome-ignore	1
 src/routes/_authenticated/projects/index.tsx	as-never	1

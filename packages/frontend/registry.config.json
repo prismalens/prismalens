@@ -15,6 +15,7 @@
 		"packages/frontend/src/registry/define.ts",
 		"packages/frontend/src/registry/registry.guards.test.ts",
 		"packages/frontend/biome-plugins/registry/",
+		"packages/frontend/biome-plugins/test-lint.json",
 		"packages/frontend/registry.config.json",
 		"packages/frontend/registry.ratchet.tsv",
 		"biome.json",
@@ -37,11 +38,7 @@
 		{
 			"rule": "agent-id-handmade",
 			"fix": "Read the difference from the agent registry: add a fact to AgentFacts in @prismalens/providers src/agent/family.ts, set it in each agent's descriptor, and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI",
-			"patterns": [
-				"[iI]d\\s*[!=]==\\s*\"(?:opencode|claude-code|codex|gemini|deepagents|local)\"",
-				"case \"(?:opencode|claude-code|codex|gemini|deepagents)\":",
-				"\\n\\s*\"claude-code\"\\s*:"
-			],
+			"ids": "agent",
 			"allow": ["*.test.ts", "*.test.tsx"]
 		},
 		{
