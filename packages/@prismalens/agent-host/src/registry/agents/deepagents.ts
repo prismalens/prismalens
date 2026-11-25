@@ -2,13 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { AgentDescriptor } from "../agents.js";
-import {
-	GATEWAY_RUN_FILE,
-	inConfigDir,
-	noMode,
-	PROBED_AT,
-	probed,
-} from "../row.js";
+import { GATEWAY_RUN_FILE, inConfigDir, noMode, probed } from "../row.js";
 
 export const deepagents = {
 	id: "deepagents",
@@ -42,7 +36,7 @@ export const deepagents = {
 	modeNames: {},
 	modeMechanism: "none",
 	modelVia: "unsupported",
-	facts: probed(PROBED_AT.deepagents, {
+	facts: probed({
 		loadSession: true,
 		images: true,
 		embeddedContext: false,

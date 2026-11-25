@@ -7,6 +7,7 @@ import {
 	applied,
 	gateVerdict,
 	heldComment,
+	moves,
 	pick,
 	pickVersion,
 	probeArgs,
@@ -200,4 +201,25 @@ test("a held candidate's comment carries its marker, so a repeat edits it", () =
 			"Run: https://example.test/run/1. The legs' logs name each failing probe fact or matrix row.",
 		].join("\n"),
 	);
+});
+
+test("moves lists the CLI and the adapter that changed, as agent-facts reads them", () => {
+	const after = {
+		...claude,
+		cli: { ...claude.cli, version: "2.1.0" },
+		adapter: { ...claude.adapter, version: "0.10.0" },
+	};
+	assert.deepEqual(moves(claude, after), [
+		{
+			package: "@anthropic-ai/claude-code",
+			current: "2.0.0",
+			version: "2.1.0",
+		},
+		{
+			package: "@agentclientprotocol/claude-agent-acp",
+			current: "0.9.0",
+			version: "0.10.0",
+		},
+	]);
+	assert.deepEqual(moves(claude, claude), []);
 });

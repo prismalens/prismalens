@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { AgentDescriptor } from "../agents.js";
-import { PROBED_AT, probed } from "../row.js";
+import { probed } from "../row.js";
 
 export const gemini = {
 	id: "gemini",
@@ -27,7 +27,7 @@ export const gemini = {
 		shownDefault: "your home folder (holds .gemini)",
 	},
 	facts: {
-		...probed(PROBED_AT.gemini, {
+		...probed({
 			loadSession: true,
 			images: true,
 			embeddedContext: true,

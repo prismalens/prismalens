@@ -3,7 +3,7 @@
 
 import type { AgentDescriptor } from "../agents.js";
 import { opencodePermission } from "../opencode.js";
-import { PROBED_AT, probed } from "../row.js";
+import { probed } from "../row.js";
 
 export const opencode = {
 	id: "opencode",
@@ -67,7 +67,7 @@ export const opencode = {
 		},
 	},
 	facts: {
-		...probed(PROBED_AT.opencode, {
+		...probed({
 			loadSession: true,
 			images: true,
 			embeddedContext: true,

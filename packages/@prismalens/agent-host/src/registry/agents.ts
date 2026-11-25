@@ -56,7 +56,6 @@ export type SubagentLimitKey =
 export type SubagentStopChoice = "stop" | "finish";
 export {
 	GATEWAY_RUN_FILE,
-	PROBED_AT,
 	SUBAGENTS_ON_STOP_DEFAULT,
 } from "./row.js";
 

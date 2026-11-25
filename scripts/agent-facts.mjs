@@ -6,26 +6,20 @@
  * Each agent's registry facts against the pins CI installs (#1101).
  *
  *   agent-facts.mjs check [--built <checkout>]
- *     exit 1 naming each fact whose `verifiedAt` is not its row's pins: the pull request
- *     check "agent facts not re-verified"
+ *     exit 1 naming each source-read fact whose `verifiedAt` is not its row's pins: the pull
+ *     request check "agent facts not re-verified". Probed facts carry no versions; the bump's
+ *     conformance legs assert them live.
  *   agent-facts.mjs sync [--built <checkout>] [--body <file>]
- *     the pin bump's sync step (MOVED names a JSON file of the moved pins): moves each touched
- *     row's probed versions to its pins, since the bump's probe passed on them, and appends to
- *     `--body` the source facts left to re-read and each moved package's cancel, session and
- *     sub-agent hunks
+ *     appends to `--body` the source facts left to re-read and each moved package's cancel,
+ *     session and sub-agent hunks (MOVED names a JSON file of the moved pins)
  */
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { readPins } from "./agent-pins.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-/** The file `sync` rewrites: the probed versions every launch row reads. */
-export const AGENTS = join(
-	ROOT,
-	"packages/@prismalens/agent-host/src/registry/row.ts",
-);
 const json = (path) => JSON.parse(readFileSync(join(ROOT, path), "utf8"));
 
 /** Where each pinned package's source lives, for the hunks a bump lists; absent, no public source. */
@@ -68,33 +62,12 @@ export function pinnedAt(row, pins, adapters) {
 }
 
 /** Each row's facts not checked on its pins: `[{ id, facts: ["name (via, checked on …)"] }]`. */
-export function stale(registry, pins, adapters, staleFacts, via) {
+export function stale(registry, pins, adapters, staleFacts) {
 	return Object.values(registry).flatMap((row) => {
 		const at = pinnedAt(row, pins, adapters);
-		const facts = at ? staleFacts(row.facts, at, via) : [];
+		const facts = at ? staleFacts(row.facts, at) : [];
 		return facts.length ? [{ id: row.id, facts, defs: row.facts }] : [];
 	});
-}
-
-/** The source with each listed row's `PROBED_AT` line moved to its versions, and the ids it moved. */
-export function moveProbed(source, rows) {
-	const moved = [];
-	let out = source;
-	for (const [id, at] of Object.entries(rows)) {
-		const key = /^[a-z]+$/.test(id) ? id : `"${id}"`;
-		const line = new RegExp(
-			`^(\\t${key.replace(/[-"]/g, "\\$&")}: )\\{ cli: "[^"]*", adapter: (?:"[^"]*"|null) \\},$`,
-			"m",
-		);
-		if (!line.test(out)) throw new Error(`no PROBED_AT line for the ${id} row`);
-		const next = out.replace(
-			line,
-			`$1{ cli: "${at.cli}", adapter: ${at.adapter ? `"${at.adapter}"` : "null"} },`,
-		);
-		if (next !== out) moved.push(id);
-		out = next;
-	}
-	return { source: out, moved };
 }
 
 /** The hunks of a unified diff whose added or removed lines match `watched`. */
@@ -215,32 +188,14 @@ async function main() {
 	const moves = process.env.MOVED
 		? JSON.parse(readFileSync(process.env.MOVED, "utf8"))
 		: [];
-	const movedPackages = new Set(moves.map((m) => m.package));
-	const touched = Object.fromEntries(
-		Object.values(HARNESS_REGISTRY).flatMap((row) => {
-			const at = pinnedAt(row, pins, adapters);
-			const hit =
-				row.channel &&
-				(movedPackages.has(channelPackage(row.channel)) ||
-					movedPackages.has(row.adapterPackage));
-			return at && hit ? [[row.id, at]] : [];
-		}),
-	);
-	const { source, moved } = moveProbed(readFileSync(AGENTS, "utf8"), touched);
-	writeFileSync(AGENTS, source);
-	console.log(
-		moved.length
-			? `probed facts moved on ${moved.join(", ")}`
-			: "no probed facts to move",
-	);
 	if (!values.body) return;
-	const left = stale(HARNESS_REGISTRY, pins, adapters, staleFacts, "source");
+	const left = stale(HARNESS_REGISTRY, pins, adapters, staleFacts);
 	const parts = [
 		"",
 		"### Agent facts to re-read",
 		"",
 		left.length
-			? "The probe passed on the new pins, so their probed facts moved. These source-read facts still name the old versions, and the `agent facts not re-verified` check stays red until each is read again and its `verifiedAt` moved in this PR:"
+			? "The conformance legs asserted the probed facts on the new pins. These source-read facts still name the old versions, and the `agent facts not re-verified` check stays red until each is read again and its `verifiedAt` moved in this PR:"
 			: "No source-read fact rests on a moved pin.",
 		"",
 		...staleLines(left),

@@ -183,19 +183,18 @@ test("installing a pin whose lock is stale throws instead of installing the old 
 	}
 });
 
-test("the Python extras match the uv channel the install hint names", () => {
-	const harness = readFileSync(
-		join(
-			REPO,
-			"packages/@prismalens/providers/src/agent/deepagents/deepagents.provider.ts",
-		),
-		"utf8",
+test("the Python extras the lock installs are the uv channel the install hint names", async () => {
+	const { channelOf } = await import(
+		"../packages/@prismalens/providers/src/agent/family.ts"
 	);
-	const [pin, extras] = Object.entries(PYTHON_PINS)[0];
-	assert.ok(
-		harness.includes(
-			`uv: [${[pin, ...extras].map((p) => `"${p}"`).join(", ")}]`,
-		),
+	const pypi = agentPins().filter((p) => p.cli.channel === "pypi");
+	assert.deepEqual(
+		pypi.map((p) => channelOf(p)),
+		pypi.map((p) => ({ uv: [p.cli.package, ...PYTHON_PINS[p.cli.package]] })),
+	);
+	assert.deepEqual(
+		pypi.map((p) => p.agent),
+		["deepagents"],
 	);
 });
 

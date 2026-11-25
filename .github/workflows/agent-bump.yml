@@ -75,6 +75,19 @@ jobs:
             node scripts/agent-adapter-sdk.mjs
             npx --yes "$(node -p "require('./package.json').packageManager")" install --lockfile-only --ignore-scripts
           fi
+      # The source-read facts the move leaves to re-read, and each moved package's cancel, session and sub-agent hunks.
+      - name: The facts the PR body asks a person to re-read
+        if: steps.pick.outputs.found == 'true'
+        env:
+          AGENT: ${{ inputs.agent }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          node scripts/agent-bump.mjs moves --agent "$AGENT" --base HEAD > "$RUNNER_TEMP/moves.json"
+          pnpm install --frozen-lockfile --ignore-scripts --filter "@prismalens/config..."
+          pnpm --filter "@prismalens/config..." build
+          : > "$RUNNER_TEMP/facts.md"
+          MOVED="$RUNNER_TEMP/moves.json" node scripts/agent-facts.mjs sync --body "$RUNNER_TEMP/facts.md"
       - name: Keep the candidate as a patch, named by its digest
         id: patch
         if: steps.pick.outputs.found == 'true'
@@ -87,7 +100,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: candidate-${{ inputs.agent }}
-          path: ${{ runner.temp }}/candidate.patch
+          path: |
+            ${{ runner.temp }}/candidate.patch
+            ${{ runner.temp }}/facts.md
           retention-days: 7
 
   conformance:
@@ -208,7 +223,7 @@ jobs:
           git switch -c "$branch"
           git commit -qam "$title"
           git push --force origin "$branch"
-          node scripts/agent-bump.mjs body --agent "$AGENT" > "$RUNNER_TEMP/body.md"
+          { node scripts/agent-bump.mjs body --agent "$AGENT"; cat "$RUNNER_TEMP/bump/facts.md"; } > "$RUNNER_TEMP/body.md"
           gh pr view "$branch" --json number >/dev/null 2>&1 \
             && gh pr edit "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md" \
             || gh pr create --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md"

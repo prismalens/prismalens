@@ -11,6 +11,7 @@
  *   agent-bump.mjs apply --agent <id> [--cli <v>] [--adapter <v>] [--date <d>]
  *                                                  write the pin, the adapter dependency and tested
  *   agent-bump.mjs package|probe|body --agent <id> its CLI package; the zero-token probe at its pin; its PR body
+ *   agent-bump.mjs moves --agent <id> --base <ref>  what moved since <ref>, as agent-facts' MOVED list
  *   agent-bump.mjs gate --legs <dir> --digest <d>  verdict=publish only when every OS leg passed this candidate
  *   agent-bump.mjs hold --agent <id> --legs <dir> --run <url>
  *                                                  edit or add the held candidate's comment on the pin-bump issue
@@ -112,6 +113,24 @@ export function applied(pin, adapters, { cli, adapter, date }) {
 		? { ...adapters, [next.adapter.package]: adapter }
 		: adapters;
 	return { pin: next, adapters: deps };
+}
+
+/** What moved between two copies of a pin, as agent-facts' MOVED list: `[{ package, current, version }]`. */
+export function moves(before, after) {
+	const out = [];
+	if (before.cli.version !== after.cli.version)
+		out.push({
+			package: after.cli.package,
+			current: before.cli.version,
+			version: after.cli.version,
+		});
+	if (after.adapter && before.adapter?.version !== after.adapter.version)
+		out.push({
+			package: after.adapter.package,
+			current: before.adapter?.version,
+			version: after.adapter.version,
+		});
+	return out;
 }
 
 /** The OS legs a candidate must pass on before it publishes (A8). */
@@ -250,6 +269,7 @@ async function main() {
 			legs: { type: "string" },
 			digest: { type: "string" },
 			run: { type: "string" },
+			base: { type: "string" },
 		},
 	});
 	const [command] = positionals;
@@ -264,6 +284,15 @@ async function main() {
 		process.exit(2);
 	}
 	if (command === "package") return console.log(pin.cli.package);
+	if (command === "moves") {
+		const before = JSON.parse(
+			execFileSync("git", ["show", `${values.base}:${pinFile(pin.agent)}`], {
+				cwd: ROOT,
+				encoding: "utf8",
+			}),
+		);
+		return console.log(JSON.stringify(moves(before, pin)));
+	}
 	if (command === "body") return console.log(prBody(pin));
 	if (command === "probe") {
 		const r = spawnSync(
