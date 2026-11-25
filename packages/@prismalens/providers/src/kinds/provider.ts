@@ -122,7 +122,7 @@ export const provider = defineKind({
 		variants: {
 			agent: {
 				imports: ['import { defineAgent, noModeLines } from "../family.ts";'],
-				entry: `export const {{Member}} = defineAgent({
+				entry: `export const {{memberName}} = defineAgent({
 	id: "{{id}}",
 	family: "agent",
 	name: "{{Member}}",
@@ -146,7 +146,29 @@ export const provider = defineKind({
 		lines: noModeLines("{{Member}}"),
 	},
 });`,
-				files: [],
+				files: [
+					{
+						path: "../agent-host/src/registry/agents/{{member}}.ts",
+						template: `import type { AgentDescriptor } from "../agents.js";
+import { noMode } from "../row.js";
+
+export const {{memberName}} = {
+	id: "{{member}}",
+	label: "{{Member}}",
+	binary: "TODO: the ACP binary on PATH",
+	acpArgs: () => [],
+	acpEnv: () => ({}),
+	providerKeys: [],
+	levels: noMode(),
+	modeNames: {},
+	modeMechanism: "none",
+	modelVia: "acp",
+} satisfies AgentDescriptor;`,
+					},
+				],
+				next: [
+					'Add "{{member}}" to AGENT_IDS and {{memberName}} to AGENT_ROWS in packages/@prismalens/agent-host/src/registry/agents.ts; its registry test holds that list to the folder.',
+				],
 			},
 		},
 		files: [

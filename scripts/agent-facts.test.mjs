@@ -14,7 +14,7 @@ import {
 
 const AGENTS = readFileSync(
 	new URL(
-		"../packages/@prismalens/agent-host/src/registry/agents.ts",
+		"../packages/@prismalens/agent-host/src/registry/row.ts",
 		import.meta.url,
 	),
 	"utf8",

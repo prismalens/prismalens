@@ -8,6 +8,7 @@ import {
 	ACCESS_LEVELS,
 	AGENT_IDS,
 	AGENT_REGISTRY,
+	AGENT_ROWS,
 	factMismatches,
 	GATEWAY_RUN_FILE,
 	PROBED_AT,
@@ -104,6 +105,17 @@ describe("levels", () => {
 			permission: { bash: { "*": "allow" } },
 			agent: { build: { permission: { bash: { "*": "allow", "rm *": "deny" } } } },
 		});
+	});
+});
+
+describe("agent rows", () => {
+	it("list every file under registry/agents, in AGENT_IDS order, each keyed by its own id", () => {
+		const files = readdirSync(join(import.meta.dirname, "registry/agents"))
+			.map((f) => f.replace(/[.]ts$/, ""))
+			.sort();
+		expect(AGENT_ROWS.map((r) => r.id).sort()).toEqual(files);
+		expect(AGENT_ROWS.map((r) => r.id)).toEqual([...AGENT_IDS]);
+		expect(Object.entries(AGENT_REGISTRY).map(([k, r]) => k === r.id)).toEqual(AGENT_IDS.map(() => true));
 	});
 });
 

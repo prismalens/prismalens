@@ -28,6 +28,7 @@ export function namesOf(id: string) {
 		object,
 		member,
 		Member: memberCamel,
+		memberName: `${memberCamel[0]?.toLowerCase() ?? ""}${memberCamel.slice(1)}`,
 		name: camel,
 		Object: `${object[0]?.toUpperCase()}${object.slice(1)}`,
 		label: `${words[0]?.toUpperCase()}${words.slice(1)}`,
@@ -283,6 +284,7 @@ function planFiles(
 		edits,
 		next: [
 			`Fill in ${edits.map((e) => e.file).join(", ")}.`,
+			...(scaffold.next ?? []).map((n) => fill(n, names)),
 			"Then run pnpm registry gen; its guards name anything the new entry still lacks.",
 		],
 	};

@@ -23,6 +23,8 @@ on:
       - "scripts/agent-locks.mjs"
       - "scripts/agent-locks/**"
       - "packages/@prismalens/agent-host/src/registry/agents.ts"
+      - "packages/@prismalens/agent-host/src/registry/agents/**"
+      - "packages/@prismalens/agent-host/src/registry/row.ts"
       - "packages/@prismalens/agent-host/src/registry/facts.ts"
       - "scripts/agent-facts.mjs"
       - "packages/@prismalens/agent-host/src/probe.ts"

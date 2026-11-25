@@ -69,6 +69,7 @@ describe("names and templates", () => {
 			object: "diffFile",
 			member: "copyPath",
 			Member: "CopyPath",
+			memberName: "copyPath",
 			Object: "DiffFile",
 			name: "diffFileCopyPath",
 			label: "Copy path",
@@ -151,6 +152,44 @@ describe("new <kind> <id>", () => {
 			"Fill in src/shell/thread.actions.ts.",
 			'Place "thread.mute" in a surface\'s menus, or the reachable guard fails.',
 			"Write the test in the stub, then run pnpm --filter @prismalens/frontend ui:check:static.",
+		]);
+	});
+
+	it("writes a per-entry file from the object's variant, with its extra files and next steps", () => {
+		const perEntry: Manifest = {
+			...manifest,
+			kinds: {
+				gadget: kind({
+					suffix: ".gadget.ts",
+					scaffold: {
+						dir: "src/{{object}}/{{member}}",
+						file: "src/{{object}}/{{member}}/{{member}}.gadget.ts",
+						imports: ['import { define } from "./d.ts";'],
+						entry: 'export const {{memberName}} = define({ id: "{{id}}" });',
+						variants: {
+							tool: {
+								imports: ['import { defineTool } from "./t.ts";'],
+								entry: 'export const {{memberName}} = defineTool({ id: "{{id}}" });',
+								files: [{ path: "src/rows/{{member}}.ts", template: "export const {{memberName}} = {};" }],
+								next: ["List {{memberName}} in src/rows/index.ts."],
+							},
+						},
+					},
+				}),
+			},
+		};
+		const { edits, next } = planEntry(perEntry, "gadget", "tool.big-saw", read);
+		expect(edits.map((e) => [e.file, e.text.split("\n").at(-2)])).toEqual([
+			["src/tool/big-saw/big-saw.gadget.ts", 'export const bigSaw = defineTool({ id: "tool.big-saw" });'],
+			["src/rows/big-saw.ts", "export const bigSaw = {};"],
+		]);
+		expect(next).toEqual([
+			"Fill in src/tool/big-saw/big-saw.gadget.ts, src/rows/big-saw.ts.",
+			"List bigSaw in src/rows/index.ts.",
+			"Then run pnpm registry gen; its guards name anything the new entry still lacks.",
+		]);
+		expect(planEntry(perEntry, "gadget", "other.saw", read).edits.map((e) => e.text.split("\n").at(-2))).toEqual([
+			'export const saw = define({ id: "other.saw" });',
 		]);
 	});
 
