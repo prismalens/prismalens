@@ -459,6 +459,7 @@ const DRAFT_RESULTS = {
 	"packed-upgrade-smoke": "skipped",
 	lint: "success",
 	e2e: "skipped",
+	installer: "skipped",
 	proofs: "skipped",
 };
 const DRAFT_PLAN = {
@@ -468,6 +469,7 @@ const DRAFT_PLAN = {
 	intake: "false",
 	full: "false",
 	agents: "false",
+	installer: "false",
 	defer: "false",
 	draft: "true",
 	reason: "draft: the fast tier only; marking it ready runs the full plan",
@@ -499,4 +501,25 @@ test("CI gate stays red for a draft whose lint, build or unit tests did not run"
 		{ ...DRAFT_PLAN, e2e: "true" },
 	);
 	assert.equal(e2e.status, 1);
+});
+
+test("CI gate accepts a skipped installer test only when the plan says `installer` is false", () => {
+	const results = {
+		...DRAFT_RESULTS,
+		"test-later": "success",
+		pack: "success",
+		"packed-smoke": "success",
+		proofs: "success",
+	};
+	const plan = { ...DRAFT_PLAN, draft: "false" };
+	const off = runGate(results, plan);
+	assert.equal(off.status, 0, off.out);
+	for (const installer of ["true", "", undefined]) {
+		const r = runGate(results, { ...plan, installer });
+		assert.equal(r.status, 1, r.out);
+		assert.match(r.out, /did not succeed: installer=skipped\n/);
+	}
+	const failed = runGate({ ...results, installer: "failure" }, plan);
+	assert.equal(failed.status, 1, failed.out);
+	assert.match(failed.out, /did not succeed: installer=failure\n/);
 });
