@@ -1,0 +1,136 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { applied, pick, pickVersion, pypiTimes } from "./agent-bump.mjs";
+
+const NOW = Date.parse("2026-11-25T00:00:00Z");
+const daysAgo = (n) => new Date(NOW - n * 86_400_000).toISOString();
+
+test("pickVersion takes the newest stable release past its soak, never a prerelease or a fresh one", () => {
+	const times = {
+		"1.0.0": daysAgo(30),
+		"1.1.0": daysAgo(10),
+		"1.2.0": daysAgo(4),
+		"1.3.0-beta.1": daysAgo(9),
+		"1.3.0": daysAgo(1),
+	};
+	assert.equal(
+		pickVersion(times, { current: "1.0.0", days: 3, now: NOW }),
+		"1.2.0",
+	);
+	assert.equal(
+		pickVersion(times, { current: "1.2.0", days: 3, now: NOW }),
+		null,
+	);
+	assert.equal(
+		pickVersion(times, { current: "1.0.0", days: 7, now: NOW }),
+		"1.1.0",
+	);
+});
+
+test("pickVersion never picks a release whose publish time is missing", () => {
+	assert.equal(
+		pickVersion(
+			{ "2.0.0": undefined },
+			{ current: "1.0.0", days: 3, now: NOW },
+		),
+		null,
+	);
+});
+
+test("pypiTimes dates a release by its first upload and drops yanked and empty releases", async () => {
+	const times = await pypiTimes("acme", async (url) => {
+		assert.equal(url, "https://pypi.org/pypi/acme/json");
+		return {
+			releases: {
+				"0.1.0": [
+					{ upload_time_iso_8601: "2026-01-02T00:00:00Z" },
+					{ upload_time_iso_8601: "2026-01-01T00:00:00Z" },
+				],
+				"0.2.0": [
+					{ upload_time_iso_8601: "2026-02-01T00:00:00Z", yanked: true },
+				],
+				"0.3.0": [],
+			},
+		};
+	});
+	assert.deepEqual(times, { "0.1.0": "2026-01-01T00:00:00Z" });
+});
+
+const claude = {
+	agent: "claude-code",
+	cli: {
+		package: "@anthropic-ai/claude-code",
+		version: "2.0.0",
+		channel: "npm",
+	},
+	adapter: {
+		package: "@agentclientprotocol/claude-agent-acp",
+		version: "0.9.0",
+	},
+	tested: { version: "0.9.0", date: "2026-01-01", companion: "2.0.0" },
+	minimumReleaseAgeDays: 3,
+};
+
+test("pick moves the CLI and its adapter together, each on its own soak, and is null when neither moved", async () => {
+	const timesOf = async (pkg) =>
+		pkg === claude.cli.package
+			? { "2.0.0": daysAgo(40), "2.1.0": daysAgo(5) }
+			: { "0.9.0": daysAgo(40), "0.10.0": daysAgo(1) };
+	assert.deepEqual(await pick(claude, { now: NOW, timesOf }), {
+		agent: "claude-code",
+		cli: "2.1.0",
+		adapter: null,
+	});
+	const still = async (pkg) =>
+		pkg === claude.cli.package
+			? { "2.0.0": daysAgo(40) }
+			: { "0.9.0": daysAgo(40) };
+	assert.equal(await pick(claude, { now: NOW, timesOf: still }), null);
+});
+
+test("apply writes the new pin, the adapter dependency pnpm installs, and the tested pair it proves", () => {
+	const out = applied(
+		claude,
+		{ "@agentclientprotocol/claude-agent-acp": "0.9.0", other: "1.0.0" },
+		{
+			cli: "2.1.0",
+			adapter: "0.10.0",
+			date: "2026-11-25",
+		},
+	);
+	assert.deepEqual(out.pin, {
+		cli: {
+			package: "@anthropic-ai/claude-code",
+			version: "2.1.0",
+			channel: "npm",
+		},
+		adapter: {
+			package: "@agentclientprotocol/claude-agent-acp",
+			version: "0.10.0",
+		},
+		tested: { version: "0.10.0", date: "2026-11-25", companion: "2.1.0" },
+	});
+	assert.deepEqual(out.adapters, {
+		"@agentclientprotocol/claude-agent-acp": "0.10.0",
+		other: "1.0.0",
+	});
+});
+
+test("apply leaves a Python pin's hand-recorded tested alone", () => {
+	const deep = {
+		agent: "deepagents",
+		cli: { package: "deepagents-code", version: "0.2.1", channel: "pypi" },
+		tested: { version: "0.1.75", date: "2026-09-23" },
+		minimumReleaseAgeDays: 3,
+	};
+	assert.deepEqual(
+		applied(deep, {}, { cli: "0.3.0", date: "2026-11-25" }).pin,
+		{
+			cli: { package: "deepagents-code", version: "0.3.0", channel: "pypi" },
+			tested: { version: "0.1.75", date: "2026-09-23" },
+		},
+	);
+});
