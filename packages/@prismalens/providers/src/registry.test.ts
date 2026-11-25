@@ -36,6 +36,14 @@ describe("ProviderRegistry", () => {
 		);
 	});
 
+	it("refuses an id another member holds as an alias, naming that member's module", () => {
+		const r = new ProviderRegistry({});
+		r.contribute("module-one", [host("code-host.alpha", 10, { aliases: ["code-host.old-alpha"] })]);
+		expect(() => r.contribute("module-two", [host("code-host.old-alpha", 20)])).toThrow(
+			"duplicate provider code-host.old-alpha from module-two (already from module-one)",
+		);
+	});
+
 	it("resolves an alias to its member and an unknown stored id to unavailable, keeping the id", () => {
 		const r = new ProviderRegistry({});
 		r.contribute("m", [host("code-host.alpha", 10, { aliases: ["code-host.old-alpha"] })]);
@@ -104,11 +112,13 @@ describe("provider guards", () => {
 					b: host("code-host.beta", 10, { entryPoints: ["projects.add"] }),
 					c: host("code-host.Bad_Name" as `code-host.${string}`, 30, { entryPoints: ["projects.add"] }),
 					d: host("code-host.delta", 40),
+					e: host("code-host.epsilon", 10, { entryPoints: ["projects.add"] }),
 				},
 			}),
 		).toEqual([
 			'[provider/id-in-family] provider "code-host.Bad_Name" is not "code-host.<member>". Fix: Name it <family>.<member> with a lower-case member, e.g. code-host.gitea.',
 			'[provider/order-unique] provider "code-host.beta" and "code-host.alpha" share order 10. Fix: Give each member of a family its own order; new members take the family\'s highest plus 10.',
+			'[provider/order-unique] provider "code-host.epsilon" and "code-host.alpha" share order 10. Fix: Give each member of a family its own order; new members take the family\'s highest plus 10.',
 			'[provider/entry-point-required] code-host.delta misses projects.add. Fix: Add the entry point to the provider\'s entryPoints, or a skip { case: "entry-point:<id>", reason } saying why it cannot be offered there.',
 		]);
 	});

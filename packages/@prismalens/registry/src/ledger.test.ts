@@ -51,6 +51,13 @@ describe("ledgerProblems", () => {
 		]);
 	});
 
+	it("names a second claimant of a row, even when the owner's claim comes last", () => {
+		const second = entry("code-host.gitea", [{ column: "PullRequest.host", value: "github" }]);
+		expect(ledgerProblems(parseLedger(LEDGER).rows, [second, github, gitlab], "stored")).toEqual([
+			"code-host.gitea claims PullRequest.host=github, which the ledger gives to code-host.github",
+		]);
+	});
+
 	it("lets a renamed member keep its rows through an alias", () => {
 		const renamed = entry(
 			"code-host.github-cloud",
@@ -67,8 +74,22 @@ describe("ledgerProblems", () => {
 describe("appendLedger", () => {
 	it("appends a row per new claim and never rewrites an existing one", () => {
 		const start = "Integration.templateId\tgit-host-token\tcode-host.github\thost=github.com\n";
-		expect(appendLedger(start, [github], "stored")).toBe(`${start}PullRequest.host\tgithub\tcode-host.github\n`);
+		const renamed = entry(
+			"code-host.github-cloud",
+			[
+				{ column: "Integration.templateId", value: "git-host-token", where: { field: "host", value: "github.com" } },
+				{ column: "PullRequest.host", value: "github" },
+			],
+			["code-host.github"],
+		);
+		expect(appendLedger(start, [renamed], "stored")).toBe(`${start}PullRequest.host\tgithub\tcode-host.github-cloud\n`);
 		expect(appendLedger(LEDGER, [github, gitlab], "stored")).toBe(LEDGER);
+	});
+
+	it("writes one row for a claim an entry repeats", () => {
+		const claim = { column: "PullRequest.host", value: "github" };
+		const twice = entry("code-host.github", [claim, claim]);
+		expect(appendLedger("# h\n", [twice], "stored")).toBe("# h\nPullRequest.host\tgithub\tcode-host.github\n");
 	});
 });
 

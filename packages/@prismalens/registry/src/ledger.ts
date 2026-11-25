@@ -74,7 +74,7 @@ export function ledgerProblems(
 ): string[] {
 	const out: string[] = [];
 	const live = claims(entries, field);
-	const byKey = new Map(live.map((c) => [keyOf(c), c]));
+	const claimed = new Set(live.map(keyOf));
 	const aliasOf = new Map<string, string>();
 	for (const e of entries)
 		for (const a of Array.isArray(e.fields.aliases) ? e.fields.aliases : [])
@@ -87,22 +87,19 @@ export function ledgerProblems(
 				`${r.column}=${r.value} ${r.where ?? ""} is in the ledger twice`,
 			);
 		rowByKey.set(k, r);
-		const claim = byKey.get(k);
-		const owner = aliasOf.get(r.owner) ?? r.owner;
-		if (!claim)
+		if (!claimed.has(k))
 			out.push(
 				`the database may hold ${r.column}=${r.value}${r.where ? ` (${r.where})` : ""} for ${r.owner}, but no entry claims it`,
 			);
-		else if (claim.owner !== owner)
-			out.push(
-				`${claim.owner} claims ${r.column}=${r.value}${r.where ? ` (${r.where})` : ""}, which the ledger gives to ${r.owner}`,
-			);
 	}
-	for (const c of live)
-		if (!rowByKey.has(keyOf(c)))
-			out.push(
-				`${c.owner} claims ${c.column}=${c.value}${c.where ? ` (${c.where})` : ""}, which is not in the ledger yet`,
-			);
+	// Every claim is checked, so a second entry claiming a value cannot hide behind its owner's.
+	for (const c of live) {
+		const what = `${c.owner} claims ${c.column}=${c.value}${c.where ? ` (${c.where})` : ""}`;
+		const row = rowByKey.get(keyOf(c));
+		if (!row) out.push(`${what}, which is not in the ledger yet`);
+		else if (c.owner !== (aliasOf.get(row.owner) ?? row.owner))
+			out.push(`${what}, which the ledger gives to ${row.owner}`);
+	}
 	return out;
 }
 
@@ -114,7 +111,7 @@ export function appendLedger(
 ): string {
 	const have = new Set(parseLedger(text).rows.map(keyOf));
 	const add = claims(entries, field)
-		.filter((c) => !have.has(keyOf(c)))
+		.filter((c) => !have.has(keyOf(c)) && have.add(keyOf(c)))
 		.map((c) =>
 			[c.column, c.value, c.owner, ...(c.where ? [c.where] : [])].join("\t"),
 		);

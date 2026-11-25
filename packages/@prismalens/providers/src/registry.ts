@@ -42,7 +42,7 @@ export class ProviderRegistry {
 					`provider ${p.id} from ${from} names unknown family ${p.family}`,
 				);
 			for (const id of [p.id, ...(p.aliases ?? [])]) {
-				const held = this.#byId.get(id)?.from ?? this.#alias.get(id);
+				const held = this.#byId.get(this.#alias.get(id) ?? id)?.from;
 				if (held !== undefined)
 					throw new Error(
 						`duplicate provider ${id} from ${from} (already from ${held})`,

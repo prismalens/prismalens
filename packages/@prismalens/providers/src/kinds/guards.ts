@@ -42,7 +42,7 @@ export const orderUnique = guard(
 		return providers(c.live("provider")).flatMap((p) => {
 			const key = `${p.family}:${p.order}`;
 			const other = seen.get(key);
-			seen.set(key, p.id);
+			if (!other) seen.set(key, p.id);
 			return other
 				? [`provider "${p.id}" and "${other}" share order ${p.order}`]
 				: [];

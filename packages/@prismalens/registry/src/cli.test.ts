@@ -291,10 +291,13 @@ describe("new", () => {
 });
 
 describe("a host that names its workspace", () => {
-	const workspace = (boundaries: unknown[]) => {
+	const workspace = (boundaries: unknown[], others: string[] = []) => {
 		put(
 			"registry.workspace.json",
-			JSON.stringify({ hosts: ["registry.config.json"], boundaries }),
+			JSON.stringify({
+				hosts: ["registry.config.json", ...others],
+				boundaries,
+			}),
 		);
 		writeFileSync(
 			cfgFile,
@@ -323,9 +326,32 @@ describe("a host that names its workspace", () => {
 	});
 
 	it("lists the workspace's kinds through the host's config", () => {
-		workspace([]);
+		put(
+			"other/registry.config.json",
+			JSON.stringify({
+				src: "src",
+				kinds: "src/registry/kinds",
+				out: "src/registry",
+				gallery: "src/design",
+			}),
+		);
+		put(
+			"other/src/registry/kinds/gadget.ts",
+			KIND_SRC.replaceAll("widget", "gadget").replace(
+				"defineWidget",
+				"defineGadget",
+			),
+		);
+		put(
+			"other/src/a/b.gadgets.ts",
+			'export const g = define.gadget({ id: "g.one", label: "One" });',
+		);
+		put("other/src/design/.keep", "");
+		workspace([], ["other/registry.config.json"]);
 		const log = vi.spyOn(console, "log").mockReturnValue(undefined);
 		expect(main(["--config", cfgFile, "ls"])).toBe(0);
-		expect(log.mock.calls).toEqual([["widget\t1\t.widgets.ts"]]);
+		expect(log.mock.calls).toEqual([
+			["widget\t1\t.widgets.ts\ngadget\t1\t.gadgets.ts"],
+		]);
 	});
 });

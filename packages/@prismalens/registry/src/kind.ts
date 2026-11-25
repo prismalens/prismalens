@@ -48,7 +48,8 @@ export function guard(
 
 /**
  * `pnpm new`'s template. Placeholders: {{id}}, {{object}} (the id's first part),
- * {{name}} (camelCase id), {{label}} and {{slug}} (the id in kebab case).
+ * {{name}} (camelCase id), {{label}}, {{lower}} (the label's words in lower case)
+ * and {{slug}} (the id in kebab case).
  */
 export interface Scaffold {
 	/** Where a new file goes when the object has none yet, e.g. `src/components/{{object}}`. */
