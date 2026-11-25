@@ -355,6 +355,10 @@ export default defineChecks([
 			// Transcript check
 			const thinking = page.getByTestId("transcript-thinking");
 			if (await thinking.isVisible().catch(() => false)) {
+				// The line takes the thread's status once it loads; read it after, not on first paint.
+				await expect(thinking)
+					.toContainText("Quiet", { timeout: 15_000 })
+					.catch(() => undefined);
 				const thinkingText = (await thinking.textContent())?.trim() ?? "";
 				if (!thinkingText.toLowerCase().includes("quiet")) {
 					fails.push(
