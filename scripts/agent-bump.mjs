@@ -19,11 +19,14 @@
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import semver from "semver";
 import { agentPins, pinFile, ROOT } from "./agent-pins.mjs";
+
+// Loaded on use: `matrix`, `legs`, `gate`, `body` and `hold` run in jobs that install nothing.
+const require = createRequire(import.meta.url);
 
 const DAY = 86_400_000;
 const ADAPTERS = "packages/@prismalens/agent-adapters/package.json";
@@ -43,6 +46,7 @@ export const admissionLegs = (pins) =>
 	}));
 
 export function pickVersion(times, { current, days, now }) {
+	const semver = require("semver");
 	const cutoff = now - days * DAY;
 	const soaked = Object.entries(times)
 		.filter(
@@ -288,6 +292,17 @@ async function main() {
 		return console.log(JSON.stringify(pins.map((p) => p.agent)));
 	if (command === "legs")
 		return console.log(JSON.stringify(admissionLegs(pins)));
+	if (command === "gate") {
+		const { verdict, failing } = gateVerdict(
+			readLegs(values.legs),
+			values.digest,
+		);
+		console.log(`verdict=${verdict}`);
+		console.error(
+			verdict === "hold" ? `held: ${failing.join(", ")}` : "every leg passed",
+		);
+		return;
+	}
 	const pin = pins.find((p) => p.agent === values.agent);
 	if (!pin) {
 		console.error(
@@ -313,17 +328,6 @@ async function main() {
 			{ stdio: "inherit" },
 		);
 		process.exit(r.status ?? 1);
-	}
-	if (command === "gate") {
-		const { verdict, failing } = gateVerdict(
-			readLegs(values.legs),
-			values.digest,
-		);
-		console.log(`verdict=${verdict}`);
-		console.error(
-			verdict === "hold" ? `held: ${failing.join(", ")}` : "every leg passed",
-		);
-		return;
 	}
 	if (command === "hold") {
 		const { failing } = gateVerdict(readLegs(values.legs), null);

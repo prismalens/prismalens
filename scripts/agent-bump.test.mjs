@@ -2,7 +2,16 @@
 // Copyright 2026 Sumit Patel
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+	cpSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { parse } from "yaml";
@@ -14,11 +23,12 @@ import {
 	moves,
 	pick,
 	pickVersion,
+	prBody,
 	probeArgs,
 	pypiTimes,
 	REQUIRED_LEGS,
 } from "./agent-bump.mjs";
-import { agentPins, ROOT } from "./agent-pins.mjs";
+import { AGENTS_DIR, agentPins, ROOT } from "./agent-pins.mjs";
 
 const NOW = Date.parse("2026-11-25T00:00:00Z");
 const daysAgo = (n) => new Date(NOW - n * 86_400_000).toISOString();
@@ -248,6 +258,53 @@ test("proofs.yml gets one qualification leg per pin, with its package, binary an
 			["gemini", 2],
 			["opencode", 1],
 		],
+	);
+});
+
+test("the commands a job runs before any install need no package", (t) => {
+	const bare = mkdtempSync(join(tmpdir(), "agent-bump-bare-"));
+	t.after(() => rmSync(bare, { recursive: true, force: true }));
+	mkdirSync(join(bare, "scripts"));
+	for (const f of [
+		"scripts/agent-bump.mjs",
+		"scripts/agent-pins.mjs",
+		AGENTS_DIR,
+	])
+		cpSync(join(ROOT, f), join(bare, f), { recursive: true });
+	const legsDir = join(bare, "legs");
+	mkdirSync(legsDir);
+	for (const os of REQUIRED_LEGS)
+		writeFileSync(
+			join(legsDir, `leg-${os}.json`),
+			JSON.stringify({ os, ok: true, digest: "d1" }),
+		);
+	const run = (...args) =>
+		execFileSync(
+			process.execPath,
+			[join(bare, "scripts/agent-bump.mjs"), ...args],
+			{ cwd: bare, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+		);
+	assert.deepEqual(JSON.parse(run("legs")), admissionLegs(agentPins()));
+	assert.deepEqual(
+		JSON.parse(run("matrix")),
+		agentPins().map((p) => p.agent),
+	);
+	assert.equal(
+		run("gate", "--legs", legsDir, "--digest", "d1"),
+		"verdict=publish\n",
+	);
+	const opencode = agentPins().find((p) => p.agent === "opencode");
+	assert.equal(run("body", "--agent", "opencode"), `${prBody(opencode)}\n`);
+});
+
+test("proofs.yml fails the legs step when the script fails, never an empty matrix", () => {
+	const wf = parse(
+		readFileSync(join(ROOT, ".github/workflows/proofs.yml"), "utf8"),
+	);
+	// An assignment carries the command's exit status; `echo "$(…)"` drops it.
+	assert.equal(
+		wf.jobs["agent-legs"].steps.find((st) => st.id === "legs").run,
+		'legs=$(node scripts/agent-bump.mjs legs)\necho "legs=$legs" >> "$GITHUB_OUTPUT"\n',
 	);
 });
 

@@ -205,7 +205,9 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
       - id: legs
-        run: echo "legs=$(node scripts/agent-bump.mjs legs)" >> "$GITHUB_OUTPUT"
+        run: |
+          legs=$(node scripts/agent-bump.mjs legs)
+          echo "legs=$legs" >> "$GITHUB_OUTPUT"
 
   harness-admission:
     # The pinned agent against aimock, so a red run is the code's and not a model's (#884, #914).
