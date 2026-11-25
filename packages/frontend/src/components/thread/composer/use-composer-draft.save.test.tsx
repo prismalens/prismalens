@@ -7,10 +7,10 @@ import {
 	type ComposerDraft,
 	textDoc,
 } from "@prismalens/contracts";
-import { QueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type RenderedApp, renderWithApp } from "@/test/render";
 import type { DraftContent } from "./draft-store";
 import { DRAFT_DEBOUNCE_MS, useComposerDraft } from "./use-composer-draft";
 
@@ -54,8 +54,8 @@ vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-let container: HTMLDivElement;
-let root: Root;
+let _container: HTMLDivElement;
+let app: RenderedApp | undefined;
 let api: ReturnType<typeof useComposerDraft>;
 
 const content = (text: string): DraftContent => ({
@@ -70,7 +70,7 @@ function Harness({
 	draftContent?: DraftContent;
 }) {
 	api = useComposerDraft({
-		client: new QueryClient(),
+		client: useQueryClient(),
 		scope: "new:home",
 		content: draftContent ?? content(text ?? ""),
 		files: [],
@@ -79,14 +79,17 @@ function Harness({
 	return null;
 }
 
-const show = (target: string | DraftContent) =>
-	act(async () => {
-		if (typeof target === "string") {
-			root.render(<Harness text={target} />);
-		} else {
-			root.render(<Harness draftContent={target} />);
-		}
-	});
+const show = async (target: string | DraftContent) => {
+	const ui =
+		typeof target === "string" ? (
+			<Harness text={target} />
+		) : (
+			<Harness draftContent={target} />
+		);
+	if (app) await app.rerender(ui);
+	else app = await renderWithApp(ui);
+	_container = app.container;
+};
 const wait = (ms: number) => act(async () => vi.advanceTimersByTime(ms));
 
 beforeEach(() => {
@@ -95,14 +98,10 @@ beforeEach(() => {
 	serverNow = null;
 	serverRead = async () => serverNow;
 	saves.length = 0;
-	container = document.createElement("div");
-	document.body.appendChild(container);
-	root = createRoot(container);
+	app = undefined;
 });
 
 afterEach(async () => {
-	await act(async () => root.unmount());
-	container.remove();
 	vi.useRealTimers();
 });
 
@@ -164,8 +163,8 @@ describe("saving a draft (#1024)", () => {
 
 	it("a page-hide save waits out a send, so it cannot land between the send's revision and its consume", async () => {
 		const fetched = vi.fn(async (..._args: unknown[]) => new Response("{}"));
-		vi.stubGlobal("fetch", fetched);
 		await show("");
+		vi.stubGlobal("fetch", fetched);
 		await show("plain chat");
 		await wait(DRAFT_DEBOUNCE_MS);
 		await act(async () => saves[0]?.done({ rev: 2, generation: 0 }));

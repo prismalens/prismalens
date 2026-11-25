@@ -51,6 +51,7 @@ import {
 } from "@prismalens/contracts";
 import type { PullRequest as PullRequestRow } from "@prismalens/database";
 import type { AuthenticatedRequestFn } from "@prismalens/integrations";
+import * as clock from "../../core/clock.js";
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
 	GIT_PROBE_TIMEOUT_MS,
@@ -452,7 +453,7 @@ export class PullRequestsService implements OnModuleInit {
 				path: [],
 				label: null,
 				seq,
-				ts: new Date().toISOString(),
+				ts: clock.date().toISOString(),
 				prId: row.id,
 				url: row.url,
 				source,
@@ -493,7 +494,7 @@ export class PullRequestsService implements OnModuleInit {
 			const fresh =
 				!force &&
 				row.fetchedAt &&
-				Date.now() - row.fetchedAt.getTime() < PR_CACHE_MS;
+				clock.now() - row.fetchedAt.getTime() < PR_CACHE_MS;
 			const pr = parsePrUrl(row.url);
 			const remote = pr ? trustedRemote(pr, remotes) : null;
 			if (fresh || !pr || !remote || !apiBase(pr)) {
@@ -517,7 +518,7 @@ export class PullRequestsService implements OnModuleInit {
 								detail: JSON.stringify(keptFrom(detail, now, read.headSha)),
 								etag: JSON.stringify(cache),
 								headSha: read.headSha,
-								fetchedAt: new Date(),
+								fetchedAt: clock.date(),
 							},
 						}),
 					),
@@ -572,7 +573,7 @@ export class PullRequestsService implements OnModuleInit {
 						detail: JSON.stringify(keptFrom(detail, now, read.headSha)),
 						etag: JSON.stringify(cache),
 						headSha: read.headSha,
-						fetchedAt: new Date(),
+						fetchedAt: clock.date(),
 					},
 				}),
 			);
@@ -617,7 +618,7 @@ export class PullRequestsService implements OnModuleInit {
 				sha: head.sha,
 				forcePushed: head.forcePushed,
 				source: "host",
-				at: Date.now(),
+				at: clock.now(),
 			});
 		}
 	}
@@ -805,7 +806,7 @@ export class PullRequestsService implements OnModuleInit {
 	 * the key, and a lost answer is checked against the thread before posting again.
 	 */
 	replyReview(input: PrReviewReplyInput): Promise<PrReviewReply> {
-		const now = Date.now();
+		const now = clock.now();
 		for (const [k, v] of this.replies)
 			if (now - v.at > REPLY_KEY_MS) this.replies.delete(k);
 		const key = `${input.id}\0${input.prId}\0${input.threadId}\0${input.clientKey}`;
@@ -921,7 +922,7 @@ export class PullRequestsService implements OnModuleInit {
 			path: [],
 			label: null,
 			seq,
-			ts: new Date().toISOString(),
+			ts: clock.date().toISOString(),
 			prId: row.id,
 			pr: `${pr.repo}#${pr.number}`,
 			host: pr.shape,
@@ -965,7 +966,7 @@ export class PullRequestsService implements OnModuleInit {
 			runId,
 			headSha,
 			...read,
-			fetchedAt: new Date().toISOString(),
+			fetchedAt: clock.date().toISOString(),
 		};
 		if (keepable(read))
 			await this.withPrRow(row.id, (now) =>
@@ -1002,7 +1003,7 @@ export class PullRequestsService implements OnModuleInit {
 			lines: read.lines,
 			truncated: !!read.truncated,
 			unavailable: read.unavailable,
-			fetchedAt: new Date().toISOString(),
+			fetchedAt: clock.date().toISOString(),
 		};
 	}
 
@@ -1046,13 +1047,13 @@ export class PullRequestsService implements OnModuleInit {
 				confirmKey: input.confirmKey,
 				runId: input.runId,
 				ident,
-				at: new Date().toISOString(),
+				at: clock.date().toISOString(),
 				state: "sending",
 			});
 			return null;
 		});
 		if (claim) return this.settleRerun(input, row.id, claim);
-		const at = new Date().toISOString();
+		const at = clock.date().toISOString();
 		try {
 			const req = await this.requestFn(host.apiBase(pr.host), remote);
 			await host.rerunCheck(req, pr.repo, run);
@@ -1124,7 +1125,7 @@ export class PullRequestsService implements OnModuleInit {
 			);
 		const key = `${prId}:${headSha ?? ""}`;
 		const hit = this.filesCache.get(key);
-		if (hit && Date.now() - hit.at < PR_CACHE_MS) return hit.files;
+		if (hit && clock.now() - hit.at < PR_CACHE_MS) return hit.files;
 		let files: PrFiles;
 		try {
 			const read = await host.readFiles(
@@ -1142,8 +1143,8 @@ export class PullRequestsService implements OnModuleInit {
 			});
 		}
 		for (const [k, v] of this.filesCache)
-			if (Date.now() - v.at >= PR_CACHE_MS) this.filesCache.delete(k);
-		this.filesCache.set(key, { at: Date.now(), files });
+			if (clock.now() - v.at >= PR_CACHE_MS) this.filesCache.delete(k);
+		this.filesCache.set(key, { at: clock.now(), files });
 		return files;
 	}
 
@@ -1259,8 +1260,8 @@ export class PullRequestsService implements OnModuleInit {
 		force: boolean,
 	): Promise<void> {
 		const last = this.branchLookedUp.get(run.id);
-		if (!force && last && Date.now() - last < PR_CACHE_MS) return;
-		this.branchLookedUp.set(run.id, Date.now());
+		if (!force && last && clock.now() - last < PR_CACHE_MS) return;
+		this.branchLookedUp.set(run.id, clock.now());
 		const ws: RunWorkspace | null =
 			RunWorkspaceSchema.safeParse(safeParseJsonObject(run.workspace)).data ??
 			null;
@@ -1329,9 +1330,9 @@ export class PullRequestsService implements OnModuleInit {
 	/** Every configured repository's remote, a folder's from its `origin`; cached 60 s. */
 	remotes(): Promise<Remote[]> {
 		const hit = this.remotesCache;
-		if (hit && Date.now() - hit.at < PR_CACHE_MS) return hit.value;
+		if (hit && clock.now() - hit.at < PR_CACHE_MS) return hit.value;
 		const value = this.loadRemotes();
-		this.remotesCache = { at: Date.now(), value };
+		this.remotesCache = { at: clock.now(), value };
 		value.catch(() => {
 			this.remotesCache = null;
 		});

@@ -36,6 +36,13 @@ export function createTerminalStore() {
 	const listeners = new Set<() => void>();
 	const openListeners = new Set<() => void>();
 	const senders = new Map<number, Sender>();
+	/** Called once when its tab's shell exits or the tab closes (#1171). */
+	const ends = new Map<number, () => void>();
+	const end = (id: number) => {
+		const onEnd = ends.get(id);
+		ends.delete(id);
+		onEnd?.();
+	};
 
 	const set = (next: Partial<State>) => {
 		state = { ...state, ...next };
@@ -83,6 +90,7 @@ export function createTerminalStore() {
 		},
 		closeTab(id: number) {
 			senders.delete(id);
+			end(id);
 			const tabs = state.tabs.filter((t) => t.id !== id);
 			set({
 				tabs,
@@ -94,20 +102,26 @@ export function createTerminalStore() {
 		},
 		markExited(id: number, code: number | null) {
 			patch(id, { exitCode: code });
+			end(id);
 		},
 		setDraft(id: number, draft: string) {
 			patch(id, { draft });
 		},
-		/** Run in terminal: the command waits in the active shell's line. */
-		stage(command: string) {
+		/**
+		 * Run in terminal: the command waits in the active shell's line. `fresh` gives it a
+		 * tab of its own; `onEnd` runs once when that tab's shell exits or the tab closes.
+		 */
+		stage(command: string, opts: { fresh?: boolean; onEnd?: () => void } = {}) {
 			if (!runnableCommand(command)) return;
 			const current = state.tabs.find((t) => t.id === state.active);
 			// A line already waiting in this shell is yours; a new command gets its own tab.
 			const free =
+				!opts.fresh &&
 				current &&
 				current.exitCode === undefined &&
 				(!current.draft || current.draft === command);
 			const id = free ? current.id : store.newTab();
+			if (opts.onEnd) ends.set(id, opts.onEnd);
 			set({ active: id });
 			patch(id, { draft: command });
 			openListeners.forEach((l) => {

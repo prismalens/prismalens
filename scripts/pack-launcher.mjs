@@ -4,7 +4,10 @@
 
 // Packs, checks and publishes the `prismalens` npm package: the launcher alone, stable only (#717).
 //   node scripts/pack-launcher.mjs [--out <dir>] [--version <v>] [--tag <dist-tag>]
-//     [--release-base <url>] [--pin] [--publish | --publish-dry-run]   --pin: pin digests read from the release
+//     [--release-base <url>] [--pin] [--assets <dir>] [--publish | --publish-dry-run] [--tarball <launcher.tgz>]
+//   --pin: pin digests read from the public release. --assets: pin them from a folder of the
+//   release's archives and SHA256SUMS (a draft, downloaded) instead. --publish --tarball: publish
+//   the launcher packed earlier, once the public release has the digests it pins.
 import { execFileSync } from "node:child_process";
 import {
 	copyFileSync,
@@ -16,7 +19,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveBuildSha, resolvePublishTag } from "./pack-cli.mjs";
 import { readPublic, TARGETS } from "./release-complete.mjs";
 
@@ -123,6 +126,29 @@ export async function assertPublishable(manifest, base) {
 	return digests;
 }
 
+/**
+ * The digests a launcher pins, read from a folder holding the release's archives and SHA256SUMS
+ * (a draft release downloaded), refused unless every archive is there and matches its line.
+ */
+export async function assertAssets(manifest, dir) {
+	const { channel, version } = manifest.prismalens.release;
+	if (channel !== "stable" || version.includes("-"))
+		throw new Error(
+			`npm carries stable launchers only; ${version} is a ${channel} version`,
+		);
+	const folder = resolve(dir);
+	const { problems, digests } = await readPublic({
+		base: pathToFileURL(dirname(folder)).href,
+		tag: basename(folder),
+		version,
+	});
+	if (problems.length)
+		throw new Error(
+			`${folder} is not the complete release ${version}, so its launcher is not pinned: ${problems.join("; ")}`,
+		);
+	return digests;
+}
+
 /** A published launcher pins every target's archive digest. */
 export function assertPinned(manifest) {
 	const pins = manifest.prismalens.release.sha256 ?? {};
@@ -148,11 +174,47 @@ const tar = (tarball, args) =>
 		encoding: "utf8",
 	});
 
+function npmPublish(tarball, { tag, version, dryRun }) {
+	const dist = resolvePublishTag({ tag, version });
+	const args = ["publish", tarball, "--access", "public", "--tag", dist];
+	if (dryRun) args.push("--dry-run");
+	console.log(`==> npm ${args.join(" ")}`);
+	npm(args, ROOT);
+}
+
+/**
+ * Publishes a launcher packed earlier, never a new pack of it: its entries and manifest are
+ * checked again, and the public release must hold exactly the archives it pins.
+ */
+export async function publishPacked(tarball, { tag, dryRun = false, base }) {
+	assertLauncherEntries(tar(tarball, ["-tzf"]).split("\n").filter(Boolean));
+	const manifest = JSON.parse(readPacked(tarball));
+	assertLauncherManifest(manifest);
+	assertPinned(manifest);
+	const digests = await assertPublishable(manifest, base);
+	const pins = manifest.prismalens.release.sha256;
+	const changed = TARGETS.filter((t) => digests[t] !== pins[t]);
+	if (changed.length)
+		throw new Error(
+			`the public release no longer holds the archives the launcher pins: ${changed.join(", ")}`,
+		);
+	npmPublish(tarball, { tag, version: manifest.version, dryRun });
+}
+
 export async function packLauncher(argv = []) {
 	const opt = (name) => {
 		const i = argv.indexOf(name);
 		return i === -1 ? undefined : argv[i + 1];
 	};
+	if (opt("--tarball")) {
+		if (!argv.includes("--publish") && !argv.includes("--publish-dry-run"))
+			throw new Error("--tarball is the launcher --publish sends to npm");
+		return publishPacked(resolve(opt("--tarball")), {
+			tag: opt("--tag"),
+			dryRun: argv.includes("--publish-dry-run"),
+			base: opt("--release-base"),
+		});
+	}
 	const out = resolve(opt("--out") ?? join(CLI_DIR, "dist-launcher"));
 	const cli = JSON.parse(readFileSync(join(CLI_DIR, "package.json"), "utf8"));
 	const manifest = launcherManifest(cli, {
@@ -162,7 +224,17 @@ export async function packLauncher(argv = []) {
 	assertLauncherManifest(manifest);
 	const publish =
 		argv.includes("--publish") || argv.includes("--publish-dry-run");
-	if (publish || argv.includes("--pin")) {
+	if (publish && opt("--assets"))
+		throw new Error(
+			"--assets pins from a local folder; --publish reads the public release",
+		);
+	if (opt("--assets")) {
+		manifest.prismalens.release.sha256 = await assertAssets(
+			manifest,
+			opt("--assets"),
+		);
+		assertPinned(manifest);
+	} else if (publish || argv.includes("--pin")) {
 		manifest.prismalens.release.sha256 = await assertPublishable(
 			manifest,
 			opt("--release-base"),
@@ -198,16 +270,12 @@ export async function packLauncher(argv = []) {
 	assertLauncherManifest(JSON.parse(readPacked(tarball)));
 	console.log(`==> ${tarball} (${manifest.prismalens.release.tag})`);
 
-	if (publish) {
-		const tag = resolvePublishTag({
+	if (publish)
+		npmPublish(tarball, {
 			tag: opt("--tag"),
 			version: manifest.version,
+			dryRun: argv.includes("--publish-dry-run"),
 		});
-		const args = ["publish", tarball, "--access", "public", "--tag", tag];
-		if (argv.includes("--publish-dry-run")) args.push("--dry-run");
-		console.log(`==> npm ${args.join(" ")}`);
-		npm(args, ROOT);
-	}
 	return tarball;
 }
 

@@ -1,5 +1,5 @@
 # Everything that proves the product against the outside world or on other machines, once a night:
-# the release proofs (`proofs.yml`) and, on dispatch with `live`, the real pinned agent on its free model.
+# the release proofs (`proofs.yml`) and the real pinned agent on its free model (the `Live:` jobs).
 # Nothing here is a required check; a red night opens or updates one tracking issue (`report`).
 # Release gate: dispatch on `main` with `ref` set to the release PR's base SHA (README.md).
 name: Nightly
@@ -19,7 +19,7 @@ on:
         type: boolean
         default: false
       live:
-        description: Also run the live agent check on the free model (stalls often, #914)
+        description: Also run the live agent check on the free model (a scheduled night always does)
         required: false
         type: boolean
         default: false
@@ -38,7 +38,7 @@ concurrency:
 
 env:
   # The live jobs' model: OpenCode's own free one. Their agent versions are the pins in
-  # scripts/agent-pins.json, which `agent-release-watch.yml` moves (#639, #712, #914).
+  # each agent's pin.json, which `agent-release-watch.yml` moves (#639, #712, #914).
   FREE_MODEL: opencode/deepseek-v4.1-flash-free
 
 jobs:
@@ -232,8 +232,8 @@ jobs:
   # and a green night closes it. A cancelled or skipped `proofs`, or a failed `publish`, counts as red.
   report:
     name: Nightly tracking issue
-    needs: [proofs, nightly-draft, nightly-standalone, nightly-sums, publish]
-    if: always() && (github.event_name == 'workflow_dispatch' || vars.NIGHTLY_ENABLED == 'true')
+    needs: [proofs, nightly-draft, nightly-standalone, nightly-sums, publish, live-pack, packed-intake-live, harness-admission-live]
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
@@ -244,6 +244,13 @@ jobs:
       issues: write
       actions: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions
+            scripts
+          sparse-checkout-cone-mode: false
       # The first failed or cancelled publication stage is the publish result; else publish's own.
       - name: Publication result
         id: publication
@@ -255,7 +262,20 @@ jobs:
             case "$stage" in failure | cancelled) PUBLISH=$stage; break ;; esac
           done
           echo "result=$PUBLISH" >> "$GITHUB_OUTPUT"
-      - name: Open, update or close the tracking issue
+      # Without NIGHTLY_ENABLED the scheduled run skips every job; say so instead of reading it as a red night.
+      - name: Was the night skipped
+        id: gate
+        env:
+          ENABLED: ${{ vars.NIGHTLY_ENABLED }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != workflow_dispatch ] && [ "$ENABLED" != true ]; then
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            echo "The nightly was skipped: the repository variable NIGHTLY_ENABLED is \"${ENABLED:-unset}\", not \"true\". No issue was touched." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Describe the night
+        id: night
+        if: steps.gate.outputs.skipped != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -263,51 +283,40 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           PROOFS: ${{ needs.proofs.result }}
           PUBLISH: ${{ steps.publication.outputs.result }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.report != true }}
+          LIVE: ${{ needs.live-pack.result }} ${{ needs.packed-intake-live.result }} ${{ needs.harness-admission-live.result }}
         run: |
           set -eu
-          # A dry run says what it would do, in the job summary, and touches no issue.
-          act() {
-            if [ "$DRY_RUN" = true ]; then
-              { echo "Dry run, would run: $*"; [ ! -f "$body" ] || cat "$body"; } | tee -a "$GITHUB_STEP_SUMMARY"
-            else
-              "$@"
-            fi
-          }
-          body="$RUNNER_TEMP/nightly-body.md"
-          title="Nightly CI failing"
-          found=$(gh issue list -R "$REPO" --state all --limit 100 --search "\"$title\" in:title" --json number,title,state)
-          open=$(echo "$found" | jq -r --arg t "$title" '[.[] | select(.title == $t and .state == "OPEN")][0].number // empty')
-          closed=$(echo "$found" | jq -r --arg t "$title" '[.[] | select(.title == $t and .state == "CLOSED")][0].number // empty')
-          if [ "$PROOFS" = success ] && [ "$PUBLISH" != failure ] && [ "$PUBLISH" != cancelled ]; then
-            if [ -n "$open" ]; then
-              act gh issue close "$open" -R "$REPO" --comment "The nightly proofs passed: $RUN_URL"
-            fi
-            exit 0
-          fi
+          live_red=false
+          for job in $LIVE; do case "$job" in failure | cancelled) live_red=true ;; esac; done
+          ok=false
+          if [ "$PROOFS" = success ] && [ "$PUBLISH" != failure ] && [ "$PUBLISH" != cancelled ] && [ "$live_red" = false ]; then ok=true; fi
           failed=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" --paginate --jq '.jobs[] | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped" and .name != "Nightly tracking issue") | "- \(.name): \(.conclusion) \(.html_url)"')
+          bt='`'
           {
-            echo "The nightly proofs ended \`$PROOFS\` and its publish \`$PUBLISH\`: $RUN_URL"
+            echo "ok=$ok"
+            echo "body<<NIGHTLY_BODY_EOF"
+            echo "The nightly proofs ended $bt$PROOFS$bt, its publish $bt$PUBLISH$bt and the live checks $bt$LIVE$bt: $RUN_URL"
             echo
             echo "Red jobs:"
             echo "${failed:-- none listed; the run was cancelled or a job never started}"
             echo
             echo "These run outside pull requests and never block one. This issue closes itself on the next green night."
-          } > "$body"
-          if [ -n "$open" ]; then
-            act gh issue edit "$open" -R "$REPO" --body-file "$body"
-          elif [ -n "$closed" ]; then
-            act gh issue reopen "$closed" -R "$REPO" --comment "Red again: $RUN_URL"
-            act gh issue edit "$closed" -R "$REPO" --body-file "$body"
-          else
-            act gh issue create -R "$REPO" --title "$title" --body-file "$body"
-          fi
+            echo "NIGHTLY_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/report-failure
+        if: steps.gate.outputs.skipped != 'true'
+        with:
+          title: Nightly CI failing
+          body: ${{ steps.night.outputs.body }}
+          ok: ${{ steps.night.outputs.ok }}
+          # A dry run says what it would do, in the job summary, and touches no issue.
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.report != true }}
 
-  # The live agent check (#884): the real pinned agent on its free model, on dispatch with `live`.
-  # Release gate: dispatch with `ref` set to the release PR's base SHA (README.md).
+  # The live agent check (#884): the real pinned agent on its free model, every scheduled night and on
+  # dispatch with `live` (#1085). Release gate: dispatch with `ref` set to the release PR's base SHA (README.md).
   live-pack:
     name: "Live: pack npm tarball"
-    if: inputs.live
+    if: inputs.live || (github.event_name == 'schedule' && vars.NIGHTLY_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -359,7 +368,10 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Install the pinned OpenCode
-        run: npm install -g "opencode-ai@$(node -p "require('./scripts/agent-pins.json').pins['opencode-ai']")" && opencode --version
+        run: |
+          bin=$(node scripts/agent-locks.mjs install opencode-ai)
+          echo "$bin" >> "$GITHUB_PATH"
+          PATH="$bin:$PATH" opencode --version
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -378,9 +390,10 @@ jobs:
           passed=0
           for n in 1 2 3; do
             echo "::group::attempt $n"
-            if PACKED_INTAKE_EVENTS_OUT="$PWD/events/attempt-$n.json" \
+            if PACKED_INTAKE_JOURNEYS=alert-to-report \
+              PACKED_INTAKE_EVENTS_OUT="$PWD/events/attempt-$n.json" \
               PACKED_INTAKE_PORT=$((3102 + n)) \
-              timeout 20m node scripts/packed-intake.mjs tarballs; then
+              timeout 18m node scripts/packed-intake.mjs tarballs; then
               passed=$((passed + 1))
               echo "attempt $n: valid report" >> "$GITHUB_STEP_SUMMARY"
             else
@@ -393,6 +406,11 @@ jobs:
             echo "::error::only $passed of 3 attempts completed with a valid report; 2 are needed"
             exit 1
           fi
+          # One run cut off by a restart and taken up again; the 75-minute job fits 3 x 18 + 15.
+          echo "::group::restart-resumes"
+          PACKED_INTAKE_JOURNEYS=restart-resumes PACKED_INTAKE_PORT=3106 \
+            timeout 15m node scripts/packed-intake.mjs tarballs
+          echo "::endgroup::"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -420,7 +438,7 @@ jobs:
 
   harness-admission-live:
     name: "Live: agent qualification (opencode, free model)"
-    if: inputs.live
+    if: inputs.live || (github.event_name == 'schedule' && vars.NIGHTLY_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -445,9 +463,13 @@ jobs:
         run: pnpm --filter "@prismalens/contracts..." --filter "@prismalens/integrations..." --filter "@prismalens/engine..." build
 
       - name: Install the pinned OpenCode
-        run: npm install -g "opencode-ai@$(node -p "require('./scripts/agent-pins.json').pins['opencode-ai']")" && opencode --version
+        run: |
+          bin=$(node scripts/agent-locks.mjs install opencode-ai)
+          echo "$bin" >> "$GITHUB_PATH"
+          PATH="$bin:$PATH" opencode --version
 
       - name: Run the admission script against this checkout
         env:
           PRISMALENS_HARNESS_MODEL: ${{ env.FREE_MODEL }}
+          ADMISSION_LIVE_MODEL: "1"
         run: pnpm --filter @prismalens/engine exec tsx scripts/acp-admission.ts opencode "$GITHUB_WORKSPACE"

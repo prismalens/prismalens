@@ -3,7 +3,12 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { candidateVersion, hops, releasesFrom } from "./upgrade-chain.mjs";
+import {
+	candidateVersion,
+	draftPlan,
+	hops,
+	releasesFrom,
+} from "./upgrade-chain.mjs";
 
 const PUBLISHED = [
 	"0.4.0",
@@ -31,6 +36,32 @@ test("a tarball ahead of npm keeps its own version; one npm already has moves to
 	assert.equal(candidateVersion("0.5.1", PUBLISHED), "0.5.11");
 	assert.equal(candidateVersion("0.6.0-rc.1", PUBLISHED), "0.6.0-rc.1");
 	assert.equal(candidateVersion("1.0.0", []), "1.0.0");
+});
+
+test("a draft keeps its own version and upgrades from the releases below it, even when npm holds a newer one", () => {
+	assert.deepEqual(draftPlan("0.5.11", PUBLISHED), {
+		candidate: "0.5.11",
+		releases: ["0.5.0", "0.5.1", "0.5.2", "0.5.10"],
+	});
+	assert.deepEqual(draftPlan("0.5.3", PUBLISHED), {
+		candidate: "0.5.3",
+		releases: ["0.5.0", "0.5.1", "0.5.2"],
+	});
+	assert.deepEqual(draftPlan("0.5.1-hotfix", ["0.5.0", "0.5.2"]), {
+		candidate: "0.5.1-hotfix",
+		releases: ["0.5.0"],
+	});
+	assert.deepEqual(draftPlan("0.5.0", ["0.5.1"]), {
+		candidate: "0.5.0",
+		releases: [],
+	});
+});
+
+test("a draft whose exact version npm already lists is refused", () => {
+	assert.throws(() => draftPlan("0.5.2", PUBLISHED), {
+		message:
+			"0.5.2 is already on npm; a release proof needs an unpublished one",
+	});
 });
 
 test("each release steps to the next, the newest to the candidate, and the oldest also skips to it", () => {

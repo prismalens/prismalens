@@ -34,6 +34,7 @@ import {
 	type WorktreePatch,
 	type WorktreeRepoChanges,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import {
 	WORKTREE_PREFIX,
 	worktreeRoots,
@@ -47,8 +48,8 @@ import {
 import {
 	changedPaths,
 	forgetNow,
-	interruptedReverts,
 	nowSnapshot,
+	nowWithRefs,
 	OP_REF,
 	openStore,
 	REVERT_REF,
@@ -65,7 +66,6 @@ import {
 	takeSnapshot,
 	turnSnapshots,
 	withStoreLock,
-	worktreeHead,
 } from "./worktree-snapshots.js";
 
 const DIFF = [
@@ -124,18 +124,23 @@ async function endsOf(
 	scope: DiffScope,
 	turn: number | undefined,
 	now: string,
+	known: { turns?: TurnSnapshot[]; head?: string } = {},
 ): Promise<Ends | null> {
-	const head = (await store.git(["rev-parse", `${now}^`])).trim();
+	const head = known.head ?? (await store.git(["rev-parse", `${now}^`])).trim();
 	if (scope === "uncommitted")
 		return { from: head, to: now, turn: null, live: false };
 	if (scope === "all") {
-		const base = await store
-			.git(["merge-base", store.repo.head, head])
-			.then((o) => o.trim())
-			.catch(() => store.repo.head);
+		// A HEAD still at the recorded commit is its own merge base: no git process.
+		const base =
+			head === store.repo.head
+				? head
+				: await store
+						.git(["merge-base", store.repo.head, head])
+						.then((o) => o.trim())
+						.catch(() => store.repo.head);
 		return { from: base || store.repo.head, to: now, turn: null, live: false };
 	}
-	const turns = await turnSnapshots(store);
+	const turns = known.turns ?? (await turnSnapshots(store));
 	if (scope === "turn") {
 		const t =
 			turn === undefined
@@ -146,15 +151,15 @@ async function endsOf(
 	}
 	// Outside turns: the files changed between or after them, each against the base (#1101 category 16).
 	if (!turns.some((x) => x.end)) return null;
-	return endsOf(store, "all", undefined, now);
+	return endsOf(store, "all", undefined, now, { turns, head });
 }
 
 /** Paths changed outside the agent's turns: in each gap between them, and after the last. */
 async function outsidePaths(
 	store: SnapshotStore,
 	now: string,
+	turns: TurnSnapshot[],
 ): Promise<string[]> {
-	const turns = await turnSnapshots(store);
 	const out = new Set<string>();
 	for (let i = 0; i < turns.length; i++) {
 		const end = turns[i]?.end;
@@ -276,11 +281,15 @@ async function repoScoped(
 		return unavailable(repo.name, reasonOf(e));
 	}
 	try {
-		const now = await nowSnapshot(store);
-		const ends = await endsOf(store, scope, turn, now.commit);
+		// The refs are read once, under the lock the snapshot is taken in, so the two agree.
+		const { now, refs } = await nowWithRefs(store);
+		const ends = await endsOf(store, scope, turn, now.commit, {
+			turns: refs.turns,
+			head: now.head,
+		});
 		if (!ends) return unavailable(repo.name, "no-snapshot");
 		const { from, to } = ends;
-		const outside = await outsidePaths(store, now.commit);
+		const outside = await outsidePaths(store, now.commit, refs.turns);
 		// No outside path: an empty pathspec would mean every path.
 		const only =
 			scope === "outside"
@@ -288,21 +297,19 @@ async function repoScoped(
 					? ["--", ...outside]
 					: ["--", ":(exclude,top)*"]
 				: [];
-		const files = await filesBetween(store, scope, from, to, only, {
-			magic: only.length > 0 && !outside.length,
-			keep: !withPatch,
-		});
-		let patch: string | null = withPatch
-			? (
-					await store.git(
-						["diff", "--full-index", ...DIFF, from, to, ...only],
-						{ magic: only.length > 0 && !outside.length },
-					)
-				).toString()
-			: null;
+		const magic = only.length > 0 && !outside.length;
+		const [files, fullPatch, toMessage] = await Promise.all([
+			filesBetween(store, scope, from, to, only, { magic, keep: !withPatch }),
+			withPatch
+				? store.git(["diff", "--full-index", ...DIFF, from, to, ...only], {
+						magic,
+					})
+				: null,
+			store.git(["log", "-1", "--format=%B", to]),
+		]);
+		let patch: string | null = fullPatch === null ? null : fullPatch.toString();
 		if (patch !== null && Buffer.byteLength(patch) > RUN_DIFF_MAX_BYTES)
 			patch = null;
-		const toMessage = await store.git(["log", "-1", "--format=%B", to]);
 		const skipped = skippedOf(toMessage.trim());
 		for (const p of skipped)
 			if (!files.some((f) => f.path === p))
@@ -322,7 +329,7 @@ async function repoScoped(
 			: new Map<string, string>();
 		const sum = (k: "additions" | "deletions") =>
 			files.reduce((n, f) => n + (f[k] ?? 0), 0);
-		const turns = await turnSnapshots(store);
+		const turns = refs.turns;
 		return {
 			state: "ok",
 			repo: repo.name,
@@ -347,7 +354,7 @@ async function repoScoped(
 					.filter((t) => t.start)
 					.map((t) => ({ seq: t.seq, ended: !!t.end })),
 				revert: blockOf(ws, ctx),
-				interrupted: await interruptedReverts(store),
+				interrupted: refs.interrupted,
 			},
 		};
 	} catch (e) {
@@ -606,17 +613,9 @@ export async function revertChanges(
 		return refused("blocked", [], "borrowed");
 	return withStoreLock(store.gitDir, async () => {
 		forgetNow(store);
-		const id = String(Date.now());
-		const before = await takeSnapshot(store, {
-			ref: `${REVERT_REF}/${id}/before`,
-		});
 		const t = input.target;
-		// A = the state each path must still hold; B = the state it is set to.
-		let paths: string[];
-		let want: Map<string, string>;
-		let next: Map<string, string>;
-		/** The commits A and B come from: their skipped lists bar those paths too. */
-		let sources: string[];
+		// An undo's before and target, or a turn's start and end; an unknown one is refused before a `before` ref is written (#1154).
+		let known: [string, string] = ["", ""];
 		if (t.kind === "undo") {
 			const ref = (k: string) =>
 				store
@@ -628,21 +627,37 @@ export async function revertChanges(
 					])
 					.then((o) => o.trim())
 					.catch(() => "");
-			const [b, target] = [await ref("before"), await ref("target")];
+			const [b, target] = await Promise.all([ref("before"), ref("target")]);
 			if (!b || !target) return refused("no-snapshot");
-			paths = await changedPaths(store, b, target);
-			want = await statesAt(store, target, paths);
-			next = await statesAt(store, b, paths);
-			sources = [b];
+			known = [b, target];
 		} else if (t.kind === "turn") {
 			const turn = (await turnSnapshots(store)).find((x) => x.seq === t.seq);
 			if (!turn?.start || !turn.end) return refused("no-snapshot");
-			paths = await changedPaths(store, turn.start, turn.end);
-			want = await statesAt(store, turn.end, paths);
-			next = await statesAt(store, turn.start, paths);
-			sources = [turn.start, turn.end];
+			known = [turn.start, turn.end];
+		}
+		const id = String(clock.now());
+		const before = await takeSnapshot(store, {
+			ref: `${REVERT_REF}/${id}/before`,
+		});
+		// A = the state each path must still hold; B = the state it is set to.
+		let paths: string[];
+		let want: Map<string, string>;
+		let next: Map<string, string>;
+		/** The commits A and B come from: their skipped lists bar those paths too. */
+		let sources: string[];
+		if (t.kind === "undo" || t.kind === "turn") {
+			// An undo sets the revert's target back to its before; a turn undo, its end to its start.
+			const [b, a] = known;
+			paths = await changedPaths(store, b, a);
+			[want, next] = await Promise.all([
+				statesAt(store, a, paths),
+				statesAt(store, b, paths),
+			]);
+			sources = t.kind === "undo" ? [b] : [b, a];
 		} else {
-			const ends = await endsOf(store, input.scope, input.turn, before.commit);
+			const ends = await endsOf(store, input.scope, input.turn, before.commit, {
+				head: before.head,
+			});
 			if (!ends || ends.from !== input.from) return refused("stale", [t.path]);
 			paths = [t.path];
 			want = new Map([[t.path, input.expect[t.path] ?? "missing"]]);
@@ -660,12 +675,11 @@ export async function revertChanges(
 			}
 		}
 		if (!paths.length) return refused("no-snapshot");
-		const ends_skipped: string[] = [];
-		for (const c of sources)
-			ends_skipped.push(
-				...skippedOf((await store.git(["log", "-1", "--format=%B", c])).trim()),
-			);
-		const now = await statesAt(store, before.commit, paths);
+		const [now, ...messages] = await Promise.all([
+			statesAt(store, before.commit, paths),
+			...sources.map((c) => store.git(["log", "-1", "--format=%B", c])),
+		]);
+		const ends_skipped = messages.flatMap((m) => skippedOf(m.trim()));
 		// A path any endpoint left out was never captured: nothing may be set from it.
 		const skipped = new Set([...before.skipped, ...ends_skipped]);
 		const linked = paths.filter((p) => skipped.has(p) || !isSafeRepoPath(p));
@@ -688,17 +702,21 @@ export async function revertChanges(
 				return refused("linked", [p]);
 		const idx = await scratchIndex();
 		try {
-			await store.git(["read-tree", before.commit], { index: idx.path });
+			const [, patch] = await Promise.all([
+				store.git(["read-tree", before.commit], { index: idx.path }),
+				t.kind === "hunk"
+					? store.git([
+							"diff",
+							"--full-index",
+							...DIFF,
+							input.from,
+							before.commit,
+							"--",
+							t.path,
+						])
+					: "",
+			]);
 			if (t.kind === "hunk") {
-				const patch = await store.git([
-					"diff",
-					"--full-index",
-					...DIFF,
-					input.from,
-					before.commit,
-					"--",
-					t.path,
-				]);
 				const one = oneHunk(patch, t.header);
 				if (!one) return refused("stale", paths);
 				await store
@@ -710,39 +728,42 @@ export async function revertChanges(
 						throw new HunkConflict();
 					});
 			} else {
-				for (const p of paths) {
+				// Mode 0 removes the entry: every path is set by one git process (#1154).
+				const info = paths.map((p) => {
 					const b = next.get(p) ?? "absent";
-					if (b === "absent")
-						await store.git(["update-index", "--force-remove", "--", p], {
-							index: idx.path,
-						});
-					else {
-						const [mode, oid] = b.split(" ");
-						await store.git(
-							["update-index", "--add", "--cacheinfo", `${mode},${oid},${p}`],
-							{ index: idx.path },
-						);
-					}
-				}
+					return b === "absent"
+						? `0 ${"0".repeat(before.commit.length)}\t${p}`
+						: `${b}\t${p}`;
+				});
+				await store.git(["update-index", "-z", "--index-info"], {
+					index: idx.path,
+					input: `${info.join("\0")}\0`,
+				});
 			}
 			const tree = (
 				await store.git(["write-tree"], { index: idx.path })
 			).trim();
 			const final = await statesAt(store, tree, paths);
-			const head = await worktreeHead(store);
-			const target = (
-				await store.git(["commit-tree", tree, "-p", head, "-F", "-"], {
-					input: `PrismaLens revert ${id}\n`,
-				})
-			).trim();
+			// The parent is the HEAD the before snapshot read, under this same lock.
+			const head = before.head;
+			const blobs = [...final.values()]
+				.filter((st) => st !== "absent")
+				.map((st) => st.split(" ")[1] as string);
+			const [target, present] = await Promise.all([
+				store
+					.git(["commit-tree", tree, "-p", head, "-F", "-"], {
+						input: `PrismaLens revert ${id}\n`,
+					})
+					.then((o) => o.trim()),
+				blobs.length
+					? store.git(["cat-file", "--batch-check=%(objectname)"], {
+							input: `${blobs.join("\n")}\n`,
+						})
+					: "",
+			]);
 			// Every blob is checked present before the first write: a pruned object fails here, not halfway.
-			for (const st of final.values())
-				if (st !== "absent")
-					await store
-						.git(["cat-file", "-e", st.split(" ")[1] as string])
-						.catch(() => {
-							throw new SnapshotUnavailable("commit-gone");
-						});
+			if (present.split("\n").some((l) => l.trim().endsWith(" missing")))
+				throw new SnapshotUnavailable("commit-gone");
 			// The journal is down before the first write: an interrupted revert can be undone.
 			await store.git(["update-ref", `${REVERT_REF}/${id}/target`, target]);
 			const written = await writeStates(store, {

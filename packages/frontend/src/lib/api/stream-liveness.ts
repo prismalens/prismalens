@@ -5,7 +5,9 @@ import { STREAM_SILENT_MS } from "@prismalens/contracts";
 
 /** How long a stream may take to answer at all; a dead link accepts a request and never replies. */
 export const CONNECT_TIMEOUT_MS = 10_000;
-const TICK_MS = 250;
+export const TICK_MS = 100;
+/** A tick this late means the page was busy or hidden; at 4x TICK_MS any 400 ms task would count. */
+export const STALL_MS = 1_000;
 
 export interface SilenceWatch {
 	/** A frame arrived: the stream is alive. */
@@ -27,7 +29,9 @@ export function watchSilence(onSilent: () => void): SilenceWatch {
 	let fired = false;
 	const timer = setInterval(() => {
 		const now = performance.now();
-		if (now - tick > TICK_MS * 4) last = now;
+		// Only the stall itself is forgiven: a fresh window after it also forgave the
+		// silence before it, and a busy leader showed a drop after 3.4 s (#1181).
+		if (now - tick > STALL_MS) last += now - tick - TICK_MS;
 		tick = now;
 		if (!fired && now - last > limit) {
 			fired = true;
@@ -38,12 +42,13 @@ export function watchSilence(onSilent: () => void): SilenceWatch {
 		}
 	}, TICK_MS);
 	return {
+		// The stall line runs from here too: a frame heard mid-stall already moved `last` past it.
 		beat: () => {
-			last = performance.now();
+			last = tick = performance.now();
 		},
 		open: () => {
 			limit = STREAM_SILENT_MS;
-			last = performance.now();
+			last = tick = performance.now();
 		},
 		stop: () => clearInterval(timer),
 	};

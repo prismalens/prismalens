@@ -4,31 +4,16 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import {
-	diffSection,
-	hunks,
-	moveProbed,
-	pinnedAt,
-	stale,
-} from "./agent-facts.mjs";
+import { diffSection, hunks, pinnedAt, stale } from "./agent-facts.mjs";
 
-const AGENTS = readFileSync(
-	new URL(
-		"../packages/@prismalens/agent-host/src/registry/agents.ts",
-		import.meta.url,
-	),
-	"utf8",
-);
-
-const fact = (via, cli, adapter) => ({
-	value: true,
-	via,
-	verifiedAt: { cli, adapter },
-});
-/** A copy of `staleFacts` from the agent host, so this test needs no build. */
-const staleFacts = (facts, at, via) =>
+const fact = (via, cli, adapter) =>
+	via === "probe"
+		? { value: true, via }
+		: { value: true, via, verifiedAt: { cli, adapter } };
+/** A copy of `staleFacts` from the agent host, so this test needs no build: source facts only. */
+const staleFacts = (facts, at) =>
 	Object.entries(facts ?? {})
-		.filter(([, f]) => !via || f.via === via)
+		.filter(([, f]) => f.verifiedAt)
 		.filter(
 			([, f]) =>
 				f.verifiedAt.cli !== at.cli || f.verifiedAt.adapter !== at.adapter,
@@ -54,13 +39,13 @@ const registry = {
 	gemini: {
 		id: "gemini",
 		channel: { npm: "@google/gemini-cli" },
-		facts: { images: fact("probe", "0.65.0", null) },
+		facts: { images: fact("probe", "0.60.0", null) },
 	},
 	local: { id: "local" },
 };
 const pins = {
 	"@anthropic-ai/claude-code": "2.1.318",
-	"@google/gemini-cli": "0.65.0",
+	"@google/gemini-cli": "0.60.0",
 };
 const adapters = { "@agentclientprotocol/claude-agent-acp": "0.100.0" };
 
@@ -73,7 +58,7 @@ test("a row's facts are due on its CLI pin and, for an adapter row, its adapter 
 		],
 		[
 			{ cli: "2.1.318", adapter: "0.100.0" },
-			{ cli: "0.65.0", adapter: null },
+			{ cli: "0.60.0", adapter: null },
 			null,
 		],
 	);
@@ -91,41 +76,6 @@ test("only a fact checked on other versions than its row's pins is stale, with t
 		],
 	);
 	assert.equal(rows[0].defs.subagentsOnStop.where, "src/acp-agent.ts cancel");
-});
-
-test("moving probed versions rewrites only the touched rows' PROBED_AT lines", () => {
-	const { source, moved } = moveProbed(AGENTS, {
-		"claude-code": { cli: "9.9.9", adapter: "8.8.8" },
-		gemini: { cli: "7.7.7", adapter: null },
-	});
-	assert.deepEqual(moved, ["claude-code", "gemini"]);
-	assert.ok(
-		source.includes('\t"claude-code": { cli: "9.9.9", adapter: "8.8.8" },'),
-	);
-	assert.ok(source.includes('\tgemini: { cli: "7.7.7", adapter: null },'));
-	const changed = source
-		.split("\n")
-		.filter((l, i) => l !== AGENTS.split("\n")[i]);
-	assert.deepEqual(changed, [
-		'\t"claude-code": { cli: "9.9.9", adapter: "8.8.8" },',
-		'\tgemini: { cli: "7.7.7", adapter: null },',
-	]);
-});
-
-test("rows already on their versions stay byte for byte, and a row with no line refuses", () => {
-	const at = AGENTS.match(
-		/^\topencode: \{ cli: "([^"]*)", adapter: null \},$/m,
-	)?.[1];
-	assert.deepEqual(
-		moveProbed(AGENTS, { opencode: { cli: at, adapter: null } }),
-		{ source: AGENTS, moved: [] },
-	);
-	// local is the one row the registry keeps no probed versions for.
-	assert.doesNotMatch(AGENTS, /^\tlocal: \{ cli:/m);
-	assert.throws(
-		() => moveProbed(AGENTS, { local: { cli: "1", adapter: null } }),
-		/no PROBED_AT line for the local row/,
-	);
 });
 
 const PATCH = [

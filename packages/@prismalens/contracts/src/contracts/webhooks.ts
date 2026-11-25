@@ -144,6 +144,28 @@ export const webhooksContract = {
 		.output(z.object({ token: z.string() })),
 
 	/**
+	 * A sample alert through the generic webhook's own path, so a first-time
+	 * user sees an incident start. The operator's only: it may start a run.
+	 * POST /alerts/test
+	 */
+	sendTest: oc
+		.route({
+			method: "POST",
+			path: "/alerts/test",
+			summary: "Send a sample alert for a project",
+			tags: ["webhooks"],
+		})
+		.input(z.object({ serviceName: z.string().trim().min(1).max(200) }))
+		.output(
+			z.object({
+				alertId: z.string(),
+				incidentId: z.string().optional(),
+				incidentNumber: z.number().int().optional(),
+				isNewIncident: z.boolean(),
+			}),
+		),
+
+	/**
 	 * The last Alertmanager delivery the webhook took, for Settings, Alert sources.
 	 * GET /webhooks/last-delivery
 	 */

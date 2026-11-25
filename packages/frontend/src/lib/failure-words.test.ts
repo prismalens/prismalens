@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { failureWords } from "./failure-words";
+import { failureWords, signInNext } from "./failure-words";
 
 describe("failureWords", () => {
 	it("names the agent's own sign-in command when its settings give one", () => {
@@ -75,5 +75,37 @@ describe("failureWords", () => {
 			next: "Continue it, or start a new run with a smaller brief.",
 			ours: true,
 		});
+	});
+
+	it("words a refused model switch as model not taken (#1171)", () => {
+		const words = failureWords(
+			"OpenCode would not switch to opencode/x; it offered a, b",
+			"OpenCode",
+		);
+		expect(words.what).toBe("OpenCode does not take the model opencode/x.");
+		expect(words.next).toBe("Pick another model.");
+	});
+});
+
+describe("signInNext", () => {
+	it("prefers the staged sign-in command over the settings hint", () => {
+		expect(
+			signInNext(
+				{
+					signIn: { command: "opencode auth login" },
+					loginHint: "`codex login`",
+				},
+				"Check",
+			),
+		).toBe("Run opencode auth login in a terminal, then Check.");
+	});
+
+	it("reads the command from the hint and skips an env key", () => {
+		expect(
+			signInNext({ loginHint: "`codex login`, or `OPENAI_API_KEY` in env" }),
+		).toBe("Run codex login in a terminal, then retry.");
+		expect(
+			signInNext({ loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env" }, "Check"),
+		).toBe("Sign in with its own CLI, then Check.");
 	});
 });

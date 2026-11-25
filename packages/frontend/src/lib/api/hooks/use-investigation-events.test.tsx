@@ -3,10 +3,10 @@
 // Copyright 2026 Sumit Patel
 
 import type { CanonicalEvent } from "@prismalens/contracts";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import type { QueryClient } from "@tanstack/react-query";
+import { act, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type RenderedApp, renderWithApp } from "@/test/render";
 import {
 	appendEvents,
 	useInvestigationEventsHistory,
@@ -71,35 +71,33 @@ function makeReportEvent(
 	};
 }
 
-(
-	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
 describe("use-investigation-events (#874)", () => {
 	let container: HTMLDivElement;
-	let root: Root;
-	let queryClient: QueryClient;
+	let app: RenderedApp | undefined;
+	let queryClient: QueryClient | undefined;
+
+	async function show(ui: ReactNode) {
+		if (app) await app.rerender(ui);
+		else {
+			app = await renderWithApp(ui, { queryClient });
+			queryClient = app.queryClient;
+		}
+		container = app.container;
+	}
+
+	async function unmountApp() {
+		await app?.unmount();
+		app = undefined;
+	}
 
 	beforeEach(() => {
 		vi.clearAllMocks();
-		container = document.createElement("div");
-		document.body.appendChild(container);
-		root = createRoot(container);
-		queryClient = new QueryClient({
-			defaultOptions: {
-				queries: {
-					retry: false,
-				},
-			},
-		});
+		app = undefined;
+		queryClient = undefined;
 	});
 
 	afterEach(async () => {
-		await act(async () => {
-			root.unmount();
-		});
-		container.remove();
-		queryClient.clear();
+		queryClient?.clear();
 		vi.useRealTimers();
 	});
 
@@ -164,13 +162,7 @@ describe("use-investigation-events (#874)", () => {
 				);
 			}
 
-			await act(async () => {
-				root.render(
-					<QueryClientProvider client={queryClient}>
-						<TestComponent />
-					</QueryClientProvider>,
-				);
-			});
+			await show(<TestComponent />);
 
 			await act(async () => {
 				await new Promise((resolve) => setTimeout(resolve, 0));
@@ -217,13 +209,7 @@ describe("use-investigation-events (#874)", () => {
 				);
 			}
 
-			await act(async () => {
-				root.render(
-					<QueryClientProvider client={queryClient}>
-						<TestComponent />
-					</QueryClientProvider>,
-				);
-			});
+			await show(<TestComponent />);
 
 			await act(async () => {
 				await new Promise((resolve) => setTimeout(resolve, 0));
@@ -288,13 +274,7 @@ describe("use-investigation-events (#874)", () => {
 				);
 			}
 
-			await act(async () => {
-				root.render(
-					<QueryClientProvider client={queryClient}>
-						<TestComponent />
-					</QueryClientProvider>,
-				);
-			});
+			await show(<TestComponent />);
 
 			await act(async () => {
 				await new Promise((resolve) => setTimeout(resolve, 0));
@@ -336,13 +316,7 @@ describe("use-investigation-events (#874)", () => {
 				return null;
 			}
 
-			await act(async () => {
-				root.render(
-					<QueryClientProvider client={queryClient}>
-						<PollingComponent pollMs={3000} />
-					</QueryClientProvider>,
-				);
-			});
+			await show(<PollingComponent pollMs={3000} />);
 
 			// Initial read done
 			expect(mockedGetEvents).toHaveBeenCalledTimes(1);
@@ -367,21 +341,10 @@ describe("use-investigation-events (#874)", () => {
 			}
 
 			// Clean up and test with pollMs: false
-			await act(async () => {
-				root.unmount();
-			});
-			container = document.createElement("div");
-			document.body.appendChild(container);
-			root = createRoot(container);
+			await unmountApp();
 			mockedGetEvents.mockClear();
 
-			await act(async () => {
-				root.render(
-					<QueryClientProvider client={queryClient}>
-						<PollingComponent pollMs={false} />
-					</QueryClientProvider>,
-				);
-			});
+			await show(<PollingComponent pollMs={false} />);
 
 			expect(mockedGetEvents).toHaveBeenCalledTimes(0); // data is already in cache (staleTime Infinity)
 
@@ -406,13 +369,7 @@ describe("use-investigation-events (#874)", () => {
 				return <div>{data ? `${data.length} events` : "loading"}</div>;
 			}
 
-			await act(async () => {
-				root.render(
-					<QueryClientProvider client={queryClient}>
-						<TestComponent />
-					</QueryClientProvider>,
-				);
-			});
+			await show(<TestComponent />);
 
 			await act(async () => {
 				await new Promise((resolve) => setTimeout(resolve, 0));
@@ -422,22 +379,11 @@ describe("use-investigation-events (#874)", () => {
 			expect(mockedGetEvents).toHaveBeenCalledTimes(1);
 
 			// Unmount
-			await act(async () => {
-				root.unmount();
-			});
+			await unmountApp();
 
-			// Remount into new container
-			container = document.createElement("div");
-			document.body.appendChild(container);
-			root = createRoot(container);
+			// Remount into a new container, on the same client
 
-			await act(async () => {
-				root.render(
-					<QueryClientProvider client={queryClient}>
-						<TestComponent />
-					</QueryClientProvider>,
-				);
-			});
+			await show(<TestComponent />);
 
 			await act(async () => {
 				await new Promise((resolve) => setTimeout(resolve, 0));

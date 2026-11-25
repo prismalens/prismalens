@@ -7,12 +7,15 @@
  * no prompt turn, no model call. A pass means "answers ACP", never "ready": opencode needs
  * no provider for `session/new`, and claude-agent-acp checks credentials at turn start.
  */
+import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify, stripVTControlCharacters } from "node:util";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import {
 	type LaunchPolicy,
+	type ProbeAccount,
 	type ProbeInput,
 	type ProbeResult,
 	probeAgent,
@@ -38,7 +41,10 @@ import { checkSandbox, type SandboxChecks } from "./sandbox-check.js";
 
 export { versionOf };
 
+const execFileAsync = promisify(execFile);
 const RUN_DIR_PREFIX = "pl-doctor-";
+/** A run folder is named with the epoch ms it was made at, so its age is read off the clock that made it. */
+const STAMPED_RUN_DIR = /^pl-doctor-(\d{13})-/;
 const STALE_RUN_DIR_MS = 24 * 60 * 60 * 1000;
 /** claude-agent-acp pushes its sign-in after `initialize` from a CLI probe it never waits on. */
 const AUTH_STATUS_WAIT_MS = 3_000;
@@ -74,6 +80,66 @@ export interface HarnessProbeResult {
 	signedOut?: boolean;
 	/** The agent answered a protocol version this host does not speak; runs go on (#1101 protocol.drift). */
 	protocol?: { agent: number; host: number } | null;
+	/** The account the agent reported as signed in (#1171). */
+	account?: ProbeAccount | null;
+	/** Its sign-in methods, by name, when it asked for one. */
+	signInMethods?: string[];
+	/** The providers the agent holds a login for; null when its CLI's list could not be read; absent when it has none to check. */
+	providers?: string[] | null;
+}
+
+const LIST_FRAME =
+	/^(credentials\b|\d+ credentials?$|environment\b|\d+ environment variables?$)/i;
+
+/**
+ * The provider names in an agent CLI's list, or null when the output is not a list it knows.
+ * A line is `name  type` in padded columns, or, between a list's `Credentials` and `N credentials`
+ * frame, `name type` after a bullet: the type is one token.
+ */
+export function parseProviderList(out: string): string[] | null {
+	const lines = out
+		.split(/\r?\n/)
+		.map((raw) =>
+			stripVTControlCharacters(raw)
+				.replace(/^[^\p{L}\p{N}]+/u, "")
+				.trim(),
+		)
+		.filter(Boolean);
+	const framed = lines.some((l) => LIST_FRAME.test(l));
+	const names: string[] = [];
+	for (const line of lines) {
+		if (LIST_FRAME.test(line)) continue;
+		const cols = line.split(/\s{2,}/);
+		const name =
+			cols.length >= 2
+				? cols[0]
+				: framed && line.includes(" ")
+					? line.slice(0, line.lastIndexOf(" ")).trim()
+					: "";
+		if (name) names.push(name);
+	}
+	return names.length > 0 || framed ? names : null;
+}
+
+const PROVIDER_LIST_BUDGET_MS = 8_000;
+
+/** Asks the agent's CLI which providers it holds a login for; null when it cannot say. */
+async function listProviders(
+	command: string,
+	args: readonly string[],
+	env: Record<string, string>,
+): Promise<string[] | null> {
+	try {
+		const { stdout } = await execFileAsync(command, [...args], {
+			env,
+			timeout: PROVIDER_LIST_BUDGET_MS,
+			windowsHide: true,
+			shell: process.platform === "win32" && /\.(cmd|bat)$/i.test(command),
+		});
+		return parseProviderList(stdout);
+	} catch {
+		return null;
+	}
 }
 
 function effortLevels(
@@ -103,22 +169,21 @@ export function answeredDetail(
 /** A probe that did not answer, in the check's words: sign-in, no answer, or failed to start. */
 export function classify(
 	probed: Pick<ProbeResult, "outcome" | "detail" | "authMethods">,
-): Pick<HarnessProbeResult, "outcome" | "detail"> {
+): Pick<HarnessProbeResult, "outcome" | "detail" | "signInMethods"> {
 	const message = oneLine(probed.detail ?? "");
 	const isCodexAuth = /CODEX_API_KEY or OPENAI_API_KEY is not set/i.test(
 		message,
 	);
 	if (probed.outcome === "sign-in-needed" || isCodexAuth) {
-		const methods = probed.authMethods.map((m) => m.name || m.id);
-		const authList =
-			methods.length > 0
-				? methods.join(", ")
-				: isCodexAuth
-					? "API Key, ChatGPT"
-					: null;
+		const named = probed.authMethods.map((m) => m.name || m.id);
+		const methods =
+			named.length > 0 ? named : isCodexAuth ? ["API Key", "ChatGPT"] : [];
 		return {
 			outcome: "sign-in-needed",
-			detail: authList ? `sign in needed (${authList})` : "sign in needed",
+			detail: methods.length
+				? `sign in needed (${methods.join(", ")})`
+				: "sign in needed",
+			...(methods.length ? { signInMethods: methods } : {}),
 		};
 	}
 	if (probed.outcome === "no-answer")
@@ -143,7 +208,11 @@ export function removeRunDir(dir: string): void {
 	}
 }
 
-/** Removes run folders a crashed or Windows-locked check left in `root` over a day ago (#1013). */
+/**
+ * Removes run folders a crashed or Windows-locked check left in `root` over a day ago (#1013). Another
+ * process's live folder shares `root`, so the age comes from the stamp in the name, never from the file
+ * system's mtime: a clock running ahead of the file system would read that live folder as old.
+ */
 export function sweepStaleRunDirs(root = tmpdir(), now = Date.now()): void {
 	let names: string[];
 	try {
@@ -155,7 +224,9 @@ export function sweepStaleRunDirs(root = tmpdir(), now = Date.now()): void {
 		if (!name.startsWith(RUN_DIR_PREFIX)) continue;
 		const dir = join(root, name);
 		try {
-			if (now - statSync(dir).mtimeMs > STALE_RUN_DIR_MS) removeRunDir(dir);
+			const stamp = STAMPED_RUN_DIR.exec(name)?.[1];
+			const madeAt = stamp ? Number(stamp) : statSync(dir).mtimeMs;
+			if (now - madeAt > STALE_RUN_DIR_MS) removeRunDir(dir);
 		} catch {
 			// Gone already.
 		}
@@ -182,6 +253,7 @@ export async function probeHarness(
 			| "sessionMeta"
 			| "companionBinary"
 			| "adapterPackage"
+			| "providerAuth"
 		>;
 		budgets?: ProbeInput["budgets"];
 		sandbox?: typeof checkSandbox;
@@ -199,7 +271,7 @@ export async function probeHarness(
 		swept = true;
 		sweepStaleRunDirs();
 	}
-	const runDir = mkdtempSync(join(tmpdir(), RUN_DIR_PREFIX));
+	const runDir = mkdtempSync(join(tmpdir(), `${RUN_DIR_PREFIX}${Date.now()}-`));
 	const cwd = join(runDir, "workspace");
 	mkdirSync(cwd, { recursive: true });
 
@@ -238,6 +310,10 @@ export async function probeHarness(
 				id: harness,
 				...classify(probed),
 				hard: false,
+				// `initialize` may have answered before `session/new` asked for a sign-in.
+				...(probed.agentInfo?.version
+					? { version: probed.agentInfo.version }
+					: {}),
 				...(companionVersion ? { companionVersion } : {}),
 			};
 		}
@@ -249,6 +325,15 @@ export async function probeHarness(
 			name: probed.agentInfo?.name ?? null,
 			version: probed.agentInfo?.version ?? null,
 		};
+		// An `unknown` auth/status says nothing either way, as no push does (#1171).
+		const signedOut =
+			probed.authStatus !== null
+				? probed.authStatus === "none"
+				: probed.authState === "unauthenticated"
+					? true
+					: probed.authState === "authenticated"
+						? false
+						: null;
 		const answered: HarnessProbeResult = {
 			id: harness,
 			outcome: "answers-acp",
@@ -264,9 +349,11 @@ export async function probeHarness(
 			images:
 				probed.raw.initialize?.agentCapabilities?.promptCapabilities?.image ===
 				true,
-			...(probed.authStatus !== null
-				? { signedOut: probed.authStatus === "none" }
+			...(signedOut !== null ? { signedOut } : {}),
+			...(signedOut
+				? { signInMethods: probed.authMethods.map((m) => m.name || m.id) }
 				: {}),
+			...(probed.account ? { account: probed.account } : {}),
 			...(probed.protocolVersion !== null &&
 			probed.protocolVersion !== PROTOCOL_VERSION
 				? {
@@ -274,6 +361,13 @@ export async function probeHarness(
 					}
 				: {}),
 		};
+		const gate = descriptor.providerAuth;
+		if (gate)
+			answered.providers = await listProviders(
+				runEnv.companionPath ?? launch.command,
+				gate.args,
+				env,
+			);
 		const modeIds = answered.modes?.map((m) => m.id) ?? [NO_MODE_KEY];
 		// A failed sandbox check must not lose an agent that answered ACP.
 		const sandbox = await (opts.sandbox ?? checkSandbox)(harness, modeIds, {

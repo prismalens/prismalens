@@ -2,13 +2,17 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * The agents and their launch facts, copied from PrismaLens's harness registry
- * (`packages/@prismalens/config/src/providers/harness.ts`). Every agent speaks ACP
- * over stdio (ADR 0003). Copy, `tested` pins and model resolution stay in each product (#916).
+ * The agents and their launch facts, one row per file under `agents/`. Every agent speaks ACP over stdio
+ * (ADR 0003). Copy, `tested` pins and model resolution stay in each product (#916).
  */
-import type { AgentFact, AgentFacts, FactVersions } from "./facts.js";
+import { claudeCode } from "./agents/claude-code.js";
+import { codex } from "./agents/codex.js";
+import { deepagents } from "./agents/deepagents.js";
+import { gemini } from "./agents/gemini.js";
+import { local } from "./agents/local.js";
+import { opencode } from "./agents/opencode.js";
+import type { AgentFacts } from "./facts.js";
 import type { AccessLevel, LevelFacts, ModeMechanism } from "./levels.js";
-import { opencodePermission } from "./opencode.js";
 
 export const AGENT_IDS = [
 	"opencode",
@@ -50,24 +54,10 @@ export type SubagentLimitKey =
  * (#1101 cat 10, amendment 2026-11-13). Sub-agents are the agent's own helpers, never threads.
  */
 export type SubagentStopChoice = "stop" | "finish";
-export const SUBAGENTS_ON_STOP_DEFAULT: SubagentStopChoice = "stop";
-
-/** The run file a `gatewayDelivery: "mcp-config-file"` row hands its agent. */
-export const GATEWAY_RUN_FILE = "prismalens-mcp.json";
-
-/** A base URL that is not Anthropic's own API host; an unreadable one counts as custom. */
-function customBaseUrl(url: string | undefined): boolean {
-	if (!url) return false;
-	try {
-		return new URL(url).hostname.toLowerCase() !== "api.anthropic.com";
-	} catch {
-		return true;
-	}
-}
-
-/** `configDir` joined without node:path, which this browser-safe module cannot import. */
-const inConfigDir = (env: AgentRunEnv, file: string) =>
-	`${env.configDir}${env.configDir.includes("\\") ? "\\" : "/"}${file}`;
+export {
+	GATEWAY_RUN_FILE,
+	SUBAGENTS_ON_STOP_DEFAULT,
+} from "./row.js";
 
 export interface AgentDescriptor {
 	id: AgentId;
@@ -120,426 +110,21 @@ export interface AgentDescriptor {
 	};
 }
 
-type ProbedValues = {
-	[K in "loadSession" | "images" | "embeddedContext" | "directories"]: boolean;
-};
-
-/** A row's probed facts, all checked on the same versions: the nightly probe asserts them (#1101). */
-function probed(at: FactVersions, values: ProbedValues) {
-	const fact = (value: boolean): AgentFact<boolean, "probe"> => ({
-		value,
-		via: "probe",
-		verifiedAt: at,
-	});
-	return {
-		loadSession: fact(values.loadSession),
-		images: fact(values.images),
-		embeddedContext: fact(values.embeddedContext),
-		directories: fact(values.directories),
-	};
-}
-
-/**
- * The versions each row's probed facts were last checked on, one line a row: the pin-bump
- * PR moves a line once its probe passed (`scripts/agent-facts.mjs sync`).
- */
-export const PROBED_AT = {
-	opencode: { cli: "1.19.5", adapter: null },
-	"claude-code": { cli: "2.1.323", adapter: "0.106.0" },
-	codex: { cli: "0.169.0", adapter: "2.6.0" },
-	gemini: { cli: "0.65.0", adapter: null },
-	// First read in deepagents-code main.py (load_sessions=True) and deepagents-acp server.py initialize; the probe holds them on the pin.
-	deepagents: { cli: "0.2.1", adapter: null },
-} as const satisfies Partial<Record<string, FactVersions>>;
-
 /** A finished run can be reopened with session/load or session/resume (#747). */
 export const reopens = (row: Pick<AgentDescriptor, "facts">): boolean =>
 	row.facts?.loadSession.value === true;
 
-function noMode(): Record<AccessLevel, LevelFacts> {
-	const facts: LevelFacts = { mode: null, mechanism: "none" };
-	return {
-		supervised: facts,
-		"auto-edits": facts,
-		auto: facts,
-		"full-access": facts,
-	};
-}
+/** Every agent row, one file each under `agents/`; `registry.test.ts` holds this list to that folder. */
+export const AGENT_ROWS = [
+	opencode,
+	claudeCode,
+	codex,
+	gemini,
+	deepagents,
+	local,
+] as const satisfies readonly AgentDescriptor[];
 
-export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> = {
-	opencode: {
-		id: "opencode",
-		label: "OpenCode",
-		binary: "opencode",
-		// No directory flag: OpenCode 2.x exits on one; the spawn and session/new name the folder (#1013).
-		acpArgs: () => ["acp"],
-		// The user's XDG_CONFIG_HOME and OPENCODE_CONFIG_DIR stay theirs; the run's config loads last, inline (#791, #817).
-		acpEnv: () => ({}),
-		configEnv: { file: "opencode.json", key: "OPENCODE_CONFIG_CONTENT" },
-		configFiles: () => ({
-			"opencode.json": JSON.stringify(
-				{
-					$schema: "https://opencode.ai/config.json",
-					// Without it a refused tool ends the turn (#639 finding 1).
-					experimental: { continue_loop_on_deny: true },
-					share: "disabled",
-				},
-				null,
-				2,
-			),
-		}),
-		providerKeys: [
-			"ANTHROPIC_API_KEY",
-			"OPENAI_API_KEY",
-			"GEMINI_API_KEY",
-			"GOOGLE_GENERATIVE_AI_API_KEY",
-			"GOOGLE_API_KEY",
-			"OPENROUTER_API_KEY",
-		],
-		// OpenCode offers its agents as the ACP `mode` config option; a level is a catch-all overlay on its rules.
-		levels: {
-			supervised: {
-				mode: "build",
-				configPatch: opencodePermission("ask", "ask"),
-				mechanism: "opencode-permission",
-			},
-			"auto-edits": {
-				mode: "build",
-				configPatch: opencodePermission("allow", "ask"),
-				mechanism: "opencode-permission",
-			},
-			auto: {
-				mode: "build",
-				configPatch: opencodePermission("ask", "ask"),
-				mechanism: "opencode-permission",
-			},
-			"full-access": {
-				mode: "build",
-				configPatch: opencodePermission("allow", "allow"),
-				mechanism: "opencode-permission",
-			},
-		},
-		modeNames: { build: "Build", plan: "Plan" },
-		modeMechanism: "acp",
-		modelVia: "acp",
-		subagentLimits: {
-			depth: {
-				configFile: "opencode.json",
-				path: ["experimental", "subagent_depth"],
-			},
-		},
-		facts: {
-			...probed(PROBED_AT.opencode, {
-				loadSession: true,
-				images: true,
-				embeddedContext: true,
-				directories: false,
-			}),
-			subagentsOnStop: {
-				value: {
-					stop: false,
-					finish: false,
-					note: "OpenCode decides: a sub-agent the turn waits on stops with it, and one it sent to the background finishes.",
-				},
-				via: "source",
-				verifiedAt: { cli: "1.19.5", adapter: null },
-				where: "packages/opencode/src/tool/task.ts onAbort, background.start",
-			},
-			rewindVia: {
-				value: "replay",
-				via: "source",
-				verifiedAt: { cli: "1.19.5", adapter: null },
-				where:
-					"packages/opencode/src/acp/service.ts forkSession: session.fork has no point",
-			},
-		},
-	},
-	"claude-code": {
-		id: "claude-code",
-		label: "Claude Code",
-		binary: "claude-agent-acp",
-		companionBinary: "claude",
-		adapterPackage: "@agentclientprotocol/claude-agent-acp",
-		acpArgs: () => [],
-		acpEnv: ({ companionPath, anthropicBaseUrl }) => ({
-			...(companionPath ? { CLAUDE_CODE_EXECUTABLE: companionPath } : {}),
-			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-			// Since 2.1.319 Auto denies a call a gateway keeps the server from reviewing; 0 runs Claude Code's own classifier (#1155).
-			...(customBaseUrl(anthropicBaseUrl)
-				? { CLAUDE_CODE_AUTO_MODE_SERVER: "0" }
-				: {}),
-		}),
-		// The user's settings plus the repo's own (#817); without the plan-mode tools it cannot leave the run's mode (#673 w7-4).
-		sessionMeta: (o) => ({
-			claudeCode: {
-				options: {
-					settingSources: ["user", "project", "local"],
-					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
-					// Off, a cancel's interrupt stops background sub-agents too (fact `subagentsOnStop`).
-					perTaskStopAffordance:
-						(o?.subagentsOnStop ?? SUBAGENTS_ON_STOP_DEFAULT) === "finish",
-				},
-			},
-		}),
-		facts: {
-			...probed(PROBED_AT["claude-code"], {
-				loadSession: true,
-				images: true,
-				embeddedContext: true,
-				directories: true,
-			}),
-			systemPromptVia: {
-				value: "claude-meta",
-				via: "source",
-				verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
-				where: "src/v1/acp-agent.ts params._meta?.systemPrompt",
-			},
-			subagentsOnStop: {
-				value: {
-					stop: true,
-					finish: true,
-					note: "A sub-agent the turn waits on always stops with it; one running in the background follows this setting.",
-				},
-				via: "source",
-				verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
-				where:
-					"src/v1/acp-agent.ts perTaskStopAffordance, stopsWorkflowsOnCancel",
-			},
-			// Forks at the message only on this adapter, and only past the loaded-tail check (#1193 R1).
-			rewindVia: {
-				value: "fork-at-message",
-				via: "source",
-				verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
-				where:
-					"dist/fork-session.js forkPoint, forkTranscript; dist/sdk-to-acp.js applyMessageId",
-			},
-		},
-		providerKeys: [
-			"ANTHROPIC_API_KEY",
-			"ANTHROPIC_BASE_URL",
-			"ANTHROPIC_AUTH_TOKEN",
-			"ANTHROPIC_MODEL",
-			"ANTHROPIC_DEFAULT_OPUS_MODEL",
-			"ANTHROPIC_DEFAULT_SONNET_MODEL",
-			"ANTHROPIC_DEFAULT_HAIKU_MODEL",
-			"CLAUDE_CODE_SUBAGENT_MODEL",
-		],
-		envModelKey: "ANTHROPIC_MODEL",
-		// claude-agent-acp 0.81.1 takes an id outside its list only through this (#808 probe).
-		customModelEnvKey: "ANTHROPIC_CUSTOM_MODEL_OPTION",
-		levels: {
-			supervised: { mode: "default", mechanism: "acp-mode" },
-			"auto-edits": { mode: "acceptEdits", mechanism: "acp-mode" },
-			// A custom model id is outside the adapter's model list, so the CLI itself can refuse Auto (#809).
-			auto: {
-				mode: "auto",
-				fallbackMode: "acceptEdits",
-				mechanism: "acp-mode",
-			},
-			"full-access": {
-				mode: "bypassPermissions",
-				fallbackMode: "acceptEdits",
-				mechanism: "acp-mode",
-			},
-		},
-		modeNames: {
-			default: "Manual",
-			acceptEdits: "Accept Edits",
-			auto: "Auto",
-			bypassPermissions: "Bypass Permissions",
-		},
-		modeMechanism: "acp",
-		modelVia: "acp",
-		signInAtFirstTurn: true,
-		configDir: { envKey: "CLAUDE_CONFIG_DIR", shownDefault: "~/.claude" },
-		subagentLimits: {
-			depth: { env: "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH" },
-			concurrency: { env: "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS" },
-		},
-	},
-	codex: {
-		id: "codex",
-		label: "Codex",
-		binary: "codex-acp",
-		companionBinary: "codex",
-		adapterPackage: "@agentclientprotocol/codex-acp",
-		acpArgs: () => [],
-		acpEnv: ({ companionPath, shipped }) => ({
-			// codex-acp reads an env key only once the client picks its api-key method (#634).
-			DEFAULT_AUTH_REQUEST: JSON.stringify({ methodId: "api-key" }),
-			// The shipped adapter has no codex of its own; a PATH install keeps its bundled one (#818).
-			...(shipped && companionPath ? { CODEX_PATH: companionPath } : {}),
-		}),
-		// codex-acp README: CODEX_API_KEY wins over OPENAI_API_KEY for the api-key method.
-		providerKeys: ["CODEX_API_KEY", "OPENAI_API_KEY"],
-		// codex-acp 2.2.2 src/AgentMode.ts, set through its `mode` config option. Before 2.0 there was
-		// no workspace-write (codex-acp#480); the fallback keeps an older PATH install working.
-		levels: {
-			supervised: { mode: "read-only", mechanism: "acp-config" },
-			"auto-edits": {
-				mode: "workspace-write",
-				fallbackMode: "read-only",
-				mechanism: "acp-config",
-			},
-			auto: { mode: "agent", mechanism: "acp-config" },
-			"full-access": { mode: "agent-full-access", mechanism: "acp-config" },
-		},
-		modeNames: {
-			"read-only": "Read-only",
-			"workspace-write": "Workspace access",
-			agent: "Auto review",
-			"agent-full-access": "Full access",
-		},
-		modeMechanism: "acp",
-		sandboxedModes: ["read-only", "workspace-write", "agent"],
-		modelVia: "acp",
-		configDir: { envKey: "CODEX_HOME", shownDefault: "~/.codex" },
-		// codex-acp takes Codex's `agents.max_depth` / `max_threads` through CODEX_CONFIG, not `-c` (README, Runtime options).
-		subagentLimits: {
-			depth: { jsonEnv: "CODEX_CONFIG", path: ["agents", "max_depth"] },
-			concurrency: { jsonEnv: "CODEX_CONFIG", path: ["agents", "max_threads"] },
-		},
-		facts: {
-			...probed(PROBED_AT.codex, {
-				loadSession: true,
-				images: true,
-				embeddedContext: true,
-				directories: true,
-			}),
-			subagentsOnStop: {
-				value: {
-					stop: false,
-					finish: false,
-					note: "Codex decides: a stop interrupts its main conversation, and nothing in its protocol chooses for its sub-agents.",
-				},
-				via: "source",
-				verifiedAt: { cli: "0.169.0", adapter: "2.6.0" },
-				where: "src/CodexAcpServer.ts cancel(), interruptSessionTurn",
-			},
-			// A turn-level fork, but no tail PrismaLens can check: a load auto-starts a goal turn (#1193).
-			rewindVia: {
-				value: "replay",
-				via: "source",
-				verifiedAt: { cli: "0.169.0", adapter: "2.6.0" },
-				where: "dist/index.js resolveForkTurnId, readAirForkPoint",
-			},
-		},
-	},
-	gemini: {
-		id: "gemini",
-		label: "Gemini CLI",
-		binary: "gemini",
-		acpArgs: () => ["--acp"],
-		// Trust is the user's own folderTrust setting; this row forces neither way (#817).
-		acpEnv: () => ({}),
-		providerKeys: ["GEMINI_API_KEY"],
-		// gemini-cli buildAvailableModes (packages/cli/src/acp/acpUtils.ts); no reviewer, so Auto runs `default` (#907).
-		levels: {
-			supervised: { mode: "default", mechanism: "acp-mode" },
-			"auto-edits": { mode: "autoEdit", mechanism: "acp-mode" },
-			auto: { mode: "default", mechanism: "acp-mode" },
-			"full-access": { mode: "yolo", mechanism: "acp-mode" },
-		},
-		modeNames: { default: "Default", autoEdit: "Auto Edit", yolo: "YOLO" },
-		modeMechanism: "acp",
-		modelVia: "unsupported",
-		configDir: {
-			envKey: "GEMINI_CLI_HOME",
-			shownDefault: "your home folder (holds .gemini)",
-		},
-		facts: {
-			...probed(PROBED_AT.gemini, {
-				loadSession: true,
-				images: true,
-				embeddedContext: true,
-				directories: false,
-			}),
-			regroupsLinks: {
-				value: true,
-				via: "source",
-				verifiedAt: { cli: "0.65.0", adapter: null },
-				where:
-					"packages/cli/src/acp/acpSession.ts #resolvePrompt atPathCommandParts",
-			},
-			subagentsOnStop: {
-				value: {
-					stop: true,
-					finish: false,
-					note: "Its sub-agents always stop with the turn.",
-				},
-				via: "source",
-				verifiedAt: { cli: "0.65.0", adapter: null },
-				where:
-					"packages/cli/src/acp/acpSession.ts pendingSend.signal into runTool",
-			},
-			rewindVia: {
-				value: "replay",
-				via: "source",
-				verifiedAt: { cli: "0.65.0", adapter: null },
-				where:
-					"packages/cli/src/acp/acpRpcDispatcher.ts initialize: loadSession only",
-			},
-		},
-	},
-	deepagents: {
-		id: "deepagents",
-		label: "deepagents",
-		// deepagents-code's `dcode --acp` is the ACP server (#634). It ignores ACP mcpServers:
-		// the gateway goes in by --mcp-config, beside the user's own servers (#848).
-		binary: "dcode",
-		gatewayDelivery: "mcp-config-file",
-		acpArgs: (env) =>
-			env.gateway
-				? ["--acp", "--mcp-config", inConfigDir(env, GATEWAY_RUN_FILE)]
-				: ["--acp"],
-		acpEnv: () => ({}),
-		configFiles: (env): Record<string, string> =>
-			env.gateway
-				? {
-						[GATEWAY_RUN_FILE]: JSON.stringify({
-							mcpServers: {
-								[env.gateway.name]: {
-									type: "http",
-									url: env.gateway.url,
-									headers: { Authorization: `Bearer ${env.gateway.token}` },
-								},
-							},
-						}),
-					}
-				: {},
-		providerKeys: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
-		// No modes over ACP (deepagents #4254): the host answers each ask by the level.
-		levels: noMode(),
-		modeNames: {},
-		modeMechanism: "none",
-		modelVia: "unsupported",
-		facts: {
-			...probed(PROBED_AT.deepagents, {
-				loadSession: true,
-				images: true,
-				embeddedContext: false,
-				directories: false,
-			}),
-			rewindVia: {
-				value: "replay",
-				via: "source",
-				verifiedAt: PROBED_AT.deepagents,
-				where:
-					"libs/acp/deepagents_acp/server.py initialize: load_session only",
-			},
-		},
-	},
-	// One user-set ACP command (#907): no modes, so the host's ask policy decides each ask.
-	local: {
-		id: "local",
-		label: "Local agent",
-		binary: "",
-		acpArgs: () => [],
-		acpEnv: () => ({}),
-		providerKeys: [],
-		levels: noMode(),
-		modeNames: {},
-		modeMechanism: "none",
-		modelVia: "acp",
-	},
-};
+export const AGENT_REGISTRY: Readonly<Record<AgentId, AgentDescriptor>> =
+	Object.fromEntries(
+		AGENT_ROWS.map((r): [AgentId, AgentDescriptor] => [r.id, r]),
+	) as Record<AgentId, AgentDescriptor>;

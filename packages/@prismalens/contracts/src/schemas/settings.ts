@@ -142,6 +142,17 @@ export const AgentEnvVarSchema = /* @__PURE__ */ lazySchema(() =>
 );
 export type AgentEnvVar = z.infer<typeof AgentEnvVarSchema>;
 
+/** The account an agent reported as signed in (#1171); `label` is its own words. */
+export const AgentAccountSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		label: z.string(),
+		email: z.string().nullable(),
+		organization: z.string().nullable(),
+		plan: z.string().nullable().optional(),
+	}),
+);
+export type AgentAccount = z.infer<typeof AgentAccountSchema>;
+
 export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		id: z.string(),
@@ -174,8 +185,20 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 			.default(null),
 		/** Under WSL, a Windows install on PATH that cannot run here (#673 w8). Absent from older APIs. */
 		windowsOnlyPath: z.string().nullable().default(null),
-		/** It starts here and its last check, if any, answered (#907). Only these are listed and pickable. */
+		/** Installed, not off, and no failed last check (#907, #1171). Only these are pickable. */
 		runnable: z.boolean().default(false),
+		/** Whether the agent holds a login for its chosen model's provider; `unchecked` when no check has read its logins, `na` when it has none to check. */
+		providerSignIn: z
+			.enum(["signed-in", "signed-out", "unchecked", "na"])
+			.optional(),
+		/** Turned off in Settings: auto and new runs skip it (#1171). */
+		off: z.boolean().optional(),
+		/** Put through Add agent without passing; listed so it can be signed in (#1171). */
+		added: z.boolean().optional(),
+		/** The agent's own login, staged in the terminal; null when it has none here (#1171). */
+		signIn: z.object({ command: z.string() }).nullable().optional(),
+		/** The version it ran against the tested one; null when either is unknown. */
+		versionVsTested: z.enum(["older", "same", "newer"]).nullable().optional(),
 		/** The program Binary path names: the agent's own CLI, not its adapter; empty for the local agent. */
 		cliBinary: z.string().default(""),
 		/** Provider key names the agent reads; Add agent's sign-in step offers them (#907). */
@@ -235,6 +258,20 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 				sandbox: SandboxChecksSchema.nullable().default(null),
 				/** The agent speaks a protocol version this host does not (#1101 protocol.drift). */
 				protocol: AgentProtocolDriftSchema.nullable().optional(),
+				account: AgentAccountSchema.nullable().optional(),
+				/** The agent's own sign-in methods, by name, when it asked for one. */
+				signInMethods: z.array(z.string()).optional(),
+				/** The providers a multi-provider agent holds a login for, by its names; null when its list could not be read. */
+				providers: z.array(z.string()).nullable().optional(),
+				/** A later check that did not answer; the pass above stands (#1171). */
+				lastTry: z
+					.object({
+						at: z.string(),
+						outcome: HarnessProbeOutcomeSchema,
+						detail: z.string(),
+					})
+					.nullable()
+					.optional(),
 			})
 			.nullable()
 			.optional(),
@@ -365,6 +402,10 @@ export const HarnessSettingsSchema = /* @__PURE__ */ lazySchema(() =>
 		/** The folder the agent's config-dir env var points at. */
 		configDirs: z.partialRecord(z.enum(HARNESS_IDS), PathSchema).optional(),
 		localAgent: LocalAgentSchema.optional(),
+		/** Agents turned off: kept, but skipped for new runs (#1171). */
+		off: z.array(z.enum(HARNESS_IDS)).optional(),
+		/** Agents put through Add agent that did not pass; listed anyway (#1171). */
+		added: z.array(z.enum(HARNESS_IDS)).optional(),
 		/** Only pass named variables: the agent gets an allowlist, not the user's environment (#817). */
 		strictEnv: z.boolean().optional(),
 		/** Alert and schedule runs keep the user's GitHub token (#1020, R41); absent is off. */
@@ -444,6 +485,9 @@ export const UpdateHarnessSettingsSchema = /* @__PURE__ */ lazySchema(() =>
 					z.record(EnvNameSchema, z.string().max(8192).nullable()),
 				)
 				.optional(),
+			/** Each merges per agent; `false` takes it out. */
+			off: z.partialRecord(z.enum(HARNESS_IDS), z.boolean()).optional(),
+			added: z.partialRecord(z.enum(HARNESS_IDS), z.boolean()).optional(),
 			/** `null` removes the local agent. Host only. */
 			localAgent: LocalAgentSchema.nullable().optional(),
 			/** Only pass named variables (#817). Host only. */
@@ -521,6 +565,9 @@ export const HarnessProbeResultSchema = /* @__PURE__ */ lazySchema(() =>
 		images: z.boolean().optional(),
 		sandbox: SandboxChecksSchema.nullable().optional(),
 		protocol: AgentProtocolDriftSchema.nullable().optional(),
+		account: AgentAccountSchema.nullable().optional(),
+		signInMethods: z.array(z.string()).optional(),
+		providers: z.array(z.string()).nullable().optional(),
 	}),
 );
 export type HarnessProbeResult = z.infer<typeof HarnessProbeResultSchema>;

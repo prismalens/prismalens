@@ -7,6 +7,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Picker, type PickerOption } from "./Picker";
+import { PickerList } from "./PickerList";
 
 vi.mock("@/components/shared/Hint", () => ({
 	Hint: ({ children }: { children: ReactNode }) => children,
@@ -239,5 +240,130 @@ describe("Picker", () => {
 		});
 
 		expect(document.querySelector("[cmdk-input]")).not.toBeNull();
+	});
+
+	// With no search field the list itself takes focus, not the Command root (#1197 review).
+	it("opens focused on the search when there is one, else on the list", async () => {
+		const opts = (n: number): PickerOption[] =>
+			Array.from({ length: n }, (_, i) => ({
+				id: `o${i}`,
+				name: `Option ${i}`,
+			}));
+		const mount = async (n: number) => {
+			await act(async () => {
+				root.render(
+					<PickerList
+						label="Model"
+						options={opts(n)}
+						groups={[""]}
+						values={[]}
+						emptyText="None"
+						pick={vi.fn()}
+					/>,
+				);
+			});
+		};
+
+		await mount(3);
+		expect(document.activeElement).toBe(document.querySelector("[cmdk-list]"));
+
+		await act(async () => root.unmount());
+		document.body.innerHTML = "";
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		root = createRoot(container);
+
+		await mount(9);
+		expect(document.activeElement).toBe(document.querySelector("[cmdk-input]"));
+	});
+
+	it("shows a grouped list of 8 rows whole, and caps only a searchable one at 320px", async () => {
+		const mount = async (n: number) => {
+			await act(async () => {
+				root.render(
+					<PickerList
+						label="Effort"
+						options={Array.from({ length: n }, (_, i) => ({
+							id: `o${i}`,
+							name: `Option ${i}`,
+							group: i < n - 2 ? "Effort" : "Context window",
+						}))}
+						groups={["Effort", "Context window"]}
+						values={[]}
+						emptyText="None"
+						pick={vi.fn()}
+					/>,
+				);
+			});
+			return document.querySelector("[cmdk-list]")?.className;
+		};
+		expect(await mount(8)).toBe("outline-none");
+		await act(async () => root.unmount());
+		document.body.innerHTML = "";
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		root = createRoot(container);
+		expect(await mount(9)).toBe("outline-none max-h-[320px] overflow-y-auto");
+	});
+	it("moves along the rail on Up and Down, goes to the search on Right and back on Left, and runs an action tile", async () => {
+		const onChange = vi.fn();
+		const add = vi.fn();
+		await act(async () => {
+			root.render(
+				<PickerList
+					label="Model"
+					options={[{ id: "m1", name: "Model one" }]}
+					groups={[""]}
+					values={[]}
+					emptyText="None"
+					pick={vi.fn()}
+					rail={{
+						label: "Agents",
+						value: "a",
+						onChange,
+						items: [
+							{ id: "starred", name: "Starred" },
+							{ id: "a", name: "Agent A" },
+							{ id: "b", name: "Agent B" },
+							{ id: "add", name: "Add agent", run: add },
+						],
+					}}
+				/>,
+			);
+		});
+		expect(
+			document
+				.querySelector('[data-testid="picker-rail"]')
+				?.getAttribute("role"),
+		).toBe("tablist");
+		const input = document.querySelector<HTMLInputElement>("[cmdk-input]");
+		expect(document.activeElement).toBe(input);
+		const key = (el: HTMLElement | null, k: string) =>
+			act(() => {
+				el?.dispatchEvent(
+					new KeyboardEvent("keydown", { key: k, bubbles: true }),
+				);
+			});
+		await key(input, "ArrowLeft");
+		const tab = (id: string) =>
+			document.querySelector<HTMLElement>(`[data-testid="rail-${id}"]`);
+		expect(document.activeElement).toBe(tab("a"));
+		await key(tab("a"), "ArrowDown");
+		expect(document.activeElement).toBe(tab("b"));
+		expect(onChange).toHaveBeenLastCalledWith("b");
+		await key(tab("a"), "ArrowUp");
+		expect(onChange).toHaveBeenLastCalledWith("starred");
+		await key(tab("a"), "ArrowRight");
+		expect(document.activeElement).toBe(input);
+		expect(
+			document
+				.querySelector('[data-testid="rail-a"]')
+				?.getAttribute("aria-selected"),
+		).toBe("true");
+		act(() =>
+			document.querySelector<HTMLElement>('[data-testid="rail-add"]')?.click(),
+		);
+		expect(add).toHaveBeenCalledTimes(1);
+		expect(onChange).toHaveBeenCalledTimes(2);
 	});
 });

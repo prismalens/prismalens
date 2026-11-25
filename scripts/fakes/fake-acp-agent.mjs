@@ -203,6 +203,28 @@ function releasedFor(prompt) {
 }
 
 /**
+ * The JSON a streamable-HTTP MCP reply carries: the body itself, or the data of an event stream's
+ * last event. A comment frame (`: keepalive`, sent every 15 s a call runs) is not an event, and the
+ * reply to a slow call, such as opening a browser, begins with one.
+ * @param {string} body
+ * @param {string} contentType
+ */
+export function mcpReplyJson(body, contentType) {
+	if (!contentType.includes("text/event-stream")) return body;
+	const events = body
+		.split(/\r?\n\r?\n/)
+		.map((block) =>
+			block
+				.split(/\r?\n/)
+				.filter((line) => line.startsWith("data:"))
+				.map((line) => line.slice(5).replace(/^ /, ""))
+				.join("\n"),
+		)
+		.filter(Boolean);
+	return events.at(-1) ?? "";
+}
+
+/**
  * Puts the fake on PATH under the harness binaries the registry looks for.
  * @param {string} binDir
  * @param {{ session?: string, binaries?: string[], stateDir?: string, mcp?: boolean }} [opts]
@@ -286,13 +308,10 @@ function run() {
 			body: JSON.stringify({ jsonrpc: "2.0", id: rpcId++, method, params }),
 		});
 		mcpSession = res.headers.get("mcp-session-id") ?? mcpSession;
-		const body = await res.text();
-		// A streamable-HTTP server may answer as one SSE event instead of plain JSON.
-		const json = body.startsWith("event:")
-			? (
-					body.split(/\r?\n/).find((l) => l.startsWith("data:")) ?? "data:{}"
-				).slice(5)
-			: body;
+		const json = mcpReplyJson(
+			await res.text(),
+			res.headers.get("content-type") ?? "",
+		);
 		return /** @type {{ result?: { content?: { text?: string }[] }, error?: { message: string } }} */ (
 			JSON.parse(json || "{}")
 		);

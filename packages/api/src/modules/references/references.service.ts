@@ -27,6 +27,7 @@ import {
 	scopeThreadId,
 	TRIGGER_KINDS,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { compactCommandOf, registryFacts } from "../wakes/session.js";
 import { Citations, citationBlock } from "./citations.js";
@@ -238,7 +239,7 @@ export class ReferencesService {
 
 	/** The user picked a reference: it ranks higher next time (frecency, #1024). */
 	async use(refs: { kind: string; id: string }[]): Promise<void> {
-		const now = new Date();
+		const now = clock.date();
 		for (const r of refs)
 			await this.prisma.referenceUse.upsert({
 				where: { kind_key: { kind: r.kind, key: r.id } },

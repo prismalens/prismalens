@@ -847,7 +847,11 @@ export function Composer({
 				})
 				.setContent(now)
 				.run();
-		if (standInFocused.current || handOff.current) editor.commands.focus("end");
+		// Only the focus the swap dropped to the body, taken now: a press since, such as a chip's
+		// menu, keeps its focus (Tiptap's own focus lands a frame later, over that press; #1178).
+		const dropped = document.activeElement === document.body;
+		if (dropped && (standInFocused.current || handOff.current))
+			editorKit().focusEnd(editor.view);
 		handOff.current = false;
 	}, [editor]);
 	const editorOptions = {
@@ -1975,7 +1979,8 @@ export function Composer({
 										options={editorOptions}
 										placeholder={placeholderOf}
 										onEditor={setEditor}
-										className="w-full min-w-0 px-3 pt-2.5"
+										// The stand-in's height before the editor draws its first frame, so the chips don't jump.
+										className="min-h-13.5 w-full min-w-0 px-3 pt-2.5"
 										testId="composer-editor"
 									/>
 								) : (

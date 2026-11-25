@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import * as clock from "../../core/clock.js";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import { endSubscriptions } from "../threads/pr-subscriptions/ends.js";
 
@@ -44,6 +45,6 @@ export async function endAgentWakes(
 			kind: { in: [...AGENT_WAKE_KINDS] },
 			state: "pending",
 		},
-		data: { state: "cancelled", doneAt: new Date() },
+		data: { state: "cancelled", doneAt: clock.date() },
 	});
 }

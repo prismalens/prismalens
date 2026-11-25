@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import { randomUUID } from "node:crypto";
-import { setTimeout } from "node:timers/promises";
 import { Controller, Optional, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import { OPERATE_SCOPE } from "@prismalens/auth";
@@ -87,6 +86,7 @@ export function shownWorkspace(ws: RunWorkspace | null): RunWorkspace | null {
 		: null;
 }
 
+import * as clock from "../../core/clock.js";
 import {
 	agentSessionsOf,
 	inheritedLevel,
@@ -466,7 +466,7 @@ export class InvestigationsController {
 					await this.investigationsService.markStopRequested(input.id);
 					let receivers = await this.dispatchService.requestCancel(input.id);
 					for (let attempt = 0; receivers === 0 && attempt < 2; attempt++) {
-						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
+						await clock.sleep(CANCEL_PUBLISH_RETRY_MS);
 						receivers = await this.dispatchService.requestCancel(input.id);
 					}
 					if (receivers === 0) {
@@ -868,7 +868,7 @@ export class InvestigationsController {
 						...withContext,
 					);
 					for (let attempt = 0; state === null && attempt < 2; attempt++) {
-						await setTimeout(CANCEL_PUBLISH_RETRY_MS);
+						await clock.sleep(CANCEL_PUBLISH_RETRY_MS);
 						state = this.dispatchService.sendMessage(
 							input.id,
 							input.text,

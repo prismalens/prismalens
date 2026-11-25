@@ -8,9 +8,11 @@ base="${1:-origin/main}"
 added=$(git diff -U0 "$base" -- 'src/*.tsx' 'src/*.ts' 'src/*.css' ':!src/**/*.test.*' ':!src/routeTree.gen.ts' ':!src/styles/tokens.css' \
 	| grep -E '^\+[^+]' | grep -vE '^\+\s*(//|\*|/\*|\{/\*)')
 fail=0
-gate() { local hits; hits=$(echo "$added" | grep -nE "$2" | grep -vE "${3:-^$^}"); if [ -n "$hits" ]; then printf '%s\n%s\n\n' "$1:" "$hits"; fail=1; fi; }
+gate() { local hits; hits=$(echo "${4:-$added}" | grep -nE "$2" | grep -vE "${3:-^$^}"); if [ -n "$hits" ]; then printf '%s\n%s\n\n' "$1:" "$hits"; fail=1; fi; }
 gate "em dash in UI" '—'
-gate "sparkles / trailing arrow" 'Sparkle|ArrowRight|→'
+# The icon is banned, not the key: only the quoted "ArrowRight" key name is dropped, so an icon
+# or arrow on the same line still fails.
+gate "sparkles / trailing arrow" 'Sparkle|ArrowRight|→' '' "$(echo "$added" | sed 's/"ArrowRight"//g')"
 gate "uppercase mini-heading" '\buppercase\b'
 long=$(echo "$added" | grep -oE '<(Empty|Blank)[^>]*(text|title|description)="[^"]+"' | grep -oE '(text|title|description)="[^"]+"' \
 	| sed -E 's/^[a-z]+="//; s/"$//' | awk 'NF>5')

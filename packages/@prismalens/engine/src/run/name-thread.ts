@@ -65,8 +65,13 @@ export async function nameThread(
 		});
 		session = s;
 		await s.open();
-		if (opts.model && s.modelOptionId)
-			await s.setConfigOption(s.modelOptionId, opts.model);
+		// A refused title model sends no prompt, as its RPC error did before (#1171).
+		if (
+			opts.model &&
+			s.modelOptionId &&
+			(await s.setConfigOption(s.modelOptionId, opts.model)) !== opts.model
+		)
+			throw new Error(`the agent refused the title model ${opts.model}`);
 		// The lowest effort the agent lists; its first value by ACP convention.
 		const lowest = s.effort?.values[0];
 		if (s.effort && lowest && lowest !== s.effort.default)

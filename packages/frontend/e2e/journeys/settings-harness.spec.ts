@@ -10,11 +10,12 @@ import { expect, type Page, test } from "@playwright/test";
  * banner are gone — there is no LLM router any more. What is left is
  * `GET /settings/harnesses` (ADR 0003 §9): a registry row per harness
  * (installed on this machine, and the version CI tested) plus the gate's own selection
- * verdict, rendered verbatim. The picker below it is LIVE: it reads and
- * writes `GET`/`PATCH /settings/harness`, the persisted choice and model —
+ * verdict, rendered verbatim on Settings, Agents. The picker on Settings, Models
+ * (New thread) and the levels on Settings, Permissions read and write
+ * `GET`/`PATCH /settings/harness`, the persisted choice and model —
  * `PRISMALENS_HARNESS`, when set, still wins at investigation time
- * (`selection.pinned`), which the card says plainly rather than disabling
- * the picker.
+ * (`selection.pinned`), which Agents says plainly rather than disabling
+ * the picker (#1101 cat 18 split the old card into these pages).
  *
  * Every verdict here is served from a fixture rather than the machine running
  * the suite, so a CI box and a developer machine assert the same thing.
@@ -284,6 +285,7 @@ async function serveHarnessSettings(
 	});
 }
 
+/** Settings, Agents: the agents on this machine, each row opening its own page (#1101 cat 18). */
 async function openHarnessSettings(
 	page: Page,
 	settings: SettingsFixture = {
@@ -292,16 +294,68 @@ async function openHarnessSettings(
 ): Promise<void> {
 	await serveHarnessSettings(page, settings);
 	await page.goto("/settings?tab=agent");
-	await expect(
-		page.getByRole("heading", { name: "Agent", exact: true }),
-	).toBeVisible({ timeout: 15_000 });
+	await expect(page.getByTestId("settings-title")).toHaveText("Agents", {
+		timeout: 15_000,
+	});
+}
+
+/** Settings, Models: New thread's agent and model chip, the old card's picker (#1101 cat 18). */
+async function openModels(page: Page): Promise<void> {
+	await page.goto("/settings?tab=models");
+	await expect(page.getByTestId("models-settings")).toBeVisible({
+		timeout: 15_000,
+	});
+}
+
+/** Settings, Permissions: each agent's default level and what alert runs do (#1101 cat 18). */
+async function openPermissions(page: Page): Promise<void> {
+	await page.goto("/settings?tab=permissions");
+	await expect(page.getByTestId("permissions-settings")).toBeVisible({
+		timeout: 15_000,
+	});
 }
 
 const card = (page: Page) => page.getByTestId("harness-settings");
+const chip = (page: Page) =>
+	page.getByTestId("harness-run-row").getByTestId("agent-picker");
+const list = (page: Page) => page.getByTestId("agent-picker-list");
+/**
+ * Shows one tile of the picker's rail (Starred or an agent, #673 w7): the list then holds
+ * only its rows. False when the rail has no such tile.
+ */
+async function show(page: Page, tile: string): Promise<boolean> {
+	// The list loads when the picker opens: count the tiles only once the rail is there.
+	await expect(page.getByTestId("picker-rail")).toBeVisible();
+	const tab = page
+		.getByTestId("picker-rail")
+		.getByRole("tab", { name: tile, exact: true });
+	if ((await tab.count()) === 0) return false;
+	await tab.click();
+	await expect(tab).toHaveAttribute("aria-selected", "true");
+	return true;
+}
+/** A model's row on one tile: cmdk keys it by its provider heading, then `<agent>::<model>`. */
+const option = async (
+	page: Page,
+	tile: string,
+	agent: string,
+	model: string,
+) =>
+	(await show(page, tile))
+		? list(page).locator(
+				`[data-testid="model-option"][data-value$="${agent}::${model}"]`,
+			)
+		: list(page).locator('[data-testid="model-option"][data-absent]');
+const groupRows = async (page: Page, tile: string) =>
+	(await show(page, tile))
+		? list(page).getByTestId("model-option")
+		: list(page).locator('[data-testid="model-option"][data-absent]');
+/** The agent a chip is on, by its mark: OpenCode's logo, a letter tile for the rest. */
+const mark = (page: Page, selector: string) =>
+	chip(page).locator(`[data-fact="agent"]${selector}`);
 
-test.describe("Investigation agent settings card (#501/#609)", () => {
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("only runnable agents are listed; one warning when none can run (#907)", async ({
+test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18)", () => {
+	test("only runnable agents are listed; one warning when none can run (#907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -344,8 +398,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("no Default row: the agent's own default shows as the model it runs (#902 f10, #907)", async ({
+	test("no Default row: the agent's own default shows as the model it runs (#902 f10, #907)", async ({
 		page,
 	}) => {
 		const claude: HarnessFixture = {
@@ -387,20 +440,20 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			{ harness: "claude-code", models: { "claude-code": "default" } },
 			patches,
 		);
-		await page.goto("/settings?tab=agent");
+		await openModels(page);
 		// The chip names the model the agent's default entry runs, never "Default".
-		await expect(page.getByTestId("model-pill")).toHaveText("Fixture Opus");
-		await page.getByTestId("agent-picker").click();
-		const list = page.getByTestId("agent-picker-list");
-		await expect(list.getByTestId("model-default")).toHaveCount(0);
-		await expect(list).not.toContainText("Default");
-		await expect(list.getByTestId("model-option")).toHaveCount(2);
+		await expect(chip(page)).toHaveAttribute(
+			"aria-label",
+			"Model: Fixture Opus · via Claude Code",
+		);
+		await chip(page).click();
+		await expect(list(page)).not.toContainText("Default");
+		await expect(await groupRows(page, "Claude Code")).toHaveCount(2);
 		await expect(
-			list.locator('[data-testid=model-option][data-model="Fixture Opus"]'),
-		).toHaveAttribute("data-checked", "");
+			await option(page, "Claude Code", "claude-code", "fixture-opus"),
+		).toHaveAttribute("data-on", "true");
 		// The star is the agent's model in Settings: one per agent.
-		await list
-			.locator('[data-testid=model-option][data-model="Fixture Sonnet"]')
+		await (await option(page, "Claude Code", "claude-code", "fixture-sonnet"))
 			.getByTestId("model-star")
 			.click();
 		await expect
@@ -408,8 +461,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			.toEqual({ models: { "claude-code": "fixture-sonnet" } });
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("hide, star and reorder a model from the agent page", async ({
+	test("hide, star and reorder a model from the agent page", async ({
 		page,
 	}) => {
 		await serveHarnesses(
@@ -458,21 +510,25 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 
 		// Hidden, the starred model still lists, first: a run with none picked uses it.
 		await page.getByTestId("agent-detail-back").click();
-		await page.getByTestId("agent-picker").click();
-		const list = page.getByTestId("agent-picker-list");
-		await list.getByTestId("rail-opencode").click();
-		await expect(list.getByTestId("model-option")).toHaveCount(2);
-		await expect(list.getByTestId("model-option").first()).toHaveAttribute(
-			"data-model",
+		await expect(page.getByTestId("settings-title")).toHaveText("Agents");
+		await openModels(page);
+		await chip(page).click();
+		await expect(await groupRows(page, "OpenCode")).toHaveCount(2);
+		await expect((await groupRows(page, "OpenCode")).first()).toHaveText(
 			"Fixture Old",
 		);
+		await expect(
+			await option(page, "Starred", "opencode", "vendor/fixture-old"),
+		).toHaveCount(1);
 		// Unstarred, the hidden model leaves the picker.
-		await list.getByLabel("Unstar Fixture Old").click();
-		await expect(list.getByTestId("model-option")).toHaveCount(1);
-		await expect(list.getByTestId("model-option")).toHaveAttribute(
-			"data-model",
+		await (await option(page, "OpenCode", "opencode", "vendor/fixture-old"))
+			.getByLabel("Unstar Fixture Old")
+			.click();
+		await expect(await groupRows(page, "OpenCode")).toHaveCount(1);
+		await expect(await groupRows(page, "OpenCode")).toHaveText(
 			"Fixture Current",
 		);
+		await expect(await groupRows(page, "Starred")).toHaveCount(0);
 	});
 
 	test("binary path refusal shows under the field", async ({ page }) => {
@@ -565,8 +621,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("shows the tested version and sign-in per row, and no model list for a harness that has not been checked (#634)", async ({
+	test("shows the tested version and sign-in per row, and no model list for a harness that has not been checked (#634)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -601,60 +656,27 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			"Claude Code",
 		);
 		await expect(page.getByTestId("harness-tested-claude-code")).toHaveCount(0);
-		await page.goto("/settings?tab=agent");
 
 		// OpenCode takes a model: with nothing starred or reported, the chip names
 		// its list's first, never a bare default (#673 w7, #907).
-		await expect(page.getByTestId("model-pill")).toHaveText("Fixture Current");
-		await page.getByTestId("agent-picker").click();
-		const list = page.getByTestId("agent-picker-list");
-		await expect(list.getByTestId("model-default")).toHaveCount(0);
-		await expect(list.getByTestId("model-option")).toHaveCount(2);
+		await openModels(page);
+		await expect(chip(page)).toHaveAttribute(
+			"aria-label",
+			"Model: Fixture Current · via OpenCode",
+		);
+		await chip(page).click();
+		await expect(list(page)).not.toContainText("Default");
+		await expect(await groupRows(page, "OpenCode")).toHaveCount(2);
 
 		// Codex takes its model by its own settings until a check says otherwise:
-		// a line asking for a check, no models.
-		await list.getByTestId("rail-codex").click();
-		await expect(list.getByTestId("model-pending")).toBeVisible();
-		await expect(list.getByTestId("model-option")).toHaveCount(0);
-	});
-
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("a model starred for a harness that cannot take one is its only row, and unstarring clears it (#639, #907)", async ({
-		page,
-	}) => {
-		await serveHarnesses(page, RUNNABLE, {
-			runnable: false,
-			harness: "codex",
-			pinned: true,
-			pinnedBy: "settings",
-			blockedReason:
-				"Codex picks its own model. Unstar vendor/stale in the picker above.",
-		});
-		await openHarnessSettings(page, {
-			harness: "codex",
-			models: { codex: "vendor/stale" },
-		});
-
-		await expect(page.getByTestId("harness-run-row")).toContainText(
-			"Codex picks its own model",
-		);
-		// A model stored for an agent that cannot take one is its only row, starred;
-		// unstarring it clears it.
-		await page.getByTestId("agent-picker").click();
-		const list = page.getByTestId("agent-picker-list");
-		await expect(list.getByRole("option")).toHaveCount(1);
-		await expect(list.getByTestId("model-option")).toContainText(
-			"Codex picks its own model; unstar to clear",
-		);
-		await expect(list.getByTestId("model-default")).toHaveCount(0);
-		await expect(list.getByTestId("model-star")).toHaveAttribute(
-			"aria-pressed",
-			"true",
+		// its tile holds a line asking for a check, no models.
+		await expect(await groupRows(page, "Codex")).toHaveCount(0);
+		await expect(list(page).getByTestId("model-pending")).toHaveText(
+			"List its models",
 		);
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("works from the keyboard: Enter on a star clears a blocking model, picks a starred row, and stars a model (#781 review, #907)", async ({
+	test("a model starred for a harness that cannot take one is listed under Starred, and unstarring clears it (#639, #907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -666,84 +688,99 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 				"Codex picks its own model. Unstar vendor/stale in the picker above.",
 		});
 		const patches: Record<string, unknown>[] = [];
-		let current: Record<string, unknown> = {
-			harness: "codex",
-			// deepagents is not installed; its star must not be pickable.
-			models: {
-				codex: "vendor/stale",
-				deepagents: "vendor/ghost",
-				opencode: "vendor/fixture-current",
-			},
-		};
-		await page.route(isHarnessSettingsUrl, async (route) => {
-			if (route.request().method() === "PATCH") {
-				const body = route.request().postDataJSON() as Record<string, unknown>;
-				patches.push(body);
-				current = {
-					...current,
-					...body,
-					models: {
-						...(current.models as Record<string, string | null>),
-						...(body.models as Record<string, string | null> | undefined),
-					},
-				};
-			}
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify(current),
-			});
-		});
-		await page.goto("/settings?tab=agent");
+		await serveHarnessSettings(
+			page,
+			{ harness: "codex", models: { codex: "vendor/stale" } },
+			patches,
+		);
+		await openModels(page);
+
+		// A row's sentence is its label's hint (SettingRow); New thread's is the gate's reason.
 		await expect(
-			page.getByRole("heading", { name: "Agent", exact: true }),
-		).toBeVisible({ timeout: 15_000 });
-		const picker = page.getByTestId("agent-picker");
-		const list = page.getByTestId("agent-picker-list");
+			page.getByTestId("harness-run-row").getByTestId("setting-about"),
+		).toHaveAttribute("aria-description", /^Codex picks its own model/);
+		// Codex lists no models until a check, so its stored one shows under Starred alone,
+		// starred; unstarring it clears it.
+		await chip(page).click();
+		await expect(await groupRows(page, "Codex")).toHaveCount(0);
+		const stale = await option(page, "Starred", "codex", "vendor/stale");
+		await expect(stale).toHaveText("vendor/stale");
+		await expect(stale.getByTestId("model-star")).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+		await stale.getByTestId("model-star").click();
+		await expect
+			.poll(() => patches.at(-1))
+			.toEqual({ models: { codex: null } });
+	});
+
+	test("works from the keyboard: Enter on a star clears a blocking model, Enter picks the first row, and Enter stars a model (#781 review, #907)", async ({
+		page,
+	}) => {
+		await serveHarnesses(page, RUNNABLE, {
+			runnable: false,
+			harness: "codex",
+			pinned: true,
+			pinnedBy: "settings",
+			blockedReason:
+				"Codex picks its own model. Unstar vendor/stale in the picker above.",
+		});
+		const patches: Record<string, unknown>[] = [];
+		await serveHarnessSettings(
+			page,
+			{
+				harness: "codex",
+				// deepagents is not installed; its star must not be pickable.
+				models: {
+					codex: "vendor/stale",
+					deepagents: "vendor/ghost",
+					opencode: "vendor/fixture-current",
+				},
+			},
+			patches,
+		);
+		await openModels(page);
 
 		// The blocking model's own row is starred; Enter on its star clears it.
-		await picker.click();
-		await expect(list.getByTestId("model-star")).toBeVisible({
-			timeout: 15_000,
-		});
-		await list.getByTestId("model-star").focus();
+		await chip(page).click();
+		const stale = await option(page, "Starred", "codex", "vendor/stale");
+		await stale.getByTestId("model-star").focus();
 		await page.keyboard.press("Enter");
 		await expect.poll(() => patches.length).toBe(1);
 		expect(patches[0]).toEqual({ models: { codex: null } });
 		await page.keyboard.press("Escape");
-		await expect(list).toHaveCount(0);
+		await expect(list(page)).toHaveCount(0);
 
-		// Starred lists installed agents only, and Enter picks its row.
-		await picker.click();
-		await list.getByTestId("rail-starred").click();
-		await expect(list.getByTestId("model-option")).toHaveCount(1);
-		await expect(list.getByTestId("model-option")).toContainText(
-			"Fixture Current",
-		);
-		await list.getByTestId("picker-search").focus();
+		// Starred lists installed agents only, first; Enter picks the row the list opens on.
+		await chip(page).click();
+		await expect(await groupRows(page, "Starred")).toHaveCount(1);
+		await expect(
+			await option(page, "Starred", "opencode", "vendor/fixture-current"),
+		).toBeVisible();
+		// From the shown tile, Right goes to the search, where Enter picks the first row.
+		await page.keyboard.press("ArrowRight");
 		await page.keyboard.press("Enter");
 		await expect.poll(() => patches.length).toBe(2);
 		expect(patches[1]).toEqual({
 			harness: "opencode",
 			models: { opencode: "vendor/fixture-current" },
 		});
-		await expect(list).toHaveCount(0);
+		await expect(list(page)).toHaveCount(0);
 
-		// A focused star toggles on Enter.
-		await picker.click();
-		await list.getByTestId("rail-opencode").click();
-		await list
-			.locator('[data-testid=model-option][data-model="Fixture Old"]')
+		// A focused star toggles on Enter, and picks nothing.
+		await chip(page).click();
+		await (await option(page, "OpenCode", "opencode", "vendor/fixture-old"))
 			.getByTestId("model-star")
 			.focus();
 		await page.keyboard.press("Enter");
 		await expect.poll(() => patches.length).toBe(3);
 		// One star per agent: starring another replaces it.
 		expect(patches[2]).toEqual({ models: { opencode: "vendor/fixture-old" } });
+		await expect(list(page)).toBeVisible();
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("shows the install hint for a harness that is not installed, under Add agent (#907)", async ({
+	test("shows the install hint for a harness that is not installed, under Add agent (#907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, NOTHING, {
@@ -766,8 +803,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		);
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("names the agent the gate would start, auto-selected", async ({
+	test("names the agent the gate would start, auto-selected", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -779,18 +815,21 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 		await openHarnessSettings(page);
 
-		await expect(page.getByTestId("agent-picker")).toHaveAttribute(
-			"aria-label",
-			/^Agent and model: OpenCode, /,
-		);
-		await expect(page.getByTestId("harness-run-row")).toContainText(
+		await expect(page.getByTestId("harness-note-opencode")).toHaveText(
 			"Used by the next run",
 		);
+		await expect(page.getByTestId("harness-note-codex")).toHaveCount(0);
 		await expect(page.getByTestId("harness-pinned-notice")).toHaveCount(0);
+		await openModels(page);
+		// The chip's mark is the model's maker; its label names the agent it runs on.
+		await expect(chip(page).getByTestId("maker-lettermark")).toHaveCount(1);
+		await expect(chip(page)).toHaveAttribute(
+			"aria-label",
+			"Model: Fixture Current · via OpenCode",
+		);
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("shows a notice that PRISMALENS_HARNESS overrides the picker when pinned", async ({
+	test("shows a notice that PRISMALENS_HARNESS overrides the picker when pinned", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -802,17 +841,17 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		});
 		await openHarnessSettings(page);
 
-		await expect(page.getByTestId("agent-picker")).toHaveAttribute(
-			"aria-label",
-			/^Agent and model: Claude Code, /,
-		);
 		await expect(page.getByTestId("harness-pinned-notice")).toContainText(
 			"PRISMALENS_HARNESS",
 		);
+		await expect(page.getByTestId("harness-note-claude-code")).toHaveText(
+			"Used by the next run",
+		);
+		await openModels(page);
+		await expect(mark(page, '[data-brand="claude-code"]')).toHaveCount(1);
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("states plainly when no harness is available, with the server's reason", async ({
+	test("states plainly when no harness is available, with the server's reason", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, NOTHING, {
@@ -825,14 +864,14 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await openHarnessSettings(page);
 
 		await expect(page.getByTestId("harness-none-available")).toBeVisible();
-		// The gate's reason, verbatim, under the next run's agent.
-		await expect(page.getByTestId("harness-run-row")).toContainText(
-			NO_HARNESS_REASON,
-		);
+		// The gate's reason, verbatim, under New thread's agent.
+		await openModels(page);
+		await expect(
+			page.getByTestId("harness-run-row").getByTestId("setting-about"),
+		).toHaveAttribute("aria-description", NO_HARNESS_REASON);
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("keeps the card usable when the status endpoint fails", async ({
+	test("keeps the page usable when the status endpoint fails", async ({
 		page,
 	}) => {
 		await failHarnesses(page);
@@ -841,10 +880,10 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await expect(page.getByTestId("harness-status-error")).toBeVisible({
 			timeout: 15_000,
 		});
+		await expect(page.getByTestId("harness-add-agent").first()).toBeVisible();
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("stops at a 429 instead of retrying it, and shows the error (#527)", async ({
+	test("stops at a 429 instead of retrying it, and shows the error (#527)", async ({
 		page,
 	}) => {
 		let calls = 0;
@@ -872,8 +911,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		expect(calls).toBeLessThanOrEqual(2);
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("saves the picked harness and model through PATCH /settings/harness", async ({
+	test("saves the picked harness and model through PATCH /settings/harness", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -883,95 +921,104 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			pinnedBy: null,
 			blockedReason: null,
 		});
-		await openHarnessSettings(page, { harness: "auto" });
-
 		const patches: Record<string, unknown>[] = [];
-		let current: { harness: string; models?: Record<string, string | null> } = {
-			harness: "auto",
-		};
-		await page.route(isHarnessSettingsUrl, async (route) => {
-			if (route.request().method() === "PATCH") {
-				const body = route.request().postDataJSON() as Record<string, unknown>;
-				patches.push(body);
-				current = { ...current, ...body };
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify(current),
-				});
-				return;
-			}
-			if (route.request().method() === "GET") {
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify(current),
-				});
-				return;
-			}
-			await route.fallback();
-		});
+		await serveHarnessSettings(page, { harness: "auto" }, patches);
+		await openModels(page);
 
 		// A model chosen under an agent saves both at once, by name.
-		await page.getByTestId("agent-picker").click();
-		const list = page.getByTestId("agent-picker-list");
-		await list.getByTestId("rail-opencode").click();
-		await list
-			.getByTestId("model-option")
-			.filter({ hasText: "Fixture Current" })
-			.click();
+		await expect(chip(page)).toHaveAttribute(
+			"aria-label",
+			"Model: Fixture Current · via OpenCode",
+		);
+		await chip(page).click();
+		await (
+			await option(page, "OpenCode", "opencode", "vendor/fixture-old")
+		).click();
 		await expect.poll(() => patches.length).toBe(1);
 		expect(patches[0]).toEqual({
 			harness: "opencode",
-			models: { opencode: "vendor/fixture-current" },
+			models: { opencode: "vendor/fixture-old" },
 		});
-		await expect(page.getByTestId("model-pill")).toHaveText("Fixture Current");
+		await expect(chip(page)).toHaveAttribute(
+			"aria-label",
+			"Model: Fixture Old · via OpenCode",
+		);
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("lists the agent's models by name, marks a legacy one, and keeps a stored id it does not know (#639, #743)", async ({
+	test("lists the agent's models by name, marks a legacy one, and keeps a stored id it does not know (#639, #743)", async ({
 		page,
 	}) => {
-		await serveHarnesses(page, RUNNABLE, {
-			runnable: true,
-			harness: "opencode",
-			pinned: false,
-			pinnedBy: null,
-			blockedReason: null,
-		});
-		await openHarnessSettings(page, {
+		// Enough rows that the list takes a search field (kit PickerList's SEARCH_FROM).
+		const more = ["One", "Two", "Three", "Four"].map((n) => ({
+			id: `vendor/fixture-${n.toLowerCase()}`,
+			name: `Fixture ${n}`,
+			status: "current",
+		}));
+		await serveHarnesses(
+			page,
+			[
+				{
+					...OPENCODE_INSTALLED,
+					models: {
+						...OPENCODE_MODELS,
+						entries: [...OPENCODE_MODELS.entries, ...more],
+					},
+				},
+				...RUNNABLE.slice(1),
+			],
+			{
+				runnable: true,
+				harness: "opencode",
+				pinned: false,
+				pinnedBy: null,
+				blockedReason: null,
+			},
+		);
+		await serveHarnessSettings(page, {
 			harness: "opencode",
 			models: { opencode: "vendor/typed-by-hand" },
 		});
+		await openModels(page);
 
 		// A stored id the list does not know reads as the id.
-		await expect(page.getByTestId("model-pill")).toHaveText(
+		await expect(chip(page)).toHaveAttribute(
+			"aria-label",
+			"Model: vendor/typed-by-hand · via OpenCode",
+		);
+		await chip(page).click();
+		const typed = await option(
+			page,
+			"OpenCode",
+			"opencode",
 			"vendor/typed-by-hand",
 		);
-		await page.getByTestId("agent-picker").click();
-		const list = page.getByTestId("agent-picker-list");
-		const models = list.getByRole("listbox", { name: "Models" });
-		await expect(models).toContainText("Fixture Current");
-		await expect(models).toContainText("legacy");
-		await expect(models).toContainText("Not confirmed for OpenCode");
+		await expect(typed.getByLabel("Not confirmed for OpenCode")).toBeVisible();
+		// A legacy model's row says so in its hint.
+		await (
+			await option(page, "OpenCode", "opencode", "vendor/fixture-old")
+		).hover();
+		await expect(page.getByTestId("hint").last()).toHaveText("Legacy");
 		// Search filters the agent's list; it is no field to type an id into (#743 §4.1).
-		await list.getByTestId("picker-search").fill("vendor/brand-new");
-		await expect(models).toContainText("No model matches.");
-		await expect(list.getByTestId("model-option")).toHaveCount(0);
-		await list.getByTestId("picker-search").fill("");
+		await list(page).getByTestId("picker-search").fill("vendor/brand-new");
+		await expect(list(page)).toContainText("No match");
+		await expect(list(page).getByTestId("model-option")).toHaveCount(0);
+		await list(page).getByTestId("picker-search").fill("");
 
-		await list
-			.getByTestId("model-option")
-			.filter({ hasText: "Fixture Current" })
-			.click();
-		await expect(page.getByTestId("model-pill")).toHaveText("Fixture Current");
+		await (
+			await option(page, "OpenCode", "opencode", "vendor/fixture-current")
+		).click();
+		await expect(chip(page)).toHaveAttribute(
+			"aria-label",
+			"Model: Fixture Current · via OpenCode",
+		);
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("checks one harness's ACP handshake on demand and shows the verdict verbatim (#630)", async ({
+	test("checks one harness's ACP handshake on demand and shows the verdict verbatim (#630)", async ({
 		page,
 	}) => {
-		await serveHarnesses(page, RUNNABLE, {
+		// The row reads the check the server kept, so the served list takes each check (#1171).
+		const machine = RUNNABLE.map((h) => ({ ...h }));
+		await serveHarnesses(page, machine, {
 			runnable: true,
 			harness: "opencode",
 			pinned: false,
@@ -984,24 +1031,35 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			(url) => url.pathname === "/api/settings/harness/check",
 			async (route) => {
 				const body = route.request().postDataJSON();
+				const result =
+					body?.id === "opencode"
+						? {
+								id: "opencode",
+								outcome: "answers-acp",
+								detail: "answers ACP",
+								hard: false,
+							}
+						: {
+								id: "claude-code",
+								outcome: "sign-in-needed",
+								detail: "sign in needed (Log in with Claude)",
+								hard: false,
+							};
+				const row = machine.find((h) => h.id === result.id);
+				if (row)
+					row.checked = {
+						at: new Date().toISOString(),
+						outcome: result.outcome,
+						detail: result.detail,
+						// A model the agent runs without a login, so its provider check has an answer.
+						servedModel: result.id === "opencode" ? "opencode/fixture" : null,
+						effort: null,
+						images: false,
+					};
 				await route.fulfill({
 					status: 200,
 					contentType: "application/json",
-					body: JSON.stringify(
-						body?.id === "opencode"
-							? {
-									id: "opencode",
-									outcome: "answers-acp",
-									detail: "answers ACP",
-									hard: false,
-								}
-							: {
-									id: "claude-code",
-									outcome: "sign-in-needed",
-									detail: "sign in needed (Log in with Claude)",
-									hard: false,
-								},
-					),
+					body: JSON.stringify(result),
 				});
 			},
 		);
@@ -1016,12 +1074,11 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			page.getByTestId("harness-check-result-claude-code"),
 		).toHaveText("Sign-in needed");
 		await expect(page.getByTestId("harness-note-claude-code")).toHaveText(
-			"Claude Code is not signed in to its model provider. Sign in with its own CLI, then retry.",
+			"Run claude /login in a terminal, then Check.",
 		);
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("shows Permission row under Next run with local defaults and agent notes (#673 w21)", async ({
+	test("an agent's Permission row names its local default and what its own settings still decide (#673 w21)", async ({
 		page,
 	}) => {
 		const CLAUDE_WITH_DEFAULTS: HarnessFixture = {
@@ -1050,23 +1107,22 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 				blockedReason: null,
 			},
 		);
-		await openHarnessSettings(page, { harness: "claude-code" });
+		await serveHarnessSettings(page, { harness: "claude-code" });
+		await openPermissions(page);
 
-		const accessRow = page.getByTestId("harness-access");
-		await expect(accessRow).toBeVisible();
-		await expect(accessRow).toContainText(
+		const row = page.getByTestId("permissions-agent-claude-code");
+		await expect(row).toContainText(
 			'Auto, from ~/.claude/settings.json ("auto").',
 		);
-
-		const note = accessRow.getByTestId("harness-agent-note");
-		await expect(note).toBeVisible();
-		await expect(note).toContainText(
+		await expect(row).toContainText(
 			"Your ~/.claude/settings.json allow and deny rules, hooks and sandbox apply",
 		);
+		await expect(
+			page.getByTestId("permissions-agent-claude-code-select"),
+		).toHaveText("Auto");
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("updates Permission via PATCH /settings/harness; every option is a level's own name (#673 w21, #907)", async ({
+	test("updates Permission via PATCH /settings/harness; every option is a level's own name (#673 w21, #907)", async ({
 		page,
 	}) => {
 		await serveHarnesses(page, RUNNABLE, {
@@ -1076,60 +1132,14 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			pinnedBy: null,
 			blockedReason: null,
 		});
-
 		const patches: Record<string, unknown>[] = [];
-		let current: {
-			harness: string;
-			accessLevels?: Record<string, string | null>;
-		} = {
-			harness: "claude-code",
-		};
+		await serveHarnessSettings(page, { harness: "claude-code" }, patches);
+		await openPermissions(page);
 
-		await page.route(isHarnessSettingsUrl, async (route) => {
-			if (route.request().method() === "PATCH") {
-				const body = route.request().postDataJSON() as Record<string, unknown>;
-				patches.push(body);
-				current = {
-					...current,
-					...body,
-					...(body.accessLevels
-						? {
-								accessLevels: {
-									...current.accessLevels,
-									...(body.accessLevels as Record<string, string | null>),
-								},
-							}
-						: {}),
-				};
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify(current),
-				});
-				return;
-			}
-			if (route.request().method() === "GET") {
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify(current),
-				});
-				return;
-			}
-			await route.fallback();
-		});
-
-		await page.goto("/settings?tab=agent");
-		await expect(
-			page.getByRole("heading", { name: "Agent", exact: true }),
-		).toBeVisible({ timeout: 15_000 });
-
+		const select = page.getByTestId("permissions-agent-claude-code-select");
 		// Unset, the select names the level a run takes, never "Default".
-		await expect(page.getByTestId("harness-access-select")).toHaveText(
-			"Ask always",
-		);
-		// Pick Auto-accept edits in Permission select
-		await page.getByTestId("harness-access-select").click();
+		await expect(select).toHaveText("Ask always");
+		await select.click();
 		await page
 			.getByRole("option", { name: "Auto-accept edits", exact: true })
 			.click();
@@ -1137,11 +1147,11 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		expect(patches[0]).toEqual({
 			accessLevels: { "claude-code": "auto-edits" },
 		});
-		await expect(page.getByTestId("harness-access")).toContainText(
-			"Auto-accept edits, set here.",
-		);
+		await expect(
+			page.getByTestId("permissions-agent-claude-code"),
+		).toContainText("Auto-accept edits, set here.");
 
-		await page.getByTestId("harness-access-select").click();
+		await select.click();
 		await expect(page.getByRole("option")).toHaveCount(4);
 		await expect(
 			page.getByRole("option", { name: "Default", exact: true }),
@@ -1149,10 +1159,7 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 		await page.keyboard.press("Escape");
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("Permission row states the alert-run rule under Settings > Agent (#818)", async ({
-		page,
-	}) => {
+	test("Permissions states the alert-run rule (#818)", async ({ page }) => {
 		await serveHarnesses(page, RUNNABLE, {
 			runnable: true,
 			harness: "opencode",
@@ -1160,17 +1167,18 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			pinnedBy: null,
 			blockedReason: null,
 		});
-		await openHarnessSettings(page);
+		await serveHarnessSettings(page, { harness: "auto" });
+		await openPermissions(page);
 
-		const alertRuns = page.getByTestId("harness-alert-runs");
-		await expect(alertRuns).toBeVisible();
-		await expect(alertRuns).toHaveText(
-			"Runs an alert starts don't use this: nobody is there to answer, so they run at Auto and refuse anything they would ask you.",
+		const level = page.getByTestId("permissions-alert-level");
+		await expect(level.getByTestId("setting-about")).toHaveAttribute(
+			"aria-description",
+			"Auto: nobody is there to answer, so an alert run never asks for more",
 		);
+		await expect(level).toContainText("Auto");
 	});
 
-	// #1154: UI moved: rewrite. The investigation agent settings card it covers was replaced by the Agents and Models se...
-	test.fixme("renders description line variants for Permission across harnesses (#673 w21)", async ({
+	test("renders description line variants for Permission across harnesses (#673 w21)", async ({
 		page,
 	}) => {
 		const CODEX_UNCHECKED: HarnessFixture = {
@@ -1206,71 +1214,46 @@ test.describe("Investigation agent settings card (#501/#609)", () => {
 			},
 			models: NO_MODELS,
 		};
+		await serveHarnesses(
+			page,
+			[
+				OPENCODE_INSTALLED,
+				CLAUDE_INSTALLED,
+				CODEX_UNCHECKED,
+				GEMINI_AUTO_EDIT,
+				{ ...DEEPAGENTS_MISSING, installed: true },
+			],
+			{
+				runnable: true,
+				harness: "opencode",
+				pinned: false,
+				pinnedBy: null,
+				blockedReason: null,
+			},
+		);
+		await serveHarnessSettings(page, { harness: "opencode" });
+		await openPermissions(page);
 
-		let currentHarness = "opencode";
-		await page.route(isHarnessesUrl, async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({
-					harnesses: [
-						OPENCODE_INSTALLED,
-						CLAUDE_INSTALLED,
-						CODEX_UNCHECKED,
-						GEMINI_AUTO_EDIT,
-						DEEPAGENTS_MISSING,
-					],
-					selection: {
-						runnable: true,
-						harness: currentHarness,
-						pinned: false,
-						pinnedBy: null,
-						blockedReason: null,
-					},
-				}),
-			});
-		});
-		await page.route(isHarnessSettingsUrl, async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: "application/json",
-				body: JSON.stringify({ harness: currentHarness }),
-			});
-		});
-
-		// 1. OpenCode
-		await page.goto("/settings?tab=agent");
-		await expect(
-			page.getByRole("heading", { name: "Agent", exact: true }),
-		).toBeVisible({ timeout: 15_000 });
-		await expect(page.getByTestId("harness-access")).toContainText(
+		// Every agent that can run has its own row, each line in its own words.
+		const row = (id: string) => page.getByTestId(`permissions-agent-${id}`);
+		await expect(row("opencode")).toContainText(
 			"Ask always, PrismaLens's pick. OpenCode has per-tool rules, not one permission level.",
 		);
-		await expect(page.getByTestId("harness-agent-note")).toContainText(
+		await expect(row("opencode")).toContainText(
 			"Your opencode.json rules stay; PrismaLens sets each tool's catch-all for the level.",
 		);
-
-		// 2. Codex without workspace-write in checked modes
-		currentHarness = "codex";
-		await page.reload();
-		await expect(page.getByTestId("harness-agent-note")).toContainText(
+		// Codex without workspace-write in its checked modes.
+		await expect(row("codex")).toContainText(
 			"This codex-acp runs Ask always and Auto-accept edits in the same mode, Ask for approval; edits inside the copy need no ask.",
 		);
-
-		// 3. Gemini: its own auto_edit maps to Auto-accept edits (#907)
-		currentHarness = "gemini";
-		await page.reload();
-		await expect(page.getByTestId("harness-access")).toContainText(
+		// Gemini: its own auto_edit maps to Auto-accept edits (#907).
+		await expect(row("gemini")).toContainText(
 			'Auto-accept edits, from ~/.gemini/settings.json ("auto_edit").',
 		);
-		await expect(page.getByTestId("harness-agent-note")).toContainText(
+		await expect(row("gemini")).toContainText(
 			"Gemini CLI's own folder trust and settings apply, as in your terminal.",
 		);
-
-		// 4. deepagents
-		currentHarness = "deepagents";
-		await page.reload();
-		await expect(page.getByTestId("harness-access")).toContainText(
+		await expect(row("deepagents")).toContainText(
 			"Ask always, PrismaLens's pick. deepagents has no modes.",
 		);
 	});

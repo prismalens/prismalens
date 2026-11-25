@@ -3,6 +3,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { PullRequest } from "@prismalens/database";
+import * as clock from "../../../core/clock.js";
 
 type Row = Record<string, unknown>;
 
@@ -93,8 +94,8 @@ export function fakeDb(seed: {
 					detail: null,
 					etag: null,
 					fetchedAt: null,
-					createdAt: new Date(Date.now() + prs.length),
-					updatedAt: new Date(),
+					createdAt: new Date(clock.now() + prs.length),
+					updatedAt: clock.date(),
 					...data,
 				} as PullRequest;
 				prs.push(row);

@@ -50,6 +50,7 @@ import {
 	RuntimeFields,
 } from "./AgentDetail";
 import { apiKeyVars, EnvVarNotes } from "./agent-env";
+import { SignInButton } from "./SignInButton";
 import { StepList } from "./SourceConnectDialog";
 
 const STEPS = ["Agent", "Sign-in", "Config"] as const;
@@ -64,6 +65,7 @@ function fixedKey(agent: HarnessStatus): string | undefined {
 
 /** A tile's neutral state word: no warning colour, since not set up is not a fault (#907). */
 export function tileState(h: HarnessStatus): string {
+	if (h.off) return "Off";
 	if (h.windowsOnlyPath) return "Windows install, can't run in WSL";
 	if (!h.installed) return "Not installed";
 	const outcome = h.checked?.outcome;
@@ -72,6 +74,18 @@ export function tileState(h: HarnessStatus): string {
 		return "Not responding";
 	return "Ready";
 }
+
+/** After the state word: the agent's sign-in methods when it asked for one, else the check's line. */
+function verdictTail(h: HarnessStatus): string {
+	const c = h.checked;
+	if (!c) return ".";
+	if (c.outcome !== "sign-in-needed") return `: ${c.detail}`;
+	return c.signInMethods?.length ? `: ${c.signInMethods.join(", ")}` : "";
+}
+
+/** Sign in stages the agent's own login; otherwise the hint's command is copied. */
+const signsInHere = (h: HarnessStatus) =>
+	!!h.signIn && h.checked?.outcome === "sign-in-needed";
 
 /** The first command in a sign-in hint, to copy and run on the host; a variable name is not one. */
 function loginCommand(hint: string): string | null {
@@ -180,7 +194,9 @@ export function AddAgentDialog({
 			await settled(() => queryClient.isMutating());
 			const probe = await check.mutateAsync({ id: picked });
 			if (probe.outcome === "answers-acp") return close();
-			setResult(probe.detail);
+			// Not passing still lists it, so it can be signed in from its page (#1171 R1).
+			await update.mutateAsync({ added: { [picked]: true } });
+			openPage(picked);
 		} catch (e) {
 			setResult(errorText(e) ?? "The check did not run. Try it again.");
 		} finally {
@@ -190,8 +206,9 @@ export function AddAgentDialog({
 
 	const pick = (id: HarnessId, h?: HarnessStatus) => {
 		setError(null);
-		// A ready agent needs no setting up: open its page (#907, operator's clarification).
-		if (h && tileState(h) === "Ready") return openPage(id);
+		// A ready, off or added agent needs no setting up: open its page (#907, #1171).
+		if (h && (tileState(h) === "Ready" || h.off || h.added))
+			return openPage(id);
 		setPicked(id);
 	};
 
@@ -247,7 +264,7 @@ export function AddAgentDialog({
 									<Input
 										value={command}
 										onChange={(e) => setCommand(e.target.value)}
-										placeholder="/usr/local/bin/my-agent"
+										placeholder="Command"
 										aria-label="Command"
 										readOnly={!canEdit}
 										className="font-mono"
@@ -296,7 +313,7 @@ export function AddAgentDialog({
 								<>
 									<p data-testid="add-agent-verdict">
 										{tileState(agent)}
-										{agent.checked ? `: ${agent.checked.detail}` : "."}
+										{verdictTail(agent)}
 									</p>
 									{loginCommand(agent.loginHint) ? (
 										<p className="text-text-2">
@@ -308,12 +325,16 @@ export function AddAgentDialog({
 										</p>
 									)}
 									<div className="flex items-center gap-2">
-										{loginCommand(agent.loginHint) && (
-											<CommandChip
-												command={loginCommand(agent.loginHint) ?? ""}
-												className="flex-1"
-												testId="add-agent-copy"
-											/>
+										{signsInHere(agent) ? (
+											<SignInButton agent={agent} className="flex-1" />
+										) : (
+											loginCommand(agent.loginHint) && (
+												<CommandChip
+													command={loginCommand(agent.loginHint) ?? ""}
+													className="flex-1"
+													testId="add-agent-copy"
+												/>
+											)
 										)}
 										<Button
 											variant="secondary"
@@ -350,8 +371,7 @@ export function AddAgentDialog({
 									className="text-body text-text-2"
 									data-testid="add-agent-result"
 								>
-									{result} Its settings are saved; it joins the list once it can
-									run.
+									{result}
 								</p>
 							)}
 						</div>
@@ -508,7 +528,13 @@ function ApiKeyField({
 				Stored encrypted and passed only to {agent.label}.
 			</span>
 			{name && (
-				<EnvVarNotes agent={agent.label} id={id} name={name} state="set" />
+				<EnvVarNotes
+					agent={agent.label}
+					id={id}
+					name={name}
+					state="set"
+					answered={agent.checked?.outcome === "answers-acp"}
+				/>
 			)}
 		</div>
 	);

@@ -39,6 +39,7 @@ import {
 	type ToolOutcome,
 } from "@prismalens/integrations/harness";
 import { Logger } from "@prismalens/logger";
+import * as clock from "../../core/clock.js";
 import { storedUseDefault } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
@@ -262,7 +263,7 @@ export class ThreadTreeService
 	/** Set by the gateway binding; until then only linked threads are readable. */
 	canRead: CanRead = (a, b) => this.linked(a, b);
 	/** Started threads that ended after this were not yet looked at; the first tick reads the last hour. */
-	private stoppedTo = new Date(Date.now() - 60 * 60_000);
+	private stoppedTo = new Date(clock.now() - 60 * 60_000);
 	/** When each starter was last woken for a stop notice. */
 	private readonly woken = new Map<string, number>();
 	/** The state of each started thread its starter last read, by starter (#1101 cat 10). */
@@ -479,7 +480,7 @@ export class ThreadTreeService
 		void this.actions
 			.resume()
 			.catch((e) => logger.warn(`Resuming pending actions failed: ${e}`));
-		this.timer = setInterval(() => void this.tick(), TICK_MS);
+		this.timer = clock.setInterval(() => void this.tick(), TICK_MS);
 		this.timer.unref?.();
 	}
 
@@ -699,7 +700,7 @@ export class ThreadTreeService
 
 	/** Settings → Agent-started threads → A day: starts and delivered-or-queued messages in 24 hours. */
 	private async turnsToday(limit: number): Promise<Failure | null> {
-		const since = new Date(Date.now() - DAY_MS);
+		const since = new Date(clock.now() - DAY_MS);
 		const [starts, messages] = await Promise.all([
 			this.prisma.investigation.count({
 				where: { ...AGENT_STARTED, createdAt: { gte: since } },
@@ -900,7 +901,7 @@ export class ThreadTreeService
 		const s = await this.settings.get();
 		const today = await this.turnsToday(s.turnsPerDay);
 		if (today) return today;
-		const since = new Date(Date.now() - DAY_MS);
+		const since = new Date(clock.now() - DAY_MS);
 		const pair = await this.prisma.threadMessage.count({
 			where: {
 				createdAt: { gte: since },
@@ -1112,7 +1113,7 @@ export class ThreadTreeService
 		this.refused.delete(m.id);
 		await this.prisma.threadMessage.updateMany({
 			where: { id: m.id, state: "queued" },
-			data: { state: "delivered", deliveredAt: new Date() },
+			data: { state: "delivered", deliveredAt: clock.date() },
 		});
 		const from = await this.row(m.fromId);
 		if (!from) return;
@@ -1135,7 +1136,7 @@ export class ThreadTreeService
 	/** Each started thread that stopped without finishing queues one notice line for its starter. */
 	private async sweepStops(): Promise<void> {
 		const since = this.stoppedTo;
-		const now = new Date();
+		const now = clock.date();
 		const ended = await this.prisma.investigation.findMany({
 			where: {
 				...AGENT_STARTED,
@@ -1184,7 +1185,7 @@ export class ThreadTreeService
 			const wake =
 				!live &&
 				list.some((n) => noticeWakes(n.requestId)) &&
-				Date.now() - (this.woken.get(starter) ?? 0) >= WAKE_GAP_MS;
+				clock.now() - (this.woken.get(starter) ?? 0) >= WAKE_GAP_MS;
 			if (!live && !wake) continue;
 			const status = await this.statusLine(starter);
 			const text = [noticeText(list.map((n) => n.text)), status]
@@ -1195,11 +1196,11 @@ export class ThreadTreeService
 					reopen: wake,
 					messageId: list[0]?.id as string,
 				});
-				if (wake) this.woken.set(starter, Date.now());
+				if (wake) this.woken.set(starter, clock.now());
 				if (got.state !== "delivered") continue;
 				await this.prisma.threadMessage.updateMany({
 					where: { id: { in: list.map((n) => n.id) }, state: "queued" },
-					data: { state: "delivered", deliveredAt: new Date() },
+					data: { state: "delivered", deliveredAt: clock.date() },
 				});
 				const stops: {
 					threadId: string;

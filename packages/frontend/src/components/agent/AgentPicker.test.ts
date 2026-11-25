@@ -114,6 +114,14 @@ describe("the box's chips (#673)", () => {
 			"Codex is not signed in to its model provider. Sign in with its own CLI, then retry.",
 		);
 		expect(
+			unreadyReason({
+				...codex,
+				loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
+			}),
+		).toBe(
+			"Codex is not signed in to its model provider. Run codex login in a terminal, then retry.",
+		);
+		expect(
 			unreadyReason(
 				claude({
 					checked: {
@@ -400,11 +408,69 @@ describe("no Default row, real names and only runnable agents (#902 f10, #907)",
 		expect(html).toContain('aria-pressed="true"');
 	});
 
-	it("groups only agents that can run, and offers Add agent", () => {
+	it("puts only agents that can run on the rail, with Starred first and Add agent last", () => {
 		const html = render("");
-		expect(html).toContain(">Claude Code<");
-		expect(html).not.toContain(">Codex<");
-		expect(html).toContain('data-testid="rail-add-agent"');
+		const tiles = Array.from(html.matchAll(/data-testid="(rail-[^"]+)"/g), (m) => m[1]);
+		expect(tiles).toEqual(["rail-starred", "rail-claude-code", "rail-add-agent"]);
+	});
+
+	it("opens on the box's own agent, its models under their provider and its search named for it", () => {
+		const html = render("claude-sonnet-5-5");
+		expect(html).toMatch(/data-testid="rail-claude-code"[^>]*aria-selected="true"|aria-selected="true"[^>]*data-testid="rail-claude-code"/);
+		expect(html).toContain('placeholder="Search Claude Code models"');
+		expect(html).toContain(">Anthropic<");
+	});
+
+	it("an off agent and its models are not offered, even when it is the current selection (#1171)", () => {
+		const offClaude = claude({
+			id: "claude-code",
+			label: "Claude Code",
+			off: true,
+			models: {
+				source: "harness",
+				asOf: "",
+				entries: [{ id: "claude-sonnet-5-5", name: "Sonnet 5.5", status: null }],
+			},
+		});
+		const runnableCodex = claude({
+			id: "codex",
+			label: "Codex",
+			off: false,
+			runnable: true,
+			checked: {
+				at: "",
+				outcome: "answers-acp",
+				detail: "answers ACP",
+				version: null,
+				companionVersion: null,
+				servedModel: "gpt-4o",
+				effort: null,
+				modes: null,
+				efforts: null,
+				images: false,
+				sandbox: null,
+			},
+			models: {
+				source: "harness",
+				asOf: "",
+				entries: [{ id: "gpt-4o", name: "GPT-4o", status: null }],
+			},
+		});
+		hooks.harnesses = [offClaude, runnableCodex];
+		hooks.settings = { harness: "claude-code" };
+		const html = renderToStaticMarkup(
+			React.createElement(ModelChip, {
+				harness: offClaude,
+				model: "claude-sonnet-5-5",
+				onPick: vi.fn(),
+			}),
+		);
+		expect(html).not.toContain('data-testid="rail-claude-code"');
+		expect(html).toContain('data-testid="rail-codex"');
+		const listHtml = html.slice(html.indexOf('data-testid="agent-picker-list"'));
+		expect(listHtml).not.toContain("Sonnet 5.5");
+		expect(listHtml).toContain('placeholder="Search Codex models"');
+		expect(listHtml).toContain("GPT-4o");
 	});
 });
 

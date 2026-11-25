@@ -15,16 +15,22 @@ import { Pressed } from "./Menu";
 
 /**
  * One width per family (pattern sheet §0.5): menus 220, pickers and the
- * details card 280, an ask beside a row 320. A caller picks the family,
- * never a width.
+ * details card 280, an ask beside a row 320, a picker with a rail 380. A
+ * caller picks the family, never a width.
  */
-export const POPOVER_WIDTH = { menu: 220, picker: 280, card: 320 } as const;
+export const POPOVER_WIDTH = {
+	menu: 220,
+	picker: 280,
+	card: 320,
+	rail: 380,
+} as const;
 export type PopoverFamily = keyof typeof POPOVER_WIDTH;
 
 export const FAMILY_CLASS: Record<PopoverFamily, string> = {
 	menu: "w-[220px]",
 	picker: "w-[280px]",
 	card: "w-[320px]",
+	rail: "w-[380px] max-w-[calc(100vw-16px)]",
 };
 
 /** Content sits on the shared floating surface; from the composer it opens up. */

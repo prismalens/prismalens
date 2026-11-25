@@ -450,10 +450,15 @@ export default defineChecks([
 					)
 						continue;
 					if (r.width <= 1 && r.height <= 1) continue;
-					const after = getComputedStyle(el, "::after");
-					if (after.position === "absolute" && after.content !== "none")
-						continue;
-					if (r.width < 44 || r.height < 44) {
+					// What a finger hits: the box, widened by a ::after tap area (tokens.css, #848).
+					const a = getComputedStyle(el, "::after");
+					const on = a.content !== "none" && a.position === "absolute";
+					const w = Math.max(r.width, on ? Number.parseFloat(a.width) || 0 : 0);
+					const h = Math.max(
+						r.height,
+						on ? Number.parseFloat(a.height) || 0 : 0,
+					);
+					if (w < 44 || h < 44) {
 						small.push({
 							name: (
 								el.getAttribute("aria-label") ??
@@ -462,8 +467,8 @@ export default defineChecks([
 							)
 								.trim()
 								.slice(0, 30),
-							w: Math.round(r.width),
-							h: Math.round(r.height),
+							w: Math.round(w),
+							h: Math.round(h),
 						});
 					}
 				}

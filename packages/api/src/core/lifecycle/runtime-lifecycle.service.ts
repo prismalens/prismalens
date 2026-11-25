@@ -9,6 +9,7 @@ import {
 	type OnApplicationShutdown,
 	type OnModuleInit,
 } from "@nestjs/common";
+import * as clock from "../clock.js";
 import type { PrismaService } from "../prisma/prisma.service.js";
 
 export const LIFECYCLE_KEY = "runtime.lifecycle";
@@ -68,7 +69,7 @@ export class RuntimeLifecycleService
 
 	constructor(
 		private readonly prisma: PrismaService,
-		private readonly now: () => Date = () => new Date(),
+		private readonly now: () => Date = () => clock.date(),
 		private readonly monotonic: () => number = () => performance.now(),
 		private readonly heartbeat = true,
 	) {}
@@ -119,7 +120,7 @@ export class RuntimeLifecycleService
 		// Awaited, so a crash in the first minute leaves this boot's time, not the last run's.
 		await this.write(null);
 		if (this.heartbeat) {
-			this.timer = setInterval(() => void this.beat(), HEARTBEAT_MS);
+			this.timer = clock.setInterval(() => void this.beat(), HEARTBEAT_MS);
 			this.timer.unref();
 		}
 	}

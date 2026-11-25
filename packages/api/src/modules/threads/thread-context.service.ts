@@ -346,6 +346,7 @@ export class ThreadContextService {
 					name: r.name,
 					branch: r.branch ?? live ?? null,
 					head: r.head,
+					...(r.from ? { from: r.from } : {}),
 					additions: ok ? ok.additions : null,
 					deletions: ok ? ok.deletions : null,
 					ahead: ok?.sync?.ahead ?? null,

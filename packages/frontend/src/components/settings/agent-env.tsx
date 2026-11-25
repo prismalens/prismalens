@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
-import { TriangleAlert } from "lucide-react";
 
 /**
  * The agent page's environment words (#848): one state per variable and the
@@ -29,8 +28,8 @@ export function envStateWord(state: "set" | "env" | "unset"): string {
 
 /**
  * Under a variable set in PrismaLens: "Overrides the environment" when the
- * shell has it too, and on an API key the conditional warning, since
- * PrismaLens cannot tell which credential a signed-in agent uses (OBJ-008).
+ * shell has it too, and on an API key a plain note once a check answered,
+ * since PrismaLens cannot tell which credential a signed-in agent uses (OBJ-008, #1171).
  */
 export function EnvVarNotes({
 	agent,
@@ -38,12 +37,15 @@ export function EnvVarNotes({
 	name,
 	state,
 	inEnv,
+	answered,
 }: {
 	agent: string;
 	id: HarnessId;
 	name: string;
 	state: "set" | "env" | "unset";
 	inEnv?: boolean;
+	/** The agent's last check answered; before that, nothing says it is signed in. */
+	answered?: boolean;
 }) {
 	if (state !== "set") return null;
 	return (
@@ -53,12 +55,11 @@ export function EnvVarNotes({
 					Overrides the environment
 				</p>
 			)}
-			{isApiKeyVar(id, name) && (
+			{answered && isApiKeyVar(id, name) && (
 				<p
-					className="mt-1 flex items-start gap-1.5 text-meta text-warn"
+					className="mt-1 text-meta text-text-3"
 					data-testid="env-signin-warning"
 				>
-					<TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
 					If {agent} is signed in, it may use this key instead.
 				</p>
 			)}

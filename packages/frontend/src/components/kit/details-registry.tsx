@@ -94,6 +94,8 @@ export interface ThreadDetails {
 	branch?: string;
 	/** A worktree on no branch: its tip's short sha (#1176 F2). */
 	detached?: string;
+	/** The branch that worktree was cut from: a run's copy is detached on purpose. */
+	from?: string;
 	/** Commits against the branch's upstream; absent with none. */
 	sync?: { ahead: number; behind: number };
 	changes?: { added: number; removed: number };
@@ -223,10 +225,23 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 			priority: 1,
 			icon: GitBranch,
 			label: d.branch ?? (
-				<Hint label="No branch yet. Commits here can't be pushed until one is made.">
-					<span className="truncate" data-testid="details-detached">
-						Detached at {d.detached}
-					</span>
+				<Hint
+					label={
+						d.from
+							? `Run copy of ${d.from} at ${d.detached}`
+							: `Detached at ${d.detached}`
+					}
+					meta="No branch yet. Commits here can't be pushed until one is made."
+				>
+					<button
+						type="button"
+						className="min-w-0 cursor-default truncate text-left"
+						data-testid="details-detached"
+					>
+						{d.from
+							? `Run copy of ${d.from} at ${d.detached}`
+							: `Detached at ${d.detached}`}
+					</button>
 				</Hint>
 			),
 			mono: true,

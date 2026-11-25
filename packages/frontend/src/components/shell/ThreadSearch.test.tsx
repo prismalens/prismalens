@@ -10,6 +10,10 @@ import { feedInput, projectOptions } from "./ThreadFilters";
 const h = vi.hoisted(() => ({
 	phone: false,
 	repoArgs: [] as Array<Record<string, unknown>>,
+	threads: [
+		{ id: "t1", title: "Why the pool", kind: "chat" },
+		{ id: "t2", title: "Checkout down", kind: "investigation" },
+	] as Array<{ id: string; title: string; kind: string }>,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -59,10 +63,7 @@ vi.mock("@/lib/api/hooks/use-threads-orpc", () => ({
 				{
 					units: [
 						{
-							threads: [
-								{ id: "t1", title: "Why the pool", kind: "chat" },
-								{ id: "t2", title: "Checkout down", kind: "investigation" },
-							],
+							threads: h.threads,
 						},
 					],
 				},
@@ -91,7 +92,9 @@ Element.prototype.scrollIntoView ??= () => {};
 
 let container: HTMLDivElement;
 let root: Root;
+const THREADS = [...h.threads];
 beforeEach(() => {
+	h.threads = [...THREADS];
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -228,5 +231,38 @@ describe("feedInput (#1020)", () => {
 			repositoryId: "r1",
 			since: new Date(at - 86_400_000),
 		});
+	});
+});
+
+describe("the palette's preview (#1101 category 19)", () => {
+	const open = async () => {
+		const { ThreadSearch } = await import("./SearchHost");
+		await act(async () =>
+			root.render(<ThreadSearch open onOpenChange={() => {}} />),
+		);
+		await act(async () => {
+			await vi.dynamicImportSettled();
+		});
+	};
+
+	it("shows the hovered thread beside the list when a thread is among the results", async () => {
+		await open();
+		expect(
+			document.querySelector('[data-testid="palette-preview-thread"] p')
+				?.textContent,
+		).toBe("Why the pool");
+	});
+
+	it("gives the list the whole width when no result is a thread", async () => {
+		h.threads = [];
+		await open();
+		expect(
+			document.querySelector('[data-testid="palette-preview"]'),
+		).toBeNull();
+		expect(
+			document.querySelector(
+				'[data-testid="thread-search-action-add-project"]',
+			),
+		).not.toBeNull();
 	});
 });

@@ -35,6 +35,7 @@ import {
 	resolveServiceBuild,
 	resolveServiceVersion,
 } from "../../shared/utils/service-version.js";
+import * as clock from "../clock.js";
 
 /** Where `pl up` writes its logs: `PRISMALENS_LOG_FILE_LOCATION`, else the workspace's `logs`. */
 export function resolveLogDir(
@@ -59,7 +60,8 @@ export function latestBackup(workspaceDir: string): string | null {
 @Injectable()
 export class AboutService {
 	private readonly version = resolveServiceVersion();
-	private readonly build = resolveServiceBuild();
+	/** Stamped at pack time; null when run from a source checkout, which no release replaces. */
+	build: string | null = resolveServiceBuild();
 	/** One refresh at a time, for one channel: the cache file holds one channel's answer. */
 	private refreshing: { channel: UpdateChannel; done: Promise<void> } | null =
 		null;
@@ -67,7 +69,7 @@ export class AboutService {
 	// Fields rather than constructor parameters: Nest would try to inject them. Tests set them.
 	env: NodeJS.ProcessEnv = process.env;
 	fetchImpl: typeof fetch = fetch;
-	now: () => number = Date.now;
+	now: () => number = clock.now;
 
 	/** Joins a pending refresh for `channel`; a pending one for the other channel is let finish first. */
 	private async refresh(
@@ -117,7 +119,8 @@ export class AboutService {
 
 		const cache = checking ? readCache(workspaceDir, updateChannel) : null;
 		const latest = cache?.latest ?? null;
-		const available = latest !== null && isNewer(latest, this.version);
+		const available =
+			latest !== null && this.build !== null && isNewer(latest, this.version);
 		const envChannel = this.env.PRISMALENS_UPDATE_CHANNEL?.trim().toLowerCase();
 		return {
 			version: this.version,

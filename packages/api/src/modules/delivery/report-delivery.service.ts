@@ -15,6 +15,7 @@ import {
 	WORKFLOW_STATUS_LABEL,
 	type WorkflowStatus,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
@@ -119,7 +120,7 @@ export class ReportDeliveryService {
 
 	/** Deliver one terminal run, once. Never throws. */
 	async deliver(investigationId: string): Promise<void> {
-		const now = Date.now();
+		const now = clock.now();
 		for (const [id, at] of this.delivered) {
 			if (now - at > DEDUP_TTL_MS) this.delivered.delete(id);
 		}

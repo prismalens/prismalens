@@ -188,9 +188,13 @@ async function setupPage(page: Page, report: object | null = null) {
 	);
 }
 
+/** The ⋯ remounts when the run loads and its thread section joins, dropping an earlier open; the details toggle marks that load. */
 async function openPhoneDetails(page: Page) {
+	await expect(page.getByTestId("panel-toggle")).toBeVisible({
+		timeout: 15_000,
+	});
 	await page.getByTestId("header-more").click();
-	await page.getByTestId("menu-incident.details").click();
+	await page.getByTestId("menu-details").click();
 	await expect(page.getByTestId("run-details")).toBeVisible();
 }
 
@@ -313,8 +317,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			await openPhoneDetails(page);
 		});
 
-		// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-		test.fixme("Back from a file cited in Summary returns to the citation, inside the sheet", async ({
+		test("Back from a file cited in Summary returns to the citation, inside the sheet", async ({
 			page,
 		}) => {
 			await page.getByTestId("panel-tab-kind").click();
@@ -326,8 +329,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			await expect(page.getByTestId("detail-file").first()).toBeFocused();
 		});
 
-		// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-		test.fixme("Back from a file opened in Steps returns to the steps, inside the sheet", async ({
+		test("Back from a file opened in Steps returns to the steps, inside the sheet", async ({
 			page,
 		}) => {
 			await page.getByTestId("panel-tab-thread").click();
@@ -339,8 +341,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			await expect(page.locator("#steps-row-1")).toBeFocused();
 		});
 
-		// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-		test.fixme("a step link in the sheet lifts it and shows the step", async ({
+		test("a step link in the sheet lifts it and shows the step", async ({
 			page,
 		}) => {
 			await page.getByTestId("panel-tab-kind").click();
@@ -356,8 +357,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			).toBeFocused();
 		});
 
-		// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-		test.fixme("the drawing opened from the sheet: a step lifts the sheet, a file comes Back to Summary", async ({
+		test("the drawing opened from the sheet: a step lifts the sheet, a file comes Back to Summary", async ({
 			page,
 		}) => {
 			const preview = page.getByTestId("hypotheses-preview");
@@ -388,8 +388,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			await expect(page.getByTestId("detail-hypotheses")).toBeFocused();
 		});
 
-		// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-		test.fixme("the sideways guard sees a spill inside the open sheet", async ({
+		test("the sideways guard sees a spill inside the open sheet", async ({
 			page,
 		}) => {
 			expect(await sidewaysFaults(page)).toEqual([]);
@@ -401,8 +400,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			);
 		});
 
-		// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-		test.fixme("the drawing opened from the sheet gives focus back to its link on Esc and on Close", async ({
+		test("the drawing opened from the sheet gives focus back to its link on Esc and on Close", async ({
 			page,
 		}) => {
 			const preview = page.getByTestId("hypotheses-preview");
@@ -419,8 +417,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			}
 		});
 
-		// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-		test.fixme("the sheet is a dialog that holds focus, and Esc closes it once", async ({
+		test("the sheet is a dialog that holds focus, and Esc closes it once", async ({
 			page,
 		}) => {
 			await expect(page.getByRole("dialog")).toContainText("Run 1 details");
@@ -437,8 +434,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			await expect(page.getByTestId("header-more")).toBeFocused();
 		});
 
-		// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-		test.fixme("nothing spills sideways with a file open at 320, 360 and 390 px", async ({
+		test("nothing spills sideways with a file open at 320, 360 and 390 px", async ({
 			page,
 		}) => {
 			await page.getByTestId("panel-tab-thread").click();
@@ -455,8 +451,7 @@ test.describe("Evidence file view resize (#874)", () => {
 	test.describe("a phone chat whose tools did not connect (0.5.3 walk W11)", () => {
 		test.use({ hasTouch: true, isMobile: true });
 
-		// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-		test.fixme("Question details shows the tools status and the trust hint the strip hides", async ({
+		test("Question details shows the tools status and the trust hint the strip hides", async ({
 			page,
 		}) => {
 			await page.setViewportSize({ width: 390, height: 844 });
@@ -490,8 +485,7 @@ test.describe("Evidence file view resize (#874)", () => {
 			await expect(page.getByTestId("details-warn")).toBeVisible({
 				timeout: 15_000,
 			});
-			await page.getByTestId("header-more").click();
-			await page.getByTestId("menu-incident.details").click();
+			await openPhoneDetails(page);
 			await expect(page.getByTestId("run-tools-status")).toHaveText(
 				"Did not reach the model",
 			);

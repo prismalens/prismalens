@@ -5,6 +5,7 @@ import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { ORPCError } from "@orpc/nest";
 import { httpUrlOrNull, type PrometheusAlert } from "@prismalens/contracts";
 import { Prisma } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { AlertStatus, Severity } from "../../shared/enums/index.js";
 import { AlertMappingService } from "../alert-mapping/alert-mapping.service.js";
 import type { Alert } from "../alerts/alerts.service.js";
@@ -191,7 +192,7 @@ export class WebhooksService {
 			}
 		}
 
-		const ageMs = Date.now() - existingEvent.receivedAt.getTime();
+		const ageMs = clock.now() - existingEvent.receivedAt.getTime();
 		if (ageMs < IN_FLIGHT_GRACE_MS) {
 			throw new ORPCError("CONFLICT", {
 				message:
@@ -401,7 +402,7 @@ export class WebhooksService {
 			eventType: EARLY_RESOLUTION_EVENT,
 			payload: { status: "resolved", fingerprint, ...episode },
 			eventTime: new Date(
-				Number.isNaN(endsAt) ? Date.now() : endsAt,
+				Number.isNaN(endsAt) ? clock.now() : endsAt,
 			).toISOString(),
 		});
 	}
@@ -422,7 +423,7 @@ export class WebhooksService {
 			sourceEventId: fingerprint,
 			eventType: EARLY_RESOLUTION_EVENT,
 			eventTimeFrom: started,
-			receivedSince: new Date(Date.now() - EARLY_RESOLUTION_TTL_MS),
+			receivedSince: new Date(clock.now() - EARLY_RESOLUTION_TTL_MS),
 		});
 	}
 
@@ -440,7 +441,7 @@ export class WebhooksService {
 			source: "prometheus",
 			sourceEventId: fingerprint,
 			eventType: EARLY_RESOLUTION_EVENT,
-			receivedSince: new Date(Date.now() - EARLY_RESOLUTION_TTL_MS),
+			receivedSince: new Date(clock.now() - EARLY_RESOLUTION_TTL_MS),
 		});
 		const started = Date.parse(startsAt);
 		if (Number.isNaN(started)) return null;
@@ -594,18 +595,17 @@ export class WebhooksService {
 
 		this.logger.log(`Created event ${event.id} from generic webhook`);
 
-		// 3. Resolve the service: an explicit serviceId, then serviceName, then
-		// the mapping rules. An id or name that matches nothing falls through.
+		// 3. Resolve the service: an explicit serviceId, then the one name lookup
+		// (`serviceName`, the `service` label, a project of that name). An id that
+		// matches nothing falls through.
 		const mappedService =
 			(dto.serviceId
 				? await this.servicesService.findById(dto.serviceId)
 				: null) ??
-			(dto.serviceName
-				? await this.servicesService.findByName(dto.serviceName)
-				: null) ??
 			(await this.alertMappingService.resolveServiceForAlert({
 				source: dto.source ?? "generic",
 				labels: dto.labels,
+				serviceName: dto.serviceName,
 				tags: dto.tags,
 				title: dto.title,
 				description: dto.description,
@@ -644,6 +644,22 @@ export class WebhooksService {
 			isNewIncident: correlationResult.isNewIncident,
 			mappedServiceId: mappedService?.id,
 		};
+	}
+
+	/**
+	 * A sample alert for a project, through the same path a generic webhook
+	 * takes: high severity, routed by `serviceName`. Its fixed title joins an
+	 * incident still open from an earlier test instead of starting another run.
+	 */
+	async sendTestAlert(serviceName: string): Promise<WebhookResult> {
+		return this.processGenericWebhook({
+			title: `Test alert: ${serviceName} is failing`,
+			description: `A sample alert sent from PrismaLens to see ${serviceName} investigated. Nothing is actually wrong.`,
+			severity: Severity.high,
+			source: "prismalens-test",
+			serviceName,
+			labels: { origin: "test" },
+		} as GenericWebhookDto);
 	}
 
 	async processRenderWebhook(

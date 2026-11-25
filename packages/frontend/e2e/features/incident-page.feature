@@ -6,8 +6,6 @@ Feature: Incident page
     Given a paired browser at 1440 px
     And INC-1 is Triggered with no run yet
 
-  # #1154: UI moved: waits for `getByTestId('header-resolve')`, which no longer renders
-  @fixme
   Scenario: One primary action on the overview
     When I view INC-1's Overview
-    Then the header shows "Resolve" and never "Investigate"
+    Then the header offers "Resolve" in its menu, as no button of its own, and never "Investigate"

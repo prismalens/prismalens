@@ -57,10 +57,17 @@ describe("readLoginShellPath", () => {
 		const scriptPath = join(tempDir, "shell.sh");
 		writeFileSync(
 			scriptPath,
-			`#!/bin/sh\nprintf "%s" "${banner}"\nPATH="${fixedPath}"\neval "$2"\nprintf "done\\n"\n`,
+			`#!/bin/sh\ntouch "${join(tempDir, "ran")}"\nprintf "%s" "${banner}"\nPATH="${fixedPath}"\neval "$2"\nprintf "done\\n"\n`,
 		);
 		chmodSync(scriptPath, 0o755);
 		return scriptPath;
+	}
+
+	// Windows has no login shell to ask: the PATH is undefined and the fake never runs (#1154).
+	const posix = process.platform !== "win32";
+	function expectShellPath(result: string | undefined, fixedPath: string) {
+		expect(result).toBe(posix ? fixedPath : undefined);
+		expect(existsSync(join(tempDir as string, "ran"))).toBe(posix);
 	}
 
 	it("resolves the PATH the login shell reports", async () => {
@@ -69,7 +76,7 @@ describe("readLoginShellPath", () => {
 			...process.env,
 			SHELL: fakeShell(fixedPath, ""),
 		});
-		expect(result).toBe(fixedPath);
+		expectShellPath(result, fixedPath);
 	});
 
 	it("ignores what an interactive shell prints around the PATH", async () => {
@@ -78,7 +85,7 @@ describe("readLoginShellPath", () => {
 			...process.env,
 			SHELL: fakeShell(fixedPath, "Welcome to your shell\\n"),
 		});
-		expect(result).toBe(fixedPath);
+		expectShellPath(result, fixedPath);
 	});
 
 	it("resolves undefined when the shell prints no marked PATH", async () => {

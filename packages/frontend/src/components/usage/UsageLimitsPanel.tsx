@@ -355,7 +355,7 @@ export function UsageLimitsPanel({
 	/** Threads that wait on a limit now, from the thread list's feed. */
 	waiting?: readonly WaitingThread[];
 }) {
-	if (limits.agents.length === 0) return <Empty text="No agent has run yet." />;
+	if (limits.agents.length === 0) return <Empty text="No agent installed" />;
 	return (
 		<div className="grid min-w-0 gap-4" data-testid="usage-limits">
 			{limits.agents.map((a) => {
@@ -388,7 +388,16 @@ export function UsageLimitsPanel({
 								</Hint>
 							)}
 							{a.windows.length === 0 && (
-								<AgentGap agent={a.agent} text="No windows reported" />
+								<span data-testid={`limits-empty-${a.agent}`}>
+									<AgentGap
+										agent={a.agent}
+										text={
+											a.empty === "no-run-yet"
+												? "Shows after a run"
+												: "Not reported"
+										}
+									/>
+								</span>
 							)}
 						</div>
 						{a.windows.length > 0 && (

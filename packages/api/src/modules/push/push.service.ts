@@ -22,6 +22,7 @@ import {
 	type PushPayload,
 } from "@prismalens/contracts";
 import * as webpush from "web-push";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { askLinkState } from "./ask-state.js";
 
@@ -78,7 +79,7 @@ export class PushService
 		await this.flush().catch((error: unknown) =>
 			this.logger.warn(`Boot push reconciliation failed: ${String(error)}`),
 		);
-		this.timer = setInterval(() => {
+		this.timer = clock.setInterval(() => {
 			this.flush().catch((error: unknown) =>
 				this.logger.warn(`Push send failed: ${String(error)}`),
 			);
@@ -104,7 +105,7 @@ export class PushService
 			orderBy: { createdAt: "asc" },
 			take: 100,
 		});
-		const age = Date.now();
+		const age = clock.now();
 		const due = rows.filter(
 			(r) =>
 				age - r.createdAt.getTime() >=
@@ -136,12 +137,12 @@ export class PushService
 				where: { id: row.id },
 				data: {
 					attempts: { increment: 1 },
-					...(settle ? { deliveredAt: new Date() } : {}),
+					...(settle ? { deliveredAt: clock.date() } : {}),
 				},
 			});
 		}
 		await this.prisma.pushOutbox.deleteMany({
-			where: { deliveredAt: { lt: new Date(Date.now() - KEEP_DELIVERED_MS) } },
+			where: { deliveredAt: { lt: new Date(clock.now() - KEEP_DELIVERED_MS) } },
 		});
 		return settled;
 	}
@@ -166,7 +167,7 @@ export class PushService
 			);
 			return this.prisma.pushSubscription.update({
 				where: { id: sub.id },
-				data: { lastDeliveryAt: new Date(), lastError: null },
+				data: { lastDeliveryAt: clock.date(), lastError: null },
 			});
 		} catch (error) {
 			const status =
@@ -180,7 +181,7 @@ export class PushService
 						: error instanceof Error
 							? error.message
 							: String(error),
-					...(expired ? { expiredAt: new Date() } : {}),
+					...(expired ? { expiredAt: clock.date() } : {}),
 				},
 			});
 		}
@@ -200,7 +201,7 @@ export class PushService
 		const sub = await this.prisma.pushSubscription.upsert({
 			where: { deviceId },
 			create: { deviceId, ...data },
-			update: { ...data, createdAt: new Date() },
+			update: { ...data, createdAt: clock.date() },
 		});
 		return pushHealth(sub);
 	}

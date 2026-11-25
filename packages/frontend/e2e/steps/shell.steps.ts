@@ -120,19 +120,23 @@ When("I open the board", async ({ page }) => {
 });
 
 Then(
-	"the sidebar shows Threads, Automation, Services, Operations and Settings with Operations current",
+	"the sidebar shows Triggers, Projects, Operations and Settings beside the threads, with Operations current",
 	async ({ page }) => {
 		const sidebar = page.getByTestId("sidebar");
-		// Operations keeps the test id `incidents`: it is the board at /incidents (#1020).
-		for (const door of [
-			"threads",
-			"automation",
-			"services",
-			"incidents",
-			"settings",
+		// Operations keeps the test id `incidents`, Triggers `automation` (#1020, #1101 nav).
+		for (const [door, label] of [
+			["automation", "Triggers"],
+			["projects", "Projects"],
+			["incidents", "Operations"],
+			["settings", "Settings"],
 		]) {
-			await expect(sidebar.getByTestId(`nav-${door}`)).toBeVisible();
+			await expect(sidebar.getByTestId(`nav-${door}`)).toHaveText(
+				new RegExp(`^${label}`),
+			);
 		}
+		// At full width the list sits in the sidebar; its rail door opens it only when folded.
+		await expect(sidebar.getByTestId("thread-list")).toBeVisible();
+		await expect(sidebar.getByTestId("nav-threads")).toBeHidden();
 		await expect(sidebar.getByTestId("nav-incidents")).toHaveAttribute(
 			"aria-current",
 			"page",
@@ -142,12 +146,13 @@ Then(
 
 Then("the sidebar lists INC-1", async ({ page }) => {
 	const incident = world(page).incident;
-	// One flat list of threads; a row is found by where it goes (#1020).
+	// A row is found by where it goes: the incident, at its run (#1020).
 	await expect(
 		page
 			.getByTestId("sidebar")
 			.getByTestId("thread-list")
-			.locator(`a[href="/incidents/${incident?.id}"]`),
+			.locator(`a[href^="/incidents/${incident?.id}/"]`)
+			.first(),
 	).toBeVisible();
 });
 
@@ -158,13 +163,13 @@ When("I open Alerts", async ({ page }) => {
 	await expect(page).toHaveURL(/\/alerts$/);
 });
 
-When("I open Automation", async ({ page }) => {
+When("I open Triggers", async ({ page }) => {
 	await page.getByTestId("sidebar").getByTestId("nav-automation").click();
 	await expect(page).toHaveURL(/\/automation$/);
 });
 
 Then(
-	"Automation is current, the page offers schedules and alerts, and the sidebar keeps the threads",
+	"Triggers is current, the page offers schedules and alerts, and the sidebar keeps the threads",
 	async ({ page }) => {
 		const sidebar = page.getByTestId("sidebar");
 		await expect(sidebar.getByTestId("nav-automation")).toHaveAttribute(
@@ -239,7 +244,7 @@ When(
 			"true",
 		);
 		await page.getByTestId("composer-subject").click();
-		await page.getByRole("menuitemradio", { name: service }).click();
+		await page.getByRole("option", { name: service, exact: true }).click();
 		const box = page.getByTestId("composer-input");
 		await box.fill("/");
 		await page.getByTestId("composer-slash-note").click();
@@ -410,7 +415,7 @@ Then("a sheet lists the shortcuts", async ({ page }) => {
 	const sheet = page.getByTestId("shortcut-sheet");
 	await expect(sheet).toBeVisible();
 	await expect(sheet).toContainText("Log incident");
-	await expect(sheet).toContainText("Go to Threads");
+	await expect(sheet).toContainText("Go to Home");
 	await page.keyboard.press("Escape");
 	await expect(sheet).toBeHidden();
 });
@@ -474,38 +479,30 @@ When("I open the app", async ({ page }) => {
 });
 
 Then(
-	"the top strip shows New, Threads, Automation, Services and Settings as icons, with New current",
+	"the top strip shows Menu and New as icons, and the menu holds Home, Search, Triggers, Projects and Settings, with Home current",
 	async ({ page }) => {
+		// The phone's bar is Menu and New; the doors sit in the menu's drawer (PhoneStrip, #1020).
 		const strip = page.getByTestId("topbar");
-		await expect(strip.getByTestId("strip-new")).toBeVisible();
-		const menuBtn = strip.getByTestId("strip-menu");
-		if (await menuBtn.isVisible().catch(() => false)) {
-			await menuBtn.click();
-			const menu = page.getByTestId("phone-menu");
-			await expect(menu).toBeVisible();
-			for (const [slug, door] of [
-				["new", "New"],
-				["threads", "Threads"],
-				["automation", "Automation"],
-				["services", "Services"],
-				["settings", "Settings"],
-			]) {
-				await expect(menu.getByTestId(`menu-${slug}`)).toContainText(door);
-			}
-			await page.keyboard.press("Escape");
-		} else {
-			for (const [slug, door] of [
-				["new", "New"],
-				["threads", "Threads"],
-				["automation", "Automation"],
-				["services", "Services"],
-				["settings", "Settings"],
-			]) {
-				await expect(strip.getByTestId(`strip-${slug}`)).toHaveAccessibleName(
-					new RegExp(`^${door}(, \\d+)?$`),
-				);
-			}
+		await expect(strip.getByTestId("strip-new")).toHaveAccessibleName("New");
+		await expect(strip.getByTestId("strip-menu")).toHaveAccessibleName("Menu");
+		await strip.getByTestId("strip-menu").click();
+		const menu = page.getByTestId("phone-menu");
+		await expect(menu).toBeVisible();
+		for (const [slug, door] of [
+			["new", "Home"],
+			["search", "Search"],
+			["automation", "Triggers"],
+			["projects", "Projects"],
+			["settings", "Settings"],
+		]) {
+			await expect(menu.getByTestId(`menu-${slug}`)).toHaveText(door);
 		}
+		await expect(menu.getByTestId("menu-new")).toHaveAttribute(
+			"aria-current",
+			"page",
+		);
+		await page.keyboard.press("Escape");
+		await expect(menu).toBeHidden();
 		await expect(page.getByTestId("sidebar")).toBeHidden();
 	},
 );
@@ -560,12 +557,11 @@ When("I press the chevron at the left of the band", async ({ page }) => {
 	await here(page).getByTestId("incident-back").click();
 });
 
-Then("I am on the thread list after the chevron", async ({ page }) => {
+// The incident header's Back leads Home, where a new thread starts (IncidentHeader, #1101).
+Then("I am on Home after the chevron", async ({ page }) => {
 	const p = here(page);
-	await expect.poll(() => pathOf(p)).toBe("/threads");
-	await expect(
-		p.getByRole("heading", { name: "Threads", level: 1 }),
-	).toBeVisible();
+	await expect.poll(() => pathOf(p)).toBe("/new");
+	await expect(p.getByTestId("home")).toBeVisible();
 });
 
 When("I press {string} in the header", async ({ page }, _label: string) => {
@@ -615,7 +611,10 @@ Then(
 	async ({ page }) => {
 		const list = page.getByTestId("settings-section-list");
 		await expect(list).toBeVisible();
-		await list.getByTestId("settings-section-devices").click();
+		// Devices folds under Notifications, a tab over its page (SETTINGS_NAV, #1101).
+		await list.getByTestId("settings-section-notifications").click();
+		await expect(page).toHaveURL(/tab=notifications/);
+		await page.getByTestId("settings-tab-devices").click();
 		await expect(page).toHaveURL(/tab=devices/);
 		await expect(page.getByTestId("devices-list")).toBeVisible();
 		await page
@@ -623,8 +622,8 @@ Then(
 			.getByTestId("settings-back")
 			.click();
 		await expect(page.getByTestId("settings-section-list")).toBeVisible();
-		await list.getByTestId("settings-section-devices").click();
-		await expect(page.getByTestId("devices-list")).toBeVisible();
+		await list.getByTestId("settings-section-notifications").click();
+		await expect(page.getByTestId("settings-page-tabs")).toBeVisible();
 		const topbar = page.getByTestId("topbar");
 		const stripSettings = topbar.getByTestId("strip-settings");
 		if (await stripSettings.isVisible().catch(() => false)) {
@@ -762,9 +761,13 @@ Given("I am on Settings, Devices", async ({ page }) => {
 });
 
 Then(
-	"the first row reads the name this browser paired under, and is marked {string}",
+	"the row marked {string} reads the name this browser paired under",
 	async ({ page }, mark: string) => {
-		const first = page.getByTestId("device-row").first();
+		// Rows list in pairing order, and the stack's simulator pairs before this browser (#1101).
+		const first = page
+			.getByTestId("device-row")
+			.filter({ has: page.getByTestId("device-current") });
+		await expect(first).toHaveCount(1);
 		const ua = await page.evaluate(() => navigator.userAgent);
 		// The name the redeem sent beats the startup link's hostname label (#1024).
 		await expect(first.getByTestId("device-name")).toHaveText(

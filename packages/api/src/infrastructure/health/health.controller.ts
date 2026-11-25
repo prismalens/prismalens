@@ -5,6 +5,7 @@ import { Controller, Get } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { EnvironmentVariables } from "@prismalens/config";
 import { Public } from "../../core/auth/public.decorator.js";
+import * as clock from "../../core/clock.js";
 import {
 	type TelemetryNoticeState,
 	TelemetryService,
@@ -41,7 +42,7 @@ export class HealthController {
 			.catch((): TelemetryNoticeState => "off");
 		return {
 			status: "ok",
-			timestamp: new Date().toISOString(),
+			timestamp: clock.date().toISOString(),
 			version: resolveServiceVersion(),
 			services: {
 				api: true,

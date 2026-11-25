@@ -13,6 +13,9 @@
 			"!**/*.spec.ts",
 			"packages/frontend/e2e/**/*.spec.ts",
 			"packages/frontend/e2e/**/*.test.ts",
+			"packages/api/src/**/*.spec.ts",
+			"packages/api/test/**/*.spec.ts",
+			"!tools/lint/fixtures",
 			"!**/*.md",
 			"!scripts/launcher/ini.cjs",
 			"!**/*.yaml",
@@ -69,6 +72,15 @@
 		}
 	},
 	"overrides": [
+		{
+			"includes": [
+				"packages/api/src/**/*.spec.ts",
+				"packages/api/test/**/*.spec.ts"
+			],
+			"linter": { "rules": { "preset": "none" } },
+			"formatter": { "enabled": false },
+			"assist": { "enabled": false }
+		},
 		{
 			"includes": ["packages/frontend/e2e/**"],
 			"linter": {
@@ -215,6 +227,24 @@
 		"stylesheet": "packages/frontend/src/app.css"
 	},
 	"plugins": [
+		{
+			"path": "./tools/lint/no-direct-clock.grit",
+			"includes": [
+				"packages/api/src/**/*.ts",
+				"!packages/api/src/**/*.spec.ts",
+				"!packages/api/src/core/clock.ts",
+				"!packages/api/src/infrastructure/dispatch/process-signals.ts"
+			]
+		},
+		{
+			"path": "./tools/lint/small-spec-no-child-process.grit",
+			"includes": [
+				"packages/api/src/**/*.spec.ts",
+				"packages/api/test/**/*.spec.ts",
+				"!packages/api/**/*.int.spec.ts",
+				"!packages/api/test/small-tier*.spec.ts"
+			]
+		},
 		{
 			"path": "./packages/frontend/biome-plugins/one-spinner.grit",
 			"includes": [

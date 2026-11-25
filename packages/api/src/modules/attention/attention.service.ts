@@ -37,6 +37,8 @@ import {
 	type ThreadStatus,
 	ThreadStatusSchema,
 } from "@prismalens/contracts";
+import type { Prisma } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { stepText } from "../incidents/incidents.service.js";
@@ -156,7 +158,7 @@ export class AttentionService
 			this.firstUnseen(id, p).then((u) => u.key),
 		);
 		void this.follow();
-		this.timer = setInterval(() => this.soon(), TICK_MS);
+		this.timer = clock.setInterval(() => this.soon(), TICK_MS);
 		this.timer.unref();
 		this.soon();
 	}
@@ -185,7 +187,7 @@ export class AttentionService
 
 	private soon(): void {
 		clearTimeout(this.debounce);
-		this.debounce = setTimeout(() => {
+		this.debounce = clock.setTimeout(() => {
 			void this.scan().catch((error: unknown) =>
 				this.logger.warn(`Attention scan failed: ${String(error)}`),
 			);
@@ -194,7 +196,7 @@ export class AttentionService
 	}
 
 	/** One scan at a time; a hint during a scan runs one more after it. */
-	scan(now = new Date()): Promise<number> {
+	scan(now = clock.date()): Promise<number> {
 		if (this.scanning) {
 			this.again = true;
 			return this.scanning;
@@ -241,8 +243,10 @@ export class AttentionService
 			})),
 			now,
 		);
-		let recorded = 0;
-		let changed = false;
+		// The scan's writes go in one transaction, not three per row: 500 new threads were ~1500 fsyncs (#1154).
+		const marks: Prisma.PrismaPromise<unknown>[] = [];
+		const events: Prisma.AttentionEventCreateManyInput[] = [];
+		let limitTold = false;
 		for (const row of rows) {
 			const info = status.get(row.id);
 			if (!info) continue;
@@ -262,7 +266,6 @@ export class AttentionService
 						? "working"
 						: (ThreadStatusSchema.safeParse(seen.lastStatus).data ?? null);
 			if (prev === next && !newTurn) continue;
-			changed = true;
 			const isTriggered = triggered(row);
 			const kind = attentionKindOf({
 				prev,
@@ -270,26 +273,27 @@ export class AttentionService
 				triggered: isTriggered,
 				fresh: now.getTime() - row.createdAt.getTime() <= FRESH_MS,
 			});
-			await this.prisma.threadAttention.upsert({
-				where: { investigationId: row.id },
-				create: {
-					investigationId: row.id,
-					lastStatus: next,
-					turnEndedAt: ended,
-				},
-				update: { lastStatus: next, turnEndedAt: ended },
-			});
-			const stale = staleKinds(next);
-			await this.prisma.attentionEvent.updateMany({
-				where: {
-					investigationId: row.id,
-					readAt: null,
-					kind: { in: stale },
-				},
-				data: { readAt: now },
-			});
+			marks.push(
+				this.prisma.threadAttention.upsert({
+					where: { investigationId: row.id },
+					create: {
+						investigationId: row.id,
+						lastStatus: next,
+						turnEndedAt: ended,
+					},
+					update: { lastStatus: next, turnEndedAt: ended },
+				}),
+				this.prisma.attentionEvent.updateMany({
+					where: {
+						investigationId: row.id,
+						readAt: null,
+						kind: { in: staleKinds(next) },
+					},
+					data: { readAt: now },
+				}),
+			);
 			if (!kind) continue;
-			await this.record(
+			const event = await this.eventOf(
 				row,
 				kind,
 				next,
@@ -297,12 +301,25 @@ export class AttentionService
 				info.mode ?? info.host ?? null,
 				isTriggered,
 				now,
+				limitTold,
 			);
-			recorded++;
+			if (
+				event.kind === "limited" &&
+				event.notify &&
+				event.resetsAt &&
+				new Date(event.resetsAt) > now
+			)
+				limitTold = true;
+			events.push(event);
 		}
+		if (!marks.length) return 0;
+		await this.prisma.$transaction([
+			...marks,
+			this.prisma.attentionEvent.createMany({ data: events }),
+		]);
 		// A scan that changed nothing says nothing: each hint re-reads every attention list (#1130).
-		if (changed) liveChanges.noteTopic("attention");
-		return recorded;
+		liveChanges.noteTopic("attention");
+		return events.length;
 	}
 
 	/**
@@ -313,6 +330,7 @@ export class AttentionService
 		kind: AttentionKind,
 		row: { parentId: string | null; role: string | null },
 		now: Date,
+		toldThisScan: boolean,
 	): Promise<boolean> {
 		if (
 			kind !== "limited" ||
@@ -320,6 +338,7 @@ export class AttentionService
 			STOP_REASONS.usage_limit.tellsHuman !== "once_per_limit"
 		)
 			return false;
+		if (toldThisScan) return true;
 		return (
 			(await this.prisma.attentionEvent.count({
 				where: { kind: "limited", notify: true, resetsAt: { gt: now } },
@@ -327,7 +346,7 @@ export class AttentionService
 		);
 	}
 
-	private async record(
+	private async eventOf(
 		row: {
 			id: string;
 			parentId: string | null;
@@ -344,7 +363,8 @@ export class AttentionService
 		mode: string | null,
 		isTriggered: boolean,
 		now: Date,
-	): Promise<void> {
+		limitTold: boolean,
+	): Promise<Prisma.AttentionEventCreateManyInput> {
 		const follow =
 			row.attention?.follow === "watch" || row.attention?.follow === "mute"
 				? row.attention.follow
@@ -364,7 +384,7 @@ export class AttentionService
 					resetKnown: !!row.limitResetsAt,
 				})
 			) &&
-			!(await this.limitAlreadyTold(kind, row, now));
+			!(await this.limitAlreadyTold(kind, row, now, limitTold));
 		const viewers = this.presence.viewers(row.id, now.getTime());
 		const revoked = viewers.length
 			? new Set(
@@ -385,20 +405,18 @@ export class AttentionService
 					: kind === "started"
 						? row.triggerType
 						: null;
-		await this.prisma.attentionEvent.create({
-			data: {
-				investigationId: row.id,
-				kind,
-				status: next,
-				detail,
-				resetsAt: kind === "limited" ? row.limitResetsAt : null,
-				ordinal: row.eventOrdinal,
-				generation: row.eventGeneration,
-				notify,
-				silenced,
-				createdAt: now,
-			},
-		});
+		return {
+			investigationId: row.id,
+			kind,
+			status: next,
+			detail,
+			resetsAt: kind === "limited" ? row.limitResetsAt : null,
+			ordinal: row.eventOrdinal,
+			generation: row.eventGeneration,
+			notify,
+			silenced,
+			createdAt: now,
+		};
 	}
 
 	/** The newest open ask's title: a run's from its record, a tool's from its table. */
@@ -453,7 +471,7 @@ export class AttentionService
 		return { events: await this.views(rows), unread };
 	}
 
-	async markRead(ids?: string[], now = new Date()): Promise<number> {
+	async markRead(ids?: string[], now = clock.date()): Promise<number> {
 		const { count } = await this.prisma.attentionEvent.updateMany({
 			where: { readAt: null, ...(ids ? { id: { in: ids } } : {}) },
 			data: { readAt: now },
@@ -531,7 +549,7 @@ export class AttentionService
 	}
 
 	/** What a card or a notification says about each thread. */
-	async threads(ids: string[], now = new Date()): Promise<AttentionThread[]> {
+	async threads(ids: string[], now = clock.date()): Promise<AttentionThread[]> {
 		if (!ids.length) return [];
 		const rows = await this.prisma.investigation.findMany({
 			where: { id: { in: ids } },
@@ -668,7 +686,7 @@ export class AttentionService
 	async markThreadRead(
 		id: string,
 		key: string,
-		now = new Date(),
+		now = clock.date(),
 	): Promise<boolean> {
 		const at = parseEventKey(key);
 		if (!at) return false;
@@ -736,7 +754,7 @@ export class AttentionService
 		deviceId: string,
 		threadId: string | null,
 		visible: boolean,
-		now = new Date(),
+		now = clock.date(),
 	): Promise<{ ttlMs: number }> {
 		if (!visible) {
 			this.presence.drop(deviceId);
@@ -748,7 +766,7 @@ export class AttentionService
 	}
 
 	/** Notes the operator is here; a gap since the last visible tab starts a new away. */
-	async touch(now = new Date()): Promise<Activity> {
+	async touch(now = clock.date()): Promise<Activity> {
 		const a = await this.activity();
 		const last = a.lastActiveAt ? Date.parse(a.lastActiveAt) : null;
 		const gap = last === null ? 0 : now.getTime() - last;

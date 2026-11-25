@@ -15,6 +15,7 @@ const mutateSpy = vi.fn();
 const mockSelection: { harness: string | null } = { harness: "claude-code" };
 const mockSettings: Record<string, unknown> = { harness: "claude-code" };
 const mutateAsyncSpy = vi.fn();
+let mockCheckError: Error | null = null;
 
 const mockHarnesses: HarnessStatus[] = [
 	{
@@ -111,6 +112,7 @@ vi.mock("@/lib/api/hooks", () => ({
 		mutate: vi.fn(),
 		mutateAsync: vi.fn(),
 		isPending: false,
+		error: mockCheckError,
 	}),
 }));
 
@@ -424,6 +426,23 @@ describe("HarnessSettings agents list (#907)", () => {
 		).toBeNull();
 	});
 
+	it("shows a failed Check on the agent's row", async () => {
+		mockCheckError = new Error("The API is unavailable");
+		try {
+			await act(async () => {
+				root.render(<HarnessSettings />);
+			});
+			const row = container.querySelector(
+				'[data-testid="harness-row-claude-code"]',
+			);
+			expect(row?.querySelector('[role="alert"]')?.textContent).toContain(
+				"The API is unavailable",
+			);
+		} finally {
+			mockCheckError = null;
+		}
+	});
+
 	it("shows the one warning when no agent can run", async () => {
 		const saved = mockHarnesses.map((h) => h.runnable);
 		for (const h of mockHarnesses) h.runnable = false;
@@ -436,10 +455,11 @@ describe("HarnessSettings agents list (#907)", () => {
 			expect(
 				container.querySelector('[data-testid="harness-none-available"]')
 					?.textContent,
-			).toBe("No agent can run. Add one to start investigations.");
+			).toBe("No agent can run.");
+			// Installed agents stay listed with their state (#1171).
 			expect(
 				container.querySelector('[data-testid^="harness-row-"]'),
-			).toBeNull();
+			).not.toBeNull();
 		} finally {
 			mockHarnesses.forEach((h, i) => {
 				h.runnable = saved[i] ?? false;
@@ -493,8 +513,11 @@ describe("HarnessSettings agent rows (#911)", () => {
 });
 
 describe("HarnessSettings signed-out row (w8-9)", () => {
-	it("says the picker's sentence when the last check needs a sign-in", async () => {
+	it("names the agent's own login command and the Check button when the last check needs a sign-in", async () => {
 		const saved = mockHarnesses[0].checked;
+		const savedHint = mockHarnesses[0].loginHint;
+		mockHarnesses[0].loginHint =
+			"`claude auth login`, or `ANTHROPIC_API_KEY` in env";
 		mockHarnesses[0].checked = {
 			at: "",
 			outcome: "sign-in-needed",
@@ -520,11 +543,14 @@ describe("HarnessSettings signed-out row (w8-9)", () => {
 			expect(
 				container.querySelector('[data-testid="harness-note-claude-code"]')
 					?.textContent,
-			).toBe(
-				"Claude Code is not signed in to its model provider. Sign in with its own CLI, then retry.",
-			);
+			).toBe("Run claude auth login in a terminal, then Check.");
+			expect(
+				container.querySelector('[data-testid="sign-in-copy-claude-code"] code')
+					?.textContent,
+			).toBe("claude auth login");
 		} finally {
 			mockHarnesses[0].checked = saved;
+			mockHarnesses[0].loginHint = savedHint;
 		}
 	});
 });

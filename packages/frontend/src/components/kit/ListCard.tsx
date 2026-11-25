@@ -30,6 +30,7 @@ export function ListCard({
 	menu,
 	selected,
 	mirrored,
+	fresh,
 	testId,
 }: {
 	title: string;
@@ -54,6 +55,8 @@ export function ListCard({
 	 * that row, so the card keeps its title and footer there (one fact, one place, #1101).
 	 */
 	mirrored?: boolean;
+	/** Just arrived: the whole card settles in once (motion.css `[data-new]`). */
+	fresh?: boolean;
 	testId?: string;
 }) {
 	const heading = (
@@ -81,6 +84,7 @@ export function ListCard({
 				"[&_[data-card-title]_a]:min-h-0! [&_[data-card-title]_a]:min-w-0 [&_[data-card-title]_a]:truncate [&_[data-card-title]_a]:outline-none [&_[data-card-title]_a]:after:absolute [&_[data-card-title]_a]:after:inset-0 [&_[data-card-title]_a]:after:rounded-surface [&_[data-card-title]_a:focus-visible]:after:ring-2 [&_[data-card-title]_a:focus-visible]:after:ring-accent",
 			)}
 			data-testid={testId}
+			data-new={fresh ? "" : undefined}
 		>
 			<div className="flex min-w-0 items-center gap-2 pr-6 [@media(hover:none)]:pr-12">
 				{icon && (

@@ -1,0 +1,8 @@
+{
+	"name": "agent-lock-opencode-ai",
+	"version": "0.0.0",
+	"private": true,
+	"dependencies": {
+		"opencode-ai": "1.19.6"
+	}
+}

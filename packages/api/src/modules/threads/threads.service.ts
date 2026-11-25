@@ -40,6 +40,7 @@ import {
 } from "@prismalens/contracts";
 import type { Investigation, Prisma } from "@prismalens/database";
 import { VIEW_ONLY } from "../../core/auth/owner.js";
+import * as clock from "../../core/clock.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { requireReadyHarness } from "../../core/harness/ready-harness.js";
 import { liveChanges } from "../../core/live/live-changes.js";
@@ -474,7 +475,7 @@ export class ThreadsService {
 	 * Every thread in its section (#1020). Paged by unit: an incident's listed
 	 * threads are one unit, so a page never splits a block.
 	 */
-	async feed(q: ThreadFeedQuery, now = new Date()): Promise<ThreadFeed> {
+	async feed(q: ThreadFeedQuery, now = clock.date()): Promise<ThreadFeed> {
 		const { settleAfterDays } = await this.getSettings();
 		const search = q.search?.trim();
 		const incidentMatch = incidentSearch(search);
@@ -828,7 +829,7 @@ export class ThreadsService {
 	}
 
 	async visit(id: string): Promise<{ lastVisitedAt: string }> {
-		const at = new Date();
+		const at = clock.date();
 		if (!(await this.readState(id, { lastVisitedAt: at })))
 			throw new ORPCError("NOT_FOUND", { message: "Thread not found" });
 		return { lastVisitedAt: at.toISOString() };
@@ -926,7 +927,7 @@ export class ThreadsService {
 			},
 		});
 		const prior = new Map(rows.map((r) => [r.id, r.settledAt]));
-		const now = new Date();
+		const now = clock.date();
 		if (!settled) return this.unsettle(id, block, rows, prior, now, restore);
 		const ended = await this.lifecycle.preview(id);
 		if (ended.running && !opts.stopRunning)
@@ -958,7 +959,7 @@ export class ThreadsService {
 		await this.lifecycle.endProcesses(ids);
 		// Taken after the runs and processes have ended, so their last write cannot post-date
 		// it: a later lastActivityAt reads unsettled (isSettled).
-		const settledAt = new Date();
+		const settledAt = clock.date();
 		const undoUntil = new Date(settledAt.getTime() + SETTLE_UNDO_MS);
 		await this.writeSettled(
 			ids.map((target) => ({ id: target, settledAt })),

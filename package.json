@@ -1,6 +1,6 @@
 {
 	"name": "prismalens-monorepo",
-	"version": "0.5.5",
+	"version": "0.5.6",
 	"private": true,
 	"description": "Open-source AI-powered incident analysis and root cause detection",
 	"license": "Apache-2.0",
@@ -24,7 +24,8 @@
 		"db:generate": "turbo run db:generate --filter=@prismalens/database",
 		"db:studio": "turbo run db:studio --filter=@prismalens/database",
 		"db:reset": "turbo run db:reset --filter=@prismalens/database",
-		"format-and-lint": "biome check . && node scripts/check-spawn-hidden.mjs && pnpm --filter @prismalens/frontend lint:look",
+		"quarantine:check": "node scripts/quarantine-check.mjs",
+		"format-and-lint": "biome check . && node scripts/docs-check.mjs && node scripts/check-spawn-hidden.mjs && node scripts/quarantine-check.mjs && node scripts/agent-locks.mjs check && pnpm --filter @prismalens/frontend lint:look",
 		"format-and-lint:fix": "biome check . --write",
 		"e2e:libs": "node scripts/e2e-libs.mjs",
 		"publint": "pnpm --filter prismalens exec publint --strict",
@@ -70,6 +71,7 @@
 			"multer": "GHSA-535w-7cp7-47q4, GHSA-wc9g-mqfw-jrwm, GHSA-qfvm-cv95-jqjf, GHSA-qvfw-j98x-7q72, GHSA-3pph-fpjx-jg34 (multer <2.4.0). Via @nestjs/platform-express. REMOVE once it pulls >=2.4.0.",
 			"http-cache-semantics": "Dependabot #175 (http-cache-semantics <=4.2.0, max-stale serving cross-user shared-cache responses). 4.3.0 is the advisory's patched floor and clears the alert; it does not fully fix max-stale, which upstream disputes. Dev-only via electron-builder > @electron/get > got > cacheable-request (^4.0.0), a private download cache, so PrismaLens produces no shared-cache response to harden. REMOVE once cacheable-request pulls >=4.3.0 by plain resolution.",
 			"@prisma/config>deepmerge-ts": "Dependabot #161 (deepmerge-ts <8.0.0, stack exhaustion on recursive graphs). @prisma/config 7.10.0 — the latest release — pins `deepmerge-ts: 7.1.5` EXACTLY. REMOVE once @prisma/config pins >=8.0.0.",
+			"@prisma/config>effect": "GHSA-7589-6fvf-x4pw (effect <=3.22.0, ReDoS in Schema.TemplateLiteral). @prisma/config 7.10.1 — the latest 7.x — pins `effect: 3.20.0` EXACTLY; it reads prisma.config.ts at CLI time only. REMOVE once @prisma/config pins >=3.22.1.",
 			"@prisma/adapter-better-sqlite3>better-sqlite3": "@prisma/adapter-better-sqlite3 7.10.0 — the latest release — declares `better-sqlite3: ^12.6.0`, whose 12.x line ships prebuilds only through an install script that npm 12 no longer runs. 13.x carries N-API prebuilds inside its tarball and the adapter passes the database suite on it, so it shares the workspace's 13.x copy. REMOVE once the adapter's range admits ^13."
 		},
 		"//auditConfig": {
@@ -83,6 +85,7 @@
 		"overrides": {
 			"http-cache-semantics": "^4.3.0",
 			"@prisma/config>deepmerge-ts": "^8.0.2",
+			"@prisma/config>effect": "^3.22.1",
 			"vite": "^8.3.3",
 			"ws": ">=8.21.0",
 			"multer": ">=2.5.0",

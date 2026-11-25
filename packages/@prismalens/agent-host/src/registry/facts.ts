@@ -2,9 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * What PrismaLens relies on an agent to do, each with the versions it was last checked on.
- * `probe` facts are asserted every night from `initialize`; `source` facts were read in the
- * agent's source and fail the pin-bump PR's check until someone reads them again.
+ * What PrismaLens relies on an agent to do. `probe` facts are asserted from `initialize` on
+ * every candidate pin and nightly; `source` facts were read in the agent's source, carry the
+ * versions they were read on, and fail the pin-bump PR's check until someone reads them again.
  */
 
 /** How a fact was checked: the zero-token probe, or reading the agent's source. */
@@ -16,13 +16,14 @@ export interface FactVersions {
 	adapter: string | null;
 }
 
-export interface AgentFact<V, C extends FactCheck = FactCheck> {
+export type AgentFact<V, C extends FactCheck = FactCheck> = {
 	value: V;
 	via: C;
-	verifiedAt: FactVersions;
 	/** For a `source` fact: the file and symbol that were read. */
 	where?: string;
-}
+} & (C extends "source"
+	? { verifiedAt: FactVersions }
+	: { verifiedAt?: never });
 
 /** What a stop does to a turn's in-session sub-agents, as far as the agent lets PrismaLens choose. */
 export interface SubagentStopFacts {
@@ -123,16 +124,17 @@ export function factMismatches(
 	return [...probed, ...fork];
 }
 
-/** Each fact not checked on `at`, as `name (via, cli X, adapter Y)`. */
+/** Each source-read fact not read on `at`, as `name (source, cli X, adapter Y)`; probed facts are asserted live. */
 export function staleFacts(
 	facts: AgentFacts | undefined,
 	at: FactVersions,
-	via?: FactCheck,
 ): string[] {
 	if (!facts) return [];
 	return Object.entries(facts).flatMap(([name, f]) => {
-		const fact = f as AgentFact<unknown>;
-		if (via && fact.via !== via) return [];
+		const fact = f as
+			| AgentFact<unknown, "source">
+			| AgentFact<unknown, "probe">;
+		if (!fact.verifiedAt) return [];
 		const { cli, adapter } = fact.verifiedAt;
 		return cli === at.cli && adapter === at.adapter
 			? []

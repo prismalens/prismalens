@@ -2,8 +2,6 @@
 @pr2
 Feature: Resolve, reopen, refire
 
-  # #1154: UI moved: waits for `getByTestId('resolve-dialog')`, which no longer renders
-  @fixme
   Scenario: Resolve is one step and warns about firing alerts
     Given INC-1 is Acknowledged with one alert still firing
     When I press "Resolve" in the band
@@ -14,8 +12,6 @@ Feature: Resolve, reopen, refire
     And the Overview shows "Cause" with the text and an "Edit" control
     And the alert reads resolved with the incident
 
-  # #1154: UI moved: waits for `getByTestId('header-resolve')`, which no longer renders
-  @fixme
   Scenario: Alerts cleared is not Resolved
     Given INC-1 is Acknowledged
     When the source resolves its alert
@@ -28,15 +24,11 @@ Feature: Resolve, reopen, refire
     And the new incident's Overview reads "Fired before" as "1 time this week"
     And INC-1 stays Resolved, in Recently resolved reading "Resolved by you"
 
-  # #1154: UI moved: waits for `getByTestId('header-resolve')`, which no longer renders
-  @fixme
   Scenario: The same alert fires again on Alerts cleared
     Given INC-1 reads "Alerts cleared" and the flap window is open
     When the same alert fires again
     Then INC-1 is under "Not investigated" reading "Not investigated yet" and the band reads "Triggered"
 
-  # #1154: UI moved: waits for `getByTestId('header-resolve')`, which no longer renders
-  @fixme
   Scenario: Reopen keeps the old cause
     Given INC-1 is Resolved with a cause
     When I press "Reopen" and confirm
@@ -45,8 +37,6 @@ Feature: Resolve, reopen, refire
     Then INC-1 leaves Needs you while the run works
 
   # #673 w37: incidents spanning several services.
-  # #1154: UI moved: waits for `getByTestId('header-merge')`, which no longer renders
-  @fixme
   Scenario: Merge one incident into another across two services
     Given INC-1 on one service and INC-2 on another, both open
     When I pick "Merge into…" in INC-2's band menu, choose INC-1 and confirm

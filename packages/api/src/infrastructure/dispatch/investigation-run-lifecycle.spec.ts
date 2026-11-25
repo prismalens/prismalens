@@ -15,6 +15,7 @@ import { join } from "node:path";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CreateTimelineEntryDto } from "../../modules/timeline/dto/index.js";
+import { onFakeTime } from "../../../test/support/fake-time.js";
 import type { Snapshot } from "../../core/harness/repo-source.service.js";
 import type { RepoRef, RunPorts } from "./run-ports.js";
 import { SHUTDOWN_REASON } from "./run-abort.js";
@@ -541,7 +542,7 @@ describe("the run owns its row's end (#673 w59, OBJ-010 b)", () => {
 		expect(titles).toContain("Investigation stopped");
 		expect(titles).not.toContain("Investigation failed");
 		expect(titles).not.toContain("Investigation completed");
-		// After a restart the same row ends cancelled too: dispatch.service.spec.ts, T12 "a running job whose row recorded a Stop".
+		// After a restart the same row ends cancelled too: dispatch.service.int.spec.ts, T12 "a running job whose row recorded a Stop".
 	});
 
 	it("a result write refused with no Stop asked for ends the row failed with the reason, never succeeded", async () => {
@@ -601,8 +602,9 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 		const bin = join(tmp, "bin");
 		mkdirSync(bin);
 		writeFileSync(join(bin, "opencode"), "#!/bin/sh\n", { mode: 0o755 });
+		writeFileSync(join(bin, "opencode.cmd"), "@echo off\n", { mode: 0o755 });
 		vi.stubEnv("PATH", bin);
-		vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+		vi.useFakeTimers({ now: NOW });
 		mocks.conductRun.mockReset();
 	});
 	afterEach(() => {
@@ -873,14 +875,18 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 	it.each(["answered", "stopped", "error"] as const)(
 		"Ask on a stopped reportless investigation ending %s: standing stays cancelled, lastTurnOutcome truthful, events dropped (T9)",
 		async (outcome) => {
-			const { ports } = await followUp("investigation", R.cancelled, outcome, {
+			const ended = followUp("investigation", R.cancelled, outcome, {
 				ports: { appendEvents: vi.fn(async () => { throw new Error("database is locked"); }) },
 			});
+			// Each end of the run retries the dropped batch after 250, 1 000 and 3 000 ms before it gives up.
+			const { ports } = await onFakeTime(ended);
 
 			expect(vi.mocked(ports.settleFollowUp).mock.calls).toEqual([
 				["inv-1", { ...kept(R.cancelled), lastTurnOutcome: outcome }, { stopped: outcome === "stopped" }],
 			]);
 		},
+		// The store's real end-of-run retries (250 + 1000 + 3000 ms) run before it settles.
+		15_000,
 	);
-	// T9 restart: dispatch.service.spec.ts, T12 "an Ask on a stopped reportless run cut off by a restart keeps it cancelled".
+	// T9 restart: dispatch.service.int.spec.ts, T12 "an Ask on a stopped reportless run cut off by a restart keeps it cancelled".
 });

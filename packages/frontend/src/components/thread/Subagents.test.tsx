@@ -3,13 +3,12 @@
 // Copyright 2026 Sumit Patel
 
 import type { CanonicalEvent } from "@prismalens/contracts";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RunSubagentPanel } from "@/components/run/RunSubagentPanel";
 import type { TranscriptItem } from "@/lib/investigation-events";
 import type { SubagentView } from "@/lib/subagents";
+import { type RenderedApp, renderWithApp } from "@/test/render";
 import { ThreadSidePanel } from "./panel/ThreadSidePanel";
 import { SubagentList } from "./StatusBox";
 import { SubagentNode } from "./SubagentNode";
@@ -112,34 +111,25 @@ const words = (path: string[], text: string, seq: number): CanonicalEvent => ({
 });
 
 let container: HTMLDivElement;
-let root: Root;
+let app: RenderedApp | undefined;
 const q = (id: string) => container.querySelector(`[data-testid="${id}"]`);
 const all = (id: string) =>
 	Array.from(container.querySelectorAll(`[data-testid="${id}"]`));
 
 async function render(node: ReactNode) {
-	const client = new QueryClient({
-		defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-	});
-	await act(async () =>
-		root.render(
-			<QueryClientProvider client={client}>{node}</QueryClientProvider>,
-		),
-	);
+	if (app) await app.rerender(node);
+	else app = await renderWithApp(node);
+	container = app.container;
 	await act(async () => new Promise((r) => setTimeout(r, 10)));
 }
 
 beforeEach(() => {
 	vi.useFakeTimers({ toFake: ["Date"], now: NOW });
-	container = document.createElement("div");
-	document.body.appendChild(container);
-	root = createRoot(container);
+	app = undefined;
 	state.cancelled = [];
 	state.refuse = false;
 });
 afterEach(async () => {
-	await act(async () => root.unmount());
-	container.remove();
 	vi.useRealTimers();
 });
 

@@ -5,8 +5,17 @@ set -eu
 
 repo="prismalens/prismalens"
 api="https://api.github.com/repos/${repo}"
-base_url="${PRISMALENS_RELEASE_BASE_URL:-https://github.com/${repo}/releases/download}"
-data_root="${XDG_DATA_HOME:-$HOME/.local/share}/prismalens"
+# Archives: mirror first (it keeps the newest releases only), GitHub second; a set base is the only one.
+# SHA256SUMS: from the last base only (GitHub, or the set one), so a mirror can't vouch for its own bytes.
+mirror_base="https://downloads.prismalens.io"
+github_base="https://github.com/prismalens/prismalens/releases/download"
+if [ -n "${PRISMALENS_RELEASE_BASE_URL:-}" ]; then
+	bases="${PRISMALENS_RELEASE_BASE_URL%/}"
+else
+	bases="$mirror_base $github_base"
+fi
+sums_base=${bases##* }
+data_root="${PRISMALENS_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/prismalens}"
 runtime_root="${data_root}/runtime"
 receipt="${data_root}/receipt"
 bin_dir="${PRISMALENS_INSTALL_BIN_DIR:-$HOME/.local/bin}"
@@ -34,8 +43,11 @@ Options:
 Environment:
   PRISMALENS_VERSION, PRISMALENS_NO_MODIFY_PATH=1   Same as the flags.
   PRISMALENS_ALLOW_DOWNGRADE=1   Allow an older version than the one installed.
+  PRISMALENS_HOME                Where the runtime and receipt go (default ~/.local/share/prismalens).
   PRISMALENS_INSTALL_BIN_DIR     Where pl goes (default ~/.local/bin).
-  PRISMALENS_RELEASE_BASE_URL    Mirror for the release downloads.
+  PRISMALENS_RELEASE_BASE_URL    Download only from this base, as <base>/v<version>/<file>.
+                                 Default: archives from downloads.prismalens.io, then GitHub releases;
+                                 SHA256SUMS always from GitHub (or that base).
   NO_COLOR                       Plain output.
 EOF
 }
@@ -98,7 +110,11 @@ fail() {
 
 # --- helpers ----------------------------------------------------------------
 
+# fetch <url> <file> [progress]: a progress bar only when asked and stderr is a terminal.
+# ${stall} seconds without a byte aborts it, so a silent mirror can't hold the install.
 fetch() {
+	speed=
+	[ -z "${stall:-}" ] || speed="--speed-limit 1024 --speed-time $stall"
 	case "$1" in
 	file://*)
 		[ -f "${1#file://}" ] || return 1
@@ -107,12 +123,43 @@ fetch() {
 		;;
 	esac
 	if command -v curl >/dev/null 2>&1; then
-		curl -fsSL "$1" -o "$2" 2>/dev/null
+		if [ "${3:-}" = progress ] && [ -t 2 ]; then
+			curl -fL --retry 2 --connect-timeout 20 $speed --progress-bar "$1" -o "$2" || { rm -f "$2"; return 1; }
+		else
+			curl -fsSL --retry 2 --connect-timeout 20 $speed "$1" -o "$2" 2>/dev/null
+		fi
 	elif command -v wget >/dev/null 2>&1; then
-		wget -q "$1" -O "$2"
+		wget -q ${stall:+--read-timeout="$stall"} "$1" -O "$2"
 	else
 		fail "curl or wget is required"
 	fi
+}
+
+# The size of <url> in bytes, or nothing when the server doesn't say.
+remote_size() {
+	case "$1" in file://*) return 0 ;; esac
+	command -v curl >/dev/null 2>&1 || return 0
+	# A failed or timed-out request may still hold a redirect's headers: no size then.
+	headers=$(curl -sIL --connect-timeout 20 --max-time 20 "$1" 2>/dev/null) || return 0
+	printf '%s\n' "$headers" | tr -d '\r' | awk 'tolower($1) == "content-length:" { n = $2 } END { if (n) print n }'
+}
+
+host_of() {
+	case "$1" in
+	file://*) echo disk ;;
+	*) echo "${1#*://}" | cut -d/ -f1 ;;
+	esac
+}
+
+hosts_tried() {
+	out=
+	for b in $bases; do out="${out:+$out, }$(host_of "$b")"; done
+	echo "$out"
+}
+
+# Fetches v<version>/SHA256SUMS from sums_base, the only place checksums come from.
+fetch_sums() {
+	fetch "$sums_base/v$1/SHA256SUMS" "$2"
 }
 
 checksum() {
@@ -220,7 +267,7 @@ trap 'rm -rf "$staging"' EXIT INT TERM
 # about 20 minutes after a release publishes, so fall back to the one before.
 # 30 releases, because up to 10 nightly prereleases sit among them (nightly.yml prunes the rest).
 if [ -n "$version" ]; then
-	fetch "${base_url}/v${version}/SHA256SUMS" "$staging/SHA256SUMS" || fail "PrismaLens ${version} has no installer archives"
+	fetch_sums "$version" "$staging/SHA256SUMS" || fail "Couldn't fetch SHA256SUMS for ${version} from $(host_of "$sums_base"), the only source of checksums, so nothing was installed. Check the version and your connection."
 else
 	step "Finding the newest release"
 	fetch "${api}/releases?per_page=30" "$staging/releases.json" || fail "Couldn't reach GitHub. Pass --version to install a known version."
@@ -230,7 +277,7 @@ else
 	newest=
 	for tag in $tags; do
 		[ -n "$newest" ] || newest=$tag
-		if fetch "${base_url}/v${tag}/SHA256SUMS" "$staging/SHA256SUMS"; then
+		if fetch_sums "$tag" "$staging/SHA256SUMS"; then
 			version=$tag
 			break
 		fi
@@ -249,13 +296,28 @@ if [ -n "$installed" ] && older "$version" "$installed"; then
 fi
 
 archive="prismalens-${version}-${target}.tar.gz"
-step "Downloading PrismaLens ${version} for ${target}"
-fetch "${base_url}/v${version}/${archive}" "$staging/$archive" || fail "Couldn't download ${archive}"
-
-step "Verifying $(size_mb "$staging/$archive") against SHA256SUMS"
+# The checksum is the release's own; the archive may come from any base and is verified against it.
 expected=$(grep -E "(^|[[:space:]]|\*)${archive}\$" "$staging/SHA256SUMS" | cut -d' ' -f1 | head -n 1)
-[ -n "$expected" ] || fail "${archive} isn't listed in SHA256SUMS"
-[ "$(checksum "$staging/$archive")" = "$expected" ] || fail "Checksum mismatch for ${archive}; nothing was installed"
+[ -n "$expected" ] || fail "${archive} isn't listed in SHA256SUMS on $(host_of "$sums_base"); nothing was installed."
+tried=
+verified=false
+stall=
+for b in $bases; do
+	"$verified" && break
+	h=$(host_of "$b")
+	# A base with a successor is dropped after 30 s without a byte.
+	if [ "$b" = "$sums_base" ]; then stall=; else stall=30; fi
+	url="$b/v${version}/${archive}"
+	bytes=$(remote_size "$url")
+	size=
+	[ -z "$bytes" ] || size=$(awk -v b="$bytes" 'BEGIN { printf " (%.0f MB)", b / 1048576 }')
+	step "Downloading PrismaLens ${version} for ${target}${size} from ${h}"
+	fetch "$url" "$staging/$archive" progress || { tried="${tried:+$tried; }${h}: download failed"; continue; }
+	step "Verifying $(size_mb "$staging/$archive") against SHA256SUMS from $(host_of "$sums_base")"
+	[ "$(checksum "$staging/$archive")" = "$expected" ] || { tried="${tried:+$tried; }${h}: Checksum mismatch"; continue; }
+	verified=true
+done
+"$verified" || fail "Couldn't install ${archive} from $(hosts_tried); nothing was installed. ${tried}"
 
 step "Installing to ${runtime_root}/${version}"
 tar -xzf "$staging/$archive" -C "$staging"

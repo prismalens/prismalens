@@ -75,6 +75,12 @@ export const streamUp = (): boolean => status.connected;
 /** The change stream was up once on this page: the server was reached at least once. */
 export const hasConnected = (): boolean => status.ever === true;
 
+/**
+ * A write's own hint will reach this page: the stream is up, or its first connect replays from
+ * where the page's reads began. A write's caller re-reads by hand only when this is false (#1181).
+ */
+export const hintComing = (): boolean => status.connected || !status.ever;
+
 /** Whether the change stream is up, and since when it is not. */
 export function useStreamStatus(): StreamStatus {
 	return useSyncExternalStore(
@@ -206,15 +212,46 @@ export function refresh(
 	const pending = trailingFor(queryClient);
 	// One pass over the cache: one invalidate per query scans it again, which a busy page pays per hint.
 	const stale = new Set<string>();
+	const lists = new Set<string>();
+	const feed = orpc.threads.feed.key();
 	for (const q of queryClient.getQueryCache().getAll()) {
 		if (!filters.some((f) => matchQuery(f, q))) continue;
 		if (q.state.fetchStatus === "fetching") pending.add(q.queryHash);
-		else stale.add(q.queryHash);
+		else {
+			stale.add(q.queryHash);
+			if (partialMatchKey(q.queryKey, feed)) lists.add(q.queryHash);
+		}
 	}
-	if (stale.size)
+	if (!stale.size) return;
+	const all = (q: Query) => stale.has(q.queryHash);
+	if (!lists.size) {
 		void queryClient.invalidateQueries(
-			{ predicate: (q) => stale.has(q.queryHash) },
+			{ predicate: all },
 			{ cancelRefetch: false },
+		);
+		return;
+	}
+	// The thread list first, the rest once it lands: tabs share the browser's six connections,
+	// so a broad hint in two tabs queued one tab's list behind 25 reads (#1181).
+	const keep = { cancelRefetch: false };
+	void queryClient
+		.invalidateQueries({ predicate: all, refetchType: "none" })
+		.then(() =>
+			queryClient.refetchQueries(
+				{ predicate: (q) => lists.has(q.queryHash), type: "active" },
+				keep,
+			),
+		)
+		.finally(
+			() =>
+				void queryClient.refetchQueries(
+					{
+						predicate: (q) =>
+							all(q) && !lists.has(q.queryHash) && q.state.isInvalidated,
+						type: "active",
+					},
+					keep,
+				),
 		);
 }
 

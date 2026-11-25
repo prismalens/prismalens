@@ -119,6 +119,7 @@ export interface FakeSession {
 export const SESSIONS_DIR: string;
 export const FAKE_AGENT_PATH: string;
 export function loadSession(nameOrPath: string): FakeSession;
+export function mcpReplyJson(body: string, contentType: string): string;
 export function releaseDir(stateDir?: string): string;
 export function setFakeProtocolVersion(
 	version: number | null,

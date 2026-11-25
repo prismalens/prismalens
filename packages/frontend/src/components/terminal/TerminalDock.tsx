@@ -7,6 +7,7 @@ import { Ring } from "@/components/shared/Ring";
 import { BottomPanel } from "@/components/shell/PanelShell";
 import { Button } from "@/components/ui/button";
 import { useLayoutPrefs } from "@/hooks/use-layout-prefs";
+import { PHONE, useMediaQuery } from "@/hooks/use-media-query";
 import { useAppCommand } from "@/lib/app-commands";
 import { lazyPart } from "@/lib/lazy";
 import { terminalStore } from "@/lib/terminal/store";
@@ -59,7 +60,9 @@ export function TerminalDock() {
 	if (bottomPanel && !opened) setOpened(true);
 	// The dock is the host before its panel's code loads, so Run in terminal shows from the start.
 	useEffect(() => terminalStore.registerHost(), []);
-	useAppCommand("terminal", () => setBottomPanel(!bottomPanel));
+	// A phone has no bottom panel: the command would open nothing there (#1154).
+	const phone = useMediaQuery(PHONE);
+	useAppCommand("terminal", () => setBottomPanel(!bottomPanel), !phone);
 
 	useEffect(() => {
 		const off = terminalStore.onOpenRequest(() => setBottomPanel(true));

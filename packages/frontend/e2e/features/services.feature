@@ -3,14 +3,10 @@
 Feature: Services
   A door of its own; a service is one page that says what a run reads and what it depends on.
 
-  # #1154: UI moved: waits for `getByTestId('service-row').first().getByTestId('service-name')`, which no longer renders
-  @fixme
   Scenario: The list says what each service is
     When I open Services
-    Then each row shows the name, its kind (Service, Database, Gateway, …), its code source as a folder path or host/owner/repo, its telemetry, and its open incidents
+    Then each row shows the name, its health, its kind (Service, Database, Gateway, …), its code source as a folder path or host/owner/repo, and its open incidents
 
-  # Quarantined: #892 - the Services 'One page, Back at the band' journey passes on its first attempt
-  @quarantine
   Scenario: One page, Back at the band
     When I open "booklogr-api"
     Then I see "Code the run reads", "Connections", "Dependencies", "Runs" and "Incidents" on one page with no tabs

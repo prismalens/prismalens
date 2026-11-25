@@ -3,7 +3,8 @@
 
 import type { CanonicalEvent } from "@prismalens/contracts/schemas";
 import { describe, expect, it } from "vitest";
-import { checkRow, type RowObservation } from "./acp-scenarios.js";
+import type { Row } from "../../../../scripts/fakes/scripted-model.mjs";
+import { checkRow, expectationFor, type RowObservation } from "./acp-scenarios.js";
 
 const cancelled = {
 	kind: "error",
@@ -34,5 +35,37 @@ describe("checkRow cancelled-orphaned (#914)", () => {
 		expect(checkRow("deepagents", "cancelled", seen(true))).toMatch(
 			/outlived the run/,
 		);
+	});
+});
+
+describe("expectationFor a row that observes a source-read fact", () => {
+	const row = {
+		row: "brief-placement",
+		expect: "report",
+		fact: { name: "systemPromptVia", value: "claude-meta", else: "error" },
+	} as unknown as Row;
+
+	it("expects the report of the agent that declares the fact, and the error of every other", () => {
+		expect(expectationFor(row, "claude-code")).toEqual({
+			expect: "report",
+			why: "systemPromptVia is claude-meta",
+		});
+		expect(expectationFor(row, "codex")).toEqual({
+			expect: "error",
+			why: "systemPromptVia is not declared",
+		});
+	});
+
+	it("keeps the row's failure class where the fact picks the row's expectation, and drops it on the else", () => {
+		const failing = { ...row, expect: "error", failure: "key_rejected", fact: { name: "systemPromptVia", value: "claude-meta", else: "report" } } as unknown as Row;
+		expect(["claude-code", "codex"].map((agent) => expectationFor(failing, agent))).toStrictEqual([
+			{ expect: "error", why: "systemPromptVia is claude-meta", failure: "key_rejected" },
+			{ expect: "report", why: "systemPromptVia is not declared" },
+		]);
+	});
+
+	it("lets an agent's own entry win over the fact", () => {
+		const own = { ...row, agents: { codex: { expect: "exited", why: "x" } } } as unknown as Row;
+		expect(expectationFor(own, "codex")).toEqual({ expect: "exited", why: "x" });
 	});
 });

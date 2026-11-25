@@ -19,13 +19,70 @@ concurrency:
 
 jobs:
   mutate:
-    name: stryker (${{ matrix.package }})
+    name: stryker (${{ matrix.package }}${{ matrix.shard && format(', {0}', matrix.shard) || '' }})
     runs-on: ubuntu-latest
     timeout-minutes: 300
     strategy:
       fail-fast: false
+      # The api's ~6,900 mutants take ~34 h on one runner (#1154): each shard names a slice of the
+      # config's `mutate`, sized to about 3 h; a file's last range is open-ended, so the slices cover it whole.
+      # Stryker mutates a node only inside one range, so each cut sits between class members: a cut inside a
+      # body would drop that body's own mutants. Re-cut by listing a file's mutants against its ranges (#1197).
       matrix:
-        package: ["@prismalens/engine", "@prismalens/auth", "@prismalens/api"]
+        include:
+          - package: "@prismalens/engine"
+          - package: "@prismalens/auth"
+          - package: "@prismalens/api"
+            shard: "guards, dispatch 1"
+            mutate: "src/middlewares/host-allowlist.middleware.ts,src/core/auth/auth.guard.ts,src/core/auth/owner.ts,src/infrastructure/dispatch/in-process-runner.ts,src/infrastructure/dispatch/checkout-status.ts,src/infrastructure/dispatch/event-bus.ts,src/infrastructure/dispatch/restart-recovery.ts"
+          - package: "@prismalens/api"
+            shard: "dispatch 2"
+            mutate: "src/infrastructure/dispatch/folder-lock.ts,src/infrastructure/dispatch/dispatcher.ts,src/infrastructure/dispatch/run-ports.ts"
+          - package: "@prismalens/api"
+            shard: "dispatch 3"
+            mutate: "src/infrastructure/dispatch/prisma-investigation-store.ts,src/infrastructure/dispatch/checkout-lease.ts,src/infrastructure/dispatch/job-store.ts"
+          - package: "@prismalens/api"
+            shard: "harness-receipt"
+            mutate: "src/infrastructure/dispatch/harness-receipt.ts"
+          - package: "@prismalens/api"
+            shard: "dispatch rest"
+            mutate: "src/infrastructure/dispatch/**/*.ts,!src/**/*.spec.ts,!src/infrastructure/dispatch/in-process-runner.ts,!src/infrastructure/dispatch/checkout-status.ts,!src/infrastructure/dispatch/event-bus.ts,!src/infrastructure/dispatch/restart-recovery.ts,!src/infrastructure/dispatch/folder-lock.ts,!src/infrastructure/dispatch/dispatcher.ts,!src/infrastructure/dispatch/run-ports.ts,!src/infrastructure/dispatch/prisma-investigation-store.ts,!src/infrastructure/dispatch/checkout-lease.ts,!src/infrastructure/dispatch/job-store.ts,!src/infrastructure/dispatch/dispatch.service.ts,!src/infrastructure/dispatch/investigation-run.ts,!src/infrastructure/dispatch/harness-receipt.ts"
+          - package: "@prismalens/api"
+            shard: "dispatch.service 1"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:1-857"
+          - package: "@prismalens/api"
+            shard: "dispatch.service 2"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:858-1264"
+          - package: "@prismalens/api"
+            shard: "dispatch.service 3"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:1265-1636"
+          - package: "@prismalens/api"
+            shard: "dispatch.service 4"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:1637-2215"
+          - package: "@prismalens/api"
+            shard: "dispatch.service 5"
+            mutate: "src/infrastructure/dispatch/dispatch.service.ts:2216-99999"
+          - package: "@prismalens/api"
+            shard: "investigation-run 1"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:1-724"
+          - package: "@prismalens/api"
+            shard: "investigation-run 2"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:725-1050"
+          - package: "@prismalens/api"
+            shard: "investigation-run 3"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:1051-1664"
+          - package: "@prismalens/api"
+            shard: "investigation-run 4"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:1665-2064"
+          - package: "@prismalens/api"
+            shard: "investigation-run 5"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:2065-2610"
+          - package: "@prismalens/api"
+            shard: "investigation-run 6"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:2611-3010"
+          - package: "@prismalens/api"
+            shard: "investigation-run 7"
+            mutate: "src/infrastructure/dispatch/investigation-run.ts:3011-99999"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,7 +104,19 @@ jobs:
         run: pnpm turbo run build --filter="${{ matrix.package }}^..."
 
       - name: Run Stryker
-        run: pnpm --filter "${{ matrix.package }}" exec stryker run
+        env:
+          MUTATE: ${{ matrix.mutate }}
+          # A mutant that allocates without end crashes its own worker, not the runner (#1154).
+          NODE_OPTIONS: --max-old-space-size=3072
+        # Its own PID namespace (#1154): a mutant that signals every process it can list (the
+        # harness receipt's sweep) reaches only Stryker's tree, never the runner's agent. No sudo
+        # inside it: the sweep made sudo-rs panic, and sudo-rs drops -E, so NODE_OPTIONS was lost.
+        run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          unshare --user --map-current-user --pid --fork --mount-proc --kill-child \
+            pnpm --filter "${{ matrix.package }}" exec stryker run ${MUTATE:+--mutate "$MUTATE"}
 
       - name: Upload the report
         if: always()
@@ -56,3 +125,42 @@ jobs:
           name: mutation-${{ strategy.job-index }}
           path: packages/**/reports/mutation/
           if-no-files-found: ignore
+
+  # One tracking issue: survivors, red shards, and shards that never ended as infra (#1154).
+  report:
+    name: Report the mutation run
+    needs: mutate
+    if: always() && needs.mutate.result != 'cancelled' && github.repository == 'prismalens/prismalens'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions
+            scripts
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: mutation-*
+          path: reports
+
+      - name: Summarise the shards
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p reports
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" --paginate             | jq -s '{jobs: [.[].jobs[] | {name, conclusion, html_url, steps: [.steps[] | {name, conclusion}]}]}' > "$RUNNER_TEMP/jobs.json"
+          node scripts/mutation-report.mjs reports "$RUNNER_TEMP/jobs.json" "$RUN_URL" > "$RUNNER_TEMP/batch.json"
+
+      - uses: ./.github/actions/report-failure
+        with:
+          ok: "false"
+          batch: ${{ runner.temp }}/batch.json

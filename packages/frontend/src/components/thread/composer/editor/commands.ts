@@ -7,6 +7,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import {
 	type EditorState,
 	NodeSelection,
+	Selection,
 	TextSelection,
 } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
@@ -15,6 +16,15 @@ import { chipAttrs, DISCRETE } from "./extensions";
 
 /** A chip reads as one space to the trigger rules, so `@` right after a chip opens the menu. */
 const CHIP_CHAR = " ";
+
+/**
+ * The caret at the end, focused now. Tiptap's `focus` waits a frame, so a press in that frame
+ * lost its focus to the box; a caller that checks where focus is first needs it now.
+ */
+export function focusEnd(view: EditorView): void {
+	view.dispatch(view.state.tr.setSelection(Selection.atEnd(view.state.doc)));
+	view.focus();
+}
 
 /** The trigger at the caret, with its range in document positions. */
 export interface DocTrigger extends ActiveTrigger {

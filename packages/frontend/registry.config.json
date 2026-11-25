@@ -1,4 +1,5 @@
 {
+	"workspace": "../../registry.workspace.json",
 	"src": "src",
 	"kinds": "src/registry/kinds",
 	"out": "src/registry",
@@ -14,6 +15,7 @@
 		"packages/frontend/src/registry/define.ts",
 		"packages/frontend/src/registry/registry.guards.test.ts",
 		"packages/frontend/biome-plugins/registry/",
+		"packages/frontend/biome-plugins/test-lint.json",
 		"packages/frontend/registry.config.json",
 		"packages/frontend/registry.ratchet.tsv",
 		"biome.json",
@@ -35,17 +37,13 @@
 	"forbid": [
 		{
 			"rule": "agent-id-handmade",
-			"fix": "Read the difference from the agent registry: add a fact to ProductFacts in @prismalens/config providers/harness.ts and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI",
-			"patterns": [
-				"[iI]d\\s*[!=]==\\s*\"(?:opencode|claude-code|codex|gemini|deepagents|local)\"",
-				"case \"(?:opencode|claude-code|codex|gemini|deepagents)\":",
-				"\\n\\s*\"claude-code\"\\s*:"
-			],
+			"fix": "Read the difference from the agent registry: add a fact to AgentFacts in @prismalens/providers src/agent/family.ts, set it in each agent's descriptor, and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI",
+			"ids": "agent",
 			"allow": ["*.test.ts", "*.test.tsx"]
 		},
 		{
 			"rule": "agent-mark-handmade",
-			"fix": "Draw an agent with <AgentMark id> and a model's maker with <MakerMark maker={makerOf(h, model)}> from components/agent/AgentMark.tsx; a logo or letters is the agent's mark fact in @prismalens/config providers/harness.ts, never an icon placed by hand",
+			"fix": "Draw an agent with <AgentMark id> and a model's maker with <MakerMark maker={makerOf(h, model)}> from components/agent/AgentMark.tsx; a logo or letters is the mark in the agent's descriptor under @prismalens/providers src/agent, never an icon placed by hand",
 			"patterns": [
 				"\\bsi(?:Claude|Googlegemini|Opencode|Openai|Anthropic|Langchain)\\b",
 				"data-testid=\"(?:agent-glyph|agent-lettermark|agent-logo|maker-lettermark)\"",

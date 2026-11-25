@@ -8,7 +8,7 @@
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { streamUp, useLiveRefreshInterval } from "@/lib/api/live-refresh";
+import { hintComing, useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { client, orpc } from "@/lib/api/orpc-client";
 
 export function useAttentionEvents(
@@ -164,8 +164,8 @@ export function useReadAdvance(
 			void client.attention
 				.markThreadRead({ id, key })
 				.then((r) => {
-					// While the change stream is up, the server's hint re-reads the list.
-					if (r.advanced && !streamUp())
+					// The change stream's hint re-reads the list, now or in its first connect's replay.
+					if (r.advanced && !hintComing())
 						void queryClient.invalidateQueries({
 							queryKey: orpc.attention.events.key(),
 						});

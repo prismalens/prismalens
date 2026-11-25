@@ -16,6 +16,7 @@ import {
 } from "@prismalens/contracts";
 import type { CronJob as CronJobRow } from "@prismalens/database";
 import { Logger } from "@prismalens/logger";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	nextSlots,
@@ -115,8 +116,8 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
 			void this.tick().catch((e) =>
 				this.logger.warn(`A cron pass failed: ${String(e)}`),
 			);
-		setTimeout(run, 1_000).unref?.();
-		this.timer = setInterval(run, CRON_EVERY_MS);
+		clock.setTimeout(run, 1_000).unref?.();
+		this.timer = clock.setInterval(run, CRON_EVERY_MS);
 		this.timer.unref?.();
 	}
 
@@ -127,7 +128,7 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
 	async create(
 		threadId: string,
 		input: CronCreateInput,
-		now: Date = new Date(),
+		now: Date = clock.date(),
 	): Promise<{ id: string; name: string; next: string } | CronRefusal> {
 		const thread = await this.prisma.investigation.findUnique({
 			where: { id: threadId },
@@ -197,12 +198,12 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
 		const { count } = await this.prisma.cronJob.deleteMany({
 			where: { id: jobId, investigationId: threadId },
 		});
-		if (count) await this.sync(threadId, new Date());
+		if (count) await this.sync(threadId, clock.date());
 		return count > 0;
 	}
 
 	/** One pass: due jobs fire, then each thread's cron wake is brought up to date. */
-	async tick(now: Date = new Date()): Promise<void> {
+	async tick(now: Date = clock.date()): Promise<void> {
 		if (this.ticking) return;
 		this.ticking = true;
 		try {

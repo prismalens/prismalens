@@ -335,8 +335,7 @@ test.describe("Composer key list (#1101 category 7)", () => {
 		await expect(page.getByTestId("composer-ref")).toHaveCount(1);
 	});
 
-	// #1154: UI moved or app changed: expected 1, received 0
-	test.fixme("A typing run is one undo step; paste, cut, pick, chip delete and drop are each their own", async ({
+	test("A typing run is one undo step; paste, cut, pick, chip delete and drop are each their own", async ({
 		page,
 	}) => {
 		await visitComposer(page);
@@ -375,7 +374,10 @@ test.describe("Composer key list (#1101 category 7)", () => {
 
 		// 4. Pick is its own undo step
 		await input.pressSequentially("@sam");
-		await expect(page.getByTestId("composer-menu")).toBeVisible();
+		// The menu opens before its search answers; Enter on no row picks nothing.
+		await expect(
+			page.getByTestId("composer-menu-row").filter({ hasText: "Sam's thread" }),
+		).toBeVisible();
 		await page.keyboard.press("Enter");
 		await expect(page.getByTestId("composer-ref")).toHaveCount(1);
 		await page.keyboard.press("Control+z");

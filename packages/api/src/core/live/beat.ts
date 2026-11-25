@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import * as clock from "../clock.js";
+
 /**
  * `source`, with a beat first and after every `ms` it stays quiet, so a client can tell a
  * silent drop from a quiet stream (#1101 category 12). Ends when `source` or `signal` ends.
@@ -17,7 +19,7 @@ export async function* withBeat<T, B>(
 	try {
 		while (!signal?.aborted) {
 			const quiet = new Promise<"beat">((r) => {
-				timer = setTimeout(() => r("beat"), ms);
+				timer = clock.setTimeout(() => r("beat"), ms);
 			});
 			const got = await Promise.race([next, quiet]);
 			clearTimeout(timer);

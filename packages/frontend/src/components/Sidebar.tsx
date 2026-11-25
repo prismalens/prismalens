@@ -3,7 +3,7 @@
 
 /**
  * The shell's left bar, the same on every page (#1020): New and Search, the
- * doors, Waiting for you and Recents, Settings at the foot. Below 1280 it folds
+ * doors, the thread groups, Settings at the foot. Below 1280 it folds
  * to a labelled rail; `[` hides it. On the phone the doors are a strip across the top.
  */
 import {

@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"updatedAt": "2026-11-19T00:00:00Z",
+	"updatedAt": "2026-11-23T00:00:00Z",
 	"source": "https://models.dev/api.json",
 	"harnesses": {
 		"opencode": {
@@ -96,12 +96,6 @@
 					"maker": "anthropic"
 				},
 				{
-					"id": "opencode/claude-sonnet-4",
-					"name": "Claude Sonnet 4",
-					"status": "legacy",
-					"maker": "anthropic"
-				},
-				{
 					"id": "opencode/claude-sonnet-4-5",
 					"name": "Claude Sonnet 4.5",
 					"status": "current",
@@ -188,7 +182,7 @@
 				{
 					"id": "opencode/gemini-3-flash",
 					"name": "Gemini 3 Flash",
-					"status": "current",
+					"status": "legacy",
 					"maker": "google"
 				},
 				{
@@ -200,7 +194,7 @@
 				{
 					"id": "opencode/gemini-3.1-pro",
 					"name": "Gemini 3.1 Pro Preview",
-					"status": "current",
+					"status": "legacy",
 					"maker": "google"
 				},
 				{
@@ -530,7 +524,7 @@
 				{
 					"id": "opencode/inkling-2-small-free",
 					"name": "Inkling 2 Small Free",
-					"status": "training",
+					"status": "legacy",
 					"maker": "thinkingmachines"
 				},
 				{
@@ -626,7 +620,7 @@
 				{
 					"id": "opencode/longcat-2.5-free",
 					"name": "LongCat 2.5 Free",
-					"status": "training",
+					"status": "legacy",
 					"maker": "meituan"
 				},
 				{
@@ -825,6 +819,12 @@
 					"id": "opencode/qwen3.8-max",
 					"name": "Qwen3.8 Max",
 					"status": "current",
+					"maker": "alibaba"
+				},
+				{
+					"id": "opencode/qwen4-max-free",
+					"name": "Qwen4 Max Free",
+					"status": "training",
 					"maker": "alibaba"
 				},
 				{

@@ -3,6 +3,7 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import type { TimelineEntry } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
 import { CreateTimelineEntryDto } from "./dto/index.js";
@@ -45,7 +46,7 @@ export class TimelineService {
 				metadata: dto.metadata ? JSON.stringify(dto.metadata) : null,
 				source: dto.source ?? TimelineSource.system,
 				userId: dto.userId,
-				occurredAt: dto.occurredAt ? new Date(dto.occurredAt) : new Date(),
+				occurredAt: dto.occurredAt ? new Date(dto.occurredAt) : clock.date(),
 			},
 		});
 

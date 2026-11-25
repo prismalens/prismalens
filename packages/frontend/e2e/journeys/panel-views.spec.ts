@@ -4,6 +4,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import {
+	forgetPanelWidth,
 	hideQueryDevtools,
 	INVESTIGATION_ID,
 	RUN_ID,
@@ -99,6 +100,7 @@ function readEvent(n = 1): CanonicalEvent[] {
 }
 
 async function setup(page: Page, width = 1440, url = RUN_URL, reads = 1) {
+	await forgetPanelWidth(page);
 	await page.setViewportSize({ width, height: 900 });
 	await hideQueryDevtools(page);
 	await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -243,13 +245,9 @@ test.describe("Panel views (#973)", () => {
 		await expect(sheet).toHaveCount(0);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("Files lists what the run touched in a named tree", async ({
-		page,
-	}) => {
+	test("Files lists what the run touched in a named tree", async ({ page }) => {
 		await setup(page);
-		await page.getByTestId("header-more").click();
-		await page.getByTestId("menu-incident.details").click();
+		await page.getByTestId("panel-toggle").click();
 		await page.getByTestId("panel-tab-changes").click();
 		await page.getByTestId("run-details-tab-files").click();
 		await expect(page).toHaveURL(/panel=files/);
@@ -262,13 +260,11 @@ test.describe("Panel views (#973)", () => {
 		await expect(page.getByTestId("evidence-file")).toBeVisible();
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("All files opens a folder by keyboard with its files already listed", async ({
+	test("All files opens a folder by keyboard with its files already listed", async ({
 		page,
 	}) => {
 		await setup(page);
-		await page.getByTestId("header-more").click();
-		await page.getByTestId("menu-incident.details").click();
+		await page.getByTestId("panel-toggle").click();
 		await page.getByTestId("panel-tab-changes").click();
 		await page.getByTestId("run-details-tab-files").click();
 		await page.getByTestId("files-mode-all").click();
@@ -282,13 +278,11 @@ test.describe("Panel views (#973)", () => {
 		).toBeVisible();
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("Changes names the recorded pair and draws its diff split, or unified when narrow", async ({
+	test("Changes names the recorded pair and draws its diff split, or unified when narrow", async ({
 		page,
 	}) => {
 		await setup(page);
-		await page.getByTestId("header-more").click();
-		await page.getByTestId("menu-incident.details").click();
+		await page.getByTestId("panel-toggle").click();
 		await page.getByTestId("panel-tab-changes").click();
 		await page.getByTestId("run-details-tab-changes").click();
 		await expect(page.getByTestId("changes-label")).toHaveText(
@@ -298,9 +292,9 @@ test.describe("Panel views (#973)", () => {
 		await expect(diff).toBeVisible();
 		// The default panel is narrower than the split breakpoint.
 		await expect(diff).toHaveAttribute("data-style", "unified");
-		const sep = page.getByTestId("panel-right-separator");
-		await sep.focus();
-		for (let i = 0; i < 30; i++) await page.keyboard.press("ArrowLeft");
+		await expect(page.getByTestId("changes-style-split")).toHaveCount(0);
+		// The panel's drag stops short of two code columns; Expand gives it the room (#1101 cat 21).
+		await page.getByTestId("panel-widen").click();
 		await page.getByTestId("changes-style-split").click();
 		await expect(diff).toHaveAttribute("data-style", "split");
 		await page.getByTestId("changes-style-unified").click();
@@ -386,13 +380,9 @@ test.describe("Panel views (#973)", () => {
 });
 
 test.describe("Panel browser (#973)", () => {
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("in a browser, the run's links open in a new tab", async ({
-		page,
-	}) => {
+	test("in a browser, the run's links open in a new tab", async ({ page }) => {
 		await setup(page);
-		await page.getByTestId("header-more").click();
-		await page.getByTestId("menu-incident.details").click();
+		await page.getByTestId("panel-toggle").click();
 		await page.getByTestId("panel-tab-browser").click();
 		await expect(page.getByText("Pages open in your browser")).toBeVisible();
 		const links = page.getByTestId("browser-links").getByRole("link");
@@ -404,8 +394,7 @@ test.describe("Panel browser (#973)", () => {
 		}
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("in the desktop app, the view sits over its slot and steps aside for a dialog", async ({
+	test("in the desktop app, the view sits over its slot and steps aside for a dialog", async ({
 		page,
 	}) => {
 		await page.addInitScript(() => {
@@ -445,8 +434,7 @@ test.describe("Panel browser (#973)", () => {
 				};
 		});
 		await setup(page);
-		await page.getByTestId("header-more").click();
-		await page.getByTestId("menu-incident.details").click();
+		await page.getByTestId("panel-toggle").click();
 		await page.getByTestId("panel-tab-browser").click();
 		await page.getByTestId("browser-address").fill("grafana.internal/d/x");
 		await page.getByTestId("browser-address").press("Enter");

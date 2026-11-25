@@ -53,6 +53,8 @@ test.setTimeout((SLOW ? 150 : 45) * 60_000);
 interface Measure {
 	contrast: { ratio: string; text: string; target: string }[];
 	smallTargets: { name: string; w: number; h: number }[];
+	/** Phone tap areas that overlap a neighbour's (#848: neighbours 12 px apart). */
+	tapOverlaps: string[];
 	clipped: string[];
 	sideways: string[];
 	consoleErrors: string[];
@@ -233,63 +235,114 @@ async function measure(page: Page, errors: string[]): Promise<Measure> {
 			(v) =>
 				`${v.id} (${v.nodes.length}): ${v.nodes[0]?.html.replace(/\s+/g, " ").slice(0, 80) ?? ""}`,
 		);
-	const { smallTargets, clipped, controls } = await page.evaluate(() => {
-		const sel =
-			"button, a[href], input:not([type=hidden]), textarea, [role=button], [role=tab], [role=combobox], [role=switch], [role=menuitem]";
-		const shown = (el: HTMLElement) => {
-			const r = el.getBoundingClientRect();
-			return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight;
-		};
-		const main = document.querySelector<HTMLElement>("main");
-		const controls = main
-			? Array.from(main.querySelectorAll<HTMLElement>(sel)).filter(shown).length
-			: 0;
-		const small: { name: string; w: number; h: number }[] = [];
-		for (const el of Array.from(document.querySelectorAll<HTMLElement>(sel))) {
-			const r = el.getBoundingClientRect();
-			if (
-				r.width === 0 ||
-				r.height === 0 ||
-				r.bottom < 0 ||
-				r.top > innerHeight
-			)
-				continue;
-			if (el.closest(".tsqd-parent-container")) continue;
-			// A link stretched over its row by an absolute ::after is hit by the whole row.
-			const after = getComputedStyle(el, "::after");
-			if (after.position === "absolute" && after.content !== "none") continue;
-			if (r.width < 24 || r.height < 24)
-				small.push({
-					name: (el.getAttribute("aria-label") ?? el.textContent ?? el.tagName)
-						.trim()
-						.slice(0, 40),
-					w: Math.round(r.width),
-					h: Math.round(r.height),
-				});
-		}
-		const clip: string[] = [];
-		for (const el of Array.from(
-			document.querySelectorAll<HTMLElement>("body *"),
-		)) {
-			if (el.children.length > 0 || !el.textContent?.trim()) continue;
-			const s = getComputedStyle(el);
-			const hides = s.overflowX !== "visible" || s.overflowY !== "visible";
-			if (!hides) continue;
-			const cut =
-				el.scrollWidth > el.clientWidth + 1 && s.textOverflow !== "ellipsis";
-			const cutV =
-				el.scrollHeight > el.clientHeight + 2 &&
-				s.overflowY === "hidden" &&
-				!s.webkitLineClamp?.match(/\d/);
-			// Screen-reader-only text is clipped to 1 px on purpose.
-			if ((cut || cutV) && el.getBoundingClientRect().width > 1)
-				clip.push(el.textContent.trim().slice(0, 60));
-		}
-		return { smallTargets: small, clipped: clip.slice(0, 20), controls };
-	});
+	const { smallTargets, tapOverlaps, clipped, controls } = await page.evaluate(
+		() => {
+			const sel =
+				"button, a[href], input:not([type=hidden]), textarea, [role=button], [role=tab], [role=combobox], [role=switch], [role=menuitem]";
+			const shown = (el: HTMLElement) => {
+				const r = el.getBoundingClientRect();
+				return (
+					r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight
+				);
+			};
+			const main = document.querySelector<HTMLElement>("main");
+			const controls = main
+				? Array.from(main.querySelectorAll<HTMLElement>(sel)).filter(shown)
+						.length
+				: 0;
+			const small: { name: string; w: number; h: number }[] = [];
+			const overlaps: string[] = [];
+			// What a finger hits: the box, widened by a centred ::after tap area (tokens.css, #848).
+			const hitOf = (el: HTMLElement) => {
+				const r = el.getBoundingClientRect();
+				const a = getComputedStyle(el, "::after");
+				const on = a.content !== "none" && a.position === "absolute";
+				const w = Math.max(r.width, on ? Number.parseFloat(a.width) || 0 : 0);
+				const h = Math.max(r.height, on ? Number.parseFloat(a.height) || 0 : 0);
+				const x = r.left + r.width / 2;
+				const y = r.top + r.height / 2;
+				return {
+					left: x - w / 2,
+					right: x + w / 2,
+					top: y - h / 2,
+					bottom: y + h / 2,
+					w,
+					h,
+				};
+			};
+			const phoneHits: { el: HTMLElement; box: ReturnType<typeof hitOf> }[] =
+				[];
+			const nameOf = (el: HTMLElement) =>
+				(el.getAttribute("aria-label") ?? el.textContent ?? el.tagName)
+					.trim()
+					.slice(0, 40);
+			for (const el of Array.from(
+				document.querySelectorAll<HTMLElement>(sel),
+			)) {
+				const r = el.getBoundingClientRect();
+				if (
+					r.width === 0 ||
+					r.height === 0 ||
+					r.bottom < 0 ||
+					r.top > innerHeight
+				)
+					continue;
+				if (el.closest(".tsqd-parent-container")) continue;
+				const box = hitOf(el);
+				if (box.w < 24 || box.h < 24)
+					small.push({
+						name: nameOf(el),
+						w: Math.round(box.w),
+						h: Math.round(box.h),
+					});
+				if (innerWidth < 768) phoneHits.push({ el, box });
+			}
+			// Two tap areas that overlap give one control the other's taps: neighbours sit 12 px apart.
+			phoneHits.forEach((a, i) => {
+				for (const b of phoneHits.slice(i + 1)) {
+					if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
+					const x =
+						Math.min(a.box.right, b.box.right) -
+						Math.max(a.box.left, b.box.left);
+					const y =
+						Math.min(a.box.bottom, b.box.bottom) -
+						Math.max(a.box.top, b.box.top);
+					if (x > 0.5 && y > 0.5)
+						overlaps.push(
+							`${nameOf(a.el)} / ${nameOf(b.el)} ${Math.round(x)}x${Math.round(y)}`,
+						);
+				}
+			});
+			const clip: string[] = [];
+			for (const el of Array.from(
+				document.querySelectorAll<HTMLElement>("body *"),
+			)) {
+				if (el.children.length > 0 || !el.textContent?.trim()) continue;
+				const s = getComputedStyle(el);
+				const hides = s.overflowX !== "visible" || s.overflowY !== "visible";
+				if (!hides) continue;
+				const cut =
+					el.scrollWidth > el.clientWidth + 1 && s.textOverflow !== "ellipsis";
+				const cutV =
+					el.scrollHeight > el.clientHeight + 2 &&
+					s.overflowY === "hidden" &&
+					!s.webkitLineClamp?.match(/\d/);
+				// Screen-reader-only text is clipped to 1 px on purpose.
+				if ((cut || cutV) && el.getBoundingClientRect().width > 1)
+					clip.push(el.textContent.trim().slice(0, 60));
+			}
+			return {
+				smallTargets: small,
+				tapOverlaps: overlaps.slice(0, 20),
+				clipped: clip.slice(0, 20),
+				controls,
+			};
+		},
+	);
 	return {
 		contrast,
 		smallTargets,
+		tapOverlaps,
 		clipped,
 		facts: await shownFacts(page),
 		sideways: await sidewaysFaults(page),

@@ -49,7 +49,10 @@ import { denyAllPolicy, optionOf } from "../src/run/permission.js";
 import { AcpSession, type ReopenPath } from "../src/runner/acp-client.js";
 import {
 	admissionExit,
+	contextKeptLine,
+	firstPromptEchoLine,
 	firstWord,
+	followUpToolLine,
 	initializeVersion,
 	parseTranscript,
 	permissionDecisions,
@@ -124,7 +127,7 @@ const stub =
 const gatewayOpt = stub ? { gateway: stub.entry } : {};
 const turns = {
 	first: { ran: false, calls: 0 },
-	followUp: { ran: false, calls: 0 },
+	followUp: { ran: false, calls: 0, reached: false },
 };
 
 const started = Date.now();
@@ -280,6 +283,7 @@ const r5 = await (async (): Promise<string> => {
 		: 0;
 	const followUp: CanonicalEvent[] = [];
 	const before = stub?.count() ?? 0;
+	const requestsBefore = stub?.requests() ?? 0;
 	turns.followUp.ran = true;
 	for await (const ev of runInvestigation({
 		...gatewayOpt,
@@ -322,6 +326,7 @@ const r5 = await (async (): Promise<string> => {
 	}))
 		followUp.push(ev);
 	turns.followUp.calls = (stub?.count() ?? 0) - before;
+	turns.followUp.reached = (stub?.requests() ?? 0) > requestsBefore;
 	const how = reopened as {
 		path: ReopenPath;
 		replayed: number;
@@ -534,20 +539,30 @@ const r11 = await (async (): Promise<string> => {
 		const reply = after
 			.map((e) => (e.kind === "agent_step" ? e.text : ""))
 			.join("");
-		if (reply.includes("R11-PROMPT-1"))
-			return `fail (the first prompt came back as new text: ${JSON.stringify(reply.slice(0, 80))}; ${path})`;
-		const transcript2 = join(dir2, "transcript.jsonl");
-		const replayed = replayedText(
-			parseTranscript(
-				existsSync(transcript2) ? readFileSync(transcript2, "utf8") : "",
-			),
+		const echoed = firstPromptEchoLine({
+			live: process.env.ADMISSION_LIVE_MODEL === "1",
 			reply,
+			marker: "R11-PROMPT-1",
+			path,
+		});
+		if (echoed) return echoed;
+		const transcript2 = join(dir2, "transcript.jsonl");
+		const wire2 = parseTranscript(
+			existsSync(transcript2) ? readFileSync(transcript2, "utf8") : "",
 		);
+		const replayed = replayedText(wire2, reply);
 		if (replayed)
 			return `fail (replayed text came back as new: ${JSON.stringify(replayed.slice(0, 80))}; ${path})`;
-		if (!reply.includes("R11-CONTEXT-KEPT"))
-			return `fail (the next model request lacked the first prompt${!how || how.path === "fresh" ? " in the handoff" : ""}: ${JSON.stringify(reply.slice(0, 120))}; ${path})`;
-		return `pass (the next request carried the first prompt, nothing replayed; ${path})`;
+		return contextKeptLine({
+			kept: reply.includes("R11-CONTEXT-KEPT"),
+			live: process.env.ADMISSION_LIVE_MODEL === "1",
+			reopened: !!how && how.path !== "fresh",
+			handoffSent: wire2.some(
+				(l) => l.d === "out" && l.m.includes("R11-PROMPT-1"),
+			),
+			reply,
+			path,
+		});
 	} finally {
 		r11Reap();
 		for (const d of [work, dir1, dir2])
@@ -720,8 +735,9 @@ const connected = stub?.entry.connected() ?? false;
 const r8 = toolCallLine({ gateway: !!stub, connected, ...turns.first });
 console.log(`R8 tool call, first turn: ${r8}`);
 const r9 = resumable
-	? toolCallLine(
+	? followUpToolLine(
 			{ gateway: !!stub, connected, ...turns.followUp },
+			process.env.ADMISSION_LIVE_MODEL === "1",
 			`no follow-up ran: R5 ${r5}`,
 		)
 	: "n/a (this agent cannot reopen a session)";

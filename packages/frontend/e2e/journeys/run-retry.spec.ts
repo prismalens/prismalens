@@ -4,6 +4,7 @@
 import { expect, type Page } from "@playwright/test";
 import { test } from "../steps/fixtures";
 import {
+	detail,
 	fireIncident,
 	LIVE,
 	visit,
@@ -45,17 +46,17 @@ async function readAsInterrupted(page: Page, runId: string) {
 }
 
 test.describe("Run strip retry (#1020)", () => {
-	// #1154: UI moved: waits for `getByTestId('run-strip-retry')`, which no longer renders
-	test.fixme("a failed investigation's run page shows Retry and starts a new run", async ({
+	test("a failed investigation's run page shows Retry and starts a new run", async ({
 		page,
 		alertmanager,
 		deliverWebhook,
 		unique,
 	}) => {
+		// `failure` now ends as a rejected API key, whose dock offers Try again instead (stripRetry).
 		const made = await fireIncident(page, alertmanager, deliverWebhook, {
 			name: unique("RunRetryFailed"),
 			service: LIVE,
-			session: "failure",
+			session: "not-signed-in",
 		});
 		const run = await waitForRun(
 			page,
@@ -69,7 +70,6 @@ test.describe("Run strip retry (#1020)", () => {
 			`/incidents/${made.id}/conversation?investigation=${run.id}`,
 		);
 		await expect(page.getByTestId("run-page")).toBeVisible();
-		await expect(page.getByTestId("run-strip-label")).toContainText("Blocked");
 
 		const retry = page.getByTestId("run-strip-retry");
 		await expect(retry).toBeVisible();
@@ -77,13 +77,16 @@ test.describe("Run strip retry (#1020)", () => {
 
 		await retry.click();
 
-		await expect(page.getByTestId("run-strip-label")).not.toContainText(
-			"Blocked",
+		// The new run opens in place of the failed one; the incident holds both.
+		await expect(page).toHaveURL(/investigation=(?!new)[0-9a-f-]{36}/);
+		await expect(page).not.toHaveURL(new RegExp(`investigation=${run.id}`));
+		await waitFor(
+			async () =>
+				(await detail(page, made.id)).investigations?.length === 2
+					? true
+					: undefined,
+			"the retried run",
 		);
-		const menu = page.getByTestId("runs-menu");
-		await expect(menu).toBeVisible();
-		await menu.click();
-		await expect(page.getByTestId("runs-menu-item")).toHaveCount(2);
 	});
 
 	test("an interrupted run shows Resume and no Retry run", async ({

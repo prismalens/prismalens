@@ -6,6 +6,7 @@
  * PATH, unless PRISMALENS_HARNESS or the persisted setting pins one.
  * Prismalens never bundles, installs or authenticates a harness.
  */
+import { createHash } from "node:crypto";
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -30,8 +31,13 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	isSafeGatewayUrl,
+	preferredModel,
+	providerSignedOutLine,
+	providerSignIn,
 	refuseModel,
 	reservedEnvNames,
+	signInCommand,
+	versionVsTested,
 } from "@prismalens/config/harness";
 import {
 	type HarnessSelectionInput,
@@ -63,14 +69,20 @@ import {
 } from "@prismalens/contracts/schemas";
 import { localDefault, prismalensLaunchPolicy } from "@prismalens/engine";
 import { CredentialsService } from "../../modules/integrations/crypto/credentials.service.js";
+import * as clock from "../clock.js";
 import { PrismaService } from "../prisma/prisma.service.js";
-import { HarnessModelsService } from "./harness-models.service.js";
+import {
+	ChecksSnapshotSchema,
+	HarnessModelsService,
+} from "./harness-models.service.js";
 import { HarnessProbeService } from "./harness-probe.service.js";
 
 /** How long a remembered "ready" stands before a run checks again; "not ready" is never reused (#673 w9). */
 export const READY_CHECK_TTL_MS = 24 * 60 * 60 * 1000;
 
-export type Readiness = { ready: true } | { ready: false; reason: string };
+export type Readiness =
+	| { ready: true; warning?: string }
+	| { ready: false; reason: string };
 
 type Check = NonNullable<HarnessStatus["checked"]>;
 
@@ -80,6 +92,8 @@ function notReadyReason(id: HarnessId, check: Pick<Check, "detail">): string {
 }
 
 const SETTING_KEY = "HARNESS";
+/** Each agent's last check, so a restart keeps what Settings showed (#1171). */
+const CHECKS_KEY = "HARNESS_CHECKS";
 /** `{ [harnessId]: { [NAME]: base64 ciphertext } }`; values never go back to a client (#907). */
 const ENV_KEY = "HARNESS_ENV";
 const MAX_ENV_NAMES = 50;
@@ -166,6 +180,10 @@ export interface HarnessSettings {
 	threadTitles?: ThreadTitleSettings;
 	/** Read from HARNESS_ENV: names only. */
 	envNames?: Partial<Record<HarnessId, string[]>>;
+	/** Turned off: auto and new runs skip them (#1171). */
+	off?: HarnessId[];
+	/** Put through Add agent without passing; listed anyway (#1171). */
+	added?: HarnessId[];
 }
 
 const AXES = ["accessLevels"] as const;
@@ -214,6 +232,9 @@ export interface HarnessSettingsPatch {
 	useDefaults?: Partial<Record<ModelUse, UseDefault | null>>;
 	/** Replaces the block; `null` clears it. */
 	threadTitles?: ThreadTitleSettings | null;
+	/** Each merged per agent; `false` takes it out. */
+	off?: Partial<Record<HarnessId, boolean>>;
+	added?: Partial<Record<HarnessId, boolean>>;
 }
 
 const RUNTIME_FIELDS = [
@@ -350,6 +371,24 @@ function cleanLists(raw: unknown): Partial<Record<HarnessId, string[]>> {
 	return out;
 }
 
+/** Registry ids, deduplicated, in registry order. */
+function cleanIds(raw: unknown): HarnessId[] {
+	if (!Array.isArray(raw)) return [];
+	return HARNESS_IDS.filter((id) => raw.includes(id));
+}
+
+/** `current` with each patched id put in (true) or taken out (false). */
+function mergeIds(
+	current: HarnessId[] | undefined,
+	patch: Partial<Record<HarnessId, boolean>> | undefined,
+): HarnessId[] {
+	const out = new Set(current ?? []);
+	for (const [id, on] of Object.entries(patch ?? {}) as [HarnessId, boolean][])
+		if (on) out.add(id);
+		else out.delete(id);
+	return cleanIds([...out]);
+}
+
 function cleanLocalAgent(raw: unknown): LocalAgent | undefined {
 	if (!raw || typeof raw !== "object") return undefined;
 	const { command, args } = raw as Partial<LocalAgent>;
@@ -434,7 +473,7 @@ function folderPath(raw: string): string {
 /** Why `name` can't be set for this agent in Settings, or null. */
 function refuseEnvName(id: HarnessId, name: string): string | null {
 	const row = HARNESS_REGISTRY[id];
-	if (row.configDir?.envKey === name)
+	if (row.configDir?.envKey.toUpperCase() === name.toUpperCase())
 		return `Set ${name} with Config directory above.`;
 	if (name.startsWith("PRISMALENS_") || reservedEnvNames(id).includes(name))
 		return `${row.label} runs get ${name} from PrismaLens; it can't be set here.`;
@@ -483,6 +522,14 @@ export class HarnessService implements OnApplicationBootstrap {
 
 	/** The last settings read, so the sync follow-up gate sees binary paths (#907). */
 	private lastSettings: HarnessSettings = { harness: "auto" };
+	/** The last HARNESS_ENV read, ciphertext only, for the runtime key. */
+	private lastStored: Partial<Record<HarnessId, Record<string, string>>> = {};
+	/** Moves on each committed settings write: a read begun before it must not overwrite the cache after it. */
+	private cacheEpoch = 0;
+	/** Per agent, the last probe start number handed out (#1171). */
+	private readonly started = new Map<HarnessId, number>();
+	/** HARNESS_CHECKS writes, one at a time; each writes the maps as they are then. */
+	private persisting: Promise<void> = Promise.resolve();
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -496,23 +543,126 @@ export class HarnessService implements OnApplicationBootstrap {
 	/** Check each installed agent once, in the background, so the picker is right on first open. */
 	onApplicationBootstrap(): void {
 		if (process.env.NODE_ENV === "test") return;
-		void this.sweep();
+		void this.restoreChecks().then(() => this.sweep());
 	}
 
 	async sweep(): Promise<void> {
 		const settings = await this.getSettings();
+		const off = new Set(settings.off);
 		for (const h of listHarnessStatus(this.selectionInput(settings))) {
-			if (h.installed) await this.checkOnce(h.id as HarnessId);
+			if (h.installed && !off.has(h.id)) await this.checkOnce(h.id);
 		}
 	}
 
-	/** What the launch probe needs from Settings, and auto's skip of a failed check (#907). */
+	/** Every agent this machine can start, off or not. */
+	async installedIds(): Promise<HarnessId[]> {
+		const settings = await this.getSettings();
+		return listHarnessStatus(this.selectionInput(settings))
+			.filter((h) => h.installed)
+			.map((h) => h.id);
+	}
+
+	/** What the launch probe needs from Settings, and auto's skip of an off agent or a failed check (#907, #1171). */
 	private selectionInput(s: HarnessSettings): HarnessSelectionInput {
+		const off = new Set(s.off);
 		return {
 			...(s.binaryPaths ? { binaryPaths: s.binaryPaths } : {}),
 			localAgent: s.localAgent ?? null,
-			isRunnable: (id) => this.checkPasses(id),
+			isRunnable: (id) => !off.has(id) && this.checkPasses(id),
+			isSignedIn: (id) => this.providerKnown(id, s.models?.[id]),
 		};
+	}
+
+	/**
+	 * What a check of `id` runs under, as a hash: a check is shown only while this matches (#1171).
+	 * A stored variable's ciphertext changes on each write, so it stands in for a revision counter.
+	 */
+	private runtimeKey(
+		id: HarnessId,
+		s: HarnessSettings = this.lastSettings,
+		stored: Partial<Record<HarnessId, Record<string, string>>> = this
+			.lastStored,
+	): string {
+		const row = HARNESS_REGISTRY[id];
+		const cipher = Object.entries(stored[id] ?? {}).sort(([a], [b]) =>
+			a.localeCompare(b),
+		);
+		return createHash("sha256")
+			.update(
+				JSON.stringify({
+					binaryPath: id === "local" ? null : (s.binaryPaths?.[id] ?? null),
+					configDir: row.configDir ? (s.configDirs?.[id] ?? null) : null,
+					local: id === "local" ? (s.localAgent ?? null) : null,
+					strict: s.strictEnv === true,
+					env: cipher,
+				}),
+			)
+			.digest("hex");
+	}
+
+	/** Loads HARNESS_CHECKS; an unreadable row is logged once and the checks start empty. */
+	private async restoreChecks(): Promise<void> {
+		await this.getSettings();
+		const row = await this.prisma.setting.findUnique({
+			where: { key: CHECKS_KEY },
+		});
+		if (!row) return;
+		try {
+			const snapshot = ChecksSnapshotSchema.parse(JSON.parse(row.value));
+			this.models.restore(snapshot, (id) => this.runtimeKey(id));
+		} catch (err) {
+			this.logger.warn(
+				`${CHECKS_KEY} unreadable, checks start empty: ${(err as Error).message}`,
+			);
+		}
+	}
+
+	/** Writes the kept checks; queued, so the last write holds the current maps. */
+	private persistChecks(): Promise<void> {
+		this.persisting = this.persisting.then(async () => {
+			const value = JSON.stringify(this.models.snapshot());
+			await this.prisma.setting
+				.upsert({
+					where: { key: CHECKS_KEY },
+					update: { value, type: "json" },
+					create: { key: CHECKS_KEY, value, type: "json", category: "ai" },
+				})
+				.catch((err: unknown) =>
+					this.logger.warn(
+						`${CHECKS_KEY} not saved: ${(err as Error).message}`,
+					),
+				);
+		});
+		return this.persisting;
+	}
+
+	/** Auto prefers an agent whose provider login for its model is known; one it could not read waits behind. */
+	private providerKnown(id: HarnessId, model: string | undefined): boolean {
+		const c = this.models.checked(id);
+		const chosen = model ?? this.runModelOf(id);
+		// No model to read a login for: auto keeps its order; the status says Sign-in not checked.
+		if (!chosen) return true;
+		const state = providerSignIn(id, c, chosen);
+		return state === "na" || state === "signed-in";
+	}
+
+	/** The model a run on `id` takes when none is starred or asked: one whose provider is signed in. */
+	runModelOf(id: HarnessId): string | null {
+		// Only models the agent itself listed: a catalogue one may be a name it does not know.
+		const listed = this.models.modelsFor(id, this.models.catalogue());
+		return preferredModel(
+			id,
+			this.models.checked(id),
+			listed.source === "harness" ? listed.entries : [],
+		);
+	}
+
+	/** A model to send when none is starred: only one that replaces the agent's own default, else null. */
+	runModelOverride(id: HarnessId): string | null {
+		const model = this.runModelOf(id);
+		return model && model !== this.models.checked(id)?.servedModel
+			? model
+			: null;
 	}
 
 	private checkPasses(id: HarnessId): boolean {
@@ -619,10 +769,14 @@ export class HarnessService implements OnApplicationBootstrap {
 	private async readEnv(): Promise<
 		Partial<Record<HarnessId, Record<string, string>>>
 	> {
+		const epoch = this.cacheEpoch;
 		const row = await this.prisma.setting.findUnique({
 			where: { key: ENV_KEY },
 		});
-		if (!row) return {};
+		if (!row) {
+			if (epoch === this.cacheEpoch) this.lastStored = {};
+			return {};
+		}
 		try {
 			const parsed = JSON.parse(row.value) as Record<string, unknown>;
 			const out: Partial<Record<HarnessId, Record<string, string>>> = {};
@@ -636,6 +790,7 @@ export class HarnessService implements OnApplicationBootstrap {
 				);
 				if (Object.keys(kept).length) out[id as HarnessId] = kept;
 			}
+			if (epoch === this.cacheEpoch) this.lastStored = out;
 			return out;
 		} catch {
 			return {};
@@ -644,43 +799,103 @@ export class HarnessService implements OnApplicationBootstrap {
 
 	/** The Settings Check button: the handshake with this agent's runtime (#907). */
 	async check(id: HarnessId): Promise<HarnessProbeResult> {
-		return this.probe.check(id, await this.runtimeFor(id));
+		const seq = this.reserve(id);
+		const { runtime, guard } = await this.probeInputs(id);
+		const result = await this.probe.check(id, runtime, guard, seq);
+		void this.persistChecks();
+		return result;
+	}
+
+	/** The next probe start number for `id`, taken before any await so an older read never outranks a newer one. */
+	private reserve(id: HarnessId): number {
+		const seq = (this.started.get(id) ?? 0) + 1;
+		this.started.set(id, seq);
+		return seq;
+	}
+
+	/** The runtime and its key from one settings and env read, so a probe is keyed by what it ran (#1171). */
+	private async probeInputs(id: HarnessId) {
+		const settings = await this.getSettings();
+		const stored = await this.readEnv();
+		return {
+			runtime: this.runtimeOf(id, settings, stored),
+			guard: {
+				key: this.runtimeKey(id, settings, stored),
+				current: () => this.runtimeKey(id),
+			},
+		};
+	}
+
+	/** Turned off in Settings, unless `PRISMALENS_HARNESS` names it. */
+	private async isOff(id: HarnessId): Promise<boolean> {
+		const settings = await this.getSettings();
+		return (
+			(settings.off?.includes(id) ?? false) &&
+			process.env.PRISMALENS_HARNESS?.trim() !== id
+		);
+	}
+
+	private offMessage(id: HarnessId): string {
+		return `${HARNESS_REGISTRY[id].label} is off. Turn it on in Settings → Agents.`;
 	}
 
 	/**
 	 * Would a run on this agent start? A remembered `answers-acp` under a day
 	 * old, else a check now: a remembered failure is checked again, so signing
-	 * in takes effect on the next run (#673 w9).
+	 * in takes effect on the next run (#673 w9). `null` asks for the agent's own
+	 * default, as dispatch does; `undefined` takes Settings'.
 	 */
-	async ensureReady(id: HarnessId): Promise<Readiness> {
+	async ensureReady(id: HarnessId, model?: string | null): Promise<Readiness> {
+		const off = { ready: false, reason: this.offMessage(id) } as const;
+		if (await this.isOff(id)) return off;
+		const settings = await this.getSettings();
+		const chosenBy = (c: Check) =>
+			model === null
+				? (c.servedModel ?? null)
+				: (model ?? settings.models?.[id] ?? this.runModelOf(id));
 		const remembered = this.models.checked(id);
 		const fresh =
 			remembered?.outcome === "answers-acp" &&
-			Date.now() - Date.parse(remembered.at) < READY_CHECK_TTL_MS;
+			clock.now() - Date.parse(remembered.at) < READY_CHECK_TTL_MS;
 		const check = fresh ? remembered : await this.checkOnce(id);
 		if (!check)
 			return {
 				ready: false,
 				reason: `${HARNESS_REGISTRY[id].label}: the readiness check did not run`,
 			};
-		return check.outcome === "answers-acp"
-			? { ready: true }
-			: { ready: false, reason: notReadyReason(id, check) };
+		// Turned off while the probe ran: its answer no longer stands.
+		if (!fresh && (await this.isOff(id))) return off;
+		if (check.outcome !== "answers-acp")
+			return { ready: false, reason: notReadyReason(id, check) };
+		const chosen = chosenBy(check);
+		// A warning, not a refusal: the login list misses keys set in config files, AWS and ADC (#1222).
+		if (providerSignIn(id, check, chosen) === "signed-out") {
+			const warning = providerSignedOutLine(id, chosen);
+			this.logger.warn(`Starting anyway: ${warning}`);
+			return { ready: true, warning };
+		}
+		return { ready: true };
 	}
 
 	private checkOnce(id: HarnessId): Promise<Check | null> {
 		const running = this.inFlight.get(id);
 		if (running) return running;
-		const next = this.runtimeFor(id)
-			.then((runtime) => this.probe.check(id, runtime))
-			.then(() => this.models.checked(id) ?? null)
+		const seq = this.reserve(id);
+		const next: Promise<Check | null> = this.probeInputs(id)
+			.then(({ runtime, guard }) => this.probe.check(id, runtime, guard, seq))
+			.then(() => {
+				void this.persistChecks();
+				return this.models.checked(id) ?? null;
+			})
 			.catch((err: unknown) => {
 				this.logger.warn(
 					`Readiness check for ${id} failed: ${(err as Error).message}`,
 				);
 				return null;
 			})
-			.finally(() => this.inFlight.delete(id));
+			.finally(() => {
+				if (this.inFlight.get(id) === next) this.inFlight.delete(id);
+			});
 		this.inFlight.set(id, next);
 		return next;
 	}
@@ -732,6 +947,7 @@ export class HarnessService implements OnApplicationBootstrap {
 
 	private async withEnvNames(read: HarnessSettings): Promise<HarnessSettings> {
 		const { envNames: _, ...rest } = read;
+		const epoch = this.cacheEpoch;
 		const envNames = Object.fromEntries(
 			Object.entries(await this.readEnv()).map(([id, rows]) => [
 				id,
@@ -742,7 +958,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			...rest,
 			...nonEmpty("envNames", envNames),
 		};
-		this.lastSettings = settings;
+		if (epoch === this.cacheEpoch) this.lastSettings = settings;
 		return settings;
 	}
 
@@ -760,9 +976,13 @@ export class HarnessService implements OnApplicationBootstrap {
 			const favourites = cleanFavourites(parsed.favourites);
 			const customModels = cleanCustomModels(parsed.customModels);
 			const localAgent = cleanLocalAgent(parsed.localAgent);
+			const off = cleanIds(parsed.off);
+			const added = cleanIds(parsed.added);
 			// A stored `agentModes` (before the two axes) is not read back (#673 w21).
 			return {
 				harness,
+				...(off.length ? { off } : {}),
+				...(added.length ? { added } : {}),
 				...(Object.keys(models).length ? { models } : {}),
 				...(favourites.length ? { favourites } : {}),
 				...(Object.keys(efforts).length ? { efforts } : {}),
@@ -857,8 +1077,25 @@ export class HarnessService implements OnApplicationBootstrap {
 			...current.modelOrder,
 			...patch.modelOrder,
 		});
+		const off = mergeIds(current.off, patch.off);
+		const added = mergeIds(current.added, patch.added);
+		const turnedOff = off.filter((id) => !current.off?.includes(id));
+		const turnedOn = (current.off ?? []).filter((id) => !off.includes(id));
+		const harness = patch.harness ?? current.harness;
+		// Off clears what would pick it for a new run; its other settings stay (#1171).
+		const useDefaults = cleanUseDefaults({
+			...current.useDefaults,
+			...patch.useDefaults,
+		});
+		for (const use of MODEL_USES) {
+			const named = useDefaults[use]?.harness;
+			if (named && turnedOff.includes(named)) delete useDefaults[use];
+		}
 		const next: HarnessSettings = {
-			harness: patch.harness ?? current.harness,
+			harness:
+				harness !== "auto" && turnedOff.includes(harness) ? "auto" : harness,
+			...(off.length ? { off } : {}),
+			...(added.length ? { added } : {}),
 			...(Object.keys(models).length ? { models } : {}),
 			...(favourites.length ? { favourites } : {}),
 			...(Object.keys(efforts).length ? { efforts } : {}),
@@ -899,10 +1136,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			...((patch.rewindSession ?? current.rewindSession) === "replay"
 				? { rewindSession: "replay" as const }
 				: {}),
-			...nonEmpty(
-				"useDefaults",
-				cleanUseDefaults({ ...current.useDefaults, ...patch.useDefaults }),
-			),
+			...nonEmpty("useDefaults", useDefaults),
 			...nonEmpty(
 				"threadTitles",
 				cleanThreadTitles(
@@ -949,12 +1183,18 @@ export class HarnessService implements OnApplicationBootstrap {
 			...(Object.keys(patch.env ?? {}) as HarnessId[]),
 			...(patch.localAgent !== undefined ? (["local"] as const) : []),
 		]);
+		// Reads begun before the commit are stale from here on and cannot write the cache.
+		this.cacheEpoch += 1;
 		// The list, the picker and the run gate describe what the next run uses (#907 decision 13).
+		const settings = await this.withEnvNames(next);
 		for (const id of changed) {
 			this.models.forget(id);
+			this.inFlight.delete(id);
 			void this.checkOnce(id);
 		}
-		return this.withEnvNames(next);
+		if (changed.size) void this.persistChecks();
+		for (const id of turnedOn) if (!changed.has(id)) void this.checkOnce(id);
+		return settings;
 	}
 
 	/** Validates every name and value, then returns the stored JSON with the ciphertext; a refusal saves nothing. */
@@ -1008,6 +1248,17 @@ export class HarnessService implements OnApplicationBootstrap {
 		const env = process.env.PRISMALENS_HARNESS?.trim();
 		const asked = requested.harness;
 		const input = this.selectionInput(settings);
+		// Off refuses every new turn on it, follow-ups included; only PRISMALENS_HARNESS wins (#1171 §11).
+		const chosen =
+			asked ?? (settings.harness === "auto" ? null : settings.harness);
+		if (!env && chosen && settings.off?.includes(chosen))
+			return {
+				runnable: false,
+				failure: "agent-off",
+				reason: this.offMessage(chosen),
+				harness: chosen,
+				...(asked ? {} : { pinnedBy: "settings" as const }),
+			};
 		const selection = env
 			? resolveHarnessSelection({
 					...input,
@@ -1050,6 +1301,20 @@ export class HarnessService implements OnApplicationBootstrap {
 		};
 	}
 
+	/** The agent's own login with its Settings binary path and config folder; null when it has none. */
+	private signInOf(id: HarnessId, s: HarnessSettings): HarnessStatus["signIn"] {
+		const row = HARNESS_REGISTRY[id];
+		// A stored value moves where it logs in, and stored values are never shown; Windows ignores case (#1171).
+		const stored = new Set(s.envNames?.[id]?.map((n) => n.toUpperCase()));
+		if (row.loginEnvKeys?.some((k) => stored.has(k.toUpperCase()))) return null;
+		const command = signInCommand(row, {
+			...(s.binaryPaths?.[id] ? { binaryPath: s.binaryPaths[id] } : {}),
+			...(s.configDirs?.[id] ? { configDir: s.configDirs[id] } : {}),
+			platform: process.platform,
+		});
+		return command ? { command } : null;
+	}
+
 	/** The last readiness check's verdict for this agent; null when none has run. */
 	checkedOutcome(id: HarnessId): HarnessProbeOutcome | null {
 		return this.models.checked(id)?.outcome ?? null;
@@ -1084,14 +1349,27 @@ export class HarnessService implements OnApplicationBootstrap {
 			harnesses: listHarnessStatus({
 				...this.selectionInput(settings),
 				envFor: (id) => ({ ...process.env, ...runtimes.get(id)?.env }),
-			}).map((h) => ({
-				...h,
-				runnable: h.installed && this.checkPasses(h.id),
-				localDefault: this.localDefaultOf(h.id, runtimes.get(h.id)?.env),
-				envVars: envVarStates(h.id, settings.envNames?.[h.id] ?? []),
-				models: this.models.modelsFor(h.id, catalogue),
-				checked: this.models.checked(h.id),
-			})),
+			}).map((h) => {
+				const off = settings.off?.includes(h.id) ?? false;
+				const checked = this.models.checked(h.id);
+				return {
+					...h,
+					runnable: h.installed && !off && this.checkPasses(h.id),
+					providerSignIn: providerSignIn(
+						h.id,
+						checked,
+						settings.models?.[h.id] ?? this.runModelOf(h.id),
+					),
+					off,
+					added: settings.added?.includes(h.id) ?? false,
+					signIn: this.signInOf(h.id, settings),
+					versionVsTested: testedPair(checked, h.tested),
+					localDefault: this.localDefaultOf(h.id, runtimes.get(h.id)?.env),
+					envVars: envVarStates(h.id, settings.envNames?.[h.id] ?? []),
+					models: this.models.modelsFor(h.id, catalogue),
+					checked,
+				};
+			}),
 			selection: selection.runnable
 				? {
 						runnable: true,
@@ -1110,6 +1388,16 @@ export class HarnessService implements OnApplicationBootstrap {
 					},
 		};
 	}
+}
+
+/** The version a check read against the tested one, paired as Settings shows them (#818). */
+function testedPair(
+	checked: HarnessStatus["checked"],
+	tested: HarnessStatus["tested"],
+): HarnessStatus["versionVsTested"] {
+	const cli = checked?.companionVersion ?? null;
+	const ran = cli ?? checked?.version ?? null;
+	return versionVsTested(ran, cli ? tested?.companion : tested?.version);
 }
 
 /** The session rows (#1024), each kept only when it differs from its default. */

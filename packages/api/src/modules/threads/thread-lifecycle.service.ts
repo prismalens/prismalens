@@ -18,6 +18,7 @@ import {
 	type WorktreeVerdict,
 } from "@prismalens/contracts";
 import { Logger } from "@prismalens/logger";
+import * as clock from "../../core/clock.js";
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
 	GIT_PROBE_TIMEOUT_MS,
@@ -75,8 +76,8 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 			void this.tick().catch((e) =>
 				this.logger.warn(`A settle teardown pass failed: ${String(e)}`),
 			);
-		setTimeout(run, 1_000).unref?.();
-		this.timer = setInterval(run, TEARDOWN_EVERY_MS);
+		clock.setTimeout(run, 1_000).unref?.();
+		this.timer = clock.setInterval(run, TEARDOWN_EVERY_MS);
 		this.timer.unref?.();
 	}
 
@@ -84,7 +85,7 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 		if (this.timer) clearInterval(this.timer);
 	}
 
-	async tick(now: Date = new Date()): Promise<void> {
+	async tick(now: Date = clock.date()): Promise<void> {
 		if (this.ticking) return;
 		this.ticking = true;
 		try {
@@ -207,7 +208,7 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 
 	/** A cancel only asks: the run's final usage flush lands after it, so Settle waits for the end, or refuses. */
 	private async untilEnded(ids: string[]): Promise<void> {
-		const deadline = Date.now() + this.stopWaitMs;
+		const deadline = clock.now() + this.stopWaitMs;
 		let waiting = ids;
 		while (waiting.length) {
 			const live = await this.prisma.investigation.findMany({
@@ -215,13 +216,13 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 				select: { id: true },
 			});
 			if (!live.length) return;
-			if (Date.now() >= deadline)
+			if (clock.now() >= deadline)
 				throw new ORPCError("CONFLICT", {
 					message: `${plural(live.length, "run")} did not stop in time. Try again in a moment.`,
 					data: { reason: "running", running: live.length },
 				});
 			waiting = live.map((r) => r.id);
-			await new Promise((resolve) => setTimeout(resolve, 100));
+			await clock.sleep(100);
 		}
 	}
 
@@ -233,7 +234,7 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 	async endThread(ids: readonly string[]): Promise<Ended> {
 		const list = [...ids];
 		if (!list.length) return { wakes: 0, watches: 0, crons: 0, cronNames: [] };
-		const now = new Date();
+		const now = clock.date();
 		const ended = await this.prisma.$transaction(async (tx) => {
 			const crons = await tx.cronJob.findMany({
 				where: { investigationId: { in: list } },
@@ -300,7 +301,7 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	/** Teardowns whose Undo window closed; each re-checks that its thread is still settled. */
-	async teardownDue(now: Date = new Date()): Promise<void> {
+	async teardownDue(now: Date = clock.date()): Promise<void> {
 		const due = await this.prisma.investigation.findMany({
 			where: { teardownAt: { lte: now } },
 			select: { id: true },
@@ -335,7 +336,7 @@ export class ThreadLifecycleService implements OnModuleInit, OnModuleDestroy {
 	 * "Settle quiet threads": a thread with no incident, quiet for the settings' days,
 	 * ends its jobs at once, as no one is there to undo. A live run keeps it.
 	 */
-	async autoSettle(now: Date = new Date()): Promise<void> {
+	async autoSettle(now: Date = clock.date()): Promise<void> {
 		const days = await this.settleAfterDays();
 		const quiet = new Date(now.getTime() - days * DAY_MS);
 		const candidates = await this.prisma.investigation.findMany({
