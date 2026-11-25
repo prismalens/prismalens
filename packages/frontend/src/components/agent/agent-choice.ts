@@ -272,6 +272,16 @@ export function providerState(
 				));
 }
 
+/** The model `providerState` answers for, so a refusal names the one it checked. */
+function checkedModel(
+	h: HarnessStatus,
+	model?: string | null,
+): string | null | undefined {
+	if (model && !isFoldedId(h, model)) return model;
+	// The server's own `providerSignIn` reads the served model; the fallback check reads `defaultModel`.
+	return h.providerSignIn ? h.checked?.servedModel : defaultModel(h, null)?.id;
+}
+
 /** Why an installed agent cannot take a run, in the gate's words; null when it can. */
 export function unreadyReason(
 	h: HarnessStatus,
@@ -280,10 +290,7 @@ export function unreadyReason(
 	if (!h.installed || !h.checked) return null;
 	if (h.checked.outcome === "answers-acp")
 		return providerState(h, model) === "signed-out"
-			? providerSignedOutLine(
-					h.id as HarnessId,
-					model && !isFoldedId(h, model) ? model : h.checked.servedModel,
-				)
+			? providerSignedOutLine(h.id as HarnessId, checkedModel(h, model))
 			: null;
 	// The same words a run that fails on sign-in shows (#831 w7-3).
 	if (h.checked.outcome === "sign-in-needed")

@@ -92,6 +92,15 @@ describe("an agent that answers ACP but holds no login for its model's provider"
 		expect(unreadyReason(base, "ollama-cloud/qwen")).toBeNull();
 	});
 
+	it("reads the composer's chip for the named model, not the status's own word", () => {
+		expect(agentReadiness(withLogin("signed-out"), "ollama-cloud/qwen")).toBe(
+			"ready",
+		);
+		expect(
+			agentReadiness(withLogin("signed-in"), "google/gemini-4-neon"),
+		).toBe("signIn");
+	});
+
 	it("reads a folded model id as the agent's own pick, so a signed-out provider still gates the run", () => {
 		const out = withLogin("signed-out");
 		expect(providerState(out, "default")).toBe("signed-out");
@@ -133,6 +142,21 @@ describe("an agent whose model the check could not name", () => {
 			"google/gemini-4-neon",
 		);
 		expect(agentState(listed)).toEqual({ text: "Ready", tone: "ok" });
+	});
+});
+
+describe("a status with no sign-in word of its own", () => {
+	it("names the provider it checked when the env's model and the served one differ", () => {
+		const split = {
+			...base,
+			providerSignIn: undefined,
+			envModel: { model: "google/gemini-4-neon" },
+			checked: { ...base.checked, servedModel: "ollama-cloud/qwen" },
+		} as HarnessStatus;
+		expect(providerState(split)).toBe("signed-out");
+		expect(unreadyReason(split)).toBe(
+			"OpenCode is not signed in to Google. Sign in with its own CLI, then retry.",
+		);
 	});
 });
 

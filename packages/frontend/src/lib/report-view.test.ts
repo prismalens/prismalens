@@ -114,6 +114,11 @@ describe("culpritOf", () => {
 					status: "supported",
 					evidence: [],
 				},
+				{
+					statement: "Commit 9469cc2 also broke the build",
+					status: "refuted",
+					evidence: [],
+				},
 			],
 		});
 		expect(culpritOf(kept)?.changeRef).toBe("9469cc2");

@@ -21,8 +21,18 @@ describe("failureStatusLine", () => {
 		expect(failureStatusLine("Codex", "Error: 权限不足")).toBe(
 			'Codex answered "Error: 权限不足".',
 		);
-		expect(failureSentence("Codex", "Error:").words).toBeNull();
-		expect(failureSentence("Codex", "{}\n}").words).toBeNull();
+		const none = {
+			said: "The agent's session ended without giving a reason. Retry runs it again from here.",
+			words: null,
+		};
+		expect(failureSentence("Codex", "Error:")).toEqual(none);
+		expect(failureSentence("Codex", "{}\n}")).toEqual(none);
+	});
+
+	it("skips a line of box-drawing characters for the words under it", () => {
+		expect(failureStatusLine("Codex", "───\ndisk full")).toBe(
+			'Codex answered "disk full".',
+		);
 	});
 
 	it("keeps an agent's own words as they are", () => {

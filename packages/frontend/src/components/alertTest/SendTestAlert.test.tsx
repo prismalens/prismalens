@@ -161,9 +161,14 @@ describe("SendTestAlert", () => {
 		);
 
 		const text = host.querySelector("details code")?.textContent;
-		expect(text).toContain("Authorization: Bearer <TOKEN>");
-		expect(text).toContain("http://localhost:3000/api/webhooks/generic");
-		expect(text).toContain('"serviceName":"demo-proj"');
+		expect(text).toBe(
+			[
+				"curl -X POST http://localhost:3000/api/webhooks/generic",
+				'  -H "Authorization: Bearer <TOKEN>"',
+				'  -H "Content-Type: application/json"',
+				`  -d '{"title":"Checkout is failing","severity":"high","serviceName":"demo-proj"}'`,
+			].join(" \\\n"),
+		);
 		expect(host.querySelector("details p")?.textContent).toBe(
 			"Replace <TOKEN> with a token from Settings, Alert intake.",
 		);

@@ -126,9 +126,11 @@ describe("useFolderPicker (#1216)", () => {
 	it("reads the bridge's unavailable as unavailable and stops offering", async () => {
 		bridge = { pickFolder: async () => ({ unavailable: true }) };
 		await mount(true);
+		let got: unknown;
 		await act(async () => {
-			await seat.pick();
+			got = await seat.pick();
 		});
+		expect(got).toEqual({ status: "unavailable" });
 		expect(seat.available).toBe(false);
 	});
 });

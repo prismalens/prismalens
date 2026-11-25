@@ -75,6 +75,7 @@ export function NewThread({
 	top,
 	tools,
 	slash,
+	onText,
 	place,
 	placeholder,
 	autoFocus = true,
@@ -94,6 +95,8 @@ export function NewThread({
 	top?: ReactNode;
 	tools?: ReactNode;
 	slash?: SlashCommand[];
+	/** The box's text, as it changes. */
+	onText?: (text: string) => void;
 	/** A no-subject helper's empty page; the server words its context, never the page's data. */
 	place?: HelperPlace;
 	placeholder?: string;
@@ -258,6 +261,7 @@ export function NewThread({
 			usageRing
 			lean={lean}
 			onSend={onSend}
+			onText={onText}
 			scope={newThreadScope(scopeSubject ?? subject, draft)}
 			seed={seed}
 			placeholder={

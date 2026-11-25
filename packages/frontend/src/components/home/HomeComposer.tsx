@@ -22,6 +22,7 @@ import {
 	unreadyReason,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { providerState } from "@/components/agent/agent-choice";
 import { Mark } from "@/components/kit/Mark";
 import { markLook } from "@/components/kit/marks";
 import { Picker, type PickerOption } from "@/components/kit/Picker";
@@ -115,7 +116,9 @@ export function HomeComposer({
 	const canSchedule = useSchedules().data?.canEdit === true;
 	const [repeat, setRepeat] = useState<SchedulePrefill | null>(null);
 	const [adding, setAdding] = useState(false);
-	const only = onlyProject(repos, search);
+	// A default arriving after typing would swap the box to another scope's draft (#1216).
+	const [typed, setTyped] = useState(false);
+	const only = typed ? undefined : onlyProject(repos, search);
 	const picked = only ? { ...search, project: only.id } : search;
 	// The default is written to the address like a pick, so the URL and the chip agree.
 	const onlyId = only?.id;
@@ -267,6 +270,9 @@ export function HomeComposer({
 				incident={incident}
 				note={!!search.note}
 				top={top}
+				onText={(text) => {
+					if (text) setTyped(true);
+				}}
 				placeholder="Ask anything"
 				{...(canSchedule ? { onRepeat: setRepeat } : {})}
 				slash={
@@ -392,21 +398,13 @@ function SubjectPicker({
 
 /** Ready once the agent answered a check; installed but silent needs a sign-in or a fix. */
 export function agentReadiness(
-	h:
-		| {
-				installed: boolean;
-				checked?: { outcome: string } | null;
-				providerSignIn?: HarnessStatus["providerSignIn"];
-		  }
-		| undefined,
+	h: HarnessStatus | undefined,
+	model?: string | null,
 ): "ready" | "signIn" | "missing" {
 	if (!h?.installed) return "missing";
-	const login = h.providerSignIn ?? "na";
-	return h.checked?.outcome === "answers-acp" &&
-		login !== "signed-out" &&
-		login !== "unchecked"
-		? "ready"
-		: "signIn";
+	if (h.checked?.outcome !== "answers-acp") return "signIn";
+	const login = providerState(h, model);
+	return login === "signed-out" || login === "unchecked" ? "signIn" : "ready";
 }
 
 /** The default agent's logo with its readiness dot; not ready opens Settings, Agent. */
@@ -414,7 +412,7 @@ export function AgentReady() {
 	const choice = useAgentChoice();
 	if (choice.isLoading) return null;
 	const h = choice.effective;
-	const state = agentReadiness(h);
+	const state = agentReadiness(h, choice.model);
 	const word = !h
 		? "No agent installed"
 		: state === "ready"
@@ -422,7 +420,7 @@ export function AgentReady() {
 			: state === "missing"
 				? `${h.label} not installed`
 				: (unreadyReason(h, choice.model) ??
-					(h.providerSignIn === "unchecked"
+					(providerState(h, choice.model) === "unchecked"
 						? `${h.label}: sign-in not checked`
 						: `${h.label} not checked`));
 	return (

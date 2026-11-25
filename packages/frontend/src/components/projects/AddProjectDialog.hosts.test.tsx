@@ -175,6 +175,14 @@ describe("AddProjectDialog (git hosts)", () => {
 			"BitbucketConnect",
 		]);
 		expect(
+			document.body
+				.querySelector('[data-testid="add-project-row-folder"]')
+				?.getAttribute("aria-pressed"),
+		).toBe("true");
+		expect(
+			document.body.querySelector('[data-testid="add-project-source"]'),
+		).not.toBeNull();
+		expect(
 			document.body.querySelector('[data-testid="host-repos"]'),
 		).toBeNull();
 	});
@@ -294,6 +302,18 @@ describe("AddProjectDialog (git hosts)", () => {
 				'[data-testid="add-project-row-url"]',
 			)?.disabled,
 		).toBe(false);
+		const field = () =>
+			document.body.querySelector('[data-testid="add-project-source"]');
+		const press = async (id: string) =>
+			act(async () => {
+				document.body
+					.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)
+					?.click();
+			});
+		await press("add-project-row-url");
+		expect(field()).toBeNull();
+		await press("add-project-row-folder");
+		expect(field()).not.toBeNull();
 	});
 
 	it("shows loading rows, not disabled host rows, while the code hosts load", async () => {
@@ -308,6 +328,7 @@ describe("AddProjectDialog (git hosts)", () => {
 	});
 
 	it("locks the source rows while the computer's folder dialog is open", async () => {
+		mockGitHosts = [hostView("gitlab.com")];
 		let answer: (v: unknown) => void = () => undefined;
 		mockBridge = {
 			pickFolder: () => new Promise((resolve) => (answer = resolve)),
@@ -323,10 +344,17 @@ describe("AddProjectDialog (git hosts)", () => {
 		const locked = (id: string) =>
 			document.body.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)
 				?.disabled;
-		expect(locked("add-project-row-url")).toBe(true);
-		expect(locked("add-project-pick-folder")).toBe(true);
+		const sources = () =>
+			[
+				"add-project-row-folder",
+				"add-project-row-url",
+				"add-project-pick-folder",
+				"add-project-browse-gitlab",
+				"add-project-connect-github",
+			].map(locked);
+		expect(sources()).toEqual([true, true, true, true, true]);
 		await act(async () => answer({ path: null }));
-		expect(locked("add-project-row-url")).toBe(false);
+		expect(sources()).toEqual([false, false, false, false, false]);
 	});
 
 	it("adds nothing when the dialog closed before the folder dialog answered", async () => {
