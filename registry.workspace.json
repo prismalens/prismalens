@@ -1,5 +1,8 @@
 {
-	"hosts": ["packages/frontend/registry.config.json"],
+	"hosts": [
+		"packages/frontend/registry.config.json",
+		"packages/@prismalens/providers/registry.config.json"
+	],
 	"boundaries": [
 		{
 			"from": "packages/frontend/src",

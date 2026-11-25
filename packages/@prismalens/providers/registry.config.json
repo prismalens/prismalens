@@ -3,9 +3,12 @@
 	"src": "src",
 	"kinds": "src/kinds",
 	"out": "src",
+	"workspace": "../../../registry.workspace.json",
+	"ledger": { "file": "stored-ids.tsv", "kind": "provider", "field": "stored" },
 	"label": "registry-approved",
 	"protected": [
 		"packages/@prismalens/providers/src/kinds/",
-		"packages/@prismalens/providers/registry.config.json"
+		"packages/@prismalens/providers/registry.config.json",
+		"packages/@prismalens/providers/stored-ids.tsv"
 	]
 }

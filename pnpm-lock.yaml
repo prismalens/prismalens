@@ -207,6 +207,9 @@ importers:
       '@prismalens/agent-host':
         specifier: workspace:*
         version: link:../agent-host
+      '@prismalens/providers':
+        specifier: workspace:*
+        version: link:../providers
       semver:
         specifier: ^7.8.6
         version: 7.8.6

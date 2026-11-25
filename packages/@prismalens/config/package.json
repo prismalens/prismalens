@@ -56,6 +56,7 @@
 	"dependencies": {
 		"@prismalens/agent-adapters": "workspace:*",
 		"@prismalens/agent-host": "workspace:*",
+		"@prismalens/providers": "workspace:*",
 		"semver": "^7.8.6",
 		"shell-quote": "^1.12.0",
 		"zod": "catalog:"
