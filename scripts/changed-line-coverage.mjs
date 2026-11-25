@@ -3,7 +3,7 @@
 // Copyright 2026 Sumit Patel
 
 // Which lines a PR adds that no test runs, shown to the reviewer; information, never a gate
-// (CONTRIBUTING.md → Making a change). Reads each package's coverage/lcov.info, whose paths
+// (docs/contributing/testing.md). Reads each package's coverage/lcov.info, whose paths
 // are relative to that package.
 //
 //   node scripts/changed-line-coverage.mjs <base-ref>

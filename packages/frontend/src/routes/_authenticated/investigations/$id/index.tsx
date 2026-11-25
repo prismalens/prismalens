@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * A run has no page of its own: it lives under its incident (#599, #523). This
  * route keeps old deep links working by sending them to its page (#743), a

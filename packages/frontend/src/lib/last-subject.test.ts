@@ -3,7 +3,14 @@
 // Copyright 2026 Sumit Patel
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { lastSubject, rememberSubject, subjectMenu } from "./last-subject";
+import {
+	lastSubject,
+	onlyProject,
+	rememberSubject,
+	serviceIsProject,
+	serviceOfProject,
+	subjectMenu,
+} from "./last-subject";
 
 const projects = [
 	{ id: "p1", name: "acme/shop" },
@@ -55,5 +62,63 @@ describe("rememberSubject", () => {
 		expect(lastSubject()).toBe("service:s1");
 		rememberSubject({ kind: "project", repositoryId: "p2" });
 		expect(lastSubject()).toBe("project:p2");
+	});
+});
+
+describe("serviceIsProject", () => {
+	const repos = [
+		{ id: "r1", fullName: String.raw`C:\Users\sumit\repo` },
+		{ id: "r2", fullName: "acme/shop" },
+	];
+	it("is true for the service an alert made for a project: its name, linked only to it", () => {
+		expect(
+			serviceIsProject({ name: "repo", repositories: [{ repositoryId: "r1" }] }, repos),
+		).toBe(true);
+		expect(
+			serviceIsProject({ name: "Shop", repositories: [{ repositoryId: "r2" }] }, repos),
+		).toBe(true);
+	});
+	it("is false for a service with its own name, with no code, or with more than one project", () => {
+		expect(
+			serviceIsProject({ name: "Checkout", repositories: [{ repositoryId: "r2" }] }, repos),
+		).toBe(false);
+		expect(serviceIsProject({ name: "repo", repositories: [] }, repos)).toBe(false);
+		expect(
+			serviceIsProject(
+				{ name: "repo", repositories: [{ repositoryId: "r1" }, { repositoryId: "r2" }] },
+				repos,
+			),
+		).toBe(false);
+	});
+});
+
+describe("onlyProject", () => {
+	it("names the one project when no subject is chosen", () => {
+		expect(onlyProject([{ id: "r1" }], {})).toEqual({ id: "r1" });
+	});
+	it("names none with two projects, or once No project, a project or a service is chosen", () => {
+		expect(onlyProject([{ id: "r1" }, { id: "r2" }], {})).toBeUndefined();
+		expect(onlyProject([{ id: "r1" }], { none: true })).toBeUndefined();
+		expect(onlyProject([{ id: "r1" }], { project: "r9" })).toBeUndefined();
+		expect(onlyProject([{ id: "r1" }], { service: "s1" })).toBeUndefined();
+	});
+	it("names none when an incident was asked for, so the request is not turned into a plain thread", () => {
+		expect(onlyProject([{ id: "r1" }], { incident: true })).toBeUndefined();
+	});
+});
+
+describe("serviceOfProject", () => {
+	const repos = [
+		{ id: "r1", fullName: "acme/shop" },
+		{ id: "r2", fullName: "acme/api" },
+	];
+	const shop = { id: "s1", name: "shop", repositories: [{ repositoryId: "r1" }] };
+	const checkout = { id: "s2", name: "checkout", repositories: [{ repositoryId: "r2" }] };
+	it("returns the service folded into the project, so an incident can still start from its entry", () => {
+		expect(serviceOfProject([checkout, shop], repos, "r1")).toBe(shop);
+	});
+	it("returns none for a project with no folded service, a service of its own name, or no project", () => {
+		expect(serviceOfProject([checkout, shop], repos, "r2")).toBeUndefined();
+		expect(serviceOfProject([shop], repos, undefined)).toBeUndefined();
 	});
 });

@@ -7,7 +7,7 @@ import { eventually, type Investigation, ScenarioApp } from "./support/scenario-
 
 vi.setConfig({ testTimeout: 72_000 }); // slowest test 23996 ms; 3x, rounded up to the second, at least 5 s (#1154)
 
-// A recorded-agent limit case beside provider-stops.spec.ts: its thread starts threads, so the fake takes the gateway.
+// A recorded-agent limit case beside provider-stops.int.spec.ts: its thread starts threads, so the fake takes the gateway.
 const pl = new ScenarioApp({ mcp: true });
 
 beforeAll(async () => {

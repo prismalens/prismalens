@@ -133,9 +133,8 @@ export function detailsOf(o: {
 	const branchRepo = repos.find((r) => r.branch);
 	const branch = branchRepo?.branch ?? undefined;
 	// A detached worktree names its tip instead of a branch (#1176 F2).
-	const detached = branchRepo
-		? undefined
-		: repos.find((r) => r.detached && r.tip)?.tip?.slice(0, 7);
+	const loose = branchRepo ? undefined : repos.find((r) => r.detached && r.tip);
+	const detached = loose?.tip?.slice(0, 7);
 	const sync =
 		branchRepo &&
 		typeof branchRepo.ahead === "number" &&
@@ -162,6 +161,7 @@ export function detailsOf(o: {
 			: context.machine.hostName,
 		...(branch ? { branch } : {}),
 		...(detached ? { detached } : {}),
+		...(detached && loose?.from ? { from: loose.from } : {}),
 		...(sync ? { sync } : {}),
 		...(name ? { place: { name, ...(cwd ? { path: cwd } : {}) } } : {}),
 		...(o.folder ? { folder: o.folder } : {}),

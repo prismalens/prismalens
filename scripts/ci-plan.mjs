@@ -10,6 +10,9 @@
 //   full    "true": a release PR, a change to the CLI itself, or a path the release proofs read; `proofs.yml` runs its OS, service and upgrade-chain proofs.
 //   agents  "true": the engine, agent-host or agent-adapters closure changed; the qualification legs run (`proofs.yml`).
 //   defer   "true": a draft release PR; nothing runs and `CI gate` stays red until it is marked ready.
+//   installer "true": `full` is on (any `scripts/install/` change turns it on), or a push or merge group; the Windows installer test runs.
+//   draft   "true": a draft PR runs the fast tier only (lint, build, ubuntu unit tests); e2e, intake, full, agents and installer are off.
+//           The `changes` job is then named `Plan (draft)`, and no later run accepts a draft run as proof (`countsAsProof`).
 // Package paths are decided by turbo's graph (`turbo ls --affected`: the changed packages and their dependents).
 // A path outside every package is looked up in OUTSIDE; one it does not name turns every tier on.
 // A renamed file counts under both its names. A push to main or a merge group runs the PR tiers; the proofs run on the PR and nightly (#1023).
@@ -18,9 +21,9 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-/** @typedef {"code" | "e2e" | "intake" | "full" | "agents"} Tier */
+/** @typedef {"code" | "e2e" | "intake" | "full" | "agents" | "installer"} Tier */
 /** @type {Tier[]} */
-const ALL = ["code", "e2e", "intake", "full", "agents"];
+const ALL = ["code", "e2e", "intake", "full", "agents", "installer"];
 
 /** Root-level Markdown and issue templates: nothing a build, a test or the tarball reads. */
 const DOCS = [
@@ -43,6 +46,30 @@ export const TIER_PACKAGES = {
 		"@prismalens/agent-adapters",
 	],
 };
+
+export const DRAFT_REASON =
+	"draft: the fast tier only; marking it ready runs the full plan";
+
+/** The names of the `changes` job: `ci.yml` names it `Plan (draft)` for a draft PR, so a run's jobs tell its mode. */
+export const PLAN_JOB = "Plan this run";
+export const DRAFT_PLAN_JOB = "Plan (draft)";
+
+/**
+ * Whether a finished `CI` run is proof for a ready PR: its plan job ran and was not the draft one.
+ * @param {string[]} jobNames the names of the run's jobs
+ */
+export const countsAsProof = (jobNames) =>
+	jobNames.includes(PLAN_JOB) && !jobNames.includes(DRAFT_PLAN_JOB);
+
+/**
+ * The first candidate whose run is proof. `jobNamesOf` may throw; the caller then runs everything.
+ * @template T
+ * @param {T[]} candidates
+ * @param {(candidate: T) => string[]} jobNamesOf
+ * @returns {T | undefined}
+ */
+export const firstProof = (candidates, jobNamesOf) =>
+	candidates.find((c) => countsAsProof(jobNamesOf(c)));
 
 /** The package every release artifact is built from. */
 const CLI = { name: "prismalens", path: "packages/cli" };
@@ -71,10 +98,11 @@ const OUTSIDE = [
 		[],
 	],
 	[
-		/^scripts\/(agent-probe|agent-tested|agent-adapter-sdk|admission-fake)(\.test)?\.mjs$/,
+		/^scripts\/(agent-probe|agent-locks|agent-tested|agent-adapter-sdk|admission-fake)(\.test)?\.mjs$/,
 		["agents"],
 	],
 	[/^scripts\/agent-pins\.json$/, ["agents"]],
+	[/^scripts\/agent-locks\//, ["agents"]],
 	[
 		/^scripts\/(gate-side-checks|packed-upgrade-chain)(\.test)?\.mjs$/,
 		["full"],
@@ -107,7 +135,7 @@ const directlyChangesCli = (/** @type {string[]} */ files) =>
 	);
 
 /**
- * @param {{
+ * @typedef {{
  *   event: string,
  *   files: string[],
  *   packages?: { name: string, path: string }[],
@@ -117,10 +145,36 @@ const directlyChangesCli = (/** @type {string[]} */ files) =>
  *   sameTreeAs?: string | null,
  *   draft?: boolean,
  *   readyOnPassedHead?: boolean,
- * }} input `affected` is turbo's list of changed packages and their dependents; `null` when turbo could not say.
- * @returns {{ skip: boolean, code: boolean, e2e: boolean, intake: boolean, full: boolean, agents: boolean, reason: string, defer?: boolean }}
+ * }} PlanInput `affected` is turbo's list of changed packages and their dependents; `null` when turbo could not say.
+ * @typedef {{ skip: boolean, code: boolean, e2e: boolean, intake: boolean, full: boolean, agents: boolean, installer: boolean, reason: string, defer?: boolean, draft?: boolean }} PlanResult
  */
-export function plan({
+
+/**
+ * @param {PlanInput} input
+ * @returns {PlanResult}
+ */
+export function plan(input) {
+	const result = planFull(input);
+	// A draft keeps `code` as computed and drops the tiers that cost a runner each; ready_for_review plans the rest.
+	if (input.draft && input.event === "pull_request" && !result.skip)
+		return {
+			...result,
+			e2e: false,
+			intake: false,
+			full: false,
+			agents: false,
+			installer: false,
+			draft: true,
+			reason: DRAFT_REASON,
+		};
+	return result;
+}
+
+/**
+ * @param {PlanInput} input
+ * @returns {PlanResult}
+ */
+function planFull({
 	event,
 	files,
 	packages = [],
@@ -138,6 +192,7 @@ export function plan({
 		intake: false,
 		full: false,
 		agents: false,
+		installer: false,
 	};
 	const everything = {
 		skip: false,
@@ -146,6 +201,7 @@ export function plan({
 		intake: true,
 		full: true,
 		agents: true,
+		installer: true,
 	};
 	if (event !== "pull_request")
 		return {
@@ -155,6 +211,7 @@ export function plan({
 			intake: true,
 			full: false,
 			agents: false,
+			installer: true,
 			reason: `${event}: the PR checks run; the release proofs run nightly`,
 		};
 	// release-please rebuilds this PR on every push to main; CI waits until it is marked ready.
@@ -213,6 +270,7 @@ export function plan({
 	for (const tier of /** @type {const} */ (["e2e", "intake", "agents"]))
 		if (TIER_PACKAGES[tier].some((p) => affected.includes(p))) need.add(tier);
 	if (directlyChangesCli(files)) need.add("full");
+	if (need.has("full")) need.add("installer");
 	// The build is what e2e and the intake run on.
 	if (need.has("e2e") || need.has("intake")) need.add("code");
 	const unknown = outside.find((f) => !OUTSIDE.some(([p]) => p.test(f)));
@@ -223,6 +281,7 @@ export function plan({
 		intake: need.has("intake"),
 		full: need.has("full"),
 		agents: need.has("agents"),
+		installer: need.has("installer"),
 		reason: unknown
 			? `${unknown} is on no plan rule: everything runs`
 			: need.has("code")
@@ -266,8 +325,23 @@ export function turboPackages({ turbo, cwd, affected }) {
 	return JSON.parse(out.slice(out.indexOf("{"))).packages.items;
 }
 
+/** The names of every job in a run; a failed lookup throws, and the caller then runs everything. */
+const jobNames = (
+	/** @type {NodeJS.ProcessEnv} */ env,
+	/** @type {number} */ id,
+) =>
+	gh([
+		"api",
+		"--paginate",
+		`repos/${env.REPO}/actions/runs/${id}/jobs?per_page=100`,
+		"--jq",
+		".jobs[].name",
+	])
+		.split("\n")
+		.filter(Boolean);
+
 /**
- * An earlier passing `CI` run on this PR branch whose head commit has the same tree, if any.
+ * An earlier `CI` run on this PR branch that passed as a ready PR, whose head commit has the same tree, if any.
  * The run list carries each head commit's tree, as Git's own skip-if-redundant job reads it.
  */
 function earlierPassWithSameTree(/** @type {NodeJS.ProcessEnv} */ env) {
@@ -283,24 +357,29 @@ function earlierPassWithSameTree(/** @type {NodeJS.ProcessEnv} */ env) {
 			"api",
 			`repos/${REPO}/actions/workflows/ci.yml/runs?event=pull_request&status=success&per_page=50&branch=${encodeURIComponent(String(HEAD_REF))}`,
 			"--jq",
-			"[.workflow_runs[] | {sha: .head_sha, tree: .head_commit.tree_id, repo: .head_repository.full_name}]",
+			"[.workflow_runs[] | {id, sha: .head_sha, tree: .head_commit.tree_id, repo: .head_repository.full_name}]",
 		]),
 	);
-	const hit = runs.find(
-		(r) => r.repo === HEAD_REPO && r.sha !== HEAD_SHA && r.tree === mine,
+	const hit = firstProof(
+		runs.filter(
+			(r) => r.repo === HEAD_REPO && r.sha !== HEAD_SHA && r.tree === mine,
+		),
+		(r) => jobNames(env, r.id),
 	);
 	return hit ? hit.sha : null;
 }
 
-/** Whether a `CI` run on exactly this head commit already succeeded. */
+/** Whether a `CI` run on exactly this head commit already succeeded as a ready PR, not as a draft. */
 function headAlreadyPassed(/** @type {NodeJS.ProcessEnv} */ env) {
-	const out = gh([
-		"api",
-		`repos/${env.REPO}/actions/workflows/ci.yml/runs?head_sha=${env.HEAD_SHA}&event=pull_request&status=success&per_page=1`,
-		"--jq",
-		".total_count",
-	]);
-	return Number(out.trim()) > 0;
+	const ids = JSON.parse(
+		gh([
+			"api",
+			`repos/${env.REPO}/actions/workflows/ci.yml/runs?head_sha=${env.HEAD_SHA}&event=pull_request&status=success&per_page=100`,
+			"--jq",
+			"[.workflow_runs[].id]",
+		]),
+	);
+	return firstProof(ids, (id) => jobNames(env, id)) !== undefined;
 }
 
 function main(/** @type {NodeJS.ProcessEnv} */ env) {
@@ -368,7 +447,9 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 		`intake=${result.intake}`,
 		`full=${result.full}`,
 		`agents=${result.agents}`,
+		`installer=${result.installer}`,
 		`defer=${Boolean(result.defer)}`,
+		`draft=${Boolean(result.draft)}`,
 		`reason=${result.reason}`,
 	];
 	console.log(lines.join("\n"));
@@ -377,7 +458,7 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 	if (env.GITHUB_STEP_SUMMARY)
 		appendFileSync(
 			env.GITHUB_STEP_SUMMARY,
-			`**CI plan:** ${result.reason} (code=${result.code}, e2e=${result.e2e}, intake=${result.intake}, full=${result.full}, agents=${result.agents})\n`,
+			`**CI plan:** ${result.reason} (code=${result.code}, e2e=${result.e2e}, intake=${result.intake}, full=${result.full}, agents=${result.agents}, installer=${result.installer})\n`,
 		);
 }
 

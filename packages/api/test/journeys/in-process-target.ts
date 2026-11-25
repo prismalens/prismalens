@@ -10,8 +10,14 @@ import { ScenarioApp } from "../scenarios/support/scenario-app.js";
 export async function inProcessTarget(): Promise<Target> {
 	const pl = new ScenarioApp();
 	await pl.boot();
-	const workDir = join(pl.workspace, "journeys");
-	mkdirSync(workDir);
+	let workDir: string;
+	try {
+		workDir = join(pl.workspace, "journeys");
+		mkdirSync(workDir);
+	} catch (error) {
+		await pl.dispose();
+		throw error;
+	}
 	return {
 		name: "in-process",
 		agent: "scripted",

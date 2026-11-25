@@ -9,6 +9,7 @@ import type { SendEnvelope } from "@/lib/composer-send";
 import { NewThread } from "./NewThread";
 
 let send: ((s: SendEnvelope) => Promise<unknown>) | null = null;
+let scope: string | null = null;
 const createIncident = vi.fn();
 const investigate = vi.fn();
 const updateIncident = vi.fn(async () => ({}));
@@ -16,8 +17,12 @@ const navigate = vi.fn(async (_to: unknown) => {});
 const startThread = vi.fn();
 
 vi.mock("./Composer", () => ({
-	Composer: (props: { onSend: (s: SendEnvelope) => Promise<unknown> }) => {
+	Composer: (props: {
+		onSend: (s: SendEnvelope) => Promise<unknown>;
+		scope: string;
+	}) => {
 		send = props.onSend;
+		scope = props.scope;
 		return <span data-testid="composer" />;
 	},
 }));
@@ -32,7 +37,6 @@ vi.mock("@/components/agent/AgentPicker", () => ({
 		isLoading: false,
 	}),
 	defaultAccessOf: () => ({ level: { level: "supervised" } }),
-	unreadyLine: () => null,
 }));
 vi.mock("@/lib/api/hooks", () => ({
 	useCreateIncident: () => ({ mutateAsync: createIncident }),
@@ -53,6 +57,7 @@ let container: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
 	send = null;
+	scope = null;
 	createIncident.mockReset();
 	investigate.mockReset();
 	updateIncident.mockClear();
@@ -68,6 +73,36 @@ afterEach(async () => {
 });
 
 describe("NewThread with Incident on (#1020)", () => {
+	it("keeps the draft under the subject it was typed for when the send goes to its service", async () => {
+		createIncident.mockResolvedValue({ id: "inc-1" });
+		investigate.mockResolvedValue({ investigationId: "run-1" });
+		const view = (incident: "high" | null) => (
+			<NewThread
+				subject={
+					incident
+						? { kind: "service", serviceId: "s1" }
+						: { kind: "project", repositoryId: "r1" }
+				}
+				scopeSubject={{ kind: "project", repositoryId: "r1" }}
+				branch={null}
+				incident={incident}
+			/>
+		);
+		await act(async () => root.render(view(null)));
+		expect(scope).toBe("new:project:r1");
+		await act(async () => root.render(view("high")));
+		expect(scope).toBe("new:project:r1");
+		await send?.({
+			text: "checkout is down",
+			attachments: [],
+			quotes: [],
+			references: [],
+		} as SendEnvelope);
+		expect(createIncident).toHaveBeenCalledWith(
+			expect.objectContaining({ serviceId: "s1" }),
+		);
+	});
+
 	it("a retry after a refused investigation reuses the incident it made, never a second one", async () => {
 		createIncident.mockResolvedValue({ id: "inc-1" });
 		investigate

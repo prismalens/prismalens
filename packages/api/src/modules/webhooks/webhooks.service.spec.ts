@@ -453,23 +453,29 @@ describe("WebhooksService", () => {
 			expect(result.mappedServiceId).toBe(byId.id);
 		});
 
-		it("matches serviceName to a service by name", async () => {
-			vi.mocked(servicesService.findByName).mockResolvedValue(byName as never);
-			vi.mocked(alertMappingService.resolveServiceForAlert).mockResolvedValue(byRule as never);
+		it("hands serviceName to the one name lookup beside the label", async () => {
+			vi.mocked(alertMappingService.resolveServiceForAlert).mockResolvedValue(byName as never);
 
 			const result = await service.processGenericWebhook({
 				title: "Test Alert",
 				serviceName: byName.name,
+				labels: { env: "prod" },
 			});
 
-			expect(servicesService.findByName).toHaveBeenCalledWith(byName.name);
+			expect(servicesService.findByName).not.toHaveBeenCalled();
+			expect(alertMappingService.resolveServiceForAlert).toHaveBeenCalledWith(
+				expect.objectContaining({
+					serviceName: byName.name,
+					labels: { env: "prod" },
+				}),
+			);
 			expect(alertsService.create).toHaveBeenCalledWith(
 				expect.objectContaining({ serviceId: byName.id }),
 			);
 			expect(result.mappedServiceId).toBe(byName.id);
 		});
 
-		it("falls back to the mapping rules when serviceName and serviceId match nothing", async () => {
+		it("falls back to the name lookup when serviceId matches nothing", async () => {
 			vi.mocked(alertMappingService.resolveServiceForAlert).mockResolvedValue(byRule as never);
 
 			const result = await service.processGenericWebhook({
@@ -492,7 +498,6 @@ describe("WebhooksService", () => {
 			const result = await service.processGenericWebhook({ title: "Test Alert" });
 
 			expect(servicesService.findById).not.toHaveBeenCalled();
-			expect(servicesService.findByName).not.toHaveBeenCalled();
 			expect(result.mappedServiceId).toBe(byRule.id);
 		});
 	});

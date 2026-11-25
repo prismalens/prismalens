@@ -32,6 +32,24 @@ export interface PickerOption {
 	testId?: string;
 }
 
+/** A tile on a picker's rail: it shows its own rows, or runs an action (Add agent). */
+export interface PickerRailItem {
+	id: string;
+	name: string;
+	mark?: ReactNode;
+	icon?: LucideIcon;
+	run?: () => void;
+	testId?: string;
+}
+
+/** A column of tiles beside the list; the list holds only the shown tile's rows. */
+export interface PickerRail {
+	label: string;
+	items: PickerRailItem[];
+	value: string;
+	onChange: (id: string) => void;
+}
+
 /** The list and its search load when a picker first opens (#1101 category 12). */
 export const pickerList = lazyModule(() => import("./PickerList"));
 
@@ -59,6 +77,8 @@ export function Picker({
 	testId,
 	listTestId,
 	fact,
+	rail,
+	hint,
 }: {
 	/** The control's name for screen readers and the search placeholder. */
 	label: string;
@@ -91,6 +111,10 @@ export function Picker({
 	listTestId?: string;
 	/** The fact the trigger shows, from `registry/closed/fact.ts`. */
 	fact?: FactId;
+	/** A rail of tiles beside the list, each showing its own rows. */
+	rail?: PickerRail;
+	/** Words after the name in the trigger's tip and label, such as the agent a model runs on. */
+	hint?: string;
 }) {
 	const [own, setOwn] = useState(false);
 	// A click on a locked picker shows its reason, where a hover never comes (a tap, a key).
@@ -113,7 +137,7 @@ export function Picker({
 	const trigger = (
 		<button
 			type="button"
-			aria-label={`${label}: ${shown?.name ?? "none"}`}
+			aria-label={`${label}: ${shown?.name ?? "none"}${hint ? ` · ${hint}` : ""}`}
 			aria-disabled={locked ? true : undefined}
 			disabled={disabled && !locked}
 			data-testid={testId}
@@ -183,9 +207,10 @@ export function Picker({
 	return (
 		<KitPopover
 			trigger={trigger}
-			family="picker"
+			family={rail ? "rail" : "picker"}
 			side={side}
 			label={label}
+			hint={hint ? `${label}: ${shown?.name ?? "none"} · ${hint}` : undefined}
 			open={isOpen}
 			onOpenChange={setOpen}
 		>
@@ -200,6 +225,7 @@ export function Picker({
 					searchPlaceholder={searchPlaceholder}
 					listTestId={listTestId}
 					pick={pick}
+					rail={rail}
 				/>
 			)}
 		</KitPopover>

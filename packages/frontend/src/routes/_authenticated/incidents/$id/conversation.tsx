@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * A run's page, an Ask's, or a new conversation (#811), under its incident.
  * `#step-N` opens a step; `?call=` opens the tool call a report's evidence cites;

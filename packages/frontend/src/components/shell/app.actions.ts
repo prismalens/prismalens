@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	BellRing,
 	CircleHelp,
 	FileCode2,
 	FolderTree,
@@ -25,11 +26,14 @@ import { define } from "@/registry/define";
 
 /** The app itself: its commands run where their owner is mounted (lib/app-commands). */
 export interface AppCtx {
-	facts: Facts<AppCommand>;
+	facts: Facts<AppState>;
 }
 
+/** What a mounted command adds to the facts: why Send a test alert cannot run now. */
+export type AppState = AppCommand | "noProject" | "gitless" | "sending";
+
 /** The app object: its actions are the app-wide keys. */
-export const appObject = defineObject<AppCtx, AppCommand>("app");
+export const appObject = defineObject<AppCtx, AppState>("app");
 
 export const appSearch = define.action({
 	id: "app.search",
@@ -130,6 +134,26 @@ export const appExpandAll = define.action({
 	},
 	when: (f) => !!f.is?.expandAll,
 	run: () => runAppCommand("expandAll"),
+});
+
+export const NO_PROJECT_WHY =
+	"Add a project first. The test alert is sent for one of your projects.";
+export const GITLESS_WHY =
+	"This folder has no git, so there is no code history to investigate. Start git in it first.";
+
+/** A high-severity sample alert for a project, through the webhook's own path; its page or Settings, Alert intake owns it. */
+export const appSendTestAlert = define.action({
+	id: "app.sendTestAlert",
+	label: "Send a test alert",
+	icon: BellRing,
+	when: (f) => !!f.is?.sendTestAlert,
+	disabled: (f) =>
+		f.is?.noProject
+			? NO_PROJECT_WHY
+			: f.is?.gitless
+				? GITLESS_WHY
+				: !!f.is?.sending,
+	run: () => runAppCommand("sendTestAlert"),
 });
 
 /** The thread panel's panes by number, in the New tab page's order (#1101 category 21). */

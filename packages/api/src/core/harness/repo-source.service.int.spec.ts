@@ -404,6 +404,22 @@ describe("repo-source.service", () => {
 			expect(readFileSync(join(src, ".git", "config"), "utf8")).toBe(configBefore);
 		});
 
+		it("a folder snapshot records the branch it was cut from, though its worktree sits on none", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+
+			const snap = await new RepoSourceService().snapshot(
+				{ kind: "folder", source: src },
+				runWorktreeDir("run-from"),
+				undefined,
+				undefined,
+				"run-from",
+			);
+
+			expect(snap.branch).toBeNull();
+			expect(snap.from).toBe("main");
+		});
+
 		it("the user's post-checkout hook does not fire when the worktree is made (#918)", async () => {
 			const src = tmp("pl-src-");
 			initRepo(src);
@@ -581,6 +597,54 @@ describe("repo-source.service", () => {
 
 			expect(realpathSync(check.root)).toBe(realpathSync(src));
 			expect(check.prefix).toBe("sub/dir");
+		});
+
+		it("checkFolder() names the branch whose commit it read, though the checkout changes between its git calls", async () => {
+			const src = tmp("pl-src-");
+			const main = initRepo(src);
+			git(["checkout", "-q", "-b", "other"], src);
+			writeFileSync(join(src, "a.txt"), "v2");
+			git(
+				["-c", "user.email=test@test.local", "-c", "user.name=Test", "commit", "-q", "-am", "other"],
+				src,
+			);
+			git(["checkout", "-q", "main"], src);
+			const service = new RepoSourceService();
+			type Git = (...a: unknown[]) => Promise<{ stdout: string; stderr: string }>;
+			const inner = service as unknown as { git: Git };
+			const real = inner.git.bind(service);
+			let calls = 0;
+			vi.spyOn(inner, "git").mockImplementation(async (...a) => {
+				const out = await real(...a);
+				if (++calls === 1) git(["checkout", "-q", "other"], src);
+				return out;
+			});
+
+			const check = await service.checkFolder(src);
+
+			expect({ branch: check.branch, head: check.head }).toEqual({
+				branch: "main",
+				head: main,
+			});
+		});
+
+		it("checkFolder() reads the branch, not a tag of the same name, when both are called main", async () => {
+			const src = tmp("pl-src-");
+			initRepo(src);
+			git(["tag", "main"], src);
+			writeFileSync(join(src, "a.txt"), "v2");
+			git(
+				["-c", "user.email=test@test.local", "-c", "user.name=Test", "commit", "-q", "-am", "v2"],
+				src,
+			);
+			const tip = headOf(src);
+
+			const check = await new RepoSourceService().checkFolder(src);
+
+			expect({ branch: check.branch, head: check.head }).toEqual({
+				branch: "main",
+				head: tip,
+			});
 		});
 
 		it("checkFolder() tells a plain folder, a file and a repo with no commit apart (#1020)", async () => {

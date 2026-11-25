@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import {
 	machine,
 	writeStamp as writeRegistryStamp,
-} from "../../../packages/@prismalens/registry/src/stamp.ts";
+} from "../../../packages/@prismalens/registry/src/ui/stamp.ts";
 import { stateDir } from "./lib.mjs";
 
 export const REPO_ROOT = resolve(

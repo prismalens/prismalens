@@ -542,7 +542,7 @@ describe("the run owns its row's end (#673 w59, OBJ-010 b)", () => {
 		expect(titles).toContain("Investigation stopped");
 		expect(titles).not.toContain("Investigation failed");
 		expect(titles).not.toContain("Investigation completed");
-		// After a restart the same row ends cancelled too: dispatch.service.spec.ts, T12 "a running job whose row recorded a Stop".
+		// After a restart the same row ends cancelled too: dispatch.service.int.spec.ts, T12 "a running job whose row recorded a Stop".
 	});
 
 	it("a result write refused with no Stop asked for ends the row failed with the reason, never succeeded", async () => {
@@ -885,6 +885,8 @@ describe("the settlement table, DESIGN §3.3 (#673 w59, T8, T9)", () => {
 				["inv-1", { ...kept(R.cancelled), lastTurnOutcome: outcome }, { stopped: outcome === "stopped" }],
 			]);
 		},
+		// The store's real end-of-run retries (250 + 1000 + 3000 ms) run before it settles.
+		15_000,
 	);
-	// T9 restart: dispatch.service.spec.ts, T12 "an Ask on a stopped reportless run cut off by a restart keeps it cancelled".
+	// T9 restart: dispatch.service.int.spec.ts, T12 "an Ask on a stopped reportless run cut off by a restart keeps it cancelled".
 });

@@ -4,7 +4,7 @@
 import { defineConfig } from "vitest/config";
 
 /**
- * Coverage floors (CONTRIBUTING.md → Making a change, #1206): a ratchet, never a target.
+ * Coverage floors (docs/contributing/testing.md, #1206): a ratchet, never a target.
  * A per-file entry below guards a module that already has its tests; a new module needs none.
  */
 /**

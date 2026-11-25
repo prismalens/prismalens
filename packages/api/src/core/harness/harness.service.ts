@@ -31,6 +31,9 @@ import {
 	HARNESS_REGISTRY,
 	type HarnessId,
 	isSafeGatewayUrl,
+	preferredModel,
+	providerSignedOutLine,
+	providerSignIn,
 	refuseModel,
 	reservedEnvNames,
 	signInCommand,
@@ -77,7 +80,9 @@ import { HarnessProbeService } from "./harness-probe.service.js";
 /** How long a remembered "ready" stands before a run checks again; "not ready" is never reused (#673 w9). */
 export const READY_CHECK_TTL_MS = 24 * 60 * 60 * 1000;
 
-export type Readiness = { ready: true } | { ready: false; reason: string };
+export type Readiness =
+	| { ready: true; warning?: string }
+	| { ready: false; reason: string };
 
 type Check = NonNullable<HarnessStatus["checked"]>;
 
@@ -561,6 +566,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			...(s.binaryPaths ? { binaryPaths: s.binaryPaths } : {}),
 			localAgent: s.localAgent ?? null,
 			isRunnable: (id) => !off.has(id) && this.checkPasses(id),
+			isSignedIn: (id) => this.providerKnown(id, s.models?.[id]),
 		};
 	}
 
@@ -625,6 +631,35 @@ export class HarnessService implements OnApplicationBootstrap {
 				);
 		});
 		return this.persisting;
+	}
+
+	/** Auto prefers an agent whose provider login for its model is known; one it could not read waits behind. */
+	private providerKnown(id: HarnessId, model: string | undefined): boolean {
+		const c = this.models.checked(id);
+		const chosen = model ?? this.runModelOf(id);
+		// No model to read a login for: auto keeps its order; the status says Sign-in not checked.
+		if (!chosen) return true;
+		const state = providerSignIn(id, c, chosen);
+		return state === "na" || state === "signed-in";
+	}
+
+	/** The model a run on `id` takes when none is starred or asked: one whose provider is signed in. */
+	runModelOf(id: HarnessId): string | null {
+		// Only models the agent itself listed: a catalogue one may be a name it does not know.
+		const listed = this.models.modelsFor(id, this.models.catalogue());
+		return preferredModel(
+			id,
+			this.models.checked(id),
+			listed.source === "harness" ? listed.entries : [],
+		);
+	}
+
+	/** A model to send when none is starred: only one that replaces the agent's own default, else null. */
+	runModelOverride(id: HarnessId): string | null {
+		const model = this.runModelOf(id);
+		return model && model !== this.models.checked(id)?.servedModel
+			? model
+			: null;
 	}
 
 	private checkPasses(id: HarnessId): boolean {
@@ -804,11 +839,17 @@ export class HarnessService implements OnApplicationBootstrap {
 	/**
 	 * Would a run on this agent start? A remembered `answers-acp` under a day
 	 * old, else a check now: a remembered failure is checked again, so signing
-	 * in takes effect on the next run (#673 w9).
+	 * in takes effect on the next run (#673 w9). `null` asks for the agent's own
+	 * default, as dispatch does; `undefined` takes Settings'.
 	 */
-	async ensureReady(id: HarnessId): Promise<Readiness> {
+	async ensureReady(id: HarnessId, model?: string | null): Promise<Readiness> {
 		const off = { ready: false, reason: this.offMessage(id) } as const;
 		if (await this.isOff(id)) return off;
+		const settings = await this.getSettings();
+		const chosenBy = (c: Check) =>
+			model === null
+				? (c.servedModel ?? null)
+				: (model ?? settings.models?.[id] ?? this.runModelOf(id));
 		const remembered = this.models.checked(id);
 		const fresh =
 			remembered?.outcome === "answers-acp" &&
@@ -821,9 +862,16 @@ export class HarnessService implements OnApplicationBootstrap {
 			};
 		// Turned off while the probe ran: its answer no longer stands.
 		if (!fresh && (await this.isOff(id))) return off;
-		return check.outcome === "answers-acp"
-			? { ready: true }
-			: { ready: false, reason: notReadyReason(id, check) };
+		if (check.outcome !== "answers-acp")
+			return { ready: false, reason: notReadyReason(id, check) };
+		const chosen = chosenBy(check);
+		// A warning, not a refusal: the login list misses keys set in config files, AWS and ADC (#1222).
+		if (providerSignIn(id, check, chosen) === "signed-out") {
+			const warning = providerSignedOutLine(id, chosen);
+			this.logger.warn(`Starting anyway: ${warning}`);
+			return { ready: true, warning };
+		}
+		return { ready: true };
 	}
 
 	private checkOnce(id: HarnessId): Promise<Check | null> {
@@ -1298,6 +1346,11 @@ export class HarnessService implements OnApplicationBootstrap {
 				return {
 					...h,
 					runnable: h.installed && !off && this.checkPasses(h.id),
+					providerSignIn: providerSignIn(
+						h.id,
+						checked,
+						settings.models?.[h.id] ?? this.runModelOf(h.id),
+					),
 					off,
 					added: settings.added?.includes(h.id) ?? false,
 					signIn: this.signInOf(h.id, settings),

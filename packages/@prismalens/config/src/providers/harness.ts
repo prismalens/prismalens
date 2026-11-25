@@ -17,7 +17,17 @@ import {
 	type LevelFacts,
 	reopens,
 } from "@prismalens/agent-host/registry";
+
+import {
+	type AgentFacts,
+	agents,
+	type CatalogueSource,
+	type CheckedModes,
+	type AccessLevel as DescribedLevel,
+	type Lines,
+} from "@prismalens/providers/agents";
 import CATALOGUE_SOURCES from "./catalogue-sources.json" with { type: "json" };
+import { modelProvider, providerName } from "./model-makers.js";
 
 export {
 	ACCESS_LEVELS,
@@ -40,6 +50,13 @@ export {
 	type SubagentStopFacts,
 	staleFacts,
 } from "@prismalens/agent-host/registry";
+
+export {
+	type CatalogueSource,
+	type CheckedModes,
+	type InstallChannel,
+	installCommand,
+} from "@prismalens/providers/agents";
 
 export const HARNESS_IDS = AGENT_IDS;
 export type HarnessId = AgentId;
@@ -84,417 +101,44 @@ export interface SandboxCheck {
 /** The sandbox check's key for an agent that offers no modes; never sent to an agent. */
 export const NO_MODE_KEY = "agent-default";
 
-/** What the last readiness check offered, as much of it as a row line reads. */
-export type CheckedModes = {
-	modes: readonly { id: string; name: string }[] | null;
-} | null;
-
 /** One permission level on one agent: the package's facts, and the line under the level. */
 export interface HarnessAccess extends LevelFacts {
 	/** The row line under the level: what this agent runs, by its own mode name when the check listed one. */
 	line: (checked: CheckedModes) => string;
 }
 
-/** A package registry an install hint names: npm, or uv's PyPI with the first package the CLI. */
-export type InstallChannel =
-	| { npm: string }
-	| { uv: readonly [string, ...string[]] };
+/** What PrismaLens alone says and pins about an agent (#916): its descriptor's facts and lettered mark. */
+type ProductFacts = Omit<AgentFacts, "lines"> & {
+	/** A lettered tile, only where the agent has no published logo (#1101). */
+	mark?: AgentMarkFact;
+};
 
-/** The command an install hint gives for `channel`. */
-export function installCommand(channel: InstallChannel): string {
-	if ("npm" in channel) return `npm i -g ${channel.npm}`;
-	const [cli, ...extras] = channel.uv;
-	return [
-		"uv tool install -U",
-		cli,
-		...extras.map((p) => `--with "${p}"`),
-	].join(" ");
-}
-
-const DEEPAGENTS_CHANNEL = {
-	uv: ["deepagents-code", "deepagents-acp"],
-} as const;
-
-/** What PrismaLens alone says and pins about an agent (#916). */
-interface ProductFacts {
-	/** One line the readiness check shows when the binary is missing; it names `channel`'s command. */
-	install: string;
-	/** Where `install` gets the agent's CLI from; the nightly probe installs from here (#1013). */
-	channel?: InstallChannel;
-	/** The vendor's next major, on its own package; the nightly probes its latest too (#1013). */
-	nextChannel?: InstallChannel;
-	/** The probed facts the next major answers differently from the row's own; the probe holds its latest to these (#1173). */
-	nextFacts?: Partial<
-		Record<
-			"loadSession" | "images" | "embeddedContext" | "directories",
-			boolean
-		>
-	>;
-	/** One line the picker and the readiness check show: how to sign this harness in. */
-	loginHint: string;
-	/** Arguments to its own CLI that sign it in, staged in the terminal (#1171); absent, none. */
-	signInArgs?: readonly string[];
-	/** Env vars that move where its login lives; a stored one leaves Sign in to the copied hint (#1171). */
-	loginEnvKeys?: readonly string[];
-	/** Its adapter reports usage-limit windows on a run (#1171). */
-	reportsLimits?: true;
-	/**
-	 * The model prismalens asks for when the operator set none: the id the
-	 * row's compatibility run passed on. Absent means the harness's own default,
-	 * which nobody tested (#337 run e: OpenCode's default ignored the report
-	 * schema twice). Recorded per run with its source in `RunFidelity`.
-	 */
-	defaultModel?: string;
-	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. Written by hand from `scripts/acp-admission.ts` output; CI re-runs the OpenCode row on every push with a pinned model. */
-	tested?: { version: string; date: string; companion?: string };
-	/** Its entries in the bundled ACP registry, so Add agent never lists it twice (#911). */
-	acpRegistryIds?: readonly string[];
-	/** What the run view says when PrismaLens's tools did not reach this agent (#848). */
-	toolsHint?: { text: string };
-	/**
-	 * PrismaLens's tools come as a core plus `pl_tools_search`, not all listed; on only where the
-	 * scripted-model matrix measured fewer tool tokens at no pass-rate cost (#848).
-	 */
-	harnessToolSearch?: true;
-	/** Minutes the agent's prompt cache lives idle; null when no source states it (#1024). */
-	cacheTtlMinutes: number | null;
-	/** Percent of the window where the agent compacts by itself; null when no source states it (#1101). */
-	autoCompactPercent: number | null;
-	/** The agent compacts an idle session itself, so PrismaLens never does (#1024). */
-	compactsWhenIdle: boolean;
-	/** The command that compacts the session, without its slash; null when it has none. */
-	compactCommand: string | null;
-	/** Its compact command takes focus instructions after the name (#1024). */
-	compactTakesFocus: boolean;
-	/** A larger context window taken as a suffix on the model id; absent, the agent offers one window. */
-	modelWindow?: { alias: string; base: string; large: string };
-	/** With no model over ACP, the agent runs a model it chooses itself, so there is no list to wait for. */
-	picksOwnModel?: true;
-	/** The user sets its command and arguments in Settings; no binary is looked up. */
-	commandSetByUser?: true;
-	/** The file its own default permission is read from, as a Settings line names it. */
-	settingsFile?: string;
-	/** Why it has no single permission level, where it has modes but they are not levels. */
-	noLevelReason?: string;
-	/** What its own settings still decide, under the Settings rows (#673 w21); null, nothing to say. */
-	ownSettingsNote?: (checked: CheckedModes) => string | null;
-	/** One line on how a level becomes its permission rules (#673 w21). */
-	permissionRulesNote?: string;
-	/** How the UI draws it: its owner's published logo, or a lettered tile (#1101). */
-	mark: AgentMarkFact;
-	/** The provider that makes and bills its models, by its models.dev id (`providerFacts`). */
-	vendor?: string;
-	/** Where its fallback model list comes from in the models.dev snapshot (`catalogue-sources.json`). */
-	catalogue?: CatalogueSource;
-	/** What its adapter forwards over ACP besides tokens (pattern sheet §7); absent, unknown. */
-	usageReports?: readonly ("cache" | "cost" | "limits")[];
-}
-
-/**
- * An agent's owner's logo as published, drawn in its own inks for each theme at no less
- * than its stated minimum, or two letters where the owner's terms rule the logo out.
- * `source` and `terms` are the pages read before the entry was added (#1101).
- */
-export type AgentMarkFact =
-	| {
-			logo: {
-				viewBox: string;
-				/** The smallest size its terms allow, in px. */
-				min: { width: number; height: number };
-				/** The outline's path, then the inner shade's, drawn at `shade` opacity. */
-				paths: { ink: string; shade?: string };
-				ink: { light: string; dark: string };
-				shade: { light: number; dark: number };
-			};
-			source: string;
-			terms: string;
-	  }
-	| { letters: string; withheld: string; terms?: string };
-
-export interface CatalogueSource {
-	providers: readonly string[];
-	/** Its model ids carry the provider as `provider/model`. */
-	prefixed?: boolean;
-	/** Its free models pay for themselves with your prompts. */
-	freeIsTraining?: boolean;
-}
+/** Two letters for an agent with no published logo; one with a logo has its art in `assets/brands.ts`. */
+export type AgentMarkFact = { letters: string };
 
 export interface HarnessDescriptor extends AgentDescriptor, ProductFacts {
 	/** Each permission level on this agent, with its line (#673 w21 ruling 2026-10-10). */
 	access: Record<AccessLevel, HarnessAccess>;
 }
 
-/** A mode by the agent's own name in the last check, else `fallback`. */
-function modeNamed(
-	checked: CheckedModes,
-	id: string,
-	fallback: string,
-): string {
-	return checked?.modes?.find((m) => m.id === id)?.name ?? fallback;
+// A descriptor names agent-host's levels without importing it; this fails to compile if they part.
+const LEVELS_MATCH: [AccessLevel, DescribedLevel] extends [
+	DescribedLevel,
+	AccessLevel,
+]
+	? true
+	: never = true;
+void LEVELS_MATCH;
+
+const DESCRIBED = new Map(agents().map((a) => [a.launch, a]));
+
+/** An agent's facts from its descriptor; a launch row with none fails at load. */
+function productOf(id: HarnessId): ProductFacts & { lines: Lines } {
+	const a = DESCRIBED.get(id);
+	if (!a)
+		throw new Error(`agent ${id} has no descriptor in @prismalens/providers`);
+	return { ...a.facts, ...("letters" in a.mark ? { mark: a.mark } : {}) };
 }
-
-function offers(checked: CheckedModes, id: string): boolean {
-	return !!checked?.modes?.some((m) => m.id === id);
-}
-
-type Lines = Record<AccessLevel, HarnessAccess["line"]>;
-
-function noModeLines(label: string): Lines {
-	const line = () =>
-		`${label} has no modes; PrismaLens answers its asks by this level.`;
-	return {
-		supervised: line,
-		"auto-edits": line,
-		auto: line,
-		"full-access": line,
-	};
-}
-
-const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
-	opencode: {
-		// Retention depends on the provider and model behind it, so nothing is known (#1024).
-		cacheTtlMinutes: null,
-		// A 15% reserve below the window by default (compaction.ts, #1101).
-		autoCompactPercent: 85,
-		compactsWhenIdle: false,
-		compactCommand: null,
-		compactTakesFocus: false,
-		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
-		harnessToolSearch: true,
-		acpRegistryIds: ["opencode", "opencode-v2"],
-		mark: {
-			logo: {
-				viewBox: "0 0 240 300",
-				min: { width: 16, height: 20 },
-				paths: {
-					ink: "M180 60H60V240H180V60ZM240 300H0V0H240V300Z",
-					shade: "M180 240H60V120H180V240Z",
-				},
-				ink: { light: "#1F1F1F", dark: "#EEEEEE" },
-				shade: { light: 0.2, dark: 0.28 },
-			},
-			source:
-				"https://opencode.ai/brand/files/opencode-logo-transparent-light.svg",
-			// "Plugins, providers and tools that work with OpenCode … can say so"; its own inks, at least 16 × 20px.
-			terms: "https://opencode.ai/brand",
-		},
-		usageReports: [],
-		settingsFile: "~/.config/opencode/opencode.json",
-		noLevelReason: "OpenCode has per-tool rules, not one permission level.",
-		ownSettingsNote: () =>
-			"Your opencode.json rules stay; PrismaLens sets each tool's catch-all for the level.",
-		// opencode.ai/docs/permissions: object rules merge, so the user's own patterns stay (#673 w21).
-		permissionRulesNote:
-			"A run sets each tool's default rule to match its permission level. Your other rules in opencode.json stay as they are.",
-		// npm only: the curl installer ships releases npm and the pin have not reached (#1013).
-		install: "npm i -g opencode-ai",
-		channel: { npm: "opencode-ai" },
-		// OpenCode 2's docs install it as `npm install -g @opencode/cli`.
-		nextChannel: { npm: "@opencode/cli" },
-		// @opencode/cli 2.3.2 answers `additionalDirectories`; opencode-ai 1.19.x does not.
-		nextFacts: { directories: true },
-		lines: {
-			supervised: () =>
-				"OpenCode runs its build agent; each tool's catch-all asks.",
-			"auto-edits": () =>
-				"OpenCode runs its build agent; edits are allowed and other tools ask.",
-			auto: () =>
-				"OpenCode has no reviewer of its own; its build agent keeps the Ask always rules.",
-			"full-access": () =>
-				"OpenCode runs its build agent with each tool's catch-all allowed; your own deny rules stay.",
-		},
-		// The pin-bump PR moved this on 2026-11-21: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "1.19.6", date: "2026-11-21" },
-		loginHint: "`opencode auth login`, or a provider key in env",
-		signInArgs: ["auth", "login"],
-		loginEnvKeys: ["XDG_DATA_HOME", "OPENCODE_DB"],
-	},
-	"claude-code": {
-		// claude-agent-acp 0.99.1 handles `/compact` but has no idle self-compaction, and states no cache
-		// lifetime; a later adapter compacts idle sessions before its one-hour cache expires (#1024).
-		cacheTtlMinutes: null,
-		autoCompactPercent: null,
-		compactsWhenIdle: false,
-		compactCommand: "compact",
-		// Claude Code documents `/compact [instructions]`; claude-agent-acp 0.100.0 passes the prompt text through.
-		compactTakesFocus: true,
-		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
-		acpRegistryIds: ["claude-acp"],
-		mark: {
-			letters: "CC",
-			// "No alterations of our trademarks (changes to color, font, proportion, or otherwise) are permitted."
-			withheld: "Its logo needs written permission and may not be recoloured.",
-			terms: "https://www.anthropic.com/legal/trademark-guidelines",
-		},
-		vendor: "anthropic",
-		usageReports: ["cache", "cost", "limits"],
-		modelWindow: { alias: "[1m]", base: "200k", large: "1M" },
-		settingsFile: "~/.claude/settings.json",
-		ownSettingsNote: () =>
-			"Your ~/.claude/settings.json allow and deny rules, hooks and sandbox apply, as in your terminal. The terminal's own default may be Auto on Claude Code 2.1.228 and later; PrismaLens reads the key, not that default.",
-		install:
-			"curl -fsSL https://claude.ai/install.sh | bash  (or: npm i -g @anthropic-ai/claude-code; then `claude /login`, or set ANTHROPIC_API_KEY)",
-		channel: { npm: "@anthropic-ai/claude-code" },
-		// claude-agent-acp 0.81.1 reports `acceptEdits` when the model has no `auto`, and
-		// leaves `bypassPermissions` unoffered when the user's settings turn it off (#673 w21).
-		lines: {
-			supervised: (c) =>
-				`Claude Code runs in ${modeNamed(c, "default", "Manual")}.`,
-			"auto-edits": (c) =>
-				`Claude Code runs in ${modeNamed(c, "acceptEdits", "Accept Edits")}.`,
-			auto: (c) =>
-				`Claude Code runs in ${modeNamed(c, "auto", "Auto")}; with a model that has no Auto it runs ${modeNamed(c, "acceptEdits", "Accept Edits")}.`,
-			"full-access": (c) => {
-				const bypass = modeNamed(c, "bypassPermissions", "Bypass Permissions");
-				const edits = modeNamed(c, "acceptEdits", "Accept Edits");
-				return c?.modes && !offers(c, "bypassPermissions")
-					? `Claude Code runs in ${edits}: your settings turn ${bypass} off.`
-					: `Claude Code runs in ${bypass}, or ${edits} where your settings turn it off.`;
-			},
-		},
-		// The pin-bump PR moved this on 2026-11-21: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "0.108.0", date: "2026-11-21", companion: "2.1.327" },
-		loginHint: "`claude auth login`, or `ANTHROPIC_API_KEY` in env",
-		signInArgs: ["auth", "login"],
-		loginEnvKeys: ["CLAUDE_CONFIG_DIR"],
-		reportsLimits: true,
-	},
-	codex: {
-		// codex-acp 2.5.0 advertises `compact`, taking no input; retention depends on the model and request (#1024).
-		cacheTtlMinutes: null,
-		// 90% of the window unless the model sets less (openai_models.rs, #1101).
-		autoCompactPercent: 90,
-		compactsWhenIdle: false,
-		compactCommand: "compact",
-		// codex-acp maps `compact` to Op::Compact, which takes no input.
-		compactTakesFocus: false,
-		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
-		acpRegistryIds: ["codex-acp"],
-		mark: {
-			letters: "CX",
-			// Search excerpts of its brand page (403 to every fetch): "DON'T add any colors to the Blossom"; no Codex mark is published.
-			withheld:
-				"Its owner's brand page forbids altering its logo, and no Codex logo is published.",
-			terms: "https://openai.com/brand",
-		},
-		vendor: "openai",
-		usageReports: ["cache"],
-		settingsFile: "~/.codex/config.toml",
-		ownSettingsNote: (c) =>
-			c?.modes && !offers(c, "workspace-write")
-				? "This codex-acp runs Ask always and Auto-accept edits in the same mode, Ask for approval; edits inside the copy need no ask."
-				: null,
-		install:
-			"npm i -g @openai/codex  (then `codex login`, or set OPENAI_API_KEY)",
-		channel: { npm: "@openai/codex" },
-		lines: {
-			supervised: (c) =>
-				`Codex runs in ${modeNamed(c, "read-only", "Ask for approval")}.`,
-			"auto-edits": (c) => {
-				const ask = modeNamed(c, "read-only", "Ask for approval");
-				if (offers(c, "workspace-write"))
-					return `Codex runs in ${modeNamed(c, "workspace-write", "Workspace write")}.`;
-				return c?.modes
-					? `Codex runs in ${ask}, the same mode as Ask always on this version.`
-					: `Codex runs in Workspace write, or ${ask} on a version without it.`;
-			},
-			auto: (c) =>
-				`Codex runs in ${modeNamed(c, "agent", "Approve for me")}, its own reviewer.`,
-			"full-access": (c) =>
-				`Codex runs in ${modeNamed(c, "agent-full-access", "Full access")}, outside its sandbox.`,
-		},
-		// Real-model runs were on codex 0.163.0: scripts/acp-admission.ts 3 of 3, gpt-6-luna (#846), and #848 live runs. Must equal @prismalens/agent-adapters' pin.
-		// The pin-bump PR moved this on 2026-11-21: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "2.7.0", date: "2026-11-21", companion: "0.170.0" },
-		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
-		signInArgs: ["login"],
-		loginEnvKeys: ["CODEX_HOME"],
-	},
-	gemini: {
-		// Gemini's implicit caching states no TTL (#1024).
-		cacheTtlMinutes: null,
-		// `model.compressionThreshold` defaults to 0.5 (chatCompressionService.ts, #1101).
-		autoCompactPercent: 50,
-		compactsWhenIdle: false,
-		compactCommand: null,
-		compactTakesFocus: false,
-		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
-		harnessToolSearch: true,
-		acpRegistryIds: ["gemini"],
-		mark: {
-			letters: "GE",
-			// "Don't remove, distort, or alter any element of a Google Brand Feature."; "Use only Google-approved artwork".
-			withheld:
-				"Its owner allows only approved artwork, unaltered, so no theme-coloured mark.",
-			terms:
-				"https://partnermarketinghub.withgoogle.com/brands/google/trademarks-and-terms/trademark-guidelines-for-proper-usage/",
-		},
-		vendor: "google",
-		usageReports: [],
-		settingsFile: "~/.gemini/settings.json",
-		ownSettingsNote: () =>
-			"Gemini CLI's own folder trust and settings apply, as in your terminal.",
-		install: "npm i -g @google/gemini-cli",
-		channel: { npm: "@google/gemini-cli" },
-		lines: {
-			supervised: (c) =>
-				`Gemini CLI runs in ${modeNamed(c, "default", "Default")}.`,
-			"auto-edits": (c) =>
-				`Gemini CLI runs in ${modeNamed(c, "autoEdit", "Auto Edit")}.`,
-			auto: (c) =>
-				`Gemini CLI has no reviewer of its own; it runs in ${modeNamed(c, "default", "Default")}, as Ask always does.`,
-			"full-access": (c) =>
-				`Gemini CLI runs in ${modeNamed(c, "yolo", "YOLO")}.`,
-		},
-		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
-		signInArgs: [],
-		loginEnvKeys: ["GEMINI_CLI_HOME"],
-		// No trust command is quoted: Gemini's own one is unconfirmed (#848 §11 Q4).
-		toolsHint: {
-			text: "If you use Gemini's folder trust, trust the runs folder to give it PrismaLens's tools",
-		},
-	},
-	deepagents: {
-		// No source states a cache lifetime or a compact command.
-		cacheTtlMinutes: null,
-		autoCompactPercent: null,
-		compactsWhenIdle: false,
-		compactCommand: null,
-		compactTakesFocus: false,
-		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
-		harnessToolSearch: true,
-		acpRegistryIds: ["deepagents"],
-		mark: {
-			letters: "DA",
-			// "Use the light and dark variants as provided, rather than recoloring"; "Pair each mark with its own wordmark".
-			withheld: "Its mark may only appear unrecoloured beside its wordmark.",
-			terms: "https://www.langchain.com/brand-assets",
-		},
-		picksOwnModel: true,
-		install: installCommand(DEEPAGENTS_CHANNEL),
-		channel: DEEPAGENTS_CHANNEL,
-		lines: noModeLines("deepagents"),
-		// 3 of 3 on Ollama gemma4:31b-cloud; dcode reports no version in initialize, so this is the installed package (#634).
-		tested: { version: "0.1.75", date: "2026-09-23" },
-		loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
-	},
-	local: {
-		// An agent PrismaLens knows nothing about.
-		cacheTtlMinutes: null,
-		autoCompactPercent: null,
-		compactsWhenIdle: false,
-		compactCommand: null,
-		compactTakesFocus: false,
-		commandSetByUser: true,
-		mark: {
-			letters: "LA",
-			withheld: "An agent of the user's own, with no owner's logo.",
-		},
-		install: "Add it under Settings → Agents → Add agent → Local ACP command.",
-		lines: noModeLines("Local agent"),
-		loginHint: "It signs in on its own.",
-	},
-};
 
 /**
  * The providers a multi-provider agent's model id names first ("opencode/…", "deepseek/…"):
@@ -503,7 +147,7 @@ const PRODUCT: Record<HarnessId, ProductFacts & { lines: Lines }> = {
 export const HARNESS_REGISTRY: Record<HarnessId, HarnessDescriptor> =
 	Object.fromEntries(
 		HARNESS_IDS.map((id) => {
-			const { lines, ...facts } = PRODUCT[id];
+			const { lines, ...facts } = productOf(id);
 			const row = AGENT_REGISTRY[id];
 			const access = Object.fromEntries(
 				ACCESS_LEVELS.map((l) => [l, { ...row.levels[l], line: lines[l] }]),
@@ -606,4 +250,67 @@ export function resumeBlockedReason(harnessId: HarnessId): string | null {
 	const row = HARNESS_REGISTRY[harnessId];
 	if (reopens(row)) return null;
 	return `${row.label} can't reopen a finished session, so a new run starts from the report.`;
+}
+
+/** A provider's name and its models.dev id compare equal: `Ollama Cloud` and `ollama-cloud`. */
+export function providerKey(name: string): string {
+	return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Can `harness` run `modelId` as far as its provider login goes? `unchecked` is a multi-provider
+ * agent whose logins no check has read: never reported as ready. `na` is an agent with no such check.
+ */
+export function providerSignIn(
+	harness: HarnessId,
+	checked: { providers?: readonly string[] | null } | null | undefined,
+	modelId: string | null | undefined,
+): "signed-in" | "signed-out" | "unchecked" | "na" {
+	const gate = HARNESS_REGISTRY[harness].providerAuth;
+	if (!gate) return "na";
+	const provider = modelId ? modelProvider(modelId) : null;
+	// A model not known is a login not known: never ready.
+	if (!provider) return "unchecked";
+	if (gate.keyless.includes(provider)) return "signed-in";
+	if (!checked?.providers) return "unchecked";
+	// The list may print the provider's display name, which need not resemble its id: Vertex for google-vertex.
+	const keys = [provider, providerName(provider)].flatMap((n) =>
+		n ? [providerKey(n)] : [],
+	);
+	return checked.providers.some((p) => keys.includes(providerKey(p)))
+		? "signed-in"
+		: "signed-out";
+}
+
+/**
+ * The model a run takes when none is starred: the agent's own when its provider is signed in,
+ * else the first listed one whose provider is. The agent's own when none is, or its logins were not read.
+ */
+export function preferredModel(
+	harness: HarnessId,
+	checked:
+		| { providers?: readonly string[] | null; servedModel?: string | null }
+		| null
+		| undefined,
+	entries: readonly { id: string }[],
+): string | null {
+	const own = checked?.servedModel ?? null;
+	if (!HARNESS_REGISTRY[harness].providerAuth || !checked?.providers)
+		return own;
+	if (own && providerSignIn(harness, checked, own) === "signed-in") return own;
+	const signedIn = entries.find(
+		(e) => providerSignIn(harness, checked, e.id) === "signed-in",
+	);
+	return signedIn?.id ?? own;
+}
+
+/** A model whose provider the agent holds no login for, in the words the box, the picker and the Timeline share. */
+export function providerSignedOutLine(
+	harness: HarnessId,
+	modelId: string | null | undefined,
+): string {
+	const provider = modelId ? modelProvider(modelId) : null;
+	const named =
+		(provider && providerName(provider)) || provider || "its provider";
+	return `${HARNESS_REGISTRY[harness].label} is not signed in to ${named}. Sign in with its own CLI, then retry.`;
 }

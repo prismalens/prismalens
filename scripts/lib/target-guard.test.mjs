@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { main } from "../packed-intake.mjs";
 import { targetGuard } from "./target-guard.mjs";
 
 const fakeApp = () => {
@@ -15,7 +16,7 @@ const fakeApp = () => {
 	return app;
 };
 
-test("a signal during boot stops the target once boot returns and runs no journey", async () => {
+test("a signal during boot stops the target once boot returns", async () => {
 	const codes = [];
 	const guard = targetGuard((code) => codes.push(code));
 	const app = fakeApp();
@@ -40,4 +41,29 @@ test("a target adopted before any signal is stopped once, by the first cleanup",
 	await guard.cleanup(143);
 	assert.equal(app.stops, 1);
 	assert.deepEqual(codes, [0]);
+});
+
+test("packed-intake runs no journey when a signal lands while the target boots", async () => {
+	const codes = [];
+	const guard = targetGuard((code) => codes.push(code));
+	const app = fakeApp();
+	let journeysRun = 0;
+	await assert.rejects(
+		main({
+			guard,
+			env: { PRISMALENS_TARBALL: "/none/prismalens-0.0.0.tgz" },
+			argv: ["node", "packed-intake.mjs"],
+			openTarget: async () => {
+				await guard.cleanup(143);
+				return /** @type {any} */ (app);
+			},
+			run: async () => {
+				journeysRun++;
+			},
+		}),
+		{ message: "cancelled while the target was booting" },
+	);
+	assert.equal(journeysRun, 0);
+	assert.equal(app.stops, 1);
+	assert.deepEqual(codes, [143]);
 });

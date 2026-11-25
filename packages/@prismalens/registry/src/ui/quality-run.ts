@@ -13,6 +13,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { git } from "../gen/git.ts";
+import type { Config } from "../gen/index.ts";
 import type { Literal, Manifest } from "../manifest.ts";
 import {
 	brief,
@@ -25,10 +27,8 @@ import {
 	scoreCheck,
 	simMissing,
 	staleBlocks,
-} from "../quality.ts";
-import { checkStampFile, sha256 } from "../stamp.ts";
-import { git } from "./git.ts";
-import type { Config } from "./index.ts";
+} from "./quality.ts";
+import { checkStampFile, sha256 } from "./stamp.ts";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const gh = (args: string[]) =>

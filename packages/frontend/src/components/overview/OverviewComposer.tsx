@@ -6,9 +6,9 @@ import type { FollowUpKind } from "@prismalens/contracts";
 import { useState } from "react";
 import {
 	defaultAccessOf,
-	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { composerGate } from "@/components/agent/agent-choice";
 import { modeOnSwitch } from "@/components/agent/agent-modes";
 import type { DraftChoice } from "@/components/incidents/record-context";
 import { runNumber } from "@/components/incidents/run-facts";
@@ -186,15 +186,12 @@ export function OverviewComposer({
 			? action
 			: (t.actions[0]?.id as OverviewAction);
 
-	const unready = harness ? unreadyLine(harness) : null;
-	const agentBlocked =
-		current === "note" || current === "message"
-			? undefined
-			: unready
-				? unready
-				: record.investigateBlocked;
-
 	const agentless = current === "note" || current === "message";
+	const gate = harness && !agentless ? composerGate(harness, model) : {};
+	const agentBlocked = agentless
+		? undefined
+		: (gate.blockedReason ?? record.investigateBlocked);
+
 	const onChoice = (n: Partial<ComposerChoice> & { harnessId?: HarnessId }) => {
 		if (n.harnessId)
 			record.setDraftChoice(
@@ -306,6 +303,7 @@ export function OverviewComposer({
 					dock={dock}
 					pending={record.isStarting || record.isSavingNote}
 					blockedReason={agentBlocked}
+					notice={gate.warning}
 				/>
 			</div>
 		</div>

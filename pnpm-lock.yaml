@@ -124,15 +124,15 @@ importers:
   packages/@prismalens/agent-adapters:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
-        specifier: 0.3.326
-        version: 0.3.326(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(zod@4.6.7)
+        specifier: 0.3.328
+        version: 0.3.328(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(zod@4.6.7)
     devDependencies:
       '@agentclientprotocol/claude-agent-acp':
-        specifier: 0.108.0
-        version: 0.108.0(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@modelcontextprotocol/server@2.4.0)
+        specifier: 0.109.0
+        version: 0.109.0(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@modelcontextprotocol/server@2.4.0)
       '@agentclientprotocol/codex-acp':
-        specifier: 2.7.0
-        version: 2.7.0(@modelcontextprotocol/server@2.4.0)
+        specifier: 2.8.0
+        version: 2.8.0(@modelcontextprotocol/server@2.4.0)
       '@agentclientprotocol/sdk':
         specifier: 2.7.0
         version: 2.7.0(@modelcontextprotocol/server@2.4.0)(zod@4.6.7)
@@ -207,6 +207,9 @@ importers:
       '@prismalens/agent-host':
         specifier: workspace:*
         version: link:../agent-host
+      '@prismalens/providers':
+        specifier: workspace:*
+        version: link:../providers
       semver:
         specifier: ^7.8.6
         version: 7.8.6
@@ -405,6 +408,28 @@ importers:
       unplugin-swc:
         specifier: ^2.0.0
         version: 2.0.0(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.28.2)(rolldown@1.2.19)(rollup@4.66.0)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.15)(yaml@2.9.1))(webpack@5.106.2(@swc/core@1.16.22(@swc/helpers@0.5.24))(esbuild@0.28.2))
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@types/node@26.6.6)(@vitest/coverage-v8@5.1.0)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/@prismalens/providers:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+    devDependencies:
+      '@prismalens/registry':
+        specifier: workspace:*
+        version: link:../registry
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.6
+      '@vitest/coverage-v8':
+        specifier: ^5.1.0
+        version: 5.1.0(vitest@5.1.0)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
       vitest:
         specifier: 'catalog:'
         version: 5.1.0(@types/node@26.6.6)(@vitest/coverage-v8@5.1.0)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -1040,17 +1065,17 @@ importers:
 
 packages:
 
-  '@agentclientprotocol/claude-agent-acp@0.108.0':
-    resolution: {integrity: sha512-Y0HI3CB0DfhpWItCn2RE3xgpen001V2U/bHm3G6ZVKXsElF5N4uYyjYlmgNzZBKcBtZK0JqiE96NMaeVXtgJjw==}
+  '@agentclientprotocol/claude-agent-acp@0.109.0':
+    resolution: {integrity: sha512-6JkcDZg4Zx2FbTcQaUHUCGUwyvqJRM4oIw1+zA1xjOO+uB50BOZS3iNLK3wWZ6UKFrY7L31zqryqHM2DB+wU6Q==}
     engines: {node: '>=22'}
     hasBin: true
 
-  '@agentclientprotocol/codex-acp@2.7.0':
-    resolution: {integrity: sha512-fFFU/tV5DltBzN4cZIh5tJEWGTZFXbwHU7I5RxPkmrGraw3jhAIuvTeudYwK3wAbV311WgIi7qONl2I8uRV2jw==}
+  '@agentclientprotocol/codex-acp@2.8.0':
+    resolution: {integrity: sha512-IYKNewnvVyq8x77n0zwC/ZJJmugtgJoj0RUsgRtHhO+9sSbIDLE21Jh0eyGMX8h67kYo6QybY1PGAMhsoxeKFA==}
     hasBin: true
 
-  '@agentclientprotocol/sdk@2.6.0':
-    resolution: {integrity: sha512-3FtL6MkAV5F9qxg0FQV8wmBszIm2xuVPoDWOILIFSDQ+Vq3Twdh7Cw6Hk2GOPUbevgrTUpUAqZXQy7Geaj79mw==}
+  '@agentclientprotocol/sdk@2.7.0':
+    resolution: {integrity: sha512-oXdQq0plWv3iOg01zJghNZRSuyWeMYxOgWIaSdwg1BZe2ZAC9LRhNDi023lNYxXq1zVIpQjIp8P6AfsxpvxF6g==}
     peerDependencies:
       '@modelcontextprotocol/server': ^2.4.0
       zod: ^3.25.76 || ^4.0.0
@@ -1058,8 +1083,8 @@ packages:
       '@modelcontextprotocol/server':
         optional: true
 
-  '@agentclientprotocol/sdk@2.7.0':
-    resolution: {integrity: sha512-oXdQq0plWv3iOg01zJghNZRSuyWeMYxOgWIaSdwg1BZe2ZAC9LRhNDi023lNYxXq1zVIpQjIp8P6AfsxpvxF6g==}
+  '@agentclientprotocol/sdk@2.8.0':
+    resolution: {integrity: sha512-EjsvoRX8nEH2z3PAVI2ILsVXAefVcSlLPeXGjlQoFgkJE71F2J0Fj7N6oL/k7SnP0vY+9hmONPFz/K2zalnTiw==}
     peerDependencies:
       '@modelcontextprotocol/server': ^2.4.0
       zod: ^3.25.76 || ^4.0.0
@@ -1085,8 +1110,8 @@ packages:
     resolution: {integrity: sha512-XACkbAmAhBGDfxr8Uny2k0ErDwLpauseccNWdIFs4fiisGTqiCByzkH60/4xTmbV3FTj8bQ6cXYIhhaqe0MK1g==}
     engines: {node: ^22.22.3 || ^24.15.0 || >=26.0.0, npm: ^6.11.0 || ^7.5.6 || >=8.0.0, yarn: '>= 1.13.0'}
 
-  '@anthropic-ai/claude-agent-sdk@0.3.326':
-    resolution: {integrity: sha512-BUTSky/4YWfL/MxC+4kV0NDbJFjbJPoQMFEk/s9G6hV9LUfYPMbsWz94bFQ7ZIo2ubj2xwJ2c2NVxkNlQhVw+Q==}
+  '@anthropic-ai/claude-agent-sdk@0.3.328':
+    resolution: {integrity: sha512-YcOWlpXVm7etPjPVrvSJEfynDksMiG11zvEybSBnk1EVWji6rSjU75HbbhJ8XPEB2ECEwRRP597Udu6IWMtsDw==}
     engines: {node: '>=18.14.0'}
     peerDependencies:
       '@anthropic-ai/sdk': '>=0.93.0'
@@ -2412,8 +2437,8 @@ packages:
     resolution: {integrity: sha512-hAX0pT/73190NLqBPPWSdBVGtbY6VOhWYK3qqHqtXQ1gK7kS2yz4+ivsN07hpJ6I3aeMtKP6J6npsEKOAzuTLA==}
     engines: {node: '>=20.0'}
 
-  '@openai/codex@0.166.0':
-    resolution: {integrity: sha512-2Szlp1l1cz5TX1ccpX4Zok3DZrot9xeZe0km+6/1v8JmqxADwyJxKBJah4dBymkwtS25j/u6dipJusTOI97Z8Q==}
+  '@openai/codex@0.170.0':
+    resolution: {integrity: sha512-dwoughgqjiik++CFaNkjQ5y6pJO6LUzu5P1z8Hy4LUeJ+aIYcX/QO1P5rOQnHmBG4agOM7Y+hc4LtVo/a4GFiw==}
     engines: {node: '>=16'}
     hasBin: true
 
@@ -8873,10 +8898,10 @@ ignoredOptionalDependencies:
 
 snapshots:
 
-  '@agentclientprotocol/claude-agent-acp@0.108.0(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@modelcontextprotocol/server@2.4.0)':
+  '@agentclientprotocol/claude-agent-acp@0.109.0(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(@modelcontextprotocol/server@2.4.0)':
     dependencies:
-      '@agentclientprotocol/sdk': 2.7.0(@modelcontextprotocol/server@2.4.0)(zod@4.6.7)
-      '@anthropic-ai/claude-agent-sdk': 0.3.326(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(zod@4.6.7)
+      '@agentclientprotocol/sdk': 2.8.0(@modelcontextprotocol/server@2.4.0)(zod@4.6.7)
+      '@anthropic-ai/claude-agent-sdk': 0.3.328(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(zod@4.6.7)
       diff: 9.0.0
       zod: 4.6.7
     transitivePeerDependencies:
@@ -8884,10 +8909,10 @@ snapshots:
       - '@modelcontextprotocol/sdk'
       - '@modelcontextprotocol/server'
 
-  '@agentclientprotocol/codex-acp@2.7.0(@modelcontextprotocol/server@2.4.0)':
+  '@agentclientprotocol/codex-acp@2.8.0(@modelcontextprotocol/server@2.4.0)':
     dependencies:
-      '@agentclientprotocol/sdk': 2.6.0(@modelcontextprotocol/server@2.4.0)(zod@4.6.7)
-      '@openai/codex': 0.166.0
+      '@agentclientprotocol/sdk': 2.8.0(@modelcontextprotocol/server@2.4.0)(zod@4.6.7)
+      '@openai/codex': 0.170.0
       cross-spawn: 7.0.6
       diff: 9.0.0
       open: 11.0.4
@@ -8896,13 +8921,13 @@ snapshots:
     transitivePeerDependencies:
       - '@modelcontextprotocol/server'
 
-  '@agentclientprotocol/sdk@2.6.0(@modelcontextprotocol/server@2.4.0)(zod@4.6.7)':
+  '@agentclientprotocol/sdk@2.7.0(@modelcontextprotocol/server@2.4.0)(zod@4.6.7)':
     dependencies:
       zod: 4.6.7
     optionalDependencies:
       '@modelcontextprotocol/server': 2.4.0
 
-  '@agentclientprotocol/sdk@2.7.0(@modelcontextprotocol/server@2.4.0)(zod@4.6.7)':
+  '@agentclientprotocol/sdk@2.8.0(@modelcontextprotocol/server@2.4.0)(zod@4.6.7)':
     dependencies:
       zod: 4.6.7
     optionalDependencies:
@@ -8938,7 +8963,7 @@ snapshots:
     transitivePeerDependencies:
       - chokidar
 
-  '@anthropic-ai/claude-agent-sdk@0.3.326(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(zod@4.6.7)':
+  '@anthropic-ai/claude-agent-sdk@0.3.328(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(zod@4.6.7)':
     dependencies:
       '@anthropic-ai/sdk': 0.133.0(zod@4.6.7)
       '@modelcontextprotocol/sdk': 1.32.1(zod@4.6.7)
@@ -10290,7 +10315,7 @@ snapshots:
 
   '@oozcitak/util@10.0.0': {}
 
-  '@openai/codex@0.166.0': {}
+  '@openai/codex@0.170.0': {}
 
   '@orpc/client@1.16.2':
     dependencies:

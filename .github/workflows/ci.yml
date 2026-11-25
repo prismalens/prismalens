@@ -42,7 +42,8 @@ jobs:
   # What this run has to run (scripts/ci-plan.mjs, #1052, #1053). `CI gate` below lets exactly the
   # jobs a plan output switches off be skipped, and only when that output is `false` in so many words.
   changes:
-    name: Plan this run
+    # `Plan (draft)` marks a draft run, which ci-plan.mjs never accepts as proof for a ready PR.
+    name: ${{ github.event.pull_request.draft && 'Plan (draft)' || 'Plan this run' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -56,7 +57,9 @@ jobs:
       intake: ${{ steps.plan.outputs.intake }}
       full: ${{ steps.plan.outputs.full }}
       agents: ${{ steps.plan.outputs.agents }}
+      installer: ${{ steps.plan.outputs.installer }}
       defer: ${{ steps.plan.outputs.defer }}
+      draft: ${{ steps.plan.outputs.draft }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
       # Turbo reads the history to list the packages a PR changes; blobs come on demand.
@@ -189,7 +192,7 @@ jobs:
   test-later:
     name: Unit tests, clock 40 days ahead (api)
     needs: [changes, build]
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.draft != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -229,7 +232,7 @@ jobs:
         # (FAKETIME_SKIP_CMDS), it disagrees with the api and the scenario hangs. It runs on the real clock.
         run: >-
           LD_PRELOAD="$(dpkg -L libfaketime | grep 'libfaketime.so.1$')"
-          pnpm exec vitest run --exclude test/scenarios/agent-browser.spec.ts
+          pnpm exec vitest run --exclude test/scenarios/agent-browser.int.spec.ts
 
   # Packed-artifact smoke (work-005 R0.d): pack the single published tarball
   # (prismalens — the @prismalens/* closure is bundled into it, issue #193) and
@@ -238,7 +241,8 @@ jobs:
   # layout, and engines bugs that monorepo-resident tests structurally cannot.
   pack:
     name: Pack npm tarball
-    needs: build
+    needs: [build, changes]
+    if: needs.changes.outputs.draft != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -401,12 +405,37 @@ jobs:
       - name: Upgrade a populated database on the packed tarball
         run: node scripts/packed-upgrade-smoke.mjs tarballs
 
+  # install.ps1 under Windows PowerShell 5.1, the shell `irm | iex` meets on a default box (#1224).
+  installer:
+    name: install.ps1 (Windows PowerShell 5.1)
+    needs: changes
+    if: needs.changes.outputs.installer == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pester
+        shell: powershell
+        run: |
+          "PowerShell $($PSVersionTable.PSVersion)"
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
+          Import-Module Pester -RequiredVersion 5.7.1
+          Invoke-Pester scripts/install -Output Detailed -CI
+
   lint:
     name: Lint (Biome)
     needs: changes
     if: needs.changes.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    permissions:
+      contents: read
+      issues: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -443,11 +472,6 @@ jobs:
       - name: Script tests
         run: node --test --test-timeout=300000 'scripts/**/*.test.mjs'
 
-  # The `gate-scripts` job that stood here tested `.github/scripts/` — the
-  # merge-gate publisher, the high-risk path matcher, and their producer-transport
-  # guards. All of it was deleted with the `review-evidence` gate in #415, so the
-  # directory is gone and there is nothing left for this job to run.
-
   # Playwright (e2e-browser.yml, called here so `CI gate` can wait on it): only when the app or the UI changed.
   e2e:
     name: E2E
@@ -463,7 +487,7 @@ jobs:
   proofs:
     name: Proofs
     needs: changes
-    if: needs.changes.outputs.full == 'true' || needs.changes.outputs.agents == 'true' || needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.draft != 'true' && (needs.changes.outputs.full == 'true' || needs.changes.outputs.agents == 'true' || needs.changes.outputs.code == 'true')
     permissions:
       contents: read
     uses: ./.github/workflows/proofs.yml
@@ -497,6 +521,7 @@ jobs:
       - packed-smoke
       - packed-intake
       - packed-upgrade-smoke
+      - installer
       - lint
       - e2e
       - proofs
@@ -526,15 +551,18 @@ jobs:
             exit 1
           fi
           # A job may be skipped only when `changes` says `false` for its tier (#1052, #1053); `lint` only on `skip`.
+          # `pack`, `packed-smoke`, `test-later` and `proofs` may also be skipped when it says `draft` is `true`.
           # An absent or other output allows no skip, and `changes` itself must succeed.
           bad=$(echo "$NEEDS_JSON" | jq -r '
             .changes.outputs as $p
-            | def tier: if . == "build" or . == "test" or . == "pack" or . == "packed-smoke" then $p.code
+            | def tier: if . == "build" or . == "test" then $p.code
+                elif . == "pack" or . == "packed-smoke" then (if $p.code == "false" or $p.draft == "true" then "false" else "true" end)
                 elif . == "packed-intake" or . == "packed-upgrade-smoke" then $p.intake
                 elif . == "e2e" then $p.e2e
+                elif . == "installer" then $p.installer
                 elif . == "lint" then (if $p.skip == "true" then "false" else "true" end)
-                elif . == "proofs" then (if $p.full == "false" and $p.agents == "false" and $p.code == "false" then "false" else "true" end)
-                elif . == "test-later" then $p.code
+                elif . == "proofs" then (if $p.draft == "true" or ($p.full == "false" and $p.agents == "false" and $p.code == "false") then "false" else "true" end)
+                elif . == "test-later" then (if $p.code == "false" or $p.draft == "true" then "false" else "true" end)
                 else "true" end;
             to_entries
             | map(select(.value.result != "success"

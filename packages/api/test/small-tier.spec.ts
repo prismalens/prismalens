@@ -32,24 +32,33 @@ describe("the small tier (#1154)", () => {
 		expect(woke).toBe(true);
 	});
 
+	// Runs after the sleep above, which leaves its clock a minute on.
+	it("puts the clock back on the fixed date after a test moved it", () => {
+		expect(clock.date().toISOString()).toBe("2026-11-24T12:00:00.000Z");
+	});
+
 	it("gives a test 1000 ms", ({ task }) => {
 		expect(task.timeout).toBe(1_000);
 	});
 
-	it("refuses a child process, in every form", () => {
-		expect(() => childProcess.spawn("git", ["--version"])).toThrow(
-			refusal("a child process (spawn)"),
-		);
-		expect(() => childProcess.execFileSync("git", ["--version"])).toThrow(
-			refusal("a child process (execFileSync)"),
-		);
-		expect(() => childProcess.fork("child.js")).toThrow(
-			refusal("a child process (fork)"),
-		);
+	it.each([
+		"spawn",
+		"spawnSync",
+		"exec",
+		"execSync",
+		"execFile",
+		"execFileSync",
+		"fork",
+	] as const)("refuses a child process through %s", (form) => {
+		const start = childProcess[form] as (file: string) => unknown;
+		expect(() => start("git")).toThrow(refusal(`a child process (${form})`));
 	});
 
 	it("refuses a socket and a listening server", () => {
 		expect(() => net.connect(80, "localhost")).toThrow(
+			refusal("the network (connect)"),
+		);
+		expect(() => new net.Socket().connect(80, "127.0.0.1")).toThrow(
 			refusal("the network (connect)"),
 		);
 		expect(() => net.createServer().listen(0)).toThrow(

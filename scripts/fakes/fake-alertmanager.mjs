@@ -13,7 +13,7 @@ const MASK_64 = 0xffffffffffffffffn;
 const encoder = new TextEncoder();
 
 /**
- * prometheus/common `LabelSet.Fingerprint()`; `test/scenarios/fakes.spec.ts` pins it to the app's copy.
+ * prometheus/common `LabelSet.Fingerprint()`; `test/scenarios/fakes.int.spec.ts` pins it to the app's copy.
  * @param {Record<string, string>} labels
  */
 export function fingerprintOf(labels) {

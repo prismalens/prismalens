@@ -5,7 +5,7 @@ import swc from "unplugin-swc";
 import { defineConfig } from "vitest/config";
 
 /**
- * Coverage floors (CONTRIBUTING.md → Making a change, #1206): a ratchet, never a target.
+ * Coverage floors (docs/contributing/testing.md, #1206): a ratchet, never a target.
  * A per-file entry below guards a module that already has its tests; a new module needs none.
  */
 /**
@@ -166,6 +166,8 @@ export default defineConfig({
 				"src/shared/utils/literal-like.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/serves.ts": NEW_CODE_THRESHOLD,
 				"src/modules/repositories/folder-browser.ts": NEW_CODE_THRESHOLD,
+				"src/modules/repositories/native-folder-dialog.ts": NEW_CODE_THRESHOLD,
+				"src/core/auth/host.ts": NEW_CODE_THRESHOLD,
 				"src/modules/repositories/start-git.ts": NEW_CODE_THRESHOLD,
 				"src/infrastructure/dispatch/folder-lock.ts": NEW_CODE_THRESHOLD,
 				"src/modules/schedules/allowed-asks.ts": NEW_CODE_THRESHOLD,

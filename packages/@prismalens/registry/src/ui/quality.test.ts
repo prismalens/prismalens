@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import type { Manifest, ManifestEntry, ManifestKind } from "./manifest.ts";
+import type { Manifest, ManifestEntry, ManifestKind } from "../manifest.ts";
 import {
 	blocksIn,
 	brief,

@@ -421,9 +421,9 @@ describe("agent tiles", () => {
 		const add = (letters: string, agent: string) =>
 			tiles.set(letters, (tiles.get(letters) ?? new Set()).add(agent));
 		for (const [id, h] of Object.entries(HARNESS_REGISTRY))
-			if ("letters" in h.mark) add(h.mark.letters, id);
+			if (h.mark) add(h.mark.letters, id);
 		for (const [id, m] of Object.entries(ACP_MARKS))
-			if ("letters" in m && !(owner.has(id) && "logo" in (HARNESS_REGISTRY[owner.get(id) as keyof typeof HARNESS_REGISTRY]?.mark ?? {})))
+			if ("letters" in m && !(owner.has(id) && !HARNESS_REGISTRY[owner.get(id) as keyof typeof HARNESS_REGISTRY]?.mark))
 				add(m.letters, owner.get(id) ?? id);
 		const shared = [...tiles].filter(([, a]) => a.size > 1).map(([l, a]) => `${l}: ${[...a].join(", ")}`);
 		expect(shared).toEqual([]);

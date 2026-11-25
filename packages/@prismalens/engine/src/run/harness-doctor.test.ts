@@ -319,6 +319,30 @@ describe("probeHarness", () => {
 		expect(doctorDirs()).toEqual([live]);
 		rmSync(join(ownTmp, live), { recursive: true });
 	});
+
+	it("names the folder a probe makes with its own clock, so a sweep ahead of the file system keeps it (#1154)", async () => {
+		const ahead = Date.now() + 40 * 24 * 60 * 60 * 1000;
+		vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+		vi.setSystemTime(ahead);
+		let during: string[] = [];
+		try {
+			await probeHarness("opencode", {
+				descriptor: {
+					...descriptor("ok"),
+					// Runs while the probe's folder exists: sweep it with the clock the probe stamped it by.
+					acpEnv: () => {
+						sweepStaleRunDirs(ownTmp, Date.now());
+						during = doctorDirs();
+						return { FAKE_ACP_MODE: "ok" };
+					},
+				},
+			});
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(during).toHaveLength(1);
+		expect(during[0]).toMatch(new RegExp(`^pl-doctor-${ahead}-`));
+	});
 });
 
 describe("answeredDetail", () => {

@@ -4,7 +4,7 @@
 /**
  * The diff fixture (#1101 category 16): a project thread in its own worktree, two agent turns,
  * a user edit between them and an untracked file, read back by scope and reverted. Also the
- * one-line fixture: `pnpm --filter @prismalens/api exec vitest run test/scenarios/diff-turns.spec.ts`.
+ * one-line fixture: `pnpm --filter @prismalens/api exec vitest run test/scenarios/diff-turns.int.spec.ts`.
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";

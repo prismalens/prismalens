@@ -13,12 +13,14 @@ import {
 	Outlet,
 	Scripts,
 	useHydrated,
+	useRouterState,
 } from "@tanstack/react-router";
 import { ServerOff } from "lucide-react";
 import { UnreadProvider } from "@/components/attention/UnreadProvider";
 import { Sidebar } from "@/components/Sidebar";
 import { FaultNotice } from "@/components/shell/Fault";
 import { ReconnectLine } from "@/components/shell/ReconnectLine";
+import { SearchAddress } from "@/components/shell/SearchAddress";
 import { TitleBarStrip } from "@/components/TitleBarStrip";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
@@ -137,6 +139,8 @@ function RootLayout() {
 }
 
 function NotFound() {
+	const path = useRouterState({ select: (s) => s.location.pathname });
+	if (path === "/search") return <SearchAddress />;
 	return (
 		<div className="flex flex-col items-center justify-center gap-4 py-16">
 			<h1 className="text-display">Nothing here</h1>

@@ -11,6 +11,7 @@ import { pathToFileURL } from "node:url";
 export const MAX_TAGS = 5;
 export const MAX_AGE_DAYS = 14;
 const TAG = /@quarantine\b/;
+const LEADING_BLOCK = /^\s*(?:\/\*.*?\*\/\s*)+/;
 const SKIPPED_DIRS = new Set([
 	"node_modules",
 	"test-results",
@@ -25,12 +26,15 @@ export function findTags(root) {
 			if (entry.isDirectory()) {
 				if (!SKIPPED_DIRS.has(entry.name)) walk(path);
 			} else if (/\.(feature|ts|mts|js|mjs)$/.test(entry.name)) {
-				const isFeature = entry.name.endsWith(".feature");
+				const comment = entry.name.endsWith(".feature")
+					? /^\s*#/
+					: /^\s*(\/\/|\/\*|\*)/;
 				readFileSync(path, "utf8")
 					.split("\n")
 					.forEach((text, index) => {
-						// A Gherkin line that starts with # is a comment, never a tag.
-						if (TAG.test(text) && !(isFeature && /^\s*#/.test(text)))
+						// Prose about the tag is never a tag; code after a leading block comment still is.
+						const code = text.replace(LEADING_BLOCK, "");
+						if (TAG.test(code) && !comment.test(code))
 							tags.push({
 								file: relative(root, path).split("\\").join("/"),
 								line: index + 1,
