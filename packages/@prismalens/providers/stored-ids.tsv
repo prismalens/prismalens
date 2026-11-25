@@ -1,3 +1,13 @@
 # column	value	owner	where. Append-only: run `pnpm registry gen --write-ledger`; removing or reassigning a row needs the registry label.
 Run.harness	claude-code	agent.claude-code
 Schedule.harness	claude-code	agent.claude-code
+Run.harness	codex	agent.codex
+Schedule.harness	codex	agent.codex
+Run.harness	deepagents	agent.deepagents
+Schedule.harness	deepagents	agent.deepagents
+Run.harness	gemini	agent.gemini
+Schedule.harness	gemini	agent.gemini
+Run.harness	local	agent.local
+Schedule.harness	local	agent.local
+Run.harness	opencode	agent.opencode
+Schedule.harness	opencode	agent.opencode

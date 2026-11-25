@@ -15,10 +15,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const HARNESS = join(
-	ROOT,
-	"packages/@prismalens/config/src/providers/harness.ts",
-);
+/** The descriptor that holds an agent's `tested` row. */
+export const descriptorOf = (id) =>
+	join(
+		ROOT,
+		`packages/@prismalens/providers/src/agents/${id}/${id}.provider.ts`,
+	);
 const json = (path) => JSON.parse(readFileSync(join(ROOT, path), "utf8"));
 
 export function wanted(pins, adapters) {
@@ -35,17 +37,14 @@ export function wanted(pins, adapters) {
 	};
 }
 
-/** Returns the source with every row in `rows` tested on its wanted versions, and the ids it moved. */
-export function retest(source, rows, date) {
-	const lines = source.split("\n");
-	const start = lines.findIndex((l) => l.startsWith("const PRODUCT"));
+/** Returns each agent's descriptor source with its `tested` on its wanted versions, and the ids it moved. */
+export function retest(sources, rows, date) {
+	const out = { ...sources };
 	const moved = [];
 	for (const [id, want] of Object.entries(rows)) {
-		const row = lines.findIndex(
-			(l, i) => i > start && new RegExp(`^\\t"?${id}"?: \\{$`).test(l),
-		);
-		const at = lines.findIndex((l, i) => i > row && /^\t\ttested: \{/.test(l));
-		if (row < 0 || at < 0) throw new Error(`no tested line for the ${id} row`);
+		const lines = sources[id]?.split("\n") ?? [];
+		const at = lines.findIndex((l) => /^\t\ttested: \{/.test(l));
+		if (at < 0) throw new Error(`no tested line in the ${id} descriptor`);
 		const field = (k) => new RegExp(`${k}: "([^"]*)"`).exec(lines[at])?.[1];
 		if (
 			field("version") === want.version &&
@@ -58,9 +57,10 @@ export function retest(source, rows, date) {
 		const note = `\t\t// The pin-bump PR moved this on ${date}: zero-token probe and aimock CI, no real-model run yet (#914).`;
 		if (/^\t\t\/\//.test(lines[at - 1])) lines[at - 1] = note;
 		else lines.splice(at, 0, note);
+		out[id] = lines.join("\n");
 		moved.push(id);
 	}
-	return { source: lines.join("\n"), moved };
+	return { sources: out, moved };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
@@ -70,8 +70,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
 		json("scripts/agent-pins.json").pins,
 		json("packages/@prismalens/agent-adapters/package.json").devDependencies,
 	);
-	const { source, moved } = retest(readFileSync(HARNESS, "utf8"), rows, date);
-	writeFileSync(HARNESS, source);
+	const read = Object.fromEntries(
+		Object.keys(rows).map((id) => [id, readFileSync(descriptorOf(id), "utf8")]),
+	);
+	const { sources, moved } = retest(read, rows, date);
+	for (const id of moved) writeFileSync(descriptorOf(id), sources[id]);
 	console.log(
 		moved.length
 			? `tested moved on ${moved.join(", ")}`

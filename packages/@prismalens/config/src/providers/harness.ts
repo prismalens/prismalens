@@ -23,11 +23,7 @@ import {
 	type CatalogueSource,
 	type CheckedModes,
 	type AccessLevel as DescribedLevel,
-	installCommand,
 	type Lines,
-	modeNamed,
-	noModeLines,
-	offers,
 } from "@prismalens/providers";
 import CATALOGUE_SOURCES from "./catalogue-sources.json" with { type: "json" };
 import { modelProvider, providerName } from "./model-makers.js";
@@ -110,10 +106,6 @@ export interface HarnessAccess extends LevelFacts {
 	line: (checked: CheckedModes) => string;
 }
 
-const DEEPAGENTS_CHANNEL = {
-	uv: ["deepagents-code", "deepagents-acp"],
-} as const;
-
 /** What PrismaLens alone says and pins about an agent (#916): its descriptor's facts and lettered mark. */
 type ProductFacts = Omit<AgentFacts, "lines"> & {
 	/** A lettered tile, only where the agent has no published logo (#1101). */
@@ -128,169 +120,6 @@ export interface HarnessDescriptor extends AgentDescriptor, ProductFacts {
 	access: Record<AccessLevel, HarnessAccess>;
 }
 
-/** Agents not yet moved to a descriptor in @prismalens/providers. */
-const PRODUCT: Partial<Record<HarnessId, ProductFacts & { lines: Lines }>> = {
-	opencode: {
-		// Retention depends on the provider and model behind it, so nothing is known (#1024).
-		cacheTtlMinutes: null,
-		// A 15% reserve below the window by default (compaction.ts, #1101).
-		autoCompactPercent: 85,
-		compactsWhenIdle: false,
-		compactCommand: null,
-		compactTakesFocus: false,
-		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
-		harnessToolSearch: true,
-		acpRegistryIds: ["opencode", "opencode-v2"],
-		// Its own published logo in both themes: opencode.ai/brand (assets/brands.ts).
-		usageReports: [],
-		settingsFile: "~/.config/opencode/opencode.json",
-		noLevelReason: "OpenCode has per-tool rules, not one permission level.",
-		ownSettingsNote: () =>
-			"Your opencode.json rules stay; PrismaLens sets each tool's catch-all for the level.",
-		// opencode.ai/docs/permissions: object rules merge, so the user's own patterns stay (#673 w21).
-		permissionRulesNote:
-			"A run sets each tool's default rule to match its permission level. Your other rules in opencode.json stay as they are.",
-		// npm only: the curl installer ships releases npm and the pin have not reached (#1013).
-		install: "npm i -g opencode-ai",
-		channel: { npm: "opencode-ai" },
-		// OpenCode 2's docs install it as `npm install -g @opencode/cli`.
-		nextChannel: { npm: "@opencode/cli" },
-		// @opencode/cli 2.3.2 answers `additionalDirectories`; opencode-ai 1.19.x does not.
-		nextFacts: { directories: true },
-		lines: {
-			supervised: () =>
-				"OpenCode runs its build agent; each tool's catch-all asks.",
-			"auto-edits": () =>
-				"OpenCode runs its build agent; edits are allowed and other tools ask.",
-			auto: () =>
-				"OpenCode has no reviewer of its own; its build agent keeps the Ask always rules.",
-			"full-access": () =>
-				"OpenCode runs its build agent with each tool's catch-all allowed; your own deny rules stay.",
-		},
-		// The pin-bump PR moved this on 2026-11-21: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "1.19.6", date: "2026-11-21" },
-		loginHint: "`opencode auth login`, or a provider key in env",
-		signInArgs: ["auth", "login"],
-		providerAuth: { args: ["auth", "list"], keyless: ["opencode"] },
-		loginEnvKeys: ["XDG_DATA_HOME", "OPENCODE_DB"],
-	},
-	codex: {
-		// codex-acp 2.5.0 advertises `compact`, taking no input; retention depends on the model and request (#1024).
-		cacheTtlMinutes: null,
-		// 90% of the window unless the model sets less (openai_models.rs, #1101).
-		autoCompactPercent: 90,
-		compactsWhenIdle: false,
-		compactCommand: "compact",
-		// codex-acp maps `compact` to Op::Compact, which takes no input.
-		compactTakesFocus: false,
-		// No harnessToolSearch: the agent defers MCP tools itself on its own API, which the scripted model cannot measure (#848).
-		acpRegistryIds: ["codex-acp"],
-		// Its own published mark in its owner's colours: lobehub/lobe-icons (assets/brands.ts).
-		vendor: "openai",
-		usageReports: ["cache"],
-		settingsFile: "~/.codex/config.toml",
-		ownSettingsNote: (c) =>
-			c?.modes && !offers(c, "workspace-write")
-				? "This codex-acp runs Ask always and Auto-accept edits in the same mode, Ask for approval; edits inside the copy need no ask."
-				: null,
-		install:
-			"npm i -g @openai/codex  (then `codex login`, or set OPENAI_API_KEY)",
-		channel: { npm: "@openai/codex" },
-		lines: {
-			supervised: (c) =>
-				`Codex runs in ${modeNamed(c, "read-only", "Ask for approval")}.`,
-			"auto-edits": (c) => {
-				const ask = modeNamed(c, "read-only", "Ask for approval");
-				if (offers(c, "workspace-write"))
-					return `Codex runs in ${modeNamed(c, "workspace-write", "Workspace write")}.`;
-				return c?.modes
-					? `Codex runs in ${ask}, the same mode as Ask always on this version.`
-					: `Codex runs in Workspace write, or ${ask} on a version without it.`;
-			},
-			auto: (c) =>
-				`Codex runs in ${modeNamed(c, "agent", "Approve for me")}, its own reviewer.`,
-			"full-access": (c) =>
-				`Codex runs in ${modeNamed(c, "agent-full-access", "Full access")}, outside its sandbox.`,
-		},
-		// Real-model runs were on codex 0.163.0: scripts/acp-admission.ts 3 of 3, gpt-6-luna (#846), and #848 live runs. Must equal @prismalens/agent-adapters' pin.
-		// The pin-bump PR moved this on 2026-11-23: zero-token probe and aimock CI, no real-model run yet (#914).
-		tested: { version: "2.8.0", date: "2026-11-23", companion: "0.171.0" },
-		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
-		signInArgs: ["login"],
-		loginEnvKeys: ["CODEX_HOME"],
-	},
-	gemini: {
-		// Gemini's implicit caching states no TTL (#1024).
-		cacheTtlMinutes: null,
-		// `model.compressionThreshold` defaults to 0.5 (chatCompressionService.ts, #1101).
-		autoCompactPercent: 50,
-		compactsWhenIdle: false,
-		compactCommand: null,
-		compactTakesFocus: false,
-		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
-		harnessToolSearch: true,
-		acpRegistryIds: ["gemini"],
-		// Its own published mark in its owner's colours: lobehub/lobe-icons (assets/brands.ts).
-		vendor: "google",
-		usageReports: [],
-		settingsFile: "~/.gemini/settings.json",
-		ownSettingsNote: () =>
-			"Gemini CLI's own folder trust and settings apply, as in your terminal.",
-		install: "npm i -g @google/gemini-cli",
-		channel: { npm: "@google/gemini-cli" },
-		lines: {
-			supervised: (c) =>
-				`Gemini CLI runs in ${modeNamed(c, "default", "Default")}.`,
-			"auto-edits": (c) =>
-				`Gemini CLI runs in ${modeNamed(c, "autoEdit", "Auto Edit")}.`,
-			auto: (c) =>
-				`Gemini CLI has no reviewer of its own; it runs in ${modeNamed(c, "default", "Default")}, as Ask always does.`,
-			"full-access": (c) =>
-				`Gemini CLI runs in ${modeNamed(c, "yolo", "YOLO")}.`,
-		},
-		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
-		signInArgs: [],
-		loginEnvKeys: ["GEMINI_CLI_HOME"],
-		// No trust command is quoted: Gemini's own one is unconfirmed (#848 §11 Q4).
-		toolsHint: {
-			text: "If you use Gemini's folder trust, trust the runs folder to give it PrismaLens's tools",
-		},
-	},
-	deepagents: {
-		// No source states a cache lifetime or a compact command.
-		cacheTtlMinutes: null,
-		autoCompactPercent: null,
-		compactsWhenIdle: false,
-		compactCommand: null,
-		compactTakesFocus: false,
-		// Measured on the scripted-model matrix: about half the tool tokens per run, same pass rate (#848).
-		harnessToolSearch: true,
-		acpRegistryIds: ["deepagents"],
-		// Its own published tile: langchain-ai/deepagents .github/images (assets/brands.ts).
-		picksOwnModel: true,
-		install: installCommand(DEEPAGENTS_CHANNEL),
-		channel: DEEPAGENTS_CHANNEL,
-		lines: noModeLines("deepagents"),
-		// 3 of 3 on Ollama gemma4:31b-cloud; dcode reports no version in initialize, so this is the installed package (#634).
-		tested: { version: "0.1.75", date: "2026-09-23" },
-		loginHint: "`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in env",
-	},
-	local: {
-		// An agent PrismaLens knows nothing about.
-		cacheTtlMinutes: null,
-		autoCompactPercent: null,
-		compactsWhenIdle: false,
-		compactCommand: null,
-		compactTakesFocus: false,
-		commandSetByUser: true,
-		// An agent of the user's own has no owner's logo, so it takes letters.
-		mark: { letters: "LA" },
-		install: "Add it under Settings → Agents → Add agent → Local ACP command.",
-		lines: noModeLines("Local agent"),
-		loginHint: "It signs in on its own.",
-	},
-};
-
 // A descriptor names agent-host's levels without importing it; this fails to compile if they part.
 const LEVELS_MATCH: [AccessLevel, DescribedLevel] extends [
 	DescribedLevel,
@@ -302,15 +131,12 @@ void LEVELS_MATCH;
 
 const DESCRIBED = new Map(agents().map((a) => [a.launch, a]));
 
-/** An agent's facts from its descriptor, else the table above; a launch row with neither fails at load. */
+/** An agent's facts from its descriptor; a launch row with none fails at load. */
 function productOf(id: HarnessId): ProductFacts & { lines: Lines } {
 	const a = DESCRIBED.get(id);
-	if (a)
-		return { ...a.facts, ...("letters" in a.mark ? { mark: a.mark } : {}) };
-	const p = PRODUCT[id];
-	if (!p)
+	if (!a)
 		throw new Error(`agent ${id} has no descriptor in @prismalens/providers`);
-	return p;
+	return { ...a.facts, ...("letters" in a.mark ? { mark: a.mark } : {}) };
 }
 
 /**
