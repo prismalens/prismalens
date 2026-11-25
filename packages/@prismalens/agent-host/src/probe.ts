@@ -29,6 +29,7 @@ import {
 	type AccessLevel,
 	AGENT_REGISTRY,
 	type AgentId,
+	authenticateMethod,
 	type NamedMode,
 } from "./registry/index.js";
 
@@ -46,10 +47,12 @@ const AUTH_REQUIRED = -32000;
 export const PROBE_BUDGETS_MS = {
 	initialize: 30_000,
 	session: 60_000,
+	/** A signed-in agent answers `authenticate` at once; a signed-out one waits on its browser sign-in (#1235). */
+	authenticate: 10_000,
 } as const;
 /** The `auth/status` fallback's budget; its silence never changes the outcome (#1171). */
 export const AUTH_STATUS_BUDGET_MS = 6_000;
-export type ProbeStep = "initialize" | "session/new";
+export type ProbeStep = "initialize" | "authenticate" | "session/new";
 
 const KEY = String.raw`[A-Z][A-Z0-9_]*_API_KEY\b`;
 /** `KEY is not set`, or `set one of: KEY`: the key and the gap side by side, never just in one message. */
@@ -87,7 +90,7 @@ export interface ProbeInput {
 	/** `_meta` on `session/new`; the row's own by default. */
 	sessionMeta?: Record<string, unknown>;
 	/** Per-step budgets; `PROBE_BUDGETS_MS` by default. */
-	budgets?: { initialize?: number; session?: number };
+	budgets?: { initialize?: number; session?: number; authenticate?: number };
 	/** How long to wait after `session/new` for a sign-in the agent pushes on `_auth/status_update`. */
 	authStatusWaitMs?: number;
 }
@@ -403,6 +406,31 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		if (signedOut(init))
 			return { ...result, outcome: "sign-in-needed", authRequired: true };
 
+		const method = authenticateMethod(AGENT_REGISTRY[input.agent], input.env);
+		if (method && init.authMethods?.some((m) => m.id === method.methodId)) {
+			const signedIn = await race(
+				connection.agent
+					.request(methods.agent.authenticate, { methodId: method.methodId })
+					.then(
+						() => "ok" as const,
+						(err: unknown) =>
+							err instanceof Error ? err : new Error(String(err)),
+					),
+				budgets.authenticate,
+			);
+			if (signedIn === "died")
+				return ended(signedIn, "authenticate", budgets.authenticate);
+			if (signedIn !== "ok")
+				return {
+					...result,
+					outcome: "sign-in-needed",
+					authRequired: true,
+					detail:
+						signedIn === "timeout"
+							? `authenticate ${method.methodId}: no answer in ${Math.round(budgets.authenticate / 1000)}s; finish the sign-in the agent opened, then check again`
+							: `authenticate ${method.methodId}: ${oneLine(signedIn.message)}`,
+				};
+		}
 		const meta =
 			input.sessionMeta ?? AGENT_REGISTRY[input.agent].sessionMeta?.();
 		const session = await race(

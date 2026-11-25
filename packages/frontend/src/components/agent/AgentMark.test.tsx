@@ -91,9 +91,19 @@ const MIN_CONTRAST = 1.8;
 const THEMES = ["light", "dark"] as const;
 
 describe("AgentMark", () => {
-	it("gives every agent but the user's own a logo, and the user's own its letters", () => {
-		expect(HARNESS_IDS.filter((id) => !brandOf(id))).toEqual(["local"]);
+	it("draws an agent's logo where one ships, and letters for the rest", () => {
+		const lettered = { cursor: "CU", antigravity: "AG", local: "LA" } as Record<
+			string,
+			string
+		>;
+		expect(HARNESS_IDS.filter((id) => !brandOf(id))).toEqual([
+			"cursor",
+			"antigravity",
+			"local",
+		]);
 		expect(HARNESS_IDS.filter((id) => HARNESS_REGISTRY[id].mark)).toEqual([
+			"cursor",
+			"antigravity",
 			"local",
 		]);
 		const marks = HARNESS_IDS.map((id) => {
@@ -104,7 +114,7 @@ describe("AgentMark", () => {
 			];
 		});
 		expect(marks).toEqual(
-			HARNESS_IDS.map((id) => [id, id === "local" ? "LA" : brandOf(id)?.id]),
+			HARNESS_IDS.map((id) => [id, lettered[id] ?? brandOf(id)?.id]),
 		);
 	});
 

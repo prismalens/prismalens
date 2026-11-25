@@ -19,7 +19,6 @@ packages/@prismalens/config/src/providers/agent-status.test.ts	T2	1
 packages/@prismalens/config/src/providers/agent-status.ts	biome-ignore	1
 packages/@prismalens/config/src/providers/harness.test.ts	T1	6
 packages/@prismalens/config/src/providers/harness.test.ts	T2	21
-packages/@prismalens/config/src/providers/harness.ts	agent-id-handmade	6
 packages/@prismalens/config/src/providers/mcp.ts	L9	1
 packages/@prismalens/config/src/providers/mcp.ts	biome-ignore	4
 packages/@prismalens/config/src/providers/model-makers.ts	agent-id-handmade	1

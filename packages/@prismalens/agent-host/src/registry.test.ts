@@ -65,6 +65,18 @@ describe("levels", () => {
 				auto: ["default", null, "acp-mode"],
 				"full-access": ["yolo", null, "acp-mode"],
 			},
+			cursor: {
+				supervised: [null, null, "none"],
+				"auto-edits": [null, null, "none"],
+				auto: [null, null, "none"],
+				"full-access": [null, null, "none"],
+			},
+			antigravity: {
+				supervised: ["default", null, "acp-mode"],
+				"auto-edits": ["auto_edit", null, "acp-mode"],
+				auto: ["default", null, "acp-mode"],
+				"full-access": ["yolo", null, "acp-mode"],
+			},
 			deepagents: {
 				supervised: [null, null, "none"],
 				"auto-edits": [null, null, "none"],
@@ -217,7 +229,15 @@ describe("agent facts (#1101)", () => {
 	it("give every probed row its four probed facts, with no version stamp: the probe asserts them live", () => {
 		const rows = AGENT_IDS.filter((id) => AGENT_REGISTRY[id].facts);
 		// deepagents gained its facts in 395d70363.
-		expect(rows).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents"]);
+		expect(rows).toEqual([
+			"opencode",
+			"claude-code",
+			"codex",
+			"gemini",
+			"cursor",
+			"antigravity",
+			"deepagents",
+		]);
 		const seen = rows.map((id) => {
 			const f = AGENT_REGISTRY[id].facts;
 			const probed = [f?.loadSession, f?.images, f?.embeddedContext, f?.directories];
@@ -279,6 +299,8 @@ describe("agent facts (#1101)", () => {
 			"claude-code",
 			"codex",
 			"gemini",
+			"cursor",
+			"antigravity",
 			"deepagents",
 		]);
 	});

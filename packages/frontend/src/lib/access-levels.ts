@@ -76,9 +76,9 @@ export function permissionLine(
 	if (set) return `${ACCESS_LEVEL_LABEL[set]}, set here.`;
 	const fallback = `${ACCESS_LEVEL_LABEL[DEFAULT_ACCESS_LEVEL]}, PrismaLens's pick.`;
 	const facts = agentFacts(h.id);
+	if (facts?.noLevelReason) return `${fallback} ${facts.noLevelReason}`;
 	if (facts?.modeMechanism === "none")
 		return `${fallback} ${h.label} has no modes.`;
-	if (facts?.noLevelReason) return `${fallback} ${facts.noLevelReason}`;
 	const local = h.localDefault?.permission;
 	if (!local)
 		return `${fallback} No level set in ${facts?.settingsFile ?? "its settings"}.`;

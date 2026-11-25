@@ -359,14 +359,13 @@ export interface Forbid {
 	readonly patterns?: readonly string[];
 	/** A provider family whose member ids, read from the registry, may not be listed, keyed, switched or compared on. */
 	readonly ids?: string;
+	/** Member ids that are also everyday words (`local`, a page `cursor`): one counts only beside another member, or against an id. */
+	readonly generic?: readonly string[];
 	/** Root-relative files, `<dir>/` for every file under it, or `*<suffix>` for every file ending so, that may use them. */
 	readonly allow?: readonly string[];
 	/** A regular expression: a file whose text matches it is exempt, as one that marks what it renders. */
 	readonly unless?: string;
 }
-
-/** A member id that is also an everyday word: it counts only beside another member, or against an id. */
-const GENERIC = new Set(["local"]);
 
 const COMPARISONS = new Set([
 	ts.SyntaxKind.EqualsEqualsEqualsToken,
@@ -379,7 +378,11 @@ const COMPARISONS = new Set([
  * Whether `n` hand-writes one of `ids`: an array element, enum value, object key,
  * case label or comparison operand. Comments, types and call arguments do not count.
  */
-function isHandId(n: ts.Node, ids: readonly string[]): boolean {
+function isHandId(
+	n: ts.Node,
+	ids: readonly string[],
+	generic: ReadonlySet<string>,
+): boolean {
 	if (!ids.length || !n.parent) return false;
 	const parent = n.parent;
 	const known = (t: string | undefined) =>
@@ -392,7 +395,7 @@ function isHandId(n: ts.Node, ids: readonly string[]): boolean {
 			: undefined;
 	};
 	const counts = (id: string, beside: readonly (string | undefined)[]) =>
-		!GENERIC.has(id) || beside.some((o) => o !== undefined && o !== id);
+		!generic.has(id) || beside.some((o) => o !== undefined && o !== id);
 	if (ts.isObjectLiteralExpression(parent)) {
 		const keyOf = (p: ts.ObjectLiteralElementLike) =>
 			known(p.name && propName(p.name));
@@ -444,7 +447,7 @@ function isHandId(n: ts.Node, ids: readonly string[]): boolean {
 		COMPARISONS.has(holder.operatorToken.kind)
 	) {
 		const other = holder.left === at ? holder.right : holder.left;
-		return !GENERIC.has(id) || /[iI]d$/.test(other.getText());
+		return !generic.has(id) || /[iI]d$/.test(other.getText());
 	}
 	return false;
 }
@@ -492,7 +495,7 @@ export function readForbidden(
 					(f.calls ?? []).includes(n.expression.getText(sf))) ||
 				((ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) &&
 					(f.components ?? []).includes(n.tagName.getText(sf)));
-			if (hit || isHandId(n, members(f)))
+			if (hit || isHandId(n, members(f), new Set(f.generic)))
 				counts.set(f.rule, (counts.get(f.rule) ?? 0) + 1);
 		}
 		ts.forEachChild(n, visit);

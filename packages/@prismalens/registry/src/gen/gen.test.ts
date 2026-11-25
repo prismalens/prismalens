@@ -434,8 +434,8 @@ describe("generate, with a kind only the checks read", () => {
 });
 
 describe("a forbid rule that reads a family's ids", () => {
-	const ids = new Map([["agent", ["codex", "gemini", "local"]]]);
-	const forbid = [{ rule: "id-handmade", fix: "f", ids: "agent" }];
+	const ids = new Map([["agent", ["codex", "gemini", "local", "cursor"]]]);
+	const forbid = [{ rule: "id-handmade", fix: "f", ids: "agent", generic: ["local", "cursor"] }];
 	const count = (src: string) =>
 		readForbidden("src/x.ts", src, forbid, ids)[0]?.count ?? 0;
 
@@ -457,6 +457,10 @@ describe("a forbid rule that reads a family's ids", () => {
 		["`local` compared with a mode", 'if (mode === "local") {}', 0],
 		["`local` beside another member", 'const a = ["codex", "local"];', 2],
 		["`local` compared with an id", 'if (harnessId === "local") {}', 1],
+		["a page `cursor` key", "const a = { cursor: next, limit: 50 };", 0],
+		["a page `cursor` in a list of fields", 'const a = ["cursor", "pending"];', 0],
+		["`cursor` beside another member", 'const a = { cursor: 1, codex: 2 };', 2],
+		["`cursor` compared with an id", 'if (agentId === "cursor") {}', 1],
 	])("counts %s", (_what, src, n) => {
 		expect(count(src)).toBe(n);
 	});
