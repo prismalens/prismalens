@@ -13,6 +13,23 @@
 		{
 			"match": {
 				"inConversation": "[row:brief-placement]",
+				"systemMessage": "LIVE investigation of a firing production alert",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$shell",
+						"arguments": {
+							"$command": "cat package.json"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"inConversation": "[row:brief-placement]",
 				"systemMessage": "LIVE investigation of a firing production alert"
 			},
 			"response": {

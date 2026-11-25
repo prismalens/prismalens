@@ -143,6 +143,19 @@ describe("the behaviour matrix is well formed (#914)", () => {
 		},
 	);
 
+	// The engine refuses a report from a turn in which no tool ran.
+	it.each(
+		rows.filter((r) => r.expect === "report").map((r) => [r.row, r]),
+	)("%s calls a tool before it answers with a report", (_, row) => {
+		const answers = row.fixtures.map((f) => f.response as Record<string, unknown>);
+		const report = answers.findIndex((a) => a.content === "$report");
+		const tool = answers.findIndex((a) => Array.isArray(a.toolCalls));
+		expect({ tool: tool > -1, first: tool < report }).toEqual({
+			tool: true,
+			first: true,
+		});
+	});
+
 	it("expects `cancelled` of the cancel row, and a known orphan only of codex and deepagents (#1153)", () => {
 		const cancel = rows.find((r) => r.row === "cancel");
 		expect(cancel?.expect).toBe("cancelled");
