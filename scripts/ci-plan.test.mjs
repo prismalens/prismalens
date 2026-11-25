@@ -259,13 +259,22 @@ test("a change to ci.yml runs every tier; one to the browser workflow builds and
 	]);
 });
 
-test("an agent pin or the admission fake turns the qualification legs on without a build", () => {
-	for (const file of ["scripts/agent-pins.json", "scripts/admission-fake.mjs"])
-		assert.deepEqual(
-			tiers(planFor([file])),
-			[false, false, false, false, false, true],
-			file,
-		);
+test("the admission fake turns the qualification legs on without a build", () => {
+	assert.deepEqual(tiers(planFor(["scripts/admission-fake.mjs"])), [
+		false,
+		false,
+		false,
+		false,
+		false,
+		true,
+	]);
+});
+
+test("an agent's pin.json is part of its descriptor, so it builds and tests the app and runs the agent legs", () => {
+	assert.deepEqual(
+		tiers(planFor(["packages/@prismalens/providers/src/agent/codex/pin.json"])),
+		[false, true, true, true, false, true],
+	);
 });
 
 test("the lockfile and root manifests build every package and run the agent legs, but not the release proofs", () => {
