@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { RunCredential } from "@prismalens/contracts/schemas";
+import * as clock from "../clock.js";
 
 export type GitFailureCode =
 	| "no-credential"
@@ -198,7 +199,7 @@ export function diagnoseGitFailure(input: DiagnoseInput): GitFailure {
 	) => new GitFailure(code, message, action, stderr);
 	// An env token is diagnosed like a saved one (#848).
 	const source = credential.source === "env" ? "connection" : credential.source;
-	const now = input.now ?? new Date();
+	const now = input.now ?? clock.date();
 
 	if (
 		source === "connection" &&

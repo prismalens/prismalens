@@ -10,6 +10,7 @@ import type {
 	LiveTopic,
 	ThreadActivity,
 } from "@prismalens/contracts";
+import * as clock from "../clock.js";
 import { eventShape, NON_AGENT_BRANCHES } from "./step-text.js";
 
 /** Which list a write to each Prisma model changes; models not listed change none. */
@@ -338,17 +339,17 @@ export class LiveChanges {
 		}
 		edge.dirty = true;
 		if (usage) edge.usageDirty = true;
-		if (Date.now() - edge.lastEdge >= this.edgeMs) this.edge(id, edge);
+		if (clock.now() - edge.lastEdge >= this.edgeMs) this.edge(id, edge);
 	}
 
 	private edge(id: string, edge: Edge): void {
 		this.noteTopic("threads", id);
 		if (edge.usageDirty) this.batch(this.slowMs).detail.add(id);
-		edge.lastEdge = Date.now();
+		edge.lastEdge = clock.now();
 		edge.dirty = false;
 		edge.usageDirty = false;
 		clearTimeout(edge.timer);
-		edge.timer = setTimeout(() => {
+		edge.timer = clock.setTimeout(() => {
 			edge.timer = undefined;
 			if (edge.dirty) this.edge(id, edge);
 			else this.edges.delete(id);
@@ -367,7 +368,7 @@ export class LiveChanges {
 				detail: new Set(),
 			};
 			this.batches.set(ms, batch);
-			setTimeout(() => this.flush(ms), ms).unref?.();
+			clock.setTimeout(() => this.flush(ms), ms).unref?.();
 		}
 		return batch;
 	}

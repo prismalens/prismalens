@@ -17,6 +17,7 @@ import {
 } from "@prismalens/config";
 import type { Diagnostics } from "@prismalens/contracts";
 import { resolveServiceVersion } from "../../shared/utils/service-version.js";
+import * as clock from "../clock.js";
 import { gitEnv } from "../harness/git-env.js";
 
 export type GitRun = DiagnosticGitRun;
@@ -57,7 +58,7 @@ export class DiagnosticsService {
 	nodeVersion = process.versions.node;
 	git: GitRun = runGit;
 	runVersion: VersionRun = plVersion;
-	now: () => number = Date.now;
+	now: () => number = clock.now;
 
 	run(): Diagnostics {
 		return {

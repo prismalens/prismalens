@@ -13,6 +13,7 @@
 			"!**/*.spec.ts",
 			"packages/frontend/e2e/**/*.spec.ts",
 			"packages/frontend/e2e/**/*.test.ts",
+			"!tools/lint/fixtures",
 			"!**/*.md",
 			"!scripts/launcher/ini.cjs",
 			"!**/*.yaml",
@@ -215,6 +216,16 @@
 		"stylesheet": "packages/frontend/src/app.css"
 	},
 	"plugins": [
+		{
+			"path": "./tools/lint/no-direct-clock.grit",
+			"includes": [
+				"packages/api/src/core/**/*.ts",
+				"packages/api/src/infrastructure/**/*.ts",
+				"!packages/api/src/**/*.spec.ts",
+				"!packages/api/src/core/clock.ts",
+				"!packages/api/src/infrastructure/dispatch/process-signals.ts"
+			]
+		},
 		{
 			"path": "./packages/frontend/biome-plugins/one-spinner.grit",
 			"includes": [

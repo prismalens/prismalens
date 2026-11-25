@@ -23,6 +23,8 @@ import {
 import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import crossSpawn from "cross-spawn";
+import { isProcessAlive } from "../../infrastructure/dispatch/process-signals.js";
+import * as clock from "../clock.js";
 
 export const RESULT_FILE = "update-result.json";
 
@@ -247,14 +249,7 @@ export function spawnLauncher(
 
 /* v8 ignore start -- the real process glue; runHandoff is tested through HandoffDeps */
 const realDeps: HandoffDeps = {
-	alive(pid) {
-		try {
-			process.kill(pid, 0);
-			return true;
-		} catch (error) {
-			return (error as NodeJS.ErrnoException).code === "EPERM";
-		}
-	},
+	alive: isProcessAlive,
 	async health(url) {
 		try {
 			const res = await fetch(url, { signal: AbortSignal.timeout(2_000) });
@@ -265,8 +260,8 @@ const realDeps: HandoffDeps = {
 			return null;
 		}
 	},
-	sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-	now: Date.now,
+	sleep: clock.sleep,
+	now: clock.now,
 	launch(runtimeDir, cfg) {
 		const out = openSync(cfg.logPath, "a");
 		const file = launcher(runtimeDir, cfg.platform);

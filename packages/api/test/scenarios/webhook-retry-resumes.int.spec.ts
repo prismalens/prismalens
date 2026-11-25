@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { ScenarioApp } from "./support/scenario-app.js";
 
+vi.setConfig({ testTimeout: 5_000 }); // slowest test 1481 ms; 3x, rounded up to the second, at least 5 s (#1154)
+
 const pl = new ScenarioApp();
 
 beforeAll(async () => {

@@ -12,6 +12,7 @@
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { HARNESS_IDS } from "@prismalens/config/harness";
 import { PRISMALENS_OWN_SECRETS } from "@prismalens/engine";
 import { QUERY_KINDS } from "../../modules/integrations/source-query.js";
 import { envVars } from "../../modules/integrations/telemetry-snapshot.service.js";
@@ -435,8 +436,7 @@ describe("HarnessService", () => {
 
 			const status = await service().getStatus();
 
-			expect(status.harnesses.length).toBeGreaterThan(0);
-			expect(status.harnesses.map((h) => h.id)).toContain("opencode");
+			expect(status.harnesses.map((h) => h.id)).toEqual(HARNESS_IDS);
 			expect(status.harnesses.find((h) => h.id === "opencode")?.installed).toBe(
 				true,
 			);
@@ -518,7 +518,9 @@ describe("HarnessService", () => {
 				runnable: false,
 				pinned: true,
 			});
-			expect(status.selection.blockedReason).toMatch(/not a known harness/i);
+			expect(status.selection.blockedReason).toBe(
+				`PRISMALENS_HARNESS="not-a-harness" is not a known harness (${HARNESS_IDS.join(", ")})`,
+			);
 		});
 	});
 });
@@ -874,7 +876,12 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		const { svc } = runtimeService();
 		const ids = (await svc.getStatus()).harnesses.map((h) => h.id);
 		expect(ids).toEqual(expect.arrayContaining(["claude-code", "codex"]));
-		await expect(svc.runtimeFor("claude-code")).rejects.toThrow(/must be https/);
+		await expect(svc.runtimeFor("claude-code")).rejects.toThrow(
+			new Error(
+				"ANTHROPIC_BASE_URL must be https unless it points at this machine: http://gateway.example",
+			),
+		);
+		expect((await svc.runtimeFor("codex")).env).toEqual({});
 		await svc.updateSettings({ env: { "claude-code": { ANTHROPIC_BASE_URL: "https://ok.example" } } });
 		expect((await svc.runtimeFor("claude-code")).env.ANTHROPIC_BASE_URL).toBe("https://ok.example");
 	});
@@ -1075,7 +1082,7 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect(updated.off).toEqual(["codex"]);
 
 		await svc.updateSettings({ off: { codex: false } });
-		await new Promise((r) => setTimeout(r, 10));
+		await vi.advanceTimersByTimeAsync(10);
 		expect(check).toHaveBeenCalledWith("codex", expect.anything(), expect.anything(), expect.anything());
 	});
 
@@ -1353,21 +1360,27 @@ describe("HarnessService provider sign-in (multi-provider agents)", () => {
 	});
 
 	it("reports the chosen model's login as the agent's providerSignIn in the status", async () => {
+		const original = process.env.PATH;
+		process.env.PATH = pathWith("opencode", "codex-acp");
 		const status = async (providers: string[] | null) =>
 			Object.fromEntries(
 				(await seeded(providers).getStatus()).harnesses
 					.filter((h) => h.id === "opencode" || h.id === "codex")
 					.map((h) => [h.id, h.providerSignIn]),
 			);
-		expect(await status([])).toEqual({
-			codex: "na",
-			opencode: "signed-in",
-		});
-		expect(await status(["Google"])).toEqual({
-			codex: "na",
-			opencode: "signed-in",
-		});
-		expect(await status(null)).toEqual({ codex: "na", opencode: "unchecked" });
+		try {
+			expect(await status([])).toEqual({
+				codex: "na",
+				opencode: "signed-in",
+			});
+			expect(await status(["Google"])).toEqual({
+				codex: "na",
+				opencode: "signed-in",
+			});
+			expect(await status(null)).toEqual({ codex: "na", opencode: "unchecked" });
+		} finally {
+			process.env.PATH = original;
+		}
 	});
 
 	it("takes a listed model that needs no login or whose provider is signed in when its own default is not one", () => {

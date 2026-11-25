@@ -4,8 +4,10 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eventually, ScenarioApp } from "./support/scenario-app.js";
+
+vi.setConfig({ testTimeout: 5_000 }); // slowest test 1275 ms; 3x, rounded up to the second, at least 5 s (#1154)
 
 const pl = new ScenarioApp();
 

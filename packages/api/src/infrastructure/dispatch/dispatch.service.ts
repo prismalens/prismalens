@@ -134,6 +134,7 @@ import { FOLDER_BUSY, FOLDER_TX, folderBusy } from "./folder-lock.js";
 /** Settings → Agent → "Questions from agents wait for", in minutes (#1024). */
 export const QUESTION_TIMEOUT_SETTING = "agents.questionTimeoutMinutes";
 
+import * as clock from "../../core/clock.js";
 import { containPrevious, readReceipt } from "./harness-receipt.js";
 import { createInProcessRunner } from "./in-process-runner.js";
 import {
@@ -556,7 +557,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			recordUsage: async (id, usage) => {
 				await this.prisma.investigation.updateMany({
 					where: { id },
-					data: { usage: JSON.stringify(usage), lastActivityAt: new Date() },
+					data: { usage: JSON.stringify(usage), lastActivityAt: clock.date() },
 				});
 			},
 			markAwaitingApproval: async (id, since) => {
@@ -996,25 +997,31 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		// Fail closed: with recoveries neither checked nor parked, nothing is claimed until a check succeeds (#981 OBJ-013).
 		if (!checked && boot) {
 			this.dispatcher.hold();
-			this.recheckTimer = setInterval(() => {
-				void this.checkRecoveries(boot).then((ok) => {
-					if (!ok) return;
-					clearInterval(this.recheckTimer);
-					this.dispatcher.unhold();
-					this.recoveryWake = setTimeout(
-						() => void this.dispatcher.tick(),
-						RECOVERY_DELAY_MS + 1_000,
-					).unref();
-				});
-			}, RECHECK_MS).unref();
+			this.recheckTimer = clock
+				.setInterval(() => {
+					void this.checkRecoveries(boot).then((ok) => {
+						if (!ok) return;
+						clearInterval(this.recheckTimer);
+						this.dispatcher.unhold();
+						this.recoveryWake = clock
+							.setTimeout(
+								() => void this.dispatcher.tick(),
+								RECOVERY_DELAY_MS + 1_000,
+							)
+							.unref();
+					});
+				}, RECHECK_MS)
+				.unref();
 		}
 		this.dispatcher.start();
 		// The loop has no poll timer: a recovery waiting out its delay is claimed only by a tick (#981).
 		if (boot?.resumed.length)
-			this.recoveryWake = setTimeout(
-				() => void this.dispatcher.tick(),
-				RECOVERY_DELAY_MS + 1_000,
-			).unref();
+			this.recoveryWake = clock
+				.setTimeout(
+					() => void this.dispatcher.tick(),
+					RECOVERY_DELAY_MS + 1_000,
+				)
+				.unref();
 		this.logger.log(
 			`Dispatch loop started, concurrency cap ${getConfig().PRISMALENS_DISPATCH_CONCURRENCY}, owner ${this.dispatcher.ownerToken}`,
 		);
@@ -1193,7 +1200,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			if (legacy.length + asks.length === 0 && !awaitingApprovalAt) continue;
 			if (legacy.length + asks.length > 0) denied++;
 			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
-			const ts = new Date().toISOString();
+			const ts = clock.date().toISOString();
 			const at = (branchId: string) => ({
 				runId: id,
 				branchId,
@@ -1245,7 +1252,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			const open = queuedLeftWaiting(parseEventRows(events));
 			if (open.length === 0) continue;
 			let seq = (await this.investigationsService.lastEventSeq(id)) + 1;
-			const ts = new Date().toISOString();
+			const ts = clock.date().toISOString();
 			await this.investigationsService.appendEvents(
 				id,
 				open.map((q) => ({
@@ -1329,7 +1336,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				path: [],
 				seq,
 				label: null,
-				ts: new Date().toISOString(),
+				ts: clock.date().toISOString(),
 				reason: "restart",
 			},
 		]);
@@ -1380,7 +1387,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				data: {
 					status: "cancelled",
 					claimedBy: null,
-					finishedAt: new Date(),
+					finishedAt: clock.date(),
 					lastError: "Stopped before PrismaLens restarted",
 				},
 			});
@@ -1551,7 +1558,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				if (session.wakeId) {
 					const taken = await tx.threadWake.updateMany({
 						where: { id: session.wakeId, state: "pending" },
-						data: { state: "done", doneAt: session.wakeDoneAt ?? new Date() },
+						data: { state: "done", doneAt: session.wakeDoneAt ?? clock.date() },
 					});
 					// Another pass took this wake already: roll the admission back.
 					if (taken.count === 0) throw new WakeTaken();
@@ -1559,7 +1566,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				if (session.claims?.length) {
 					const taken = await tx.threadMessage.updateMany({
 						where: { id: { in: session.claims }, toId: id, state: "queued" },
-						data: { state: "delivered", deliveredAt: new Date() },
+						data: { state: "delivered", deliveredAt: clock.date() },
 					});
 					// A drain delivered one meanwhile: the next pass carries what is left.
 					if (taken.count !== session.claims.length) throw new WakeTaken();
@@ -1654,7 +1661,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				id: investigationId,
 				status: { in: [...LIVE_WORKFLOW_STATUSES] },
 			},
-			data: { status: "failed", error, completedAt: new Date() },
+			data: { status: "failed", error, completedAt: clock.date() },
 		});
 		await releaseLease(this.prisma, investigationId);
 	}
@@ -1683,7 +1690,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				`Could not release ${failed} checkout lease(s); retrying in a minute`,
 			);
 			clearTimeout(this.leaseRetry);
-			this.leaseRetry = setTimeout(
+			this.leaseRetry = clock.setTimeout(
 				() => void this.releaseEndedLeases(null),
 				LEASE_RETRY_MS,
 			);
@@ -2007,7 +2014,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 */
 	/** The boot's view of the cut-off runs, read before any boot write (#981 OBJ-006, OBJ-010). */
 	private async bootContext(): Promise<BootContext> {
-		const now = new Date();
+		const now = clock.date();
 		const live = await this.prisma.investigation.findMany({
 			where: { status: { in: [...LIVE_WORKFLOW_STATUSES] } },
 			select: { id: true, acpSessionId: true },
@@ -2592,7 +2599,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			throw new FollowUpRefused(
 				`${plan.preflight.problem} ${plan.preflight.fix}`,
 			);
-		const now = new Date();
+		const now = clock.date();
 		const last = (await this.lastActivity(id)).at;
 		const data = recoveryPayload(
 			original,

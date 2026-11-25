@@ -40,6 +40,7 @@ function stopReasonOf(error: string): { endReason?: "limited" | "blocked" } {
 }
 
 import { Logger } from "@prismalens/logger";
+import * as clock from "../../core/clock.js";
 import type { RunPorts } from "./run-ports.js";
 
 /** Flush when the buffer reaches this many events. */
@@ -175,7 +176,7 @@ export function createPrismaInvestigationStore(
 		await flush();
 		for (const wait of retryDelaysMs) {
 			if (retained.length === 0) break;
-			await new Promise((r) => setTimeout(r, wait));
+			await clock.sleep(wait);
 			await flush();
 		}
 		if (retained.length > 0) {
@@ -254,7 +255,7 @@ export function createPrismaInvestigationStore(
 			if (buffer.length >= BATCH_SIZE) {
 				await flush();
 			} else if (!flushTimer) {
-				flushTimer = setTimeout(() => {
+				flushTimer = clock.setTimeout(() => {
 					void flush();
 				}, FLUSH_INTERVAL_MS);
 				// Don't let a pending durability flush hold the event loop open.

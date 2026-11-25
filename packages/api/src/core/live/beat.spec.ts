@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { withBeat } from "./beat.js";
 
 describe("withBeat (#1181)", () => {
@@ -28,9 +28,10 @@ describe("withBeat (#1181)", () => {
 		const first = await stream.next();
 		expect(first.value).toEqual({ beat: true, count: 1 });
 
-		// Wait for quiet beat
-		await new Promise((r) => setTimeout(r, 35));
-		const second = await stream.next();
+		// A quiet beat comes after the 20 ms the source stays silent
+		const secondNext = stream.next();
+		await vi.advanceTimersByTimeAsync(20);
+		const second = await secondNext;
 		expect(second.value).toEqual({ beat: true, count: 2 });
 
 		// Source yields an item
@@ -39,8 +40,9 @@ describe("withBeat (#1181)", () => {
 		expect(third.value).toBe("data-1");
 
 		// Another quiet beat
-		await new Promise((r) => setTimeout(r, 35));
-		const fourth = await stream.next();
+		const fourthNext = stream.next();
+		await vi.advanceTimersByTimeAsync(20);
+		const fourth = await fourthNext;
 		expect(fourth.value).toEqual({ beat: true, count: 3 });
 
 		controller.abort();
@@ -62,9 +64,10 @@ describe("withBeat (#1181)", () => {
 		expect(first.value).toEqual({ beat: true, cursor: "epoch.1" });
 
 		holder.cursor = "epoch.2";
-		await new Promise((r) => setTimeout(r, 35));
+		const secondNext = stream.next();
+		await vi.advanceTimersByTimeAsync(20);
 
-		const second = await stream.next();
+		const second = await secondNext;
 		expect(second.value).toEqual({ beat: true, cursor: "epoch.2" });
 
 		controller.abort();

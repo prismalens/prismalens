@@ -27,6 +27,7 @@ import {
 	HarnessStatusSchema,
 } from "@prismalens/contracts/schemas";
 import { z } from "zod";
+import * as clock from "../clock.js";
 
 export const OPERATOR_CATALOGUE_FILE = "model-catalogue.json";
 
@@ -80,7 +81,7 @@ export class HarnessModelsService {
 	/** Remember what a readiness check saw the harness offer. An empty list forgets. */
 	remember(id: HarnessId, models: OfferedModel[] | undefined) {
 		if (models?.length)
-			this.offered.set(id, { at: new Date().toISOString(), models });
+			this.offered.set(id, { at: clock.date().toISOString(), models });
 		else this.offered.delete(id);
 	}
 
@@ -116,7 +117,7 @@ export class HarnessModelsService {
 		runtime = "",
 	) {
 		this.checks.set(id, {
-			at: new Date().toISOString(),
+			at: clock.date().toISOString(),
 			version: null,
 			companionVersion: null,
 			modes: null,

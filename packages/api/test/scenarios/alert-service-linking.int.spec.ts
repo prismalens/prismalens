@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ScenarioApp } from "./support/scenario-app.js";
+
+vi.setConfig({ testTimeout: 5_000 }); // slowest test 680 ms; 3x, rounded up to the second, at least 5 s (#1154)
 
 const pl = new ScenarioApp();
 

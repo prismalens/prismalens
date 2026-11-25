@@ -31,6 +31,7 @@ import type { Request } from "express";
 import { pushHealth } from "../../modules/push/push.service.js";
 import { issueTerminalKey } from "../../modules/terminal/terminal-key-issue.js";
 import { WEBHOOK_LAST_DELIVERY_KEY } from "../../shared/constants/routes.js";
+import * as clock from "../clock.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 import { deviceCookieHeader } from "./device-cookie.js";
@@ -108,7 +109,7 @@ export class PairingController {
 			revokeDevice: implement(pairingContract.manage.revokeDevice).handler(
 				async ({ input, context }) => {
 					operatorOnly(context.request as Request);
-					const revoked = await this.store.revokeDevice(input.id, new Date());
+					const revoked = await this.store.revokeDevice(input.id, clock.date());
 					if (!revoked) {
 						throw new ORPCError("NOT_FOUND", {
 							message: "No such device, or it is already revoked.",
