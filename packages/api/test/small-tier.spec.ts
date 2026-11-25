@@ -6,6 +6,7 @@ import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
 import { join } from "node:path";
+import { setTimeout as nodeSleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import * as clock from "../src/core/clock.js";
@@ -32,7 +33,19 @@ describe("the small tier (#1154)", () => {
 		expect(woke).toBe(true);
 	});
 
-	// Runs after the sleep above, which leaves its clock a minute on.
+	it("puts a node:timers/promises sleep on the fake clock too", async () => {
+		let woke = false;
+		const sleeping = nodeSleep(60_000).then(() => {
+			woke = true;
+		});
+		await vi.advanceTimersByTimeAsync(59_999);
+		expect(woke).toBe(false);
+		await vi.advanceTimersByTimeAsync(1);
+		await sleeping;
+		expect(woke).toBe(true);
+	});
+
+	// Runs after the sleeps above, which leave their clock a minute on.
 	it("puts the clock back on the fixed date after a test moved it", () => {
 		expect(clock.date().toISOString()).toBe("2026-11-24T12:00:00.000Z");
 	});
