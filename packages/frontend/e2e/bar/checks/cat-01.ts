@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { defineChecks, notSetUp, verdict } from "../bar";
 
 /** Active threads the server holds beyond the `shown` the sidebar drew: it loads one feed page (#1101 cat 1). */
@@ -178,7 +178,12 @@ export default defineChecks([
 			const homeBeside = await home.isVisible();
 			if (homeBeside)
 				fails.push("Home lists Needs you beside the sidebar's own Needs you");
-			// With the sidebar hidden, Home's list takes over with the same count.
+			const ids = (rows: Locator) =>
+				rows.evaluateAll((els) =>
+					els.map((e) => e.getAttribute("data-id") ?? "").sort(),
+				);
+			const sidebarIds = await ids(needsRows);
+			// With the sidebar hidden, Home's list takes over with the same count and threads.
 			await page.getByTestId("sidebar-hide").click();
 			await expect(home).toBeVisible();
 			const homeCount = Number.parseInt(
@@ -193,6 +198,11 @@ export default defineChecks([
 				);
 			const allRows = home.getByTestId("home-needs-all");
 			if (await allRows.isVisible()) await allRows.click();
+			const homeIds = await ids(home.getByTestId("home-needs-row"));
+			if (homeIds.join() !== sidebarIds.join())
+				fails.push(
+					`Home's Needs you lists ${homeIds.length} threads, not the sidebar's ${sidebarIds.length}: ${homeIds.filter((id) => !sidebarIds.includes(id)).join(", ") || "none extra"}`,
+				);
 			if (
 				(await home
 					.locator(`[data-testid="home-needs-row"][data-id="${limitId}"]`)
@@ -206,7 +216,7 @@ export default defineChecks([
 
 			return verdict(
 				fails,
-				`needs-you section sits on top with full count ${headerCount} matching ${rowsCount} rows; Home ${homeBeside ? "repeats" : "leaves out"} it beside the sidebar and counts ${homeCount} with the sidebar hidden; the armed limit thread is out of Needs you`,
+				`needs-you section sits on top with full count ${headerCount} matching ${rowsCount} rows; Home ${homeBeside ? "repeats" : "leaves out"} it beside the sidebar and lists the same ${homeIds.length} threads (count ${homeCount}) with the sidebar hidden; the armed limit thread is out of Needs you`,
 			);
 		},
 	},

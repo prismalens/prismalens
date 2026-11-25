@@ -49,8 +49,6 @@ export function HomeHandover() {
 	const { model } = useThreadListModel();
 	const asks = useAsksByThread();
 	const now = useNow(30_000) ?? 0;
-	// The digest leaves out what waits on you at every width, so phone and desktop list the same changes (bar 3.1).
-	const waiting = new Set(model.needs.map((n) => n.id));
 	return (
 		<div className="flex w-full flex-col gap-6" data-testid="home-handover">
 			<HomeNeeds
@@ -59,7 +57,8 @@ export function HomeHandover() {
 				asks={asks}
 				now={now}
 			/>
-			<AwayDigest skip={waiting} />
+			{/* Every change, newly waiting ones included, on every width: Needs you is now, this is since (bar 3.2). */}
+			<AwayDigest />
 		</div>
 	);
 }
@@ -104,6 +103,7 @@ export function HomeNeeds({
 				<button
 					type="button"
 					onClick={() => setAll(!all)}
+					aria-expanded={all}
 					className="-mx-1.5 flex min-h-8 items-center self-start rounded-control px-1.5 text-meta text-text-3 tabular-nums outline-none hover:bg-surface-2 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent max-sm:min-h-11"
 					data-testid={all ? "home-needs-fewer" : "home-needs-all"}
 				>
@@ -278,7 +278,7 @@ function NeedsRow({
 							past
 						/>
 					</span>
-					<span className="flex min-w-0 items-center gap-1.5 text-meta text-text-3">
+					<span className="flex min-w-0 items-center gap-1.5 text-meta">
 						<Status kind={node.info.status} className="shrink-0" />
 						{t.harness && agent && (
 							<AgentBadge
@@ -289,12 +289,15 @@ function NeedsRow({
 							/>
 						)}
 						{t.startedBy && <StartedByMark by={t.startedBy} />}
-						{detail && (
-							<span className="min-w-0 truncate" {...fact("cause")}>
-								{detail}
-							</span>
-						)}
 					</span>
+					{detail && (
+						<p
+							className="line-clamp-2 text-meta text-text-2"
+							{...fact("cause")}
+						>
+							{detail}
+						</p>
+					)}
 				</div>
 				{action && <div className="relative z-10 shrink-0">{action}</div>}
 			</li>
