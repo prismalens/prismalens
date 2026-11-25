@@ -80,14 +80,12 @@ export function getRouter() {
 		const at = path + window.location.search;
 		holdForFirstPaint(at);
 		const routes = [...router.getMatchedRoutes(path)[0]];
-		const landing = landingPage(at);
-		const target = landing?.routeId;
+		const target = landingPage(at)?.routeId;
 		const redirected =
 			target && router.routesById[target as keyof typeof router.routesById];
 		if (redirected) routes.push(redirected);
 		for (const route of routes)
 			void router.loadRouteChunk(route)?.catch(() => {});
-		for (const load of landing?.code ?? []) void load().catch(() => {});
 	}
 
 	return router;
