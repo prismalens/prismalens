@@ -1,0 +1,30 @@
+{
+	"hosts": ["packages/frontend/registry.config.json"],
+	"boundaries": [
+		{
+			"from": "packages/frontend/src",
+			"deny": [
+				"@prismalens/providers/conformance",
+				"@prismalens/providers/kinds"
+			],
+			"why": "A screen lists providers from the API's providers.list and reads one member's facts from @prismalens/providers; adapters and the kit stay out of the bundle."
+		},
+		{
+			"from": "packages/@prismalens/agent-host/src",
+			"deny": ["@prismalens/registry", "@prismalens/providers"],
+			"why": "agent-host is shared with other products and stays a leaf; the providers package references its launch rows by id."
+		},
+		{
+			"from": "packages/@prismalens/providers/src",
+			"deny": [
+				"@prismalens/api",
+				"@prismalens/config",
+				"@prismalens/contracts",
+				"@prismalens/database",
+				"@prismalens/frontend",
+				"@prismalens/agent-host"
+			],
+			"why": "Descriptors import nothing built, so registry gen runs before any build; the API joins agent-host's launch row by id."
+		}
+	]
+}

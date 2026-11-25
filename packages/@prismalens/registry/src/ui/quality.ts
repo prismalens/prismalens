@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { Literal, Manifest, ManifestEntry } from "./manifest.ts";
+import type { Literal, Manifest, ManifestEntry } from "../manifest.ts";
 
 /**
  * The quality registry over the manifest: conditions (atomic, simulated states

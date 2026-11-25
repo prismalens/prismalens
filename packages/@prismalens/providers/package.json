@@ -1,0 +1,39 @@
+{
+	"name": "@prismalens/providers",
+	"version": "0.0.1",
+	"license": "Apache-2.0",
+	"private": true,
+	"description": "One descriptor per provider (agents, code hosts, telemetry, alert intake), read by the API, the engine and the UI, and the conformance kit each family's members pass",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./kinds": "./src/kinds/index.ts",
+		"./conformance": "./src/conformance/index.ts"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"test": "vitest run --coverage",
+		"typecheck": "tsc --noEmit",
+		"clean": "rm -rf dist && rm -rf node_modules"
+	},
+	"dependencies": {
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@prismalens/registry": "workspace:*",
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "^5.1.0",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	},
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"files": [
+		"dist",
+		"!dist/**/*.test.*"
+	]
+}
