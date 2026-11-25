@@ -14,7 +14,7 @@
  *   agent-bump.mjs package|probe|body --agent <id> its CLI package; the zero-token probe at its pin; its PR body
  *   agent-bump.mjs moves --agent <id> --base <ref>  what moved since <ref>, as agent-facts' MOVED list
  *   agent-bump.mjs gate --legs <dir> --digest <d>  verdict=publish only when every OS leg passed this candidate
- *   agent-bump.mjs hold --agent <id> --legs <dir> --run <url>
+ *   agent-bump.mjs hold --agent <id> [--cli <v>] [--adapter <v>] --legs <dir> --digest <d> --run <url>
  *                                                  edit or add the held candidate's comment on the pin-bump issue
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -218,11 +218,19 @@ function gh(args, input) {
 	});
 }
 
-/** Finds or files the held-bumps issue, then edits this candidate's comment or adds it. */
-function reportHeld(pin, failing, run) {
-	const body = heldComment(pin, failing, run);
+/**
+ * Finds or files the held-bumps issue, then edits this candidate's comment or adds it. The
+ * checkout still holds the old pin, so the candidate's versions come from the caller.
+ */
+export function reportHeld(pin, legs, { cli, adapter, digest, run }, api = gh) {
+	const held = {
+		...pin,
+		cli: { ...pin.cli, version: cli ?? pin.cli.version },
+		...(adapter ? { adapter: { ...pin.adapter, version: adapter } } : {}),
+	};
+	const body = heldComment(held, gateVerdict(legs, digest).failing, run);
 	const found = JSON.parse(
-		gh([
+		api([
 			"issue",
 			"list",
 			"--state",
@@ -236,7 +244,7 @@ function reportHeld(pin, failing, run) {
 	const issue =
 		found.find((i) => i.title === HELD_TITLE)?.number ??
 		Number(
-			gh([
+			api([
 				"issue",
 				"create",
 				"--title",
@@ -248,7 +256,7 @@ function reportHeld(pin, failing, run) {
 				.split("/")
 				.pop(),
 		);
-	const repo = gh([
+	const repo = api([
 		"repo",
 		"view",
 		"--json",
@@ -257,11 +265,11 @@ function reportHeld(pin, failing, run) {
 		".nameWithOwner",
 	]).trim();
 	const comments = JSON.parse(
-		gh(["api", `repos/${repo}/issues/${issue}/comments`, "--paginate"]),
+		api(["api", `repos/${repo}/issues/${issue}/comments`, "--paginate"]),
 	);
-	const mine = comments.find((c) => c.body.startsWith(heldMarker(pin)));
+	const mine = comments.find((c) => c.body.startsWith(heldMarker(held)));
 	if (mine)
-		gh([
+		api([
 			"api",
 			"-X",
 			"PATCH",
@@ -269,7 +277,7 @@ function reportHeld(pin, failing, run) {
 			"-f",
 			`body=${body}`,
 		]);
-	else gh(["issue", "comment", String(issue), "--body", body]);
+	else api(["issue", "comment", String(issue), "--body", body]);
 }
 
 async function main() {
@@ -329,10 +337,7 @@ async function main() {
 		);
 		process.exit(r.status ?? 1);
 	}
-	if (command === "hold") {
-		const { failing } = gateVerdict(readLegs(values.legs), null);
-		return reportHeld(pin, failing, values.run);
-	}
+	if (command === "hold") return reportHeld(pin, readLegs(values.legs), values);
 	if (command === "pick") return console.log(JSON.stringify(await pick(pin)));
 	if (command === "apply") {
 		const file = join(ROOT, ADAPTERS);
@@ -356,7 +361,7 @@ async function main() {
 		);
 	}
 	console.error(
-		"usage: agent-bump.mjs matrix | legs | package|pick|probe|body --agent <id> | apply --agent <id> --cli <v> [--adapter <v>] | gate --legs <dir> --digest <d> | hold --agent <id> --legs <dir> --run <url>",
+		"usage: agent-bump.mjs matrix | legs | package|pick|probe|body --agent <id> | apply --agent <id> --cli <v> [--adapter <v>] | gate --legs <dir> --digest <d> | hold --agent <id> [--cli <v>] [--adapter <v>] --legs <dir> --digest <d> --run <url>",
 	);
 	process.exit(2);
 }

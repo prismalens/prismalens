@@ -143,20 +143,19 @@ function files(root) {
 	return out;
 }
 
-/** Files an agent pin bump moves: the adapters bundled from upstream and the SDK copied flat. */
+/** Files an agent pin bump moves: the bundled adapters, their packed licence texts and the SDK. */
 export const UPSTREAM = [
 	/(^|\/)dist\/adapters\/(?!bundled\.json$)/,
 	/(^|\/)node_modules\/@anthropic-ai\/claude-agent-sdk\//,
+	/(^package|(^|\/)@prismalens\/agent-adapters)\/THIRD_PARTY_LICENSES\//,
 ];
 
-/** The upstream entries' count and their bytes once gzipped, the share of the archive they take. */
-export function upstreamShare(root, entries, upstream = UPSTREAM) {
-	const mine = entries.filter((e) => upstream.some((r) => r.test(e)));
-	const bytes = mine.reduce(
-		(n, e) => n + gzipSync(readFileSync(join(root, e))).length,
-		0,
-	);
-	return { files: mine.length, bytes };
+/** `entries` compressed the way `file` compresses them: each apart in a zip, one stream in a tarball. */
+export function compressedBytes(file, root, entries) {
+	const bodies = entries.map((e) => readFileSync(join(root, e)));
+	return file.endsWith(".zip")
+		? bodies.reduce((n, b) => n + gzipSync(b).length, 0)
+		: gzipSync(Buffer.concat(bodies)).length;
 }
 
 /** The biggest unpacked files, so a budget breach names what grew (#885). */
@@ -182,12 +181,18 @@ export function checkArtifact(file, budgets) {
 					`${model}: ${length} chars is over ${LIMIT} for a 20-char username: ${prefix}${entry}`,
 				);
 		}
-		const up = upstreamShare(root, entries);
-		const bytes = Math.max(0, statSync(file).size - up.bytes);
-		const count = entries.length - up.files;
+		const isUpstream = (e) => UPSTREAM.some((r) => r.test(e));
+		const upstream = entries.filter(isUpstream);
+		const own = entries.filter((e) => !isUpstream(e));
+		// Never the archive's size less an estimate of upstream's: that can reach 0 and hide our growth.
+		const bytes = upstream.length
+			? compressedBytes(file, root, own)
+			: statSync(file).size;
+		const upBytes = upstream.length ? compressedBytes(file, root, upstream) : 0;
+		const count = own.length;
 		const budget = budgets[info.key];
 		lines.push(
-			`${info.key} ${bytes} bytes, ${count} files of our own (budget ${budget ? `${budget.bytes} bytes, ${budget.files} files` : "none"}); upstream agent packages ${up.bytes} bytes, ${up.files} files, not budgeted`,
+			`${info.key} ${bytes} bytes, ${count} files of our own (budget ${budget ? `${budget.bytes} bytes, ${budget.files} files` : "none"}); upstream agent packages ${upBytes} bytes, ${upstream.length} files, not budgeted`,
 		);
 		if (!budget) problems.push(`no budget for ${info.key} in the budget file`);
 		else {

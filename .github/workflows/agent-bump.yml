@@ -232,8 +232,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AGENT: ${{ inputs.agent }}
+          CLI: ${{ needs.candidate.outputs.cli }}
+          ADAPTER: ${{ needs.candidate.outputs.adapter }}
+          DIGEST: ${{ needs.candidate.outputs.digest }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: node scripts/agent-bump.mjs hold --agent "$AGENT" --legs "$RUNNER_TEMP/bump" --run "$RUN_URL"
+        run: |
+          node scripts/agent-bump.mjs hold --agent "$AGENT" ${CLI:+--cli "$CLI"} ${ADAPTER:+--adapter "$ADAPTER"} \
+            --legs "$RUNNER_TEMP/bump" --digest "$DIGEST" --run "$RUN_URL"
       - name: Dry run
         if: inputs.dry-run
         env:

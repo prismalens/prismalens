@@ -14,6 +14,7 @@ export const AGENT_TEST_DIRS = [
 	"packages/@prismalens/agent-host/src",
 	"packages/@prismalens/agent-adapters/src",
 	"packages/@prismalens/config/src/providers",
+	"packages/@prismalens/engine/scripts",
 	"packages/@prismalens/providers/src",
 	"scripts",
 ];
@@ -75,6 +76,10 @@ test("no agent test names a live pin's version (class T)", () => {
 	const files = AGENT_TEST_DIRS.flatMap(testFiles)
 		.filter((f) => !f.startsWith("scripts/") || SCRIPT_TEST.test(f))
 		.map((f) => [f, readFileSync(join(ROOT, f), "utf8")]);
+	assert.deepEqual(
+		files.map(([f]) => f).filter((f) => f.endsWith("/acp-scenarios.test.ts")),
+		["packages/@prismalens/engine/scripts/acp-scenarios.test.ts"],
+	);
 	assert.deepEqual(pinnedLiterals(files, liveVersions()), []);
 });
 

@@ -11,18 +11,20 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../../..");
 const AGENTS = join(ROOT, "packages/@prismalens/providers/src/agent");
 const json = <T>(path: string): T => JSON.parse(readFileSync(path, "utf8")) as T;
 
+type Pin = { cli: { package: string; version: string; channel: "npm" | "pypi" } };
+
 /** Each agent's pin.json, by agent id. */
 const pinOf = Object.fromEntries(
 	readdirSync(AGENTS, { withFileTypes: true })
 		.filter((e) => e.isDirectory())
 		.flatMap((e) => {
 			try {
-				return [[e.name, json<{ cli: { package: string; version: string } }>(join(AGENTS, e.name, "pin.json"))]];
+				return [[e.name, json<Pin>(join(AGENTS, e.name, "pin.json"))]];
 			} catch {
 				return [];
 			}
 		}),
-) as Record<string, { cli: { package: string; version: string } }>;
+) as Record<string, Pin>;
 const { devDependencies: adapters } = json<{ devDependencies: Record<string, string> }>(
 	join(ROOT, "packages/@prismalens/agent-adapters/package.json"),
 );
@@ -51,10 +53,11 @@ describe("tested versions follow the pins CI installs (#914)", () => {
 
 // The hint a user follows and the pin CI installs come from one channel, so CI runs what users get (#1013).
 describe("install hints name the channel the pins follow (#1013)", () => {
-	const channelPackage = (id: HarnessId): string | undefined => {
+	/** A row's package manager, in pin.json's channel words, and the CLI package it names. */
+	const channelOfRow = (id: HarnessId): [string, string | undefined] | undefined => {
 		const channel = HARNESS_REGISTRY[id].channel;
 		if (!channel) return undefined;
-		return "npm" in channel ? channel.npm : channel.uv[0];
+		return "npm" in channel ? ["npm", channel.npm] : ["pypi", channel.uv[0]];
 	};
 
 	it("every row's hint gives its channel's command", () => {
@@ -71,8 +74,8 @@ describe("install hints name the channel the pins follow (#1013)", () => {
 	});
 
 	it("every agent with a pin installs its CLI package from that pin's channel", () => {
-		expect(Object.keys(pinOf).map((id) => [id, channelPackage(id as HarnessId)])).toEqual(
-			Object.entries(pinOf).map(([id, p]) => [id, p.cli.package]),
+		expect(Object.keys(pinOf).map((id) => [id, channelOfRow(id as HarnessId)])).toEqual(
+			Object.entries(pinOf).map(([id, p]) => [id, [p.cli.channel, p.cli.package]]),
 		);
 	});
 });

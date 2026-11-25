@@ -218,13 +218,12 @@ describe("agent facts (#1101)", () => {
 		const rows = AGENT_IDS.filter((id) => AGENT_REGISTRY[id].facts);
 		// deepagents gained its facts in 395d70363.
 		expect(rows).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents"]);
-		for (const id of rows) {
+		const seen = rows.map((id) => {
 			const f = AGENT_REGISTRY[id].facts;
-			expect(
-				[f?.loadSession, f?.images, f?.embeddedContext, f?.directories].map((x) => [x?.via, x?.verifiedAt]),
-				id,
-			).toEqual([0, 1, 2, 3].map(() => ["probe", undefined]));
-		}
+			const probed = [f?.loadSession, f?.images, f?.embeddedContext, f?.directories];
+			return [id, probed.map((x) => [x?.via, x?.verifiedAt])];
+		});
+		expect(seen).toEqual(rows.map((id) => [id, [0, 1, 2, 3].map(() => ["probe", undefined])]));
 	});
 
 	it("read probed facts from initialize as the engine does, and name each one an answer contradicts", () => {
@@ -268,6 +267,10 @@ describe("agent facts (#1101)", () => {
 			"regroupsLinks (source, checked on cli 1.1.0)",
 		]);
 		expect(staleFacts(facts, read)).toEqual(["regroupsLinks (source, checked on cli 1.1.0)"]);
+		expect(staleFacts(facts, { cli: read.cli, adapter: "9.9.9" })).toEqual([
+			"systemPromptVia (source, checked on cli 1.0.0, adapter 0.1.0)",
+			"regroupsLinks (source, checked on cli 1.1.0)",
+		]);
 	});
 
 	it("reopen a finished run only where session load is a fact", () => {

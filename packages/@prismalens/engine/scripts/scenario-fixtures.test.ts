@@ -149,7 +149,7 @@ describe("the behaviour matrix is well formed (#914)", () => {
 	)("%s calls a tool before it answers with a report", (_, row) => {
 		const answers = row.fixtures.map((f) => f.response as Record<string, unknown>);
 		const report = answers.findIndex((a) => a.content === "$report");
-		const tool = answers.findIndex((a) => Array.isArray(a.toolCalls));
+		const tool = answers.findIndex((a) => Array.isArray(a.toolCalls) && a.toolCalls.length > 0);
 		expect({ tool: tool > -1, first: tool < report }).toEqual({
 			tool: true,
 			first: true,

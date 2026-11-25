@@ -57,7 +57,7 @@ A gate fails the PR or the release when an artifact misses its standard (#906):
 | Every release asset | one `SHA256SUMS` and one build-provenance attestation | the `sums` job in `release.yml` |
 | SBOM | CycloneDX from `npm sbom` over the linux-x64 app tree | `build-standalone-cli.yml` |
 
-`scripts/artifact-budgets.json` holds bytes and files per artifact and unpacked size per desktop OS. Only our own files count: the bundled adapters and the Claude Agent SDK are printed beside the budget line, never held to it. A breach prints the five largest unpacked files. A breach is fixed by shrinking the artifact; raising a budget needs the reason in the PR.
+`scripts/artifact-budgets.json` holds bytes and files per artifact and unpacked size per desktop OS. Only our own files count: the bundled adapters, their licence texts and the Claude Agent SDK are printed beside the budget line, never held to it. A breach prints the five largest unpacked files. A breach is fixed by shrinking the artifact; raising a budget needs the reason in the PR.
 
 ### The Windows path limit
 

@@ -19,6 +19,7 @@ import {
 	admissionLegs,
 	applied,
 	gateVerdict,
+	HELD_TITLE,
 	heldComment,
 	moves,
 	pick,
@@ -27,6 +28,7 @@ import {
 	probeArgs,
 	pypiTimes,
 	REQUIRED_LEGS,
+	reportHeld,
 } from "./agent-bump.mjs";
 import { AGENTS_DIR, agentPins, ROOT } from "./agent-pins.mjs";
 
@@ -66,8 +68,9 @@ test("pickVersion never picks a release whose publish time is missing", () => {
 });
 
 test("pypiTimes dates a release by its first upload and drops yanked and empty releases", async () => {
+	const asked = [];
 	const times = await pypiTimes("acme", async (url) => {
-		assert.equal(url, "https://pypi.org/pypi/acme/json");
+		asked.push(url);
 		return {
 			releases: {
 				"0.1.0": [
@@ -81,6 +84,7 @@ test("pypiTimes dates a release by its first upload and drops yanked and empty r
 			},
 		};
 	});
+	assert.deepEqual(asked, ["https://pypi.org/pypi/acme/json"]);
 	assert.deepEqual(times, { "0.1.0": "2026-01-01T00:00:00Z" });
 });
 
@@ -165,7 +169,7 @@ const legs = (digest, okWin = true) => [
 	{ os: "windows-latest", digest, ok: okWin },
 ];
 
-test("each agent's gate reads only its own legs: one failing agent holds, the other publishes (class B)", () => {
+test("the gate publishes when every leg passed, and holds on a failed one", () => {
 	assert.deepEqual(gateVerdict(legs("aaa"), "aaa"), {
 		verdict: "publish",
 		failing: [],
@@ -174,6 +178,53 @@ test("each agent's gate reads only its own legs: one failing agent holds, the ot
 		verdict: "hold",
 		failing: ["windows-latest"],
 	});
+});
+
+test("each agent's gate reads only its own legs: one failing agent holds, the other publishes (class B)", (t) => {
+	const { jobs } = parse(
+		readFileSync(join(ROOT, ".github/workflows/agent-bump.yml"), "utf8"),
+	);
+	const upload = jobs.conformance.steps.find((st) =>
+		st.with?.name?.startsWith("leg-"),
+	).with.name;
+	const { pattern } = jobs.publish.steps.find((st) =>
+		st.uses?.startsWith("actions/download-artifact@"),
+	).with;
+	const named = (text, agent, os = "") =>
+		text.replace("${{ inputs.agent }}", agent).replace("${{ matrix.os }}", os);
+	// One run's artifacts: every agent's legs share a namespace and the same file names.
+	const artifacts = ["codex", "opencode"].flatMap((agent) =>
+		REQUIRED_LEGS.map((os) => ({
+			name: named(upload, agent, os),
+			file: `leg-${os}.json`,
+			leg: {
+				os,
+				digest: "d1",
+				ok: !(agent === "codex" && os === "windows-latest"),
+			},
+		})),
+	);
+	const gate = (agent) => {
+		const dir = mkdtempSync(join(tmpdir(), "agent-bump-legs-"));
+		t.after(() => rmSync(dir, { recursive: true, force: true }));
+		const glob = new RegExp(`^${named(pattern, agent).replaceAll("*", ".*")}$`);
+		for (const a of artifacts.filter((a) => glob.test(a.name)))
+			writeFileSync(join(dir, a.file), JSON.stringify(a.leg));
+		return execFileSync(
+			process.execPath,
+			[
+				join(ROOT, "scripts/agent-bump.mjs"),
+				"gate",
+				"--legs",
+				dir,
+				"--digest",
+				"d1",
+			],
+			{ encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+		);
+	};
+	assert.equal(gate("codex"), "verdict=hold\n");
+	assert.equal(gate("opencode"), "verdict=publish\n");
 });
 
 test("a missing leg, or a leg that tested another candidate, holds the bump", () => {
@@ -207,7 +258,7 @@ test("the probe runs the adapter with its CLI as companion, or the CLI alone", (
 	]);
 });
 
-test("a held candidate's comment carries its marker, so a repeat edits it", () => {
+test("a held candidate's comment opens with its marker and names the failed legs", () => {
 	assert.equal(
 		heldComment(claude, ["windows-latest"], "https://example.test/run/1"),
 		[
@@ -216,6 +267,64 @@ test("a held candidate's comment carries its marker, so a repeat edits it", () =
 			"",
 			"Run: https://example.test/run/1. The legs' logs name each failing probe fact or matrix row.",
 		].join("\n"),
+	);
+});
+
+test("hold reports the candidate and only its failed leg, and a repeat edits that comment", () => {
+	const comments = [];
+	const writes = [];
+	const api = (args) => {
+		const [a, b] = args;
+		if (a === "issue" && b === "list")
+			return JSON.stringify([{ number: 7, title: HELD_TITLE }]);
+		if (a === "repo") return "o/r\n";
+		if (a === "api" && b === "repos/o/r/issues/7/comments")
+			return JSON.stringify(comments);
+		writes.push(args.slice(0, 4));
+		if (a === "issue") comments.push({ id: 11, body: args[4] });
+		else comments[0].body = args[5].slice("body=".length);
+		return "";
+	};
+	for (const run of ["https://example.test/1", "https://example.test/2"])
+		reportHeld(
+			claude,
+			legs("d1", false),
+			{ cli: "2.1.0", adapter: "0.10.0", digest: "d1", run },
+			api,
+		);
+	assert.deepEqual(writes, [
+		["issue", "comment", "7", "--body"],
+		["api", "-X", "PATCH", "repos/o/r/issues/comments/11"],
+	]);
+	assert.deepEqual(comments, [
+		{
+			id: 11,
+			body: [
+				"<!-- pin-held:claude-code 2.1.0 (adapter 0.10.0) -->",
+				"**claude-code 2.1.0 (adapter 0.10.0) is held.** It failed conformance on windows-latest, so its pin.json stays where it was and no PR opens.",
+				"",
+				"Run: https://example.test/2. The legs' logs name each failing probe fact or matrix row.",
+			].join("\n"),
+		},
+	]);
+});
+
+test("the hold step passes the candidate's versions and digest to the report", () => {
+	const wf = parse(
+		readFileSync(join(ROOT, ".github/workflows/agent-bump.yml"), "utf8"),
+	);
+	const step = wf.jobs.publish.steps.find(
+		(st) => st.name === "Report the held candidate on the pin-bump issue",
+	);
+	assert.deepEqual(
+		[step.env.CLI, step.env.ADAPTER, step.env.DIGEST],
+		["cli", "adapter", "digest"].map(
+			(k) => `\${{ needs.candidate.outputs.${k} }}`,
+		),
+	);
+	assert.equal(
+		step.run,
+		'node scripts/agent-bump.mjs hold --agent "$AGENT" ${CLI:+--cli "$CLI"} ${ADAPTER:+--adapter "$ADAPTER"} \\\n  --legs "$RUNNER_TEMP/bump" --digest "$DIGEST" --run "$RUN_URL"\n',
 	);
 });
 

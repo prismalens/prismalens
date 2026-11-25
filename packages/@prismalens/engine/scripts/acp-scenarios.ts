@@ -320,6 +320,7 @@ export async function runRow(row: Row, base: RowEnv): Promise<RowObservation> {
  * The outcome a row expects of this agent, and why it differs from the row's, if it does. A row
  * that observes a source-read fact expects `expect` where the agent's descriptor declares the
  * fact's value and `fact.else` where it does not, so a wrong declaration fails the row.
+ * `failure` classifies the error `expect` names, so it does not carry to `fact.else`.
  */
 export function expectationFor(
 	row: Row,
@@ -336,6 +337,7 @@ export function expectationFor(
 			? {
 					expect: row.expect,
 					why: `${row.fact.name} is ${String(row.fact.value)}`,
+					...(row.failure ? { failure: row.failure } : {}),
 				}
 			: {
 					expect: row.fact.else,

@@ -56,6 +56,14 @@ describe("expectationFor a row that observes a source-read fact", () => {
 		});
 	});
 
+	it("keeps the row's failure class where the fact picks the row's expectation, and drops it on the else", () => {
+		const failing = { ...row, expect: "error", failure: "key_rejected", fact: { name: "systemPromptVia", value: "claude-meta", else: "report" } } as unknown as Row;
+		expect(["claude-code", "codex"].map((agent) => expectationFor(failing, agent))).toStrictEqual([
+			{ expect: "error", why: "systemPromptVia is claude-meta", failure: "key_rejected" },
+			{ expect: "report", why: "systemPromptVia is not declared" },
+		]);
+	});
+
 	it("lets an agent's own entry win over the fact", () => {
 		const own = { ...row, agents: { codex: { expect: "exited", why: "x" } } } as unknown as Row;
 		expect(expectationFor(own, "codex")).toEqual({ expect: "exited", why: "x" });
