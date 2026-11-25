@@ -12,6 +12,7 @@
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { HARNESS_IDS } from "@prismalens/config/harness";
 import { PRISMALENS_OWN_SECRETS } from "@prismalens/engine";
 import { QUERY_KINDS } from "../../modules/integrations/source-query.js";
 import { envVars } from "../../modules/integrations/telemetry-snapshot.service.js";
@@ -435,8 +436,7 @@ describe("HarnessService", () => {
 
 			const status = await service().getStatus();
 
-			expect(status.harnesses.length).toBeGreaterThan(0);
-			expect(status.harnesses.map((h) => h.id)).toContain("opencode");
+			expect(status.harnesses.map((h) => h.id)).toEqual(HARNESS_IDS);
 			expect(status.harnesses.find((h) => h.id === "opencode")?.installed).toBe(
 				true,
 			);

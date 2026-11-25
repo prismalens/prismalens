@@ -42,6 +42,7 @@ block(
 	"a child process",
 );
 block(net, ["connect", "createConnection"], "the network");
+block(net.Socket.prototype, ["connect"], "the network");
 block(net.Server.prototype, ["listen"], "the network");
 block(http.Agent.prototype, ["createConnection"], "the network");
 block(tls, ["connect"], "the network");
