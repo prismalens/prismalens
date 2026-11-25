@@ -36,7 +36,7 @@
 	"forbid": [
 		{
 			"rule": "agent-id-handmade",
-			"fix": "Read the difference from the agent registry: add a fact to AgentFacts in @prismalens/providers agents/family.ts, set it in each agent's descriptor, and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI",
+			"fix": "Read the difference from the agent registry: add a fact to AgentFacts in @prismalens/providers src/agent/family.ts, set it in each agent's descriptor, and read it through lib/agent-facts.ts; never compare or key on an agent id in the UI",
 			"patterns": [
 				"[iI]d\\s*[!=]==\\s*\"(?:opencode|claude-code|codex|gemini|deepagents|local)\"",
 				"case \"(?:opencode|claude-code|codex|gemini|deepagents)\":",

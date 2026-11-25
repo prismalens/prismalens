@@ -191,8 +191,11 @@ describe("registry facts", () => {
 
 	it("imports no node: module, so the registry is safe for the browser", () => {
 		const dir = join(import.meta.dirname, "registry");
-		for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")))
-			expect(readFileSync(join(dir, file), "utf8")).not.toMatch(/from "node:/);
+		const files = readdirSync(dir, { recursive: true })
+			.map(String)
+			.filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+		expect(files).toContain(join("agents", "opencode.ts"));
+		expect(files.filter((f) => readFileSync(join(dir, f), "utf8").includes('from "node:'))).toEqual([]);
 	});
 });
 

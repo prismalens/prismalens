@@ -34,9 +34,15 @@ describe("agent family helpers", () => {
 });
 
 describe("built-in agents", () => {
-	it("list in their declared order and resolve by id", () => {
-		const list = agents();
-		expect(list.map((a) => a.order)).toEqual([...list.map((a) => a.order)].sort((a, b) => a - b));
+	it("list the six shipped agents in their declared order and resolve by id", () => {
+		expect(agents().map((a) => a.id)).toEqual([
+			"agent.opencode",
+			"agent.claude-code",
+			"agent.codex",
+			"agent.gemini",
+			"agent.deepagents",
+			"agent.local",
+		]);
 		expect(providers.resolve("agent.claude-code")).toMatchObject({ ok: true, provider: { launch: "claude-code" } });
 	});
 

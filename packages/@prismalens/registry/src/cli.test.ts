@@ -338,11 +338,14 @@ describe("a host that names its workspace", () => {
 		);
 		put("registry.workspace.json", JSON.stringify({ hosts: ["registry.config.json", "other/registry.config.json"] }));
 		vi.spyOn(console, "log").mockReturnValue(undefined);
-		const other = join(root, "other/src/registry/registry.gen.ts");
+		const outputs = () =>
+			["src/registry", "other/src/registry"].flatMap((dir) =>
+				["registry.gen.ts", "registry.manifest.json"].map((f) => existsSync(join(root, dir, f))),
+			);
 		expect(main(["--config", cfgFile, "gen", "--own-host"])).toBe(0);
-		expect([existsSync(join(root, "src/registry/registry.gen.ts")), existsSync(other)]).toEqual([true, false]);
+		expect(outputs()).toEqual([true, true, false, false]);
 		expect(main(["--config", cfgFile, "gen"])).toBe(0);
-		expect(existsSync(other)).toBe(true);
+		expect(outputs()).toEqual([true, true, true, true]);
 	});
 
 	it("lists the workspace's kinds through the host's config", () => {

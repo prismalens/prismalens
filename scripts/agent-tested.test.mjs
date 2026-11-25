@@ -53,30 +53,38 @@ test("a moved pin rewrites only its descriptor's tested line and the note above 
 			`tested: { version: "8.8.8", date: "2099-01-01", companion: "${pins["@openai/codex"]}" },`,
 		),
 	);
-	// A descriptor may already carry the note from an earlier bump, so look above each moved line.
-	for (const [id, marker] of [
-		["codex", 'version: "8.8.8"'],
-		["claude-code", 'companion: "9.9.9"'],
-	]) {
-		const lines = sources[id].split("\n");
-		const at = lines.findIndex(
-			(l) => l.includes("tested:") && l.includes(marker),
-		);
-		assert.match(lines[at - 1], /no real-model run yet/);
-		assert.equal(
-			lines
-				.filter(
-					(l) => !l.includes("tested:") && !l.includes("no real-model run yet"),
-				)
-				.join("\n"),
-			SOURCES[id]
-				.split("\n")
-				.filter(
-					(l) => !l.includes("tested:") && !l.includes("no real-model run yet"),
-				)
-				.join("\n"),
-		);
-	}
+});
+
+const NOTE = "no real-model run yet";
+const untouched = (source) =>
+	source
+		.split("\n")
+		.filter((l) => !l.includes("tested:") && !l.includes(NOTE))
+		.join("\n");
+/** The line above the moved tested line, and the rest of the descriptor. */
+function movedLine(id, marker) {
+	const rows = wanted(
+		{ ...pins, "@anthropic-ai/claude-code": "9.9.9" },
+		{ ...adapters, "@agentclientprotocol/codex-acp": "8.8.8" },
+	);
+	const lines = retest(SOURCES, rows, "2099-01-01").sources[id].split("\n");
+	// A descriptor may already carry the note from an earlier bump, so look above the moved line.
+	const at = lines.findIndex(
+		(l) => l.includes("tested:") && l.includes(marker),
+	);
+	return { above: lines[at - 1], rest: untouched(lines.join("\n")) };
+}
+
+test("a moved Codex adapter notes its tested line and leaves the rest of the descriptor alone", () => {
+	const { above, rest } = movedLine("codex", 'version: "8.8.8"');
+	assert.match(above, /no real-model run yet/);
+	assert.equal(rest, untouched(SOURCES.codex));
+});
+
+test("a moved Claude Code CLI notes its tested line and leaves the rest of the descriptor alone", () => {
+	const { above, rest } = movedLine("claude-code", 'companion: "9.9.9"');
+	assert.match(above, /no real-model run yet/);
+	assert.equal(rest, untouched(SOURCES["claude-code"]));
 });
 
 test("a codex-only bump moves the codex descriptor", () => {
