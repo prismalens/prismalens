@@ -947,17 +947,20 @@ export function ThreadPage({ id }: { id: string }) {
 		panes.layout,
 		[search.panel, search.split],
 	);
-	// A tab asked for again (a link, a key, the pane menu) is no longer closed.
-	const reopened = [search.panel, search.split].filter(
-		(p): p is PanelId => !!p && panes.layout.closed.includes(p),
-	);
+	// A tab asked for again (a link, a key, the pane menu) is no longer closed. Only a new ask
+	// counts: closing the shown tab leaves the URL naming it until the next tab's navigation lands.
+	const askedBefore = useRef<PanelId[]>([]);
 	useEffect(() => {
-		if (reopened.length)
-			panes.setLayout((l) => ({
-				...l,
-				closed: l.closed.filter((c) => !reopened.includes(c)),
-			}));
-	}, [reopened.join(), panes.setLayout]);
+		const asked = [search.panel, search.split].filter((p): p is PanelId => !!p);
+		const fresh = asked.filter((p) => !askedBefore.current.includes(p));
+		askedBefore.current = asked;
+		if (fresh.length)
+			panes.setLayout((l) =>
+				l.closed.some((c) => fresh.includes(c))
+					? { ...l, closed: l.closed.filter((c) => !fresh.includes(c)) }
+					: l,
+			);
+	}, [search.panel, search.split, panes.setLayout]);
 	const panelWidth = useRightPanelWidth();
 	useAppCommand(
 		"panelExpand",
