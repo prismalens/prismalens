@@ -147,8 +147,14 @@ function files(root) {
 export const UPSTREAM = [
 	/(^|\/)dist\/adapters\/(?!bundled\.json$)/,
 	/(^|\/)node_modules\/@anthropic-ai\/claude-agent-sdk\//,
-	/(^package|(^|\/)@prismalens\/agent-adapters)\/THIRD_PARTY_LICENSES\//,
+	/(^|\/)@prismalens\/agent-adapters\/THIRD_PARTY_LICENSES\//,
 ];
+
+/** The adapters' own tarball holds those licence texts at its root; another package's are its own. */
+export const isUpstream = (entry, name) =>
+	UPSTREAM.some((r) => r.test(entry)) ||
+	(name === "@prismalens/agent-adapters" &&
+		entry.startsWith("package/THIRD_PARTY_LICENSES/"));
 
 /** `entries` compressed the way `file` compresses them: each apart in a zip, one stream in a tarball. */
 export function compressedBytes(file, root, entries) {
@@ -181,9 +187,8 @@ export function checkArtifact(file, budgets) {
 					`${model}: ${length} chars is over ${LIMIT} for a 20-char username: ${prefix}${entry}`,
 				);
 		}
-		const isUpstream = (e) => UPSTREAM.some((r) => r.test(e));
-		const upstream = entries.filter(isUpstream);
-		const own = entries.filter((e) => !isUpstream(e));
+		const upstream = entries.filter((e) => isUpstream(e, info.name));
+		const own = entries.filter((e) => !isUpstream(e, info.name));
 		// Never the archive's size less an estimate of upstream's: that can reach 0 and hide our growth.
 		const bytes = upstream.length
 			? compressedBytes(file, root, own)

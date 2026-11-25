@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { LIMIT, largest, pathModels, UPSTREAM } from "./check-artifact.mjs";
+import { isUpstream, LIMIT, largest, pathModels } from "./check-artifact.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./check-artifact.mjs", import.meta.url));
 const MIGRATION =
@@ -113,6 +113,8 @@ function fixture({
 	repeated = 0,
 	blob = 0,
 	packed = "",
+	name = "fixture",
+	texts = 0,
 } = {}) {
 	const dir = mkdtempSync(join(tmpdir(), "check-artifact-"));
 	const pkg = join(dir, "src", "package");
@@ -120,7 +122,9 @@ function fixture({
 		mkdirSync(dirname(join(pkg, rel)), { recursive: true });
 		writeFileSync(join(pkg, rel), body);
 	};
-	write("package.json", JSON.stringify({ name: "fixture", version: "1.0.0" }));
+	write("package.json", JSON.stringify({ name, version: "1.0.0" }));
+	for (let i = 0; i < texts; i++)
+		write(`THIRD_PARTY_LICENSES/dep${i}/LICENSE`, "MIT");
 	write(`${"d".repeat(deep)}/x.js`, "");
 	write(
 		"node_modules/dep/package.json",
@@ -256,17 +260,29 @@ test("our own bytes stay counted when the archive packs upstream tighter than th
 
 test("the licence texts packed for upstream packages are upstream; any other file is ours", () => {
 	const upstream = [
-		"package/THIRD_PARTY_LICENSES/zod/LICENSE",
 		"package/node_modules/@prismalens/agent-adapters/THIRD_PARTY_LICENSES/@anthropic-ai/claude-agent-sdk/LICENSE.md",
 		"prismalens-1.0.0-linux-x64/app/node_modules/@prismalens/agent-adapters/THIRD_PARTY_LICENSES/zod/LICENSE",
 	];
 	const ours = [
 		"package/LICENSE",
+		"package/THIRD_PARTY_LICENSES/zod/LICENSE",
 		"package/dist/THIRD_PARTY_LICENSES/x.js",
 		"package/node_modules/dep/THIRD_PARTY_LICENSES/x",
 	];
 	assert.deepEqual(
-		[...upstream, ...ours].filter((e) => UPSTREAM.some((r) => r.test(e))),
+		[...upstream, ...ours].filter((e) => isUpstream(e, "prismalens")),
 		upstream,
 	);
+});
+
+test("root licence texts are upstream in the adapters tarball alone; another package's are its own", () => {
+	const checked = (name) => {
+		const { tarball, dir } = fixture({ name, texts: 3 });
+		const r = run(tarball, { [name]: { bytes: 1e6, files: 4 } }, dir);
+		return [r.status, /(\d+) files of our own/.exec(r.stdout)?.[1]];
+	};
+	assert.deepEqual(["fixture", "@prismalens/agent-adapters"].map(checked), [
+		[1, "7"],
+		[0, "4"],
+	]);
 });
