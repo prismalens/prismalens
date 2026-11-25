@@ -65,6 +65,10 @@ export interface Scaffold {
 		readonly path: string;
 		readonly template: string;
 	}[];
+	/** Per object, the parts that differ, e.g. an agent descriptor's define call; the rest is shared. */
+	readonly variants?: Readonly<
+		Record<string, Partial<Pick<Scaffold, "imports" | "entry" | "files">>>
+	>;
 	/** Import lines the entry needs. */
 	readonly imports: readonly string[];
 	readonly entry: string;

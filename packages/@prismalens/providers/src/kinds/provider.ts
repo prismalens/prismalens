@@ -119,6 +119,36 @@ export const provider = defineKind({
 	order: 1000,
 	entryPoints: {{required}},
 });`,
+		variants: {
+			agent: {
+				imports: ['import { defineAgent, noModeLines } from "../family.ts";'],
+				entry: `export const {{Member}} = defineAgent({
+	id: "{{id}}",
+	family: "agent",
+	name: "{{Member}}",
+	mark: { letters: "{{Member}}".slice(0, 2).toUpperCase() },
+	order: 1000,
+	launch: "{{member}}",
+	entryPoints: {{required}},
+	stored: [
+		{ column: "Run.harness", value: "{{member}}" },
+		{ column: "Schedule.harness", value: "{{member}}" },
+	],
+	auth: { methods: [] },
+	facts: {
+		install: "TODO: the command that installs its CLI",
+		loginHint: "TODO: how to sign it in",
+		cacheTtlMinutes: null,
+		autoCompactPercent: null,
+		compactsWhenIdle: false,
+		compactCommand: null,
+		compactTakesFocus: false,
+		lines: noModeLines("{{Member}}"),
+	},
+});`,
+				files: [],
+			},
+		},
 		files: [
 			{
 				path: "src/{{object}}/{{member}}/fixtures/ok.json",

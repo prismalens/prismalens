@@ -187,7 +187,7 @@ test("the Python extras match the uv channel the install hint names", () => {
 	const harness = readFileSync(
 		join(
 			REPO,
-			"packages/@prismalens/providers/src/agents/deepagents/deepagents.provider.ts",
+			"packages/@prismalens/providers/src/agent/deepagents/deepagents.provider.ts",
 		),
 		"utf8",
 	);

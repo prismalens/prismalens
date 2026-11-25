@@ -16,7 +16,7 @@ export {
 	modeNamed,
 	noModeLines,
 	offers,
-} from "./agents/family.ts";
+} from "./agent/family.ts";
 export {
 	type AuthApply,
 	type AuthScheme,
@@ -43,7 +43,7 @@ export {
 	type Resolved,
 } from "./registry.ts";
 
-import { isAgent } from "./agents/family.ts";
+import { isAgent } from "./agent/family.ts";
 import { builtIn } from "./registry.gen.ts";
 import { ProviderRegistry } from "./registry.ts";
 

@@ -198,7 +198,12 @@ export function planEntry(
 		required: JSON.stringify(required),
 		...opts.extra,
 	};
-	if (k.scaffold.file) return planFiles(k.scaffold, names, read);
+	if (k.scaffold.file)
+		return planFiles(
+			{ ...k.scaffold, ...k.scaffold.variants?.[names.object] },
+			names,
+			read,
+		);
 	const sameObject = (e: { id: string }) => e.id.split(".")[0] === names.object;
 	const own = manifest.entries[kind]?.find(sameObject)?.file;
 	const sibling = Object.values(manifest.entries).flat().find(sameObject)?.file;

@@ -143,7 +143,7 @@ export interface AgentSpec extends ProviderSpec<"agent"> {
 export type AgentDef = ProviderDef<"agent"> &
 	Pick<AgentSpec, "launch" | "facts">;
 
-/** One agent. Export it from `agents/<id>/<id>.provider.ts`. */
+/** One agent. Export it from `agent/<id>/<id>.provider.ts`. */
 export const defineAgent = (spec: AgentSpec): AgentDef =>
 	defineProvider(spec) as AgentDef;
 

@@ -29,7 +29,7 @@ on:
       - "packages/@prismalens/agent-host/src/launch.ts"
       - "packages/@prismalens/agent-host/src/process.ts"
       - "packages/@prismalens/config/src/providers/harness.ts"
-      - "packages/@prismalens/providers/src/agents/**"
+      - "packages/@prismalens/providers/src/agent/**"
       - "scripts/sync-models.mjs"
       - "packages/@prismalens/agent-adapters/**"
 

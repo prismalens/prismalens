@@ -90,5 +90,24 @@ describe("pnpm registry new provider", () => {
 		expect(gen.err.join("\n")).toContain(
 			"[provider/entry-point-required] code-host.fixturehost misses projects.add",
 		);
+		writeFileSync(DESCRIPTOR, text);
+	});
+});
+
+describe("pnpm registry new provider agent.<id>", () => {
+	it("writes an agent descriptor through the family's variant: its launch row, the agent entry points and its stored ids", () => {
+		const made = run("new", "provider", "agent.fixtureagent");
+		expect(made.err).toEqual([]);
+		expect(made.code).toBe(0);
+		const text = readFileSync(join(ROOT, "src/agent/fixtureagent/fixtureagent.provider.ts"), "utf8");
+		expect(text).toContain('import { defineAgent, noModeLines } from "../family.ts";');
+		expect(text).toContain('launch: "fixtureagent",');
+		expect(text).toContain(
+			'entryPoints: ["composer.agent-picker","incidents.first-run","settings.agents"],',
+		);
+		expect(text).toContain('{ column: "Run.harness", value: "fixtureagent" },');
+		const gen = run("gen");
+		expect(gen.err).toEqual([]);
+		expect(gen.code).toBe(0);
 	});
 });

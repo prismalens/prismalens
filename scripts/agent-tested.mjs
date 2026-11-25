@@ -19,7 +19,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const descriptorOf = (id) =>
 	join(
 		ROOT,
-		`packages/@prismalens/providers/src/agents/${id}/${id}.provider.ts`,
+		`packages/@prismalens/providers/src/agent/${id}/${id}.provider.ts`,
 	);
 const json = (path) => JSON.parse(readFileSync(join(ROOT, path), "utf8"));
 
