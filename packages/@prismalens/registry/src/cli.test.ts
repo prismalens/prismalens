@@ -289,3 +289,43 @@ describe("new", () => {
 		]);
 	});
 });
+
+describe("a host that names its workspace", () => {
+	const workspace = (boundaries: unknown[]) => {
+		put(
+			"registry.workspace.json",
+			JSON.stringify({ hosts: ["registry.config.json"], boundaries }),
+		);
+		writeFileSync(
+			cfgFile,
+			JSON.stringify({
+				workspace: "registry.workspace.json",
+				src: "src",
+				kinds: "src/registry/kinds",
+				out: "src/registry",
+				gallery: "src/design",
+			}),
+		);
+	};
+
+	it("fails gen on an import across a boundary, naming the file, the specifier and the fix", () => {
+		workspace([
+			{ from: "src/a", deny: ["@acme/server"], why: "screens read it from the API." },
+		]);
+		put("src/a/screen.tsx", 'import { x } from "@acme/server/adapter";\n');
+		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
+		expect(main(["--config", cfgFile, "gen"])).toBe(1);
+		expect(err.mock.calls).toEqual([
+			[
+				"[workspace/boundary] src/a/screen.tsx imports @acme/server/adapter. Fix: screens read it from the API.",
+			],
+		]);
+	});
+
+	it("lists the workspace's kinds through the host's config", () => {
+		workspace([]);
+		const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+		expect(main(["--config", cfgFile, "ls"])).toBe(0);
+		expect(log.mock.calls).toEqual([["widget\t1\t.widgets.ts"]]);
+	});
+});
