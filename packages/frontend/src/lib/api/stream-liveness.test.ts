@@ -3,7 +3,7 @@
 
 import { STREAM_SILENT_MS } from "@prismalens/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { watchSilence } from "./stream-liveness";
+import { STALL_MS, TICK_MS, watchSilence } from "./stream-liveness";
 
 /** A clock the test moves, and the watch's tick, run by hand: a stall is time with no tick. */
 function harness() {
@@ -16,10 +16,10 @@ function harness() {
 	}) as typeof setInterval);
 	vi.spyOn(globalThis, "clearInterval").mockImplementation(() => {});
 	return {
-		/** Ticks every 250 ms up to `to`. */
+		/** Ticks every TICK_MS up to `to`. */
 		runTo(to: number) {
-			while (now + 250 <= to) {
-				now += 250;
+			while (now + TICK_MS <= to) {
+				now += TICK_MS;
 				tick();
 			}
 		},
@@ -36,30 +36,42 @@ afterEach(() => {
 });
 
 describe("watchSilence (#1181)", () => {
-	it("fires 1,500 ms into a silence when no tick runs late", () => {
+	it("ticks every 100 ms and fires on the first tick past 1,200 ms of silence, not before", () => {
+		expect(TICK_MS).toBe(100);
+		expect(STREAM_SILENT_MS).toBe(1200);
 		const h = harness();
 		const onSilent = vi.fn();
 		watchSilence(onSilent).open();
-		h.runTo(STREAM_SILENT_MS);
+		h.runTo(1200);
 		expect(onSilent).not.toHaveBeenCalled();
-		h.runTo(STREAM_SILENT_MS + 250);
+		h.runTo(1300);
 		expect(onSilent).toHaveBeenCalledTimes(1);
 	});
 
-	it("a 1,200 ms stall 1,000 ms into a silence counts the silence before it and fires at 2,700 ms, not at 2,450 ms", () => {
+	it("a 1,200 ms stall 800 ms into a silence counts the 800 ms before it and fires at 2,400 ms, not at 2,300 ms", () => {
 		const h = harness();
 		const onSilent = vi.fn();
 		watchSilence(onSilent).open();
-		h.runTo(1000);
-		h.stallTo(2200);
+		h.runTo(800);
+		h.stallTo(2000);
 		expect(onSilent).not.toHaveBeenCalled();
-		h.runTo(2450);
+		h.runTo(2300);
 		expect(onSilent).not.toHaveBeenCalled();
-		h.runTo(2700);
+		h.runTo(2400);
 		expect(onSilent).toHaveBeenCalledTimes(1);
 	});
 
-	it("a beat right after a 1,400 ms stall keeps a live stream from firing for the next 1,500 ms", () => {
+	it("a tick 900 ms late is under the 1,000 ms stall line, so none of the wait is forgiven and it fires at 1,300 ms", () => {
+		expect(STALL_MS).toBe(1000);
+		const h = harness();
+		const onSilent = vi.fn();
+		watchSilence(onSilent).open();
+		h.runTo(400);
+		h.stallTo(1300);
+		expect(onSilent).toHaveBeenCalledTimes(1);
+	});
+
+	it("a beat right after a 1,400 ms stall keeps a live stream from firing for the next 1,200 ms", () => {
 		const h = harness();
 		const onSilent = vi.fn();
 		const watch = watchSilence(onSilent);
@@ -67,7 +79,7 @@ describe("watchSilence (#1181)", () => {
 		h.runTo(400);
 		h.stallTo(1800);
 		watch.beat();
-		h.runTo(1800 + STREAM_SILENT_MS);
+		h.runTo(3000);
 		expect(onSilent).not.toHaveBeenCalled();
 	});
 });
