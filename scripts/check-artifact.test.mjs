@@ -3,7 +3,8 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -96,7 +97,13 @@ test("an npm tarball named prismalens is also measured as the archive it becomes
 	);
 });
 
-function fixture({ deep = 10, licence = true, inlined = false } = {}) {
+function fixture({
+	deep = 10,
+	licence = true,
+	inlined = false,
+	upstream = 0,
+	own = 0,
+} = {}) {
 	const dir = mkdtempSync(join(tmpdir(), "check-artifact-"));
 	const pkg = join(dir, "src", "package");
 	const write = (rel, body) => {
@@ -115,6 +122,11 @@ function fixture({ deep = 10, licence = true, inlined = false } = {}) {
 			"dist/adapters/bundled.json",
 			JSON.stringify({ "a.mjs": { inlined: ["inl@1.0.0"] } }),
 		);
+	// Incompressible bytes, so growth shows in the archive's size.
+	const noise = (n) => randomBytes(n);
+	for (let i = 0; i < upstream; i++)
+		write(`dist/adapters/up${i}.mjs`, noise(4000 + i));
+	for (let i = 0; i < own; i++) write(`dist/own${i}.js`, noise(4000 + i));
 	execFileSync("tar", ["-czf", "../fixture-1.0.0.tgz", "package"], {
 		cwd: join(dir, "src"),
 	});
@@ -180,4 +192,24 @@ test("a budget breach names the largest unpacked files, biggest first", () => {
 		{ entry: "big.js", size: 100 },
 		{ entry: "mid.js", size: 10 },
 	]);
+});
+
+test("upstream agent packages are reported and never budgeted; the same growth in our own files fails", () => {
+	const base = fixture();
+	const budget = {
+		fixture: { bytes: statSync(base.tarball).size + 2000, files: 5 },
+	};
+	assert.equal(run(base.tarball, budget, base.dir).status, 0);
+	const up = fixture({ upstream: 6 });
+	let r = run(up.tarball, budget, up.dir);
+	assert.equal(r.status, 0, r.stdout);
+	assert.match(
+		r.stdout,
+		/upstream agent packages \d+ bytes, 6 files, not budgeted/,
+	);
+	const own = fixture({ own: 6 });
+	r = run(own.tarball, budget, own.dir);
+	assert.equal(r.status, 1);
+	assert.match(r.stdout, /fixture: \d+ bytes is over its budget/);
+	assert.match(r.stdout, /fixture: 10 files is over its budget of 5/);
 });

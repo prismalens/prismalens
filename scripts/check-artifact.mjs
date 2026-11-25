@@ -5,7 +5,9 @@
 /**
  * Gate one release artifact: its deepest path under every Windows install prefix it
  * lands in, its bytes and file count against scripts/artifact-budgets.json, and a
- * licence text for every package it carries (#906).
+ * licence text for every package it carries (#906). Upstream agent packages (the bundled
+ * adapters and the Claude Agent SDK) are measured apart and only reported, so an agent pin
+ * bump cannot fail our budget and our own growth still does (#1082 P1).
  *
  *   node scripts/check-artifact.mjs <file.tgz|file.tar.gz|file.zip> [--budgets <json>]
  *
@@ -26,6 +28,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { gzipSync } from "node:zlib";
 import { missingLicences } from "./lib/node-modules-tree.mjs";
 
 export const LIMIT = 220;
@@ -140,6 +143,22 @@ function files(root) {
 	return out;
 }
 
+/** Files an agent pin bump moves: the adapters bundled from upstream and the SDK copied flat. */
+export const UPSTREAM = [
+	/(^|\/)dist\/adapters\/(?!bundled\.json$)/,
+	/(^|\/)node_modules\/@anthropic-ai\/claude-agent-sdk\//,
+];
+
+/** The upstream entries' count and their bytes once gzipped, the share of the archive they take. */
+export function upstreamShare(root, entries, upstream = UPSTREAM) {
+	const mine = entries.filter((e) => upstream.some((r) => r.test(e)));
+	const bytes = mine.reduce(
+		(n, e) => n + gzipSync(readFileSync(join(root, e))).length,
+		0,
+	);
+	return { files: mine.length, bytes };
+}
+
 /** The biggest unpacked files, so a budget breach names what grew (#885). */
 export function largest(root, entries, count = 5) {
 	return entries
@@ -163,10 +182,12 @@ export function checkArtifact(file, budgets) {
 					`${model}: ${length} chars is over ${LIMIT} for a 20-char username: ${prefix}${entry}`,
 				);
 		}
-		const bytes = statSync(file).size;
+		const up = upstreamShare(root, entries);
+		const bytes = Math.max(0, statSync(file).size - up.bytes);
+		const count = entries.length - up.files;
 		const budget = budgets[info.key];
 		lines.push(
-			`${info.key} ${bytes} bytes, ${entries.length} files (budget ${budget ? `${budget.bytes} bytes, ${budget.files} files` : "none"})`,
+			`${info.key} ${bytes} bytes, ${count} files of our own (budget ${budget ? `${budget.bytes} bytes, ${budget.files} files` : "none"}); upstream agent packages ${up.bytes} bytes, ${up.files} files, not budgeted`,
 		);
 		if (!budget) problems.push(`no budget for ${info.key} in the budget file`);
 		else {
@@ -174,9 +195,9 @@ export function checkArtifact(file, budgets) {
 				problems.push(
 					`${info.key}: ${bytes} bytes is over its budget of ${budget.bytes}`,
 				);
-			if (entries.length > budget.files)
+			if (count > budget.files)
 				problems.push(
-					`${info.key}: ${entries.length} files is over its budget of ${budget.files}`,
+					`${info.key}: ${count} files is over its budget of ${budget.files}`,
 				);
 		}
 		if (problems.some((p) => p.includes("over its budget")))
