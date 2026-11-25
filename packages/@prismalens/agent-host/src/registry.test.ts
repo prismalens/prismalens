@@ -195,7 +195,9 @@ describe("registry facts", () => {
 			.map(String)
 			.filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
 		expect(files).toContain(join("agents", "opencode.ts"));
-		expect(files.filter((f) => readFileSync(join(dir, f), "utf8").includes('from "node:'))).toEqual([]);
+		// Static, side-effect, dynamic and require forms; a comment naming `node:` is not one.
+		const nodeImport = /(?:from|import|require)\s*\(?\s*["']node:/;
+		expect(files.filter((f) => nodeImport.test(readFileSync(join(dir, f), "utf8")))).toEqual([]);
 	});
 });
 
