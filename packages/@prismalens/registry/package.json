@@ -8,7 +8,8 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./gen": "./src/gen/index.ts",
-		"./stamp": "./src/stamp.ts"
+		"./ui": "./src/ui/index.ts",
+		"./stamp": "./src/ui/stamp.ts"
 	},
 	"bin": {
 		"prismalens-registry": "./src/cli.ts"

@@ -18,15 +18,15 @@ import {
 import { git } from "./gen/git.ts";
 import { type Config, generate, loadConfig } from "./gen/index.ts";
 import { labelCheck } from "./gen/label-run.ts";
+import { ratchet } from "./gen/ratchet-run.ts";
+import type { Manifest } from "./manifest.ts";
+import { profileConditions, profileSeeds } from "./ui/quality.ts";
 import {
 	briefRun,
 	judgePackRun,
 	renderRun,
 	scoreCheckRun,
-} from "./gen/quality-run.ts";
-import { ratchet } from "./gen/ratchet-run.ts";
-import type { Manifest } from "./manifest.ts";
-import { profileConditions, profileSeeds } from "./quality.ts";
+} from "./ui/quality-run.ts";
 
 export const USAGE = `usage: registry [--config <file>] <command>
   gen                           write registry.gen.ts and registry.manifest.json (not in git)

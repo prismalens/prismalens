@@ -18,7 +18,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { cpuLoad } from "../../packages/@prismalens/registry/src/stamp.ts";
+import { cpuLoad } from "../../packages/@prismalens/registry/src/ui/stamp.ts";
 import { ROOT } from "./lib.mjs";
 
 /** Above this busy share at the start, a run's numbers are noisy and never quoted. */
