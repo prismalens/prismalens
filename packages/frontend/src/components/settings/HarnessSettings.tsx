@@ -39,6 +39,7 @@ import {
 } from "./ConversationSettings";
 import { RiskConfirm } from "./RiskConfirm";
 import { SignInButton } from "./SignInButton";
+import { accountLine, useForNewRuns } from "./use-for-new-runs";
 
 export { testedHint, versionText };
 
@@ -66,7 +67,7 @@ import {
 	useHarnessSettings,
 	useUpdateHarnessSettings,
 } from "@/lib/api/hooks";
-import { failureLine, notSignedIn } from "@/lib/failure-words";
+import { signInNext } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
 import { subagentsOnStop } from "./agent-threads.settings";
 import { StatePill } from "./source-words";
@@ -468,13 +469,16 @@ function AgentRow({
 	const checkHarness = useCheckHarness();
 	const checking = checkHarness.isPending;
 	const outcome = harness.checked?.outcome ?? null;
-	const account = harness.checked?.account;
+	const account = accountLine(harness);
+	const forNewRuns = useForNewRuns(harness);
 	const version = harness.installed ? versionText(harness) : null;
 
+	// The sign-in step sits under its own line, so a narrow row keeps the name readable.
+	const signIn = outcome === "sign-in-needed" && !harness.off;
 	const note = harness.windowsOnlyPath
 		? `Windows install at ${harness.windowsOnlyPath}; can't run in WSL`
-		: outcome === "sign-in-needed" && !harness.off
-			? failureLine(notSignedIn(harness.label))
+		: signIn
+			? signInNext(harness, "Check")
 			: inUse
 				? "Used by the next run"
 				: null;
@@ -524,13 +528,25 @@ function AgentRow({
 						{note && (
 							<span data-testid={`harness-note-${harness.id}`}>{note}</span>
 						)}
+						{signIn && <SignInButton agent={harness} className="max-w-full" />}
 						<MutationError error={checkHarness.error} />
 					</span>
 				)
 			}
 			trailing={
 				<span className="flex items-center gap-1">
-					{!harness.off && <SignInButton agent={harness} />}
+					{forNewRuns.canUse && (
+						<Button
+							variant="ghost"
+							size="sm"
+							className="relative z-10"
+							onClick={forNewRuns.use}
+							disabled={forNewRuns.pending}
+							data-testid={`harness-use-${harness.id}`}
+						>
+							Use for new runs
+						</Button>
+					)}
 					{harness.installed && (
 						<Button
 							variant="secondary"

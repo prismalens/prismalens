@@ -4,6 +4,7 @@
 import routes from "@prismalens/contracts/contract.min.json";
 import { Pencil } from "lucide-react";
 import { useState } from "react";
+import { SendTestAlert } from "@/components/alertTest/SendTestAlert";
 import { settingOf } from "@/components/kit/registry";
 import { CopyButton } from "@/components/shared/CopyButton";
 import { Mono } from "@/components/shared/Mono";
@@ -107,9 +108,9 @@ export function AlertIntakeSettings() {
 									{shown ? token.token : maskToken(token.token)}
 								</Mono>
 							) : tokenHidden ? (
-								"Shown only in a browser on the machine PrismaLens runs on"
+								<span>Shown only on the machine PrismaLens runs on</span>
 							) : (
-								" "
+								<span aria-hidden>{" "}</span>
 							)
 						}
 					>
@@ -137,12 +138,25 @@ export function AlertIntakeSettings() {
 									<span className="sr-only">. {accepted}</span>
 								</>
 							) : (
-								"Nothing has arrived yet"
+								// A node, not a string: a string description is the label's hint only.
+								<span>Nothing has arrived yet</span>
 							)
 						}
 					>
 						{deliveryWord && <StatePill word={deliveryWord} />}
 					</SettingRow>
+				</Pool>
+			</SettingGroup>
+
+			<SettingGroup
+				title="Send a test alert"
+				testId="alert-intake-test"
+				description="A sample alert for one of your projects, sent the way a real alert source sends it. It opens an incident and starts a run."
+			>
+				<Pool>
+					<div className="px-3.5 py-3">
+						<SendTestAlert />
+					</div>
 				</Pool>
 			</SettingGroup>
 

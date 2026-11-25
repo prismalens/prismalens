@@ -21,12 +21,12 @@ It also sets `required_review_thread_resolution: true`: an unresolved review thr
 
 ## What a CI run runs
 
-The `changes` job runs `scripts/ci-plan.mjs`, whose header lists the tiers (`skip`, `code`, `e2e`, `intake`, `full`, `agents`, `defer`, `draft`) and what turns each on. The tier outputs gate the jobs in `ci.yml`; `CI gate` waits on all of them.
+The `changes` job runs `scripts/ci-plan.mjs`, whose header lists the tiers (`skip`, `code`, `e2e`, `intake`, `full`, `agents`, `installer`, `defer`, `draft`) and what turns each on. The tier outputs gate the jobs in `ci.yml`; `CI gate` waits on all of them.
 
 - Turbo's graph (`turbo ls --affected`) decides a package's tiers, so a new package needs no list. A path outside every package that `OUTSIDE` in `scripts/ci-plan.mjs` does not name turns every tier on, and so does a failed turbo call. A renamed file counts under both its names.
 - The `full-ci` label is read at the next push or re-run. To run the proofs on a branch without a release PR: `gh workflow run nightly.yml --ref <branch>`.
 - A draft release PR plans `defer`: nothing runs and `CI gate` is red on purpose until the PR is marked ready, which starts the run.
-- A draft PR plans `draft`: `lint`, `build` and the ubuntu `test` run; `e2e`, the tarball jobs, `test-later` and `proofs` do not, and `CI gate` allows exactly those skips; marking it ready plans the rest. A draft run's plan job is named `Plan (draft)`; `scripts/ci-plan.mjs` never counts such a run as an earlier pass, so a green draft proves nothing for a ready PR.
+- A draft PR plans `draft`: `lint`, `build` and the ubuntu `test` run; `e2e`, the tarball jobs, `test-later`, `proofs` and `installer` do not, and `CI gate` allows exactly those skips; marking it ready plans the rest. A draft run's plan job is named `Plan (draft)`; `scripts/ci-plan.mjs` never counts such a run as an earlier pass, so a green draft proves nothing for a ready PR.
 - A PR check shows the job's `name:`; `needs:` uses the job id. Every check that runs the packed tarball starts with `Tarball:`.
 - One build per run (#885): `build` saves turbo's cache under `turbo-<os>-<sha>`; `test`, `pack` and `e2e` restore it. `cli-smoke-cross-os.yml` waits for `Pack npm tarball` on the same commit and installs that artifact, packing itself only if the job is missing or red.
 - `ci-rerun-unstarted.yml` reruns a failed `CI`, `Standalone CLI build` or `Nightly` run once, when its only red jobs never got a runner or failed on a network fault their log names.
@@ -51,7 +51,7 @@ It probes each agent row at its channel's latest release and at its pin on Linux
 - A red scheduled leg (or a dispatch with `file-issues`) opens or rewrites one issue per agent and OS titled `Agent probe failing: <agent> on <os>`.
 - The `bump` job calls `gh-workflows:.github/workflows/pin-bump.yml`: a release that has been public 3 days moves its pin on one rolling pull request, `pin-bump/agents`. A pin whose probe fails is held back. The call's `sync` input refreshes the adapter SDK, the lockfile, each row's `tested` and the model list.
 - `RELEASE_PAT` opens that PR so CI starts on it; a PR opened with `GITHUB_TOKEN` gets no checks.
-- The pins live in `scripts/agent-pins.json` and `@prismalens/agent-adapters`.
+- Pins: `scripts/agent-pins.json`, `@prismalens/agent-adapters`; locks: `docs/contributing/testing.md`.
 
 ## Review is advisory; unresolved threads block
 

@@ -319,13 +319,37 @@ const card = (page: Page) => page.getByTestId("harness-settings");
 const chip = (page: Page) =>
 	page.getByTestId("harness-run-row").getByTestId("agent-picker");
 const list = (page: Page) => page.getByTestId("agent-picker-list");
-/** A model's row under one group: cmdk keys it by the group, then `<agent>::<model>`. */
-const option = (page: Page, group: string, agent: string, model: string) =>
-	list(page).locator(
-		`[data-testid="model-option"][data-value^="${group}"][data-value$="${agent}::${model}"]`,
-	);
-const groupRows = (page: Page, group: string) =>
-	list(page).locator(`[data-testid="model-option"][data-value^="${group}"]`);
+/**
+ * Shows one tile of the picker's rail (Starred or an agent, #673 w7): the list then holds
+ * only its rows. False when the rail has no such tile.
+ */
+async function show(page: Page, tile: string): Promise<boolean> {
+	// The list loads when the picker opens: count the tiles only once the rail is there.
+	await expect(page.getByTestId("picker-rail")).toBeVisible();
+	const tab = page
+		.getByTestId("picker-rail")
+		.getByRole("tab", { name: tile, exact: true });
+	if ((await tab.count()) === 0) return false;
+	await tab.click();
+	await expect(tab).toHaveAttribute("aria-selected", "true");
+	return true;
+}
+/** A model's row on one tile: cmdk keys it by its provider heading, then `<agent>::<model>`. */
+const option = async (
+	page: Page,
+	tile: string,
+	agent: string,
+	model: string,
+) =>
+	(await show(page, tile))
+		? list(page).locator(
+				`[data-testid="model-option"][data-value$="${agent}::${model}"]`,
+			)
+		: list(page).locator('[data-testid="model-option"][data-absent]');
+const groupRows = async (page: Page, tile: string) =>
+	(await show(page, tile))
+		? list(page).getByTestId("model-option")
+		: list(page).locator('[data-testid="model-option"][data-absent]');
 /** The agent a chip is on, by its mark: OpenCode's logo, a letter tile for the rest. */
 const mark = (page: Page, selector: string) =>
 	chip(page).locator(`[data-fact="agent"]${selector}`);
@@ -420,16 +444,16 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 		// The chip names the model the agent's default entry runs, never "Default".
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
-			"Model: Fixture Opus",
+			"Model: Fixture Opus · via Claude Code",
 		);
 		await chip(page).click();
 		await expect(list(page)).not.toContainText("Default");
-		await expect(groupRows(page, "Claude Code")).toHaveCount(2);
+		await expect(await groupRows(page, "Claude Code")).toHaveCount(2);
 		await expect(
-			option(page, "Claude Code", "claude-code", "fixture-opus"),
+			await option(page, "Claude Code", "claude-code", "fixture-opus"),
 		).toHaveAttribute("data-on", "true");
 		// The star is the agent's model in Settings: one per agent.
-		await option(page, "Claude Code", "claude-code", "fixture-sonnet")
+		await (await option(page, "Claude Code", "claude-code", "fixture-sonnet"))
 			.getByTestId("model-star")
 			.click();
 		await expect
@@ -489,18 +513,22 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 		await expect(page.getByTestId("settings-title")).toHaveText("Agents");
 		await openModels(page);
 		await chip(page).click();
-		await expect(groupRows(page, "OpenCode")).toHaveCount(2);
-		await expect(groupRows(page, "OpenCode").first()).toHaveText("Fixture Old");
+		await expect(await groupRows(page, "OpenCode")).toHaveCount(2);
+		await expect((await groupRows(page, "OpenCode")).first()).toHaveText(
+			"Fixture Old",
+		);
 		await expect(
-			option(page, "Starred", "opencode", "vendor/fixture-old"),
+			await option(page, "Starred", "opencode", "vendor/fixture-old"),
 		).toHaveCount(1);
 		// Unstarred, the hidden model leaves the picker.
-		await option(page, "OpenCode", "opencode", "vendor/fixture-old")
+		await (await option(page, "OpenCode", "opencode", "vendor/fixture-old"))
 			.getByLabel("Unstar Fixture Old")
 			.click();
-		await expect(groupRows(page, "OpenCode")).toHaveCount(1);
-		await expect(groupRows(page, "OpenCode")).toHaveText("Fixture Current");
-		await expect(groupRows(page, "Starred")).toHaveCount(0);
+		await expect(await groupRows(page, "OpenCode")).toHaveCount(1);
+		await expect(await groupRows(page, "OpenCode")).toHaveText(
+			"Fixture Current",
+		);
+		await expect(await groupRows(page, "Starred")).toHaveCount(0);
 	});
 
 	test("binary path refusal shows under the field", async ({ page }) => {
@@ -634,19 +662,18 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 		await openModels(page);
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
-			"Model: Fixture Current",
+			"Model: Fixture Current · via OpenCode",
 		);
 		await chip(page).click();
 		await expect(list(page)).not.toContainText("Default");
-		await expect(groupRows(page, "OpenCode")).toHaveCount(2);
+		await expect(await groupRows(page, "OpenCode")).toHaveCount(2);
 
 		// Codex takes its model by its own settings until a check says otherwise:
-		// a line asking for a check, no models.
-		await expect(groupRows(page, "Codex")).toHaveCount(0);
-		await expect(list(page).getByTestId("model-pending")).toHaveCount(2);
-		await expect(
-			list(page).locator('[data-testid="model-pending"][data-value^="Codex"]'),
-		).toHaveText("List its models");
+		// its tile holds a line asking for a check, no models.
+		await expect(await groupRows(page, "Codex")).toHaveCount(0);
+		await expect(list(page).getByTestId("model-pending")).toHaveText(
+			"List its models",
+		);
 	});
 
 	test("a model starred for a harness that cannot take one is listed under Starred, and unstarring clears it (#639, #907)", async ({
@@ -675,9 +702,9 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 		// Codex lists no models until a check, so its stored one shows under Starred alone,
 		// starred; unstarring it clears it.
 		await chip(page).click();
-		const stale = option(page, "Starred", "codex", "vendor/stale");
+		await expect(await groupRows(page, "Codex")).toHaveCount(0);
+		const stale = await option(page, "Starred", "codex", "vendor/stale");
 		await expect(stale).toHaveText("vendor/stale");
-		await expect(groupRows(page, "Codex")).toHaveCount(0);
 		await expect(stale.getByTestId("model-star")).toHaveAttribute(
 			"aria-pressed",
 			"true",
@@ -717,7 +744,7 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 
 		// The blocking model's own row is starred; Enter on its star clears it.
 		await chip(page).click();
-		const stale = option(page, "Starred", "codex", "vendor/stale");
+		const stale = await option(page, "Starred", "codex", "vendor/stale");
 		await stale.getByTestId("model-star").focus();
 		await page.keyboard.press("Enter");
 		await expect.poll(() => patches.length).toBe(1);
@@ -727,10 +754,12 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 
 		// Starred lists installed agents only, first; Enter picks the row the list opens on.
 		await chip(page).click();
-		await expect(groupRows(page, "Starred")).toHaveCount(1);
+		await expect(await groupRows(page, "Starred")).toHaveCount(1);
 		await expect(
-			option(page, "Starred", "opencode", "vendor/fixture-current"),
+			await option(page, "Starred", "opencode", "vendor/fixture-current"),
 		).toBeVisible();
+		// From the shown tile, Right goes to the search, where Enter picks the first row.
+		await page.keyboard.press("ArrowRight");
 		await page.keyboard.press("Enter");
 		await expect.poll(() => patches.length).toBe(2);
 		expect(patches[1]).toEqual({
@@ -741,7 +770,7 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 
 		// A focused star toggles on Enter, and picks nothing.
 		await chip(page).click();
-		await option(page, "OpenCode", "opencode", "vendor/fixture-old")
+		await (await option(page, "OpenCode", "opencode", "vendor/fixture-old"))
 			.getByTestId("model-star")
 			.focus();
 		await page.keyboard.press("Enter");
@@ -792,10 +821,11 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 		await expect(page.getByTestId("harness-note-codex")).toHaveCount(0);
 		await expect(page.getByTestId("harness-pinned-notice")).toHaveCount(0);
 		await openModels(page);
-		await expect(mark(page, '[data-testid="agent-logo"]')).toHaveCount(1);
+		// The chip's mark is the model's maker; its label names the agent it runs on.
+		await expect(chip(page).getByTestId("maker-lettermark")).toHaveCount(1);
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
-			"Model: Fixture Current",
+			"Model: Fixture Current · via OpenCode",
 		);
 	});
 
@@ -898,10 +928,12 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 		// A model chosen under an agent saves both at once, by name.
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
-			"Model: Fixture Current",
+			"Model: Fixture Current · via OpenCode",
 		);
 		await chip(page).click();
-		await option(page, "OpenCode", "opencode", "vendor/fixture-old").click();
+		await (
+			await option(page, "OpenCode", "opencode", "vendor/fixture-old")
+		).click();
 		await expect.poll(() => patches.length).toBe(1);
 		expect(patches[0]).toEqual({
 			harness: "opencode",
@@ -909,7 +941,7 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 		});
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
-			"Model: Fixture Old",
+			"Model: Fixture Old · via OpenCode",
 		);
 	});
 
@@ -951,13 +983,20 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 		// A stored id the list does not know reads as the id.
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
-			"Model: vendor/typed-by-hand",
+			"Model: vendor/typed-by-hand · via OpenCode",
 		);
 		await chip(page).click();
-		const typed = option(page, "OpenCode", "opencode", "vendor/typed-by-hand");
+		const typed = await option(
+			page,
+			"OpenCode",
+			"opencode",
+			"vendor/typed-by-hand",
+		);
 		await expect(typed.getByLabel("Not confirmed for OpenCode")).toBeVisible();
 		// A legacy model's row says so in its hint.
-		await option(page, "OpenCode", "opencode", "vendor/fixture-old").hover();
+		await (
+			await option(page, "OpenCode", "opencode", "vendor/fixture-old")
+		).hover();
 		await expect(page.getByTestId("hint").last()).toHaveText("Legacy");
 		// Search filters the agent's list; it is no field to type an id into (#743 §4.1).
 		await list(page).getByTestId("picker-search").fill("vendor/brand-new");
@@ -965,15 +1004,12 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 		await expect(list(page).getByTestId("model-option")).toHaveCount(0);
 		await list(page).getByTestId("picker-search").fill("");
 
-		await option(
-			page,
-			"OpenCode",
-			"opencode",
-			"vendor/fixture-current",
+		await (
+			await option(page, "OpenCode", "opencode", "vendor/fixture-current")
 		).click();
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
-			"Model: Fixture Current",
+			"Model: Fixture Current · via OpenCode",
 		);
 	});
 
@@ -1038,7 +1074,7 @@ test.describe("Settings, Agents, Models and Permissions (#501/#609, #1101 cat 18
 			page.getByTestId("harness-check-result-claude-code"),
 		).toHaveText("Sign-in needed");
 		await expect(page.getByTestId("harness-note-claude-code")).toHaveText(
-			"Claude Code is not signed in to its model provider. Sign in with its own CLI, then retry.",
+			"Run claude /login in a terminal, then Check.",
 		);
 	});
 

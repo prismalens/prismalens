@@ -10,7 +10,8 @@
 //   full    "true": a release PR, a change to the CLI itself, or a path the release proofs read; `proofs.yml` runs its OS, service and upgrade-chain proofs.
 //   agents  "true": the engine, agent-host or agent-adapters closure changed; the qualification legs run (`proofs.yml`).
 //   defer   "true": a draft release PR; nothing runs and `CI gate` stays red until it is marked ready.
-//   draft   "true": a draft PR runs the fast tier only (lint, build, ubuntu unit tests); e2e, intake, full and agents are off.
+//   installer "true": `full` is on (any `scripts/install/` change turns it on), or a push or merge group; the Windows installer test runs.
+//   draft   "true": a draft PR runs the fast tier only (lint, build, ubuntu unit tests); e2e, intake, full, agents and installer are off.
 //           The `changes` job is then named `Plan (draft)`, and no later run accepts a draft run as proof (`countsAsProof`).
 // Package paths are decided by turbo's graph (`turbo ls --affected`: the changed packages and their dependents).
 // A path outside every package is looked up in OUTSIDE; one it does not name turns every tier on.
@@ -20,9 +21,9 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-/** @typedef {"code" | "e2e" | "intake" | "full" | "agents"} Tier */
+/** @typedef {"code" | "e2e" | "intake" | "full" | "agents" | "installer"} Tier */
 /** @type {Tier[]} */
-const ALL = ["code", "e2e", "intake", "full", "agents"];
+const ALL = ["code", "e2e", "intake", "full", "agents", "installer"];
 
 /** Root-level Markdown and issue templates: nothing a build, a test or the tarball reads. */
 const DOCS = [
@@ -97,10 +98,11 @@ const OUTSIDE = [
 		[],
 	],
 	[
-		/^scripts\/(agent-probe|agent-tested|agent-adapter-sdk|admission-fake)(\.test)?\.mjs$/,
+		/^scripts\/(agent-probe|agent-locks|agent-tested|agent-adapter-sdk|admission-fake)(\.test)?\.mjs$/,
 		["agents"],
 	],
 	[/^scripts\/agent-pins\.json$/, ["agents"]],
+	[/^scripts\/agent-locks\//, ["agents"]],
 	[
 		/^scripts\/(gate-side-checks|packed-upgrade-chain)(\.test)?\.mjs$/,
 		["full"],
@@ -144,7 +146,7 @@ const directlyChangesCli = (/** @type {string[]} */ files) =>
  *   draft?: boolean,
  *   readyOnPassedHead?: boolean,
  * }} PlanInput `affected` is turbo's list of changed packages and their dependents; `null` when turbo could not say.
- * @typedef {{ skip: boolean, code: boolean, e2e: boolean, intake: boolean, full: boolean, agents: boolean, reason: string, defer?: boolean, draft?: boolean }} PlanResult
+ * @typedef {{ skip: boolean, code: boolean, e2e: boolean, intake: boolean, full: boolean, agents: boolean, installer: boolean, reason: string, defer?: boolean, draft?: boolean }} PlanResult
  */
 
 /**
@@ -161,6 +163,7 @@ export function plan(input) {
 			intake: false,
 			full: false,
 			agents: false,
+			installer: false,
 			draft: true,
 			reason: DRAFT_REASON,
 		};
@@ -189,6 +192,7 @@ function planFull({
 		intake: false,
 		full: false,
 		agents: false,
+		installer: false,
 	};
 	const everything = {
 		skip: false,
@@ -197,6 +201,7 @@ function planFull({
 		intake: true,
 		full: true,
 		agents: true,
+		installer: true,
 	};
 	if (event !== "pull_request")
 		return {
@@ -206,6 +211,7 @@ function planFull({
 			intake: true,
 			full: false,
 			agents: false,
+			installer: true,
 			reason: `${event}: the PR checks run; the release proofs run nightly`,
 		};
 	// release-please rebuilds this PR on every push to main; CI waits until it is marked ready.
@@ -264,6 +270,7 @@ function planFull({
 	for (const tier of /** @type {const} */ (["e2e", "intake", "agents"]))
 		if (TIER_PACKAGES[tier].some((p) => affected.includes(p))) need.add(tier);
 	if (directlyChangesCli(files)) need.add("full");
+	if (need.has("full")) need.add("installer");
 	// The build is what e2e and the intake run on.
 	if (need.has("e2e") || need.has("intake")) need.add("code");
 	const unknown = outside.find((f) => !OUTSIDE.some(([p]) => p.test(f)));
@@ -274,6 +281,7 @@ function planFull({
 		intake: need.has("intake"),
 		full: need.has("full"),
 		agents: need.has("agents"),
+		installer: need.has("installer"),
 		reason: unknown
 			? `${unknown} is on no plan rule: everything runs`
 			: need.has("code")
@@ -439,6 +447,7 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 		`intake=${result.intake}`,
 		`full=${result.full}`,
 		`agents=${result.agents}`,
+		`installer=${result.installer}`,
 		`defer=${Boolean(result.defer)}`,
 		`draft=${Boolean(result.draft)}`,
 		`reason=${result.reason}`,
@@ -449,7 +458,7 @@ function main(/** @type {NodeJS.ProcessEnv} */ env) {
 	if (env.GITHUB_STEP_SUMMARY)
 		appendFileSync(
 			env.GITHUB_STEP_SUMMARY,
-			`**CI plan:** ${result.reason} (code=${result.code}, e2e=${result.e2e}, intake=${result.intake}, full=${result.full}, agents=${result.agents})\n`,
+			`**CI plan:** ${result.reason} (code=${result.code}, e2e=${result.e2e}, intake=${result.intake}, full=${result.full}, agents=${result.agents}, installer=${result.installer})\n`,
 		);
 }
 

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
+	AGENTS as AGENTS_FILE,
 	diffSection,
 	hunks,
 	moveProbed,
@@ -12,13 +13,8 @@ import {
 	stale,
 } from "./agent-facts.mjs";
 
-const AGENTS = readFileSync(
-	new URL(
-		"../packages/@prismalens/agent-host/src/registry/agents.ts",
-		import.meta.url,
-	),
-	"utf8",
-);
+// The file `sync` itself targets, so a stale target fails here too.
+const AGENTS = readFileSync(AGENTS_FILE, "utf8");
 
 const fact = (via, cli, adapter) => ({
 	value: true,

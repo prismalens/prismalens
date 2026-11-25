@@ -26,6 +26,7 @@ import { formatClock } from "@/lib/format-time";
 import { attentionFor } from "@/lib/incident-attention";
 import { shortAge } from "@/lib/incident-board";
 import { incidentSummary } from "@/lib/incident-summary";
+import { culpritOf } from "@/lib/report-view";
 import { incidentServices } from "@/lib/service-lanes";
 import { runStatusInfo } from "@/lib/thread-status";
 import { cn } from "@/lib/utils";
@@ -135,10 +136,9 @@ export function SituationCard({
 	);
 	if (category)
 		facts.push({ k: "Cause", v: ROOT_CAUSE_CATEGORY_LABEL[category] });
-	if (report?.culprit?.changeRef)
-		facts.push({ k: "Change", v: report.culprit.changeRef });
-	if (report?.culprit?.mechanism)
-		facts.push({ k: "Mechanism", v: report.culprit.mechanism });
+	const culprit = report ? culpritOf(report) : null;
+	if (culprit?.changeRef) facts.push({ k: "Change", v: culprit.changeRef });
+	if (culprit?.mechanism) facts.push({ k: "Mechanism", v: culprit.mechanism });
 
 	const latest = o.latest;
 	const latestState = o.latestRun.state;

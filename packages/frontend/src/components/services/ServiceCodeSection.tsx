@@ -211,10 +211,9 @@ export function ServiceCodeSection({
 					pending={add.isPending}
 					error={add.error ? getErrorMessage(add.error) : null}
 					onChoose={(source) =>
-						add.mutate(
-							{ serviceId: service.id, source },
-							{ onSuccess: () => setAdding(false) },
-						)
+						add
+							.mutateAsync({ serviceId: service.id, source })
+							.then(() => setAdding(false))
 					}
 				/>
 			)}

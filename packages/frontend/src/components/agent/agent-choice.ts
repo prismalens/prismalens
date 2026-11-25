@@ -6,7 +6,10 @@ import {
 	type AccessLevel,
 	type HarnessId,
 	modelProvider,
+	preferredModel,
 	providerName,
+	providerSignedOutLine,
+	providerSignIn,
 } from "@prismalens/config/harness";
 import {
 	type AxisSource,
@@ -148,8 +151,18 @@ export function defaultModel(
 ): NamedModel | null {
 	if (starred && !isFoldedId(h, starred))
 		return { id: starred, name: modelName(h, starred) ?? starred };
-	const current = agentCurrentModel(h);
-	if (current) return current;
+	const own = agentCurrentModel(h);
+	// The server's pick for a run with none starred: a signed-in provider's model over the agent's own.
+	const preferred = preferredModel(
+		h.id as HarnessId,
+		{ ...h.checked, servedModel: own?.id ?? null },
+		h.models.source === "harness"
+			? h.models.entries.filter((e) => !isAgentDefault(e))
+			: [],
+	);
+	if (preferred && preferred !== own?.id)
+		return { id: preferred, name: modelName(h, preferred) ?? preferred };
+	if (own) return own;
 	const first = h.models.entries.find((e) => !isAgentDefault(e));
 	return first
 		? { id: first.id, name: modelName(h, first.id) ?? first.id }
@@ -241,20 +254,72 @@ export function shortModel(name: string): string {
 		: bare;
 }
 
+/**
+ * The agent's provider login for `model` (the agent's own pick when none is named): the server's
+ * word for its chosen model, or the same check run against another one.
+ */
+export function providerState(
+	h: HarnessStatus,
+	model?: string | null,
+): NonNullable<HarnessStatus["providerSignIn"]> {
+	return model && !isFoldedId(h, model)
+		? providerSignIn(h.id as HarnessId, h.checked, model)
+		: (h.providerSignIn ??
+				providerSignIn(
+					h.id as HarnessId,
+					h.checked,
+					defaultModel(h, null)?.id,
+				));
+}
+
+/** The model `providerState` answers for, so a refusal names the one it checked. */
+function checkedModel(
+	h: HarnessStatus,
+	model?: string | null,
+): string | null | undefined {
+	if (model && !isFoldedId(h, model)) return model;
+	// The server's own `providerSignIn` reads the served model; the fallback check reads `defaultModel`.
+	return h.providerSignIn ? h.checked?.servedModel : defaultModel(h, null)?.id;
+}
+
 /** Why an installed agent cannot take a run, in the gate's words; null when it can. */
-export function unreadyReason(h: HarnessStatus): string | null {
-	if (!h.installed || !h.checked || h.checked.outcome === "answers-acp")
-		return null;
+export function unreadyReason(
+	h: HarnessStatus,
+	model?: string | null,
+): string | null {
+	if (!h.installed || !h.checked) return null;
+	if (h.checked.outcome === "answers-acp")
+		return providerState(h, model) === "signed-out"
+			? providerSignedOutLine(h.id as HarnessId, checkedModel(h, model))
+			: null;
 	// The same words a run that fails on sign-in shows (#831 w7-3).
 	if (h.checked.outcome === "sign-in-needed")
-		return failureLine(notSignedIn(h.label));
+		return failureLine(notSignedIn(h.label, h.loginHint));
 	return `${h.label}: ${h.checked.detail}`;
 }
 
 /** The run gate's line: the reason, then where to check it, one full stop each (#673 w9-1). */
-export function unreadyLine(h: HarnessStatus): string | null {
-	const why = unreadyReason(h)?.replace(/[.\s]+$/, "");
+export function unreadyLine(
+	h: HarnessStatus,
+	model?: string | null,
+): string | null {
+	const why = unreadyReason(h, model)?.replace(/[.\s]+$/, "");
 	return why ? `${why}. Check it in Settings, Agent.` : null;
+}
+
+// A signed-out or unchecked provider login warns and still sends, as the server starts the run:
+// its login list misses config-file keys, AWS and ADC (#1222).
+export function composerGate(
+	h: HarnessStatus,
+	model?: string | null,
+): { blockedReason?: string; warning?: string } {
+	const line = unreadyLine(h, model) ?? undefined;
+	if (!h.installed || h.checked?.outcome !== "answers-acp")
+		return { blockedReason: line };
+	if (providerState(h, model) !== "unchecked") return { warning: line };
+	return {
+		warning: `${h.label}: sign-in not checked. Check it in Settings, Agent.`,
+	};
 }
 
 export function modelState(h: HarnessStatus): "list" | "pending" | "own" {

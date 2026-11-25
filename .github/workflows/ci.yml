@@ -57,6 +57,7 @@ jobs:
       intake: ${{ steps.plan.outputs.intake }}
       full: ${{ steps.plan.outputs.full }}
       agents: ${{ steps.plan.outputs.agents }}
+      installer: ${{ steps.plan.outputs.installer }}
       defer: ${{ steps.plan.outputs.defer }}
       draft: ${{ steps.plan.outputs.draft }}
       reason: ${{ steps.plan.outputs.reason }}
@@ -404,6 +405,28 @@ jobs:
       - name: Upgrade a populated database on the packed tarball
         run: node scripts/packed-upgrade-smoke.mjs tarballs
 
+  # install.ps1 under Windows PowerShell 5.1, the shell `irm | iex` meets on a default box (#1224).
+  installer:
+    name: install.ps1 (Windows PowerShell 5.1)
+    needs: changes
+    if: needs.changes.outputs.installer == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pester
+        shell: powershell
+        run: |
+          "PowerShell $($PSVersionTable.PSVersion)"
+          Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
+          Import-Module Pester -RequiredVersion 5.7.1
+          Invoke-Pester scripts/install -Output Detailed -CI
+
   lint:
     name: Lint (Biome)
     needs: changes
@@ -498,6 +521,7 @@ jobs:
       - packed-smoke
       - packed-intake
       - packed-upgrade-smoke
+      - installer
       - lint
       - e2e
       - proofs
@@ -535,6 +559,7 @@ jobs:
                 elif . == "pack" or . == "packed-smoke" then (if $p.code == "false" or $p.draft == "true" then "false" else "true" end)
                 elif . == "packed-intake" or . == "packed-upgrade-smoke" then $p.intake
                 elif . == "e2e" then $p.e2e
+                elif . == "installer" then $p.installer
                 elif . == "lint" then (if $p.skip == "true" then "false" else "true" end)
                 elif . == "proofs" then (if $p.draft == "true" or ($p.full == "false" and $p.agents == "false" and $p.code == "false") then "false" else "true" end)
                 elif . == "test-later" then (if $p.code == "false" or $p.draft == "true" then "false" else "true" end)

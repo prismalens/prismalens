@@ -14,7 +14,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"empty-home-768-dark": {
 			"contrastFails": 0,
@@ -23,7 +24,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"empty-home-390-dark": {
 			"contrastFails": 0,
@@ -32,7 +34,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 3
 		},
 		"empty-home-1280-light": {
 			"contrastFails": 0,
@@ -41,7 +44,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"empty-home-768-light": {
 			"contrastFails": 0,
@@ -50,7 +54,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"empty-home-390-light": {
 			"contrastFails": 0,
@@ -59,7 +64,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 3
 		},
 		"empty-alerts-1280-dark": {
 			"contrastFails": 0,
@@ -68,7 +74,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"empty-alerts-768-dark": {
 			"contrastFails": 0,
@@ -77,7 +84,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"empty-alerts-390-dark": {
 			"contrastFails": 0,
@@ -86,7 +94,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 1
 		},
 		"empty-alerts-1280-light": {
 			"contrastFails": 0,
@@ -95,7 +104,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"empty-alerts-768-light": {
 			"contrastFails": 0,
@@ -104,7 +114,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"empty-alerts-390-light": {
 			"contrastFails": 0,
@@ -113,7 +124,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 1
 		},
 		"empty-services-1280-dark": {
 			"contrastFails": 0,
@@ -122,7 +134,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 7
+			"controls": 7,
+			"tapOverlaps": 0
 		},
 		"empty-services-768-dark": {
 			"contrastFails": 0,
@@ -131,7 +144,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 7
+			"controls": 7,
+			"tapOverlaps": 0
 		},
 		"empty-services-390-dark": {
 			"contrastFails": 0,
@@ -140,7 +154,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 7
+			"controls": 7,
+			"tapOverlaps": 1
 		},
 		"empty-services-1280-light": {
 			"contrastFails": 0,
@@ -149,7 +164,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 7
+			"controls": 7,
+			"tapOverlaps": 0
 		},
 		"empty-services-768-light": {
 			"contrastFails": 0,
@@ -158,7 +174,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 7
+			"controls": 7,
+			"tapOverlaps": 0
 		},
 		"empty-services-390-light": {
 			"contrastFails": 0,
@@ -167,7 +184,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 7
+			"controls": 7,
+			"tapOverlaps": 1
 		},
 		"settings-1280-dark": {
 			"contrastFails": 0,
@@ -176,7 +194,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 13,
+			"tapOverlaps": 0
 		},
 		"settings-768-dark": {
 			"contrastFails": 0,
@@ -185,7 +204,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 13,
+			"tapOverlaps": 0
 		},
 		"settings-390-dark": {
 			"contrastFails": 0,
@@ -194,7 +214,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"settings-1280-light": {
 			"contrastFails": 0,
@@ -203,7 +224,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 13,
+			"tapOverlaps": 0
 		},
 		"settings-768-light": {
 			"contrastFails": 0,
@@ -212,7 +234,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 13,
+			"tapOverlaps": 0
 		},
 		"settings-390-light": {
 			"contrastFails": 0,
@@ -221,7 +244,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"dialog-add-service-1280-dark": {
 			"contrastFails": 0,
@@ -230,7 +254,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 7
+			"controls": 7,
+			"tapOverlaps": 0
 		},
 		"dialog-add-service-more-1280-dark": {
 			"contrastFails": 0,
@@ -239,7 +264,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 7
+			"controls": 7,
+			"tapOverlaps": 0
 		},
 		"palette-1280-dark": {
 			"contrastFails": 0,
@@ -248,7 +274,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"dialog-add-service-1280-light": {
 			"contrastFails": 0,
@@ -257,7 +284,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 7
+			"controls": 7,
+			"tapOverlaps": 0
 		},
 		"dialog-add-service-more-1280-light": {
 			"contrastFails": 0,
@@ -266,7 +294,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 7
+			"controls": 7,
+			"tapOverlaps": 0
 		},
 		"palette-1280-light": {
 			"contrastFails": 0,
@@ -275,7 +304,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"one-service-home-1280-dark": {
 			"contrastFails": 0,
@@ -284,7 +314,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"one-service-home-1280-light": {
 			"contrastFails": 0,
@@ -293,7 +324,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"chat-finished-1280-dark": {
 			"contrastFails": 0,
@@ -302,7 +334,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 12
+			"controls": 12,
+			"tapOverlaps": 0
 		},
 		"chat-finished-768-dark": {
 			"contrastFails": 0,
@@ -311,7 +344,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 12
+			"controls": 12,
+			"tapOverlaps": 0
 		},
 		"chat-finished-390-dark": {
 			"contrastFails": 0,
@@ -320,7 +354,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 12
+			"controls": 12,
+			"tapOverlaps": 3
 		},
 		"chat-finished-1280-light": {
 			"contrastFails": 0,
@@ -329,7 +364,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 12
+			"controls": 12,
+			"tapOverlaps": 0
 		},
 		"chat-finished-768-light": {
 			"contrastFails": 0,
@@ -338,7 +374,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 12
+			"controls": 12,
+			"tapOverlaps": 0
 		},
 		"chat-finished-390-light": {
 			"contrastFails": 0,
@@ -347,7 +384,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 12
+			"controls": 12,
+			"tapOverlaps": 3
 		},
 		"chat-running-1280-dark": {
 			"contrastFails": 0,
@@ -356,7 +394,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 13,
+			"tapOverlaps": 0
 		},
 		"chat-running-768-dark": {
 			"contrastFails": 0,
@@ -365,7 +404,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 13,
+			"tapOverlaps": 0
 		},
 		"chat-running-390-dark": {
 			"contrastFails": 0,
@@ -374,7 +414,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 13,
+			"tapOverlaps": 4
 		},
 		"chat-running-1280-light": {
 			"contrastFails": 0,
@@ -383,7 +424,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 13,
+			"tapOverlaps": 0
 		},
 		"chat-running-768-light": {
 			"contrastFails": 0,
@@ -392,7 +434,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 13,
+			"tapOverlaps": 0
 		},
 		"chat-running-390-light": {
 			"contrastFails": 0,
@@ -401,7 +444,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 13,
+			"tapOverlaps": 4
 		},
 		"chats-home-1280-dark": {
 			"contrastFails": 0,
@@ -410,7 +454,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 11
+			"controls": 11,
+			"tapOverlaps": 0
 		},
 		"chats-home-768-dark": {
 			"contrastFails": 0,
@@ -419,7 +464,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"chats-home-390-dark": {
 			"contrastFails": 0,
@@ -428,7 +474,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 3
 		},
 		"chats-home-1280-light": {
 			"contrastFails": 0,
@@ -437,7 +484,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"chats-home-768-light": {
 			"contrastFails": 0,
@@ -446,7 +494,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"chats-home-390-light": {
 			"contrastFails": 0,
@@ -455,7 +504,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 3
 		},
 		"many-board-1280-dark": {
 			"contrastFails": 0,
@@ -464,7 +514,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 36
+			"controls": 36,
+			"tapOverlaps": 0
 		},
 		"many-board-768-dark": {
 			"contrastFails": 0,
@@ -473,7 +524,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 29
+			"controls": 29,
+			"tapOverlaps": 0
 		},
 		"many-board-390-dark": {
 			"contrastFails": 0,
@@ -482,7 +534,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 16
+			"controls": 16,
+			"tapOverlaps": 4
 		},
 		"many-board-1280-light": {
 			"contrastFails": 0,
@@ -491,7 +544,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 35
+			"controls": 35,
+			"tapOverlaps": 0
 		},
 		"many-board-768-light": {
 			"contrastFails": 0,
@@ -500,7 +554,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 29
+			"controls": 29,
+			"tapOverlaps": 0
 		},
 		"many-board-390-light": {
 			"contrastFails": 0,
@@ -509,7 +564,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 16
+			"controls": 16,
+			"tapOverlaps": 4
 		},
 		"new-1280-dark": {
 			"contrastFails": 0,
@@ -518,7 +574,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"new-768-dark": {
 			"contrastFails": 0,
@@ -527,7 +584,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"new-390-dark": {
 			"contrastFails": 0,
@@ -536,7 +594,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 4
 		},
 		"new-1280-light": {
 			"contrastFails": 0,
@@ -545,7 +604,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"new-768-light": {
 			"contrastFails": 0,
@@ -554,7 +614,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"new-390-light": {
 			"contrastFails": 0,
@@ -563,7 +624,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 4
 		},
 		"webhook-thread-1280-dark": {
 			"contrastFails": 0,
@@ -572,7 +634,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"webhook-thread-768-dark": {
 			"contrastFails": 0,
@@ -581,7 +644,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"webhook-thread-390-dark": {
 			"contrastFails": 0,
@@ -590,7 +654,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 19
+			"controls": 19,
+			"tapOverlaps": 4
 		},
 		"webhook-thread-1280-light": {
 			"contrastFails": 0,
@@ -599,7 +664,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"webhook-thread-768-light": {
 			"contrastFails": 0,
@@ -608,7 +674,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"webhook-thread-390-light": {
 			"contrastFails": 0,
@@ -617,7 +684,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 19
+			"controls": 19,
+			"tapOverlaps": 4
 		},
 		"ask-thread-1280-dark": {
 			"contrastFails": 0,
@@ -626,7 +694,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"ask-thread-768-dark": {
 			"contrastFails": 0,
@@ -635,7 +704,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"ask-thread-390-dark": {
 			"contrastFails": 0,
@@ -644,7 +714,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 19
+			"controls": 19,
+			"tapOverlaps": 4
 		},
 		"ask-thread-1280-light": {
 			"contrastFails": 0,
@@ -653,7 +724,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"ask-thread-768-light": {
 			"contrastFails": 0,
@@ -662,7 +734,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"ask-thread-390-light": {
 			"contrastFails": 0,
@@ -671,7 +744,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 19
+			"controls": 19,
+			"tapOverlaps": 4
 		},
 		"sidebar-sections-1280-dark": {
 			"contrastFails": 0,
@@ -680,7 +754,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 12
+			"controls": 12,
+			"tapOverlaps": 0
 		},
 		"sidebar-sections-1280-light": {
 			"contrastFails": 0,
@@ -689,7 +764,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 10
+			"controls": 10,
+			"tapOverlaps": 0
 		},
 		"automation-page-1280-dark": {
 			"contrastFails": 0,
@@ -698,7 +774,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 8
+			"controls": 8,
+			"tapOverlaps": 0
 		},
 		"automation-page-768-dark": {
 			"contrastFails": 0,
@@ -707,7 +784,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 11
+			"controls": 11,
+			"tapOverlaps": 0
 		},
 		"automation-page-390-dark": {
 			"contrastFails": 0,
@@ -716,7 +794,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 8
+			"controls": 8,
+			"tapOverlaps": 0
 		},
 		"automation-page-1280-light": {
 			"contrastFails": 0,
@@ -725,7 +804,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 8
+			"controls": 8,
+			"tapOverlaps": 0
 		},
 		"automation-page-768-light": {
 			"contrastFails": 0,
@@ -734,7 +814,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 11
+			"controls": 11,
+			"tapOverlaps": 0
 		},
 		"automation-page-390-light": {
 			"contrastFails": 0,
@@ -743,7 +824,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 8
+			"controls": 8,
+			"tapOverlaps": 0
 		},
 		"schedule-run-1280-dark": {
 			"contrastFails": 0,
@@ -752,7 +834,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 2
+			"controls": 2,
+			"tapOverlaps": 0
 		},
 		"schedule-run-1280-light": {
 			"contrastFails": 0,
@@ -761,7 +844,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 2
+			"controls": 2,
+			"tapOverlaps": 0
 		},
 		"away-board-1280-dark": {
 			"contrastFails": 0,
@@ -770,7 +854,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 36
+			"controls": 36,
+			"tapOverlaps": 0
 		},
 		"away-board-1280-light": {
 			"contrastFails": 0,
@@ -779,7 +864,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 36
+			"controls": 36,
+			"tapOverlaps": 0
 		},
 		"live-run-1280-dark": {
 			"contrastFails": 0,
@@ -788,7 +874,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 16
+			"controls": 16,
+			"tapOverlaps": 0
 		},
 		"live-run-768-dark": {
 			"contrastFails": 0,
@@ -797,7 +884,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 16
+			"controls": 16,
+			"tapOverlaps": 0
 		},
 		"live-run-390-dark": {
 			"contrastFails": 0,
@@ -806,7 +894,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 15,
+			"tapOverlaps": 4
 		},
 		"live-run-1280-light": {
 			"contrastFails": 0,
@@ -815,7 +904,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 16
+			"controls": 16,
+			"tapOverlaps": 0
 		},
 		"live-run-768-light": {
 			"contrastFails": 0,
@@ -824,7 +914,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 16
+			"controls": 16,
+			"tapOverlaps": 0
 		},
 		"live-run-390-light": {
 			"contrastFails": 0,
@@ -833,7 +924,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 15,
+			"tapOverlaps": 4
 		},
 		"finished-1280-dark": {
 			"contrastFails": 0,
@@ -842,7 +934,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"finished-768-dark": {
 			"contrastFails": 0,
@@ -851,7 +944,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"finished-390-dark": {
 			"contrastFails": 0,
@@ -860,7 +954,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 19
+			"controls": 19,
+			"tapOverlaps": 4
 		},
 		"finished-1280-light": {
 			"contrastFails": 0,
@@ -869,7 +964,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"finished-768-light": {
 			"contrastFails": 0,
@@ -878,7 +974,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"finished-390-light": {
 			"contrastFails": 0,
@@ -887,7 +984,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 19
+			"controls": 19,
+			"tapOverlaps": 4
 		},
 		"incident-panel-1280-dark": {
 			"contrastFails": 0,
@@ -896,7 +994,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 34
+			"controls": 34,
+			"tapOverlaps": 0
 		},
 		"incident-panel-768-dark": {
 			"contrastFails": 0,
@@ -905,7 +1004,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 36
+			"controls": 36,
+			"tapOverlaps": 0
 		},
 		"incident-panel-390-dark": {
 			"contrastFails": 0,
@@ -914,7 +1014,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 19
+			"controls": 19,
+			"tapOverlaps": 11
 		},
 		"incident-panel-1280-light": {
 			"contrastFails": 0,
@@ -923,7 +1024,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 35
+			"controls": 35,
+			"tapOverlaps": 0
 		},
 		"incident-panel-768-light": {
 			"contrastFails": 0,
@@ -932,7 +1034,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 36
+			"controls": 36,
+			"tapOverlaps": 0
 		},
 		"incident-panel-390-light": {
 			"contrastFails": 0,
@@ -941,7 +1044,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 11
 		},
 		"failed-1280-dark": {
 			"contrastFails": 0,
@@ -950,7 +1054,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 25
+			"controls": 25,
+			"tapOverlaps": 0
 		},
 		"failed-768-dark": {
 			"contrastFails": 0,
@@ -959,7 +1064,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 16
+			"controls": 16,
+			"tapOverlaps": 0
 		},
 		"failed-390-dark": {
 			"contrastFails": 0,
@@ -968,7 +1074,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 15,
+			"tapOverlaps": 3
 		},
 		"failed-1280-light": {
 			"contrastFails": 0,
@@ -977,7 +1084,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 16
+			"controls": 16,
+			"tapOverlaps": 0
 		},
 		"failed-768-light": {
 			"contrastFails": 0,
@@ -986,7 +1094,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 16
+			"controls": 16,
+			"tapOverlaps": 0
 		},
 		"failed-390-light": {
 			"contrastFails": 0,
@@ -995,7 +1104,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 15
+			"controls": 15,
+			"tapOverlaps": 3
 		},
 		"design-gallery-1280-dark": {
 			"contrastFails": 0,
@@ -1004,7 +1114,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 14
+			"controls": 14,
+			"tapOverlaps": 0
 		},
 		"design-gallery-768-dark": {
 			"contrastFails": 0,
@@ -1013,7 +1124,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 17
+			"controls": 17,
+			"tapOverlaps": 0
 		},
 		"design-gallery-390-dark": {
 			"contrastFails": 0,
@@ -1022,7 +1134,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 14,
+			"tapOverlaps": 0
 		},
 		"design-gallery-1280-light": {
 			"contrastFails": 0,
@@ -1031,7 +1144,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 14
+			"controls": 14,
+			"tapOverlaps": 0
 		},
 		"design-gallery-768-light": {
 			"contrastFails": 0,
@@ -1040,7 +1154,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 17
+			"controls": 17,
+			"tapOverlaps": 0
 		},
 		"design-gallery-390-light": {
 			"contrastFails": 0,
@@ -1049,7 +1164,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 13
+			"controls": 14,
+			"tapOverlaps": 0
 		},
 		"many-services-1280-dark": {
 			"contrastFails": 0,
@@ -1058,7 +1174,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 5
+			"controls": 5,
+			"tapOverlaps": 0
 		},
 		"many-services-768-dark": {
 			"contrastFails": 0,
@@ -1067,7 +1184,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 5
+			"controls": 5,
+			"tapOverlaps": 0
 		},
 		"many-services-390-dark": {
 			"contrastFails": 0,
@@ -1076,7 +1194,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 5
+			"controls": 5,
+			"tapOverlaps": 3
 		},
 		"many-services-1280-light": {
 			"contrastFails": 0,
@@ -1085,7 +1204,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 5
+			"controls": 5,
+			"tapOverlaps": 0
 		},
 		"many-services-768-light": {
 			"contrastFails": 0,
@@ -1094,7 +1214,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 5
+			"controls": 5,
+			"tapOverlaps": 0
 		},
 		"many-services-390-light": {
 			"contrastFails": 0,
@@ -1103,7 +1224,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 5
+			"controls": 5,
+			"tapOverlaps": 3
 		},
 		"menu-action-1280-dark": {
 			"contrastFails": 0,
@@ -1112,7 +1234,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"menu-action-1280-light": {
 			"contrastFails": 0,
@@ -1121,7 +1244,8 @@
 			"sideways": 0,
 			"consoleErrors": 0,
 			"otherAxe": 0,
-			"controls": 20
+			"controls": 20,
+			"tapOverlaps": 0
 		},
 		"error-board-1280-dark": {
 			"contrastFails": 0,
@@ -1130,7 +1254,8 @@
 			"sideways": 0,
 			"consoleErrors": 4,
 			"otherAxe": 0,
-			"controls": 0
+			"controls": 0,
+			"tapOverlaps": 0
 		}
 	}
 }
