@@ -10,7 +10,7 @@
 // link and (`--direct`) without it; `--tabs` two tabs at once; `--pool` a fresh tab beside live ones.
 // `--stamp` writes the net.slow-link stamp, each metric per page, for `pnpm sim report`.
 //   PRISMALENS_WORKSPACE_DIR=<ws> node scripts/fakes/conditions/slow-link-measure.mjs --ui <slowUrl> --thread <id> [--width 1440] [--census 30 --runs 3 --direct <url> --tabs 2 --pool] [--stamp]
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -103,7 +103,8 @@ const PAGES = [
 	},
 	{
 		name: "diff",
-		path: `/threads/${thread}?panel=changes`,
+		// Set before the pages run: `--thread` may have no changes, and then the pane never paints.
+		path: "",
 		ready: deep("[data-item-path]"),
 		census: false,
 	},
@@ -112,6 +113,24 @@ const PAGES = [
 		? [{ name: "settings", path: "/settings", ready: SETTINGS, census: true }]
 		: []),
 ];
+
+/** `--diff-thread`, else a thread with file changes made now by the diff fixture (diff-turns.mjs). */
+function diffThread() {
+	const given = arg("--diff-thread");
+	if (given) return given;
+	const out = execFileSync(
+		process.execPath,
+		[join(import.meta.dirname, "..", "diff-turns.mjs"), "--url", direct ?? ui],
+		{
+			env: process.env,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "inherit"],
+		},
+	);
+	const id = out.match(/\/threads\/([0-9a-f-]{36})\?panel=changes/)?.[1];
+	if (!id) throw new Error(`The diff fixture printed no thread:\n${out}`);
+	return id;
+}
 
 /** Runs the proxy's `drop` and resolves with the moment the link went silent. */
 function proxyDrop(forS) {
@@ -327,8 +346,9 @@ async function measurePage(browser, base, storageState, p, suffix = "") {
 		page: p.name + suffix,
 		width,
 		firstContentMs,
-		bytesBeforeFirstPaint: bytes,
-		scriptBytesBeforeFirstPaint: scripts,
+		// No first content: the bytes are a timeout's worth, not a first paint's.
+		bytesBeforeFirstPaint: firstContentMs === null ? null : bytes,
+		scriptBytesBeforeFirstPaint: firstContentMs === null ? null : scripts,
 		startupTaskMs,
 		fontMs,
 		layoutShift: Math.round(layoutShift * 1000) / 1000,
@@ -346,6 +366,11 @@ async function measurePage(browser, base, storageState, p, suffix = "") {
 		await page.waitForTimeout(3000);
 		// A page that never showed content has no load to count, only the wait.
 		if (firstContentMs !== null) row.load = loadCensus(cpu.requests(), base);
+		if (row.load?.duplicateFetches && process.argv.includes("--verbose"))
+			for (const r of cpu.requests())
+				console.error(
+					`  load ${r.at - t0} ${r.method} ${r.url.replace(base, "")}`,
+				);
 		if (p.census) {
 			const c = await liveCensus(base, [{ page, cpu }]);
 			row.idle = c.idle[0];
@@ -437,7 +462,11 @@ async function resumeProbe(base, views) {
 			await until(page, Date.now(), `!(${WORD})`, 30_000);
 			const connected = Date.now();
 			const ms = await until(page, connected, row(made.id), 30_000);
-			return { ms, log: cpu.requests() };
+			const { role, resets } = await page.evaluate(() => ({
+				role: globalThis.__plLiveRole ?? null,
+				resets: performance.getEntriesByName("pl:live-reset").length,
+			}));
+			return { ms, connected, role, resets, log: cpu.requests() };
 		}),
 	);
 	// The stream attempt that came back: any tab's last one sent before the row showed.
@@ -461,7 +490,18 @@ async function resumeProbe(base, views) {
 		each: each.map((e) => e.ms),
 		streamAt,
 		madeAt: made.at,
+		// Each tab's role and its reads after the drop, ms from when it showed connected.
+		tabs: each.map((e) => ({
+			role: e.role,
+			resets: e.resets,
+			ms: e.ms,
+			reads: e.log
+				.filter((r) => r.at >= made.at && /\/api\//.test(r.url))
+				.map((r) => `${r.at - e.connected} ${r.method} ${path(r)}`),
+		})),
 	};
+	if (process.argv.includes("--verbose"))
+		console.error(JSON.stringify(resumeDetail, null, 1));
 	return polled || each.some((e) => e.ms === null)
 		? 30_000
 		: Math.max(...each.map((e) => e.ms));
@@ -579,7 +619,10 @@ try {
 	const viewport = { width, height: 900 };
 	const storageState = await signIn(browser, ui, viewport);
 	const rows = [];
-	for (const p of PAGES.filter((x) => !only || x.name === only)) {
+	const pages = PAGES.filter((x) => !only || x.name === only);
+	const diff = pages.find((p) => p.name === "diff");
+	if (diff) diff.path = `/threads/${diffThread()}?panel=changes`;
+	for (const p of pages) {
 		const { row, page, context } = await measurePage(
 			browser,
 			ui,

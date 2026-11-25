@@ -76,9 +76,20 @@ function readStamps(/** @type {string} */ dir) {
 		});
 }
 
+/** `pnpm sim up` writes each run's stamps to `stamps/<run>/`: a stamps root means its newest run. */
+export function runDir(/** @type {string} */ dir) {
+	if (!existsSync(dir) || readStamps(dir).length) return dir;
+	const runs = readdirSync(dir, { withFileTypes: true })
+		.filter((d) => d.isDirectory() && d.name.startsWith("sim-"))
+		.map((d) => d.name)
+		.sort();
+	return runs.length ? join(dir, runs[runs.length - 1]) : dir;
+}
+
 /** The conditions the run selected: its sheet's rows, else whatever its stamps name. */
 function selected(/** @type {string} */ dir, /** @type {Stamp[]} */ stamps) {
-	const sheet = join(dirname(dir), "sheet.json");
+	const own = join(dir, "sheet.json");
+	const sheet = existsSync(own) ? own : join(dirname(dir), "sheet.json");
 	if (existsSync(sheet)) {
 		const rows = JSON.parse(readFileSync(sheet, "utf8")).rows ?? [];
 		// A profile's seeds (`seed: long-thread`) share the sheet but are data, not conditions.
@@ -135,6 +146,7 @@ export function summarize(
 	/** @type {Summary | null} */ base = null,
 	noisy = false,
 ) {
+	dir = runDir(dir);
 	const stamps = readStamps(dir);
 	const ids = selected(dir, stamps);
 	const known = new Map(entries("all").map((e) => [e.id, e]));
@@ -325,7 +337,7 @@ function loadBase(/** @type {string} */ base) {
 	const dir = resolve(base);
 	if (existsSync(join(dir, "summary.json")))
 		return JSON.parse(readFileSync(join(dir, "summary.json"), "utf8"));
-	if (existsSync(dir) && readStamps(dir).length) return summarize(dir);
+	if (existsSync(dir) && readStamps(runDir(dir)).length) return summarize(dir);
 	const hit = existsSync(HISTORY)
 		? readdirSync(HISTORY).find((d) => d.startsWith(base) || base.startsWith(d))
 		: undefined;
