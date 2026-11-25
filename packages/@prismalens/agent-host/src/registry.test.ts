@@ -142,7 +142,6 @@ describe("registry facts", () => {
 		expect(AGENT_REGISTRY["claude-code"].facts?.systemPromptVia).toMatchObject({
 			value: "claude-meta",
 			via: "source",
-			verifiedAt: { cli: "2.1.329", adapter: "0.109.0" },
 		});
 		for (const id of AGENT_IDS.filter((a) => a !== "claude-code"))
 			expect(AGENT_REGISTRY[id].facts?.systemPromptVia, id).toBeUndefined();
@@ -240,13 +239,21 @@ describe("agent facts (#1101)", () => {
 	});
 
 	it("name each source-read fact read on other versions, and never a probed one", () => {
-		const facts = AGENT_REGISTRY["claude-code"].facts;
-		const read = { cli: "2.1.329", adapter: "0.109.0" };
+		const read = { cli: "1.0.0", adapter: "0.1.0" };
+		const probe = { value: true, via: "probe" } as const;
+		const facts = {
+			loadSession: probe,
+			images: probe,
+			embeddedContext: probe,
+			directories: probe,
+			systemPromptVia: { value: "claude-meta", via: "source", verifiedAt: read },
+			regroupsLinks: { value: true, via: "source", verifiedAt: { cli: "1.1.0", adapter: null } },
+		} as const;
 		expect(staleFacts(facts, { cli: "9.9.9", adapter: read.adapter })).toEqual([
-			`systemPromptVia (source, checked on cli ${read.cli}, adapter ${read.adapter})`,
-			`subagentsOnStop (source, checked on cli ${read.cli}, adapter ${read.adapter})`,
+			"systemPromptVia (source, checked on cli 1.0.0, adapter 0.1.0)",
+			"regroupsLinks (source, checked on cli 1.1.0)",
 		]);
-		expect(staleFacts(facts, read)).toEqual([]);
+		expect(staleFacts(facts, read)).toEqual(["regroupsLinks (source, checked on cli 1.1.0)"]);
 	});
 
 	it("reopen a finished run only where session load is a fact", () => {

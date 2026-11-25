@@ -39,13 +39,13 @@ const registry = {
 	gemini: {
 		id: "gemini",
 		channel: { npm: "@google/gemini-cli" },
-		facts: { images: fact("probe", "0.65.0", null) },
+		facts: { images: fact("probe", "0.60.0", null) },
 	},
 	local: { id: "local" },
 };
 const pins = {
 	"@anthropic-ai/claude-code": "2.1.318",
-	"@google/gemini-cli": "0.65.0",
+	"@google/gemini-cli": "0.60.0",
 };
 const adapters = { "@agentclientprotocol/claude-agent-acp": "0.100.0" };
 
@@ -58,7 +58,7 @@ test("a row's facts are due on its CLI pin and, for an adapter row, its adapter 
 		],
 		[
 			{ cli: "2.1.318", adapter: "0.100.0" },
-			{ cli: "0.65.0", adapter: null },
+			{ cli: "0.60.0", adapter: null },
 			null,
 		],
 	);

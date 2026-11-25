@@ -132,21 +132,21 @@ test("a pin with no lock folder, and a lock folder with no pin, are both stale",
 });
 
 test("a lock folder missing its files names each one", () => {
-	assert.deepEqual(lockProblems("opencode-ai", "1.19.6", {}), [
+	assert.deepEqual(lockProblems("opencode-ai", "1.0.0", {}), [
 		"package.json is missing",
 		"package-lock.json is missing",
 	]);
-	assert.deepEqual(lockProblems("deepagents-code", "0.2.1", {}), [
+	assert.deepEqual(lockProblems("deepagents-code", "0.1.0", {}), [
 		"requirements.lock is missing",
 	]);
 });
 
 test("a Python lock matches on the whole pinned name, not a package that ends with it", () => {
 	assert.deepEqual(
-		lockProblems("deepagents-code", "0.2.1", {
-			"requirements.lock": "not-deepagents-code==0.2.1 \\\n",
+		lockProblems("deepagents-code", "0.1.0", {
+			"requirements.lock": "not-deepagents-code==0.1.0 \\\n",
 		}),
-		["requirements.lock has deepagents-code==nothing, the pin is 0.2.1"],
+		["requirements.lock has deepagents-code==nothing, the pin is 0.1.0"],
 	);
 });
 

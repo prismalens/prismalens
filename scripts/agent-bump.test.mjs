@@ -131,15 +131,15 @@ test("apply writes the new pin, the adapter dependency pnpm installs, and the te
 test("apply leaves a Python pin's hand-recorded tested alone", () => {
 	const deep = {
 		agent: "deepagents",
-		cli: { package: "deepagents-code", version: "0.2.1", channel: "pypi" },
-		tested: { version: "0.1.75", date: "2026-09-23" },
+		cli: { package: "deepagents-code", version: "0.1.0", channel: "pypi" },
+		tested: { version: "0.1.5", date: "2026-09-23" },
 		minimumReleaseAgeDays: 3,
 	};
 	assert.deepEqual(
 		applied(deep, {}, { cli: "0.3.0", date: "2026-11-25" }).pin,
 		{
 			cli: { package: "deepagents-code", version: "0.3.0", channel: "pypi" },
-			tested: { version: "0.1.75", date: "2026-09-23" },
+			tested: { version: "0.1.5", date: "2026-09-23" },
 		},
 	);
 });
@@ -183,11 +183,11 @@ test("the probe runs the adapter with its CLI as companion, or the CLI alone", (
 		"--companion",
 		"2.0.0",
 	]);
-	assert.deepEqual(probeArgs({ agent: "gemini", cli: { version: "0.65.0" } }), [
+	assert.deepEqual(probeArgs({ agent: "gemini", cli: { version: "0.60.0" } }), [
 		"--agent",
 		"gemini",
 		"--version",
-		"0.65.0",
+		"0.60.0",
 	]);
 });
 
