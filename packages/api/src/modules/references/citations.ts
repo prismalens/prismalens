@@ -296,18 +296,26 @@ export class Citations {
 		]);
 		if (!thread || !cited) return null;
 		const span = await this.span(threadId, cited.ordinal);
-		const rows = await this.prisma.investigationEvent.findMany({
-			where: {
-				investigationId: threadId,
-				ordinal: {
-					gte: span.from,
-					...(span.until !== null ? { lt: span.until } : {}),
+		// A long turn reads its opening half and the half from the cited row on, so the cited row is always in.
+		const from = (gte: number, take: number) =>
+			this.prisma.investigationEvent.findMany({
+				where: {
+					investigationId: threadId,
+					ordinal: {
+						gte,
+						...(span.until !== null ? { lt: span.until } : {}),
+					},
 				},
-			},
-			orderBy: { ordinal: "asc" },
-			take: TURN_ROWS,
-			select: { event: true, branchId: true, seq: true },
-		});
+				orderBy: { ordinal: "asc" },
+				take,
+				select: { event: true, branchId: true, seq: true, ordinal: true },
+			});
+		const [head, tail] = await Promise.all([
+			from(span.from, TURN_ROWS / 2),
+			from(Math.max(span.from, cited.ordinal), TURN_ROWS / 2),
+		]);
+		const seen = new Set(head.map((r) => r.ordinal));
+		const rows = [...head, ...tail.filter((r) => !seen.has(r.ordinal))];
 		const lines: string[] = [`Thread title: ${thread.title ?? "Untitled"}`];
 		const files = new Set<string>();
 		const calls: string[] = [];
