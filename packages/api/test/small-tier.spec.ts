@@ -6,6 +6,7 @@ import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
 import { join } from "node:path";
+import { setTimeout as nodeSleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import * as clock from "../src/core/clock.js";
@@ -32,7 +33,19 @@ describe("the small tier (#1154)", () => {
 		expect(woke).toBe(true);
 	});
 
-	// Runs after the sleep above, which leaves its clock a minute on.
+	it("puts a node:timers/promises sleep on the fake clock too", async () => {
+		let woke = false;
+		const sleeping = nodeSleep(60_000).then(() => {
+			woke = true;
+		});
+		await vi.advanceTimersByTimeAsync(59_999);
+		expect(woke).toBe(false);
+		await vi.advanceTimersByTimeAsync(1);
+		await sleeping;
+		expect(woke).toBe(true);
+	});
+
+	// Runs after the sleeps above, which leave their clock a minute on.
 	it("puts the clock back on the fixed date after a test moved it", () => {
 		expect(clock.date().toISOString()).toBe("2026-11-24T12:00:00.000Z");
 	});
@@ -51,18 +64,20 @@ describe("the small tier (#1154)", () => {
 		"fork",
 	] as const)("refuses a child process through %s", (form) => {
 		const start = childProcess[form] as (file: string) => unknown;
-		expect(() => start("git")).toThrow(refusal(`a child process (${form})`));
+		expect(() => start("git")).toThrow(
+			new Error(refusal(`a child process (${form})`)),
+		);
 	});
 
 	it("refuses a socket and a listening server", () => {
 		expect(() => net.connect(80, "localhost")).toThrow(
-			refusal("the network (connect)"),
+			new Error(refusal("the network (connect)")),
 		);
 		expect(() => new net.Socket().connect(80, "127.0.0.1")).toThrow(
-			refusal("the network (connect)"),
+			new Error(refusal("the network (connect)")),
 		);
 		expect(() => net.createServer().listen(0)).toThrow(
-			refusal("the network (listen)"),
+			new Error(refusal("the network (listen)")),
 		);
 	});
 
@@ -83,7 +98,7 @@ describe("the small tier (#1154)", () => {
 		const Database = fromAdapter("better-sqlite3");
 		const db = new Database(":memory:");
 		expect(() => db.prepare("select 1")).toThrow(
-			refusal("a SQLite database (prepare)"),
+			new Error(refusal("a SQLite database (prepare)")),
 		);
 	});
 });

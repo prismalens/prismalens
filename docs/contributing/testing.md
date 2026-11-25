@@ -8,7 +8,7 @@ Test behaviour once its shape settles. The app changes weekly, so a test pins wh
 
 - A bug fix starts with a test that fails on the bug, at the highest seam that shows it (a journey, a route, a service's public method), then the fix.
 - A feature may start as a spike. Before its PR is ready it has tests at its public seam, or a journey, for the behaviour it ships. A test that breaks on a behaviour-preserving refactor tests the wrong thing: write none first for internals the next change will move.
-- Coverage shows a reviewer what is untested; it is not a target. Each package's floor in its `vitest.config.ts` is a ratchet: raise it, never lower it. A new module needs no per-file entry. On a PR, the *Unit tests* job lists the added lines no test runs, in its summary and as notices on the diff (`scripts/changed-line-coverage.mjs`); it never fails. CodeRabbit reviews tests against the test rules in `AGENTS.md`.
+- Coverage shows a reviewer what is untested. Each package's floor in its `vitest.config.ts` is a ratchet: raise it, never lower it. A new module needs no per-file entry. On a PR, the *Unit tests* job lists the added lines no test runs, in its summary and as notices on the diff (`scripts/changed-line-coverage.mjs`); it never fails. CodeRabbit reviews tests against the test rules in `AGENTS.md`.
 
 A frontend unit test that reaches the API fails (`packages/frontend/src/test-setup.ts`): mock the hook or give the component the data it reads. Every PR touching `packages/frontend` ships or extends a spec covering its changed surface.
 
@@ -20,7 +20,7 @@ On CI, an api or frontend test that spends over 40% of its timeout fails (`VITES
 
 API code reads time and signals through `src/core/clock.ts` and `src/infrastructure/dispatch/process-signals.ts`; Biome forbids direct calls.
 
-An api `*.spec.ts` is small: fake clock, no database, process or socket (Biome forbids `child_process`), 1 s a test. A `*.int.spec.ts` is medium: real SQLite, git and timers, a timeout 3x its slowest test.
+An api `*.spec.ts` is small: fake clock, no database, process or socket (Biome forbids `child_process`), 1 s a test. A `*.int.spec.ts` is medium: real SQLite, git and timers, a timeout 3x its slowest test, at least 5 s.
 
 ## Journeys and scenarios
 
@@ -38,7 +38,7 @@ A test that passes only on a retry is quarantined, not retried. Tag it `@quarant
 
 It then runs in the non-blocking `chromium-quarantine` and `journeys-quarantine` projects, and the issue closes only when the tag comes off. Every run lists its flaky and failed tests in the job summary, and on the default branch a failing one opens or updates the `Quarantined e2e tests failing` issue.
 
-`pnpm quarantine:check` (`scripts/quarantine-check.mjs`) runs in `pnpm format-and-lint` and reads issue state through `gh`. It fails when a tag names no open issue on its own line, when more than 5 tags exist, or when a named issue is 14 or more days old. It names every offender; past the limit, fix the test or delete it; do not tag a sixth.
+`pnpm quarantine:check` (`scripts/quarantine-check.mjs`) runs in `pnpm format-and-lint` and reads issue state through `gh`. It fails when a tag names no open issue on its own line, when more than 5 tags exist, or when a named issue is 14 or more days old. Past the limit, fix or delete a test.
 
 ## The agent loop
 

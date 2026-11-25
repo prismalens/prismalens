@@ -518,7 +518,9 @@ describe("HarnessService", () => {
 				runnable: false,
 				pinned: true,
 			});
-			expect(status.selection.blockedReason).toMatch(/not a known harness/i);
+			expect(status.selection.blockedReason).toBe(
+				`PRISMALENS_HARNESS="not-a-harness" is not a known harness (${HARNESS_IDS.join(", ")})`,
+			);
 		});
 	});
 });
@@ -874,7 +876,12 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		const { svc } = runtimeService();
 		const ids = (await svc.getStatus()).harnesses.map((h) => h.id);
 		expect(ids).toEqual(expect.arrayContaining(["claude-code", "codex"]));
-		await expect(svc.runtimeFor("claude-code")).rejects.toThrow(/must be https/);
+		await expect(svc.runtimeFor("claude-code")).rejects.toThrow(
+			new Error(
+				"ANTHROPIC_BASE_URL must be https unless it points at this machine: http://gateway.example",
+			),
+		);
+		expect((await svc.runtimeFor("codex")).env).toEqual({});
 		await svc.updateSettings({ env: { "claude-code": { ANTHROPIC_BASE_URL: "https://ok.example" } } });
 		expect((await svc.runtimeFor("claude-code")).env.ANTHROPIC_BASE_URL).toBe("https://ok.example");
 	});
