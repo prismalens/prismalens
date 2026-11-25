@@ -201,6 +201,32 @@ describe("the workspace guard", () => {
 		expect(tsv()).toBe(`${HEADER}\npackages/ui/top.ts\tid-handmade\t1\n`);
 	});
 
+	it("counts ids under a host's other ratchet dirs, leaving its text rules and test lints to it", () => {
+		put("packages/ui/package.json", "{}");
+		put(
+			"packages/ui/registry.config.json",
+			JSON.stringify({
+				src: "src",
+				kinds: "src/kinds",
+				out: "src",
+				ratchet: "ratchet.tsv",
+				ratchetDirs: ["src", "e2e"],
+			}),
+		);
+		put(
+			"packages/ui/e2e/seed.ts",
+			'export const L = ["one"] as never;\nexport const R = [{ id: "a", label: "A" }];\n',
+		);
+		workspace({
+			hosts: ["registry.config.json", "packages/ui/registry.config.json"],
+		});
+		const ws = loadWorkspace(join(root, "registry.workspace.json"));
+		expect(ratchetGuard(ws, true)).toEqual([]);
+		expect(tsv()).toBe(
+			`${HEADER}\npackages/ui/e2e/seed.ts\tL9\t1\npackages/ui/e2e/seed.ts\tid-handmade\t1\n`,
+		);
+	});
+
 	it("names a rule whose family the id host does not list", () => {
 		workspace({}, "nope");
 		expect(ratchet()).toEqual({
@@ -229,7 +255,8 @@ describe("the workspace guard", () => {
 	});
 });
 
-describe("the guard's label check", () => {
+// Each case spawns git a dozen times, which passes 5 s on a loaded Windows machine.
+describe("the guard's label check", { timeout: 30_000 }, () => {
 	const run = (...args: string[]) => git(args, { cwd: root }).trim();
 	const commit = () => {
 		run("add", "-A");
@@ -285,6 +312,44 @@ describe("the guard's label check", () => {
 		put("registry.ratchet.tsv", rows("packages/a/src/new.ts\tL9\t3"));
 		expect(check(base, commit())).toEqual([
 			`packages/a/src/new.ts L9 rose from 2 to 3 in registry.ratchet.tsv. ${fix}`,
+		]);
+	});
+
+	it("asks for the label when the ratchet is renamed away", () => {
+		const base = commit();
+		run("mv", "registry.ratchet.tsv", "backup.tsv");
+		expect(check(base, commit())).toEqual([
+			`registry.ratchet.tsv was removed. ${fix}`,
+		]);
+	});
+
+	it("asks for the label on a protected path git would quote", () => {
+		workspace();
+		const base = commit();
+		put("guarded/na\u00efve.ts", "export {};\n");
+		const head = commit();
+		const ws = loadWorkspace(join(root, "registry.workspace.json"));
+		const guard = {
+			ratchet: "registry.ratchet.tsv",
+			lint: "registry.lint.json",
+			protected: ["guarded/"],
+		};
+		expect(guardLabelCheck({ ...ws, guard }, base, head, "")).toEqual([
+			`guarded/na\u00efve.ts is a registry guard path. ${fix}`,
+		]);
+	});
+
+	it("compares from the fork point, so the base branch's own changes neither hide nor add a rise", () => {
+		const fork = commit();
+		put("registry.ratchet.tsv", rows("packages/a/src/old.ts\tL9\t3"));
+		const base = commit();
+		run("checkout", "-q", fork);
+		put("README.md", "unrelated\n");
+		const unrelated = commit();
+		expect(check(base, unrelated)).toEqual([]);
+		put("registry.ratchet.tsv", rows("packages/a/src/old.ts\tL9\t3"));
+		expect(check(base, commit())).toEqual([
+			`packages/a/src/old.ts L9 rose from 2 to 3 in registry.ratchet.tsv. ${fix}`,
 		]);
 	});
 

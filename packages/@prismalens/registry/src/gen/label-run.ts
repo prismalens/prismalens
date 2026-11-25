@@ -27,10 +27,10 @@ const labelList = (labels: string) =>
 		.map((l) => l.trim())
 		.filter(Boolean);
 
-/** The files `range` renames, old to new, as paths under `prefix` (a host's repo-relative root). */
+/** The files `range` (from, to) renames, old to new, as paths under `prefix` (a host's repo-relative root). */
 function renames(
 	top: string,
-	range: string,
+	range: readonly [string, string],
 	prefix: string,
 ): Map<string, string> {
 	const parts = git(top, [
@@ -40,7 +40,7 @@ function renames(
 		"-l0",
 		"--diff-filter=R",
 		"-z",
-		range,
+		...range,
 	]).split("\0");
 	const under = (p: string) =>
 		prefix ? (p.startsWith(`${prefix}/`) ? p.slice(prefix.length + 1) : "") : p;
@@ -74,6 +74,8 @@ export function labelCheck(
 		}
 	};
 	const show = (ref: string) => (ratchet ? showAt(ref, ratchet) : "");
+	// Every read compares against the fork point: what the base branch did since is not the PR's.
+	const from = git(top, ["merge-base", base, head]).trim();
 	const named = labelList(labels);
 	const label = cfg.label ?? "registry-approved";
 	const ledgerFile = cfg.ledger
@@ -81,7 +83,7 @@ export function labelCheck(
 		: "";
 	const ledger =
 		ledgerFile && !named.includes(label)
-			? ledgerDiff(showAt(base, ledgerFile), showAt(head, ledgerFile)).map(
+			? ledgerDiff(showAt(from, ledgerFile), showAt(head, ledgerFile)).map(
 					(p) =>
 						`${p}. Fix: undo it, or ask the operator to add the "${label}" label.`,
 				)
@@ -90,28 +92,31 @@ export function labelCheck(
 		...ledger,
 		...labelProblems({
 			// Without rename detection, a protected path renamed away is listed too.
+			// `-z`: a quoted non-ASCII path would match no protected prefix.
 			changed: git(top, [
 				"diff",
 				"--name-only",
 				"--no-renames",
-				`${base}...${head}`,
+				"-z",
+				from,
+				head,
 			])
-				.split("\n")
+				.split("\0")
 				.filter(Boolean),
 			protectedPaths: cfg.protected ?? [],
 			ratchet,
-			baseTsv: show(base),
+			baseTsv: show(from),
 			headTsv: show(head),
 			labels: named,
 			renames: renames(
 				top,
-				`${base}...${head}`,
+				[from, head],
 				relative(top, cfg.root).split("\\").join("/"),
 			),
 			label,
 			budgets: (cfg.budgets ?? []).map((path) => ({
 				path,
-				base: showAt(base, path),
+				base: showAt(from, path),
 				head: showAt(head, path),
 			})),
 		}),
@@ -149,7 +154,6 @@ export function guardLabelCheck(
 			return "";
 		}
 	};
-	// The merge base, as the diff's `base...head` reads it: a change on the base branch is not the PR's.
 	const from = git(ws.root, ["merge-base", base, head]).trim();
 	if (globs(from) !== globs(head))
 		out.push(

@@ -9,6 +9,7 @@ import { parse } from "yaml";
 import { countText, lintFacts } from "../ratchet.ts";
 import { readForbidden } from "./extract.ts";
 import { familyIds } from "./ids.ts";
+import type { Config } from "./index.ts";
 import { holdTsv } from "./ratchet-run.ts";
 import type { Workspace } from "./workspace.ts";
 
@@ -58,15 +59,23 @@ function sources(root: string, dir: string): string[] {
 	});
 }
 
-/** The dirs a host's own ratchet already measures. */
-const measured = (ws: Workspace): string[] =>
-	ws.hosts
-		.filter((h) => h.ratchet)
-		.flatMap((h) =>
-			(h.ratchetDirs ?? [h.src]).map((d) =>
-				posix.join(toPosix(relative(ws.root, h.root)), d),
+/**
+ * What a host's own ratchet already measures. Under its `src` that is everything; under
+ * its other ratchet dirs only the text rules and test lints, so the rest is the guard's.
+ */
+function measured(ws: Workspace) {
+	const hosts = ws.hosts.filter((h) => h.ratchet);
+	const under = (f: string, dirs: (h: Config) => readonly string[]) =>
+		hosts.some((h) =>
+			dirs(h).some((d) =>
+				f.startsWith(`${posix.join(toPosix(relative(ws.root, h.root)), d)}/`),
 			),
 		);
+	return {
+		all: (f: string) => under(f, (h) => [h.src]),
+		textAndTests: (f: string) => under(f, (h) => h.ratchetDirs ?? []),
+	};
+}
 
 /** Counts the guard's facts over every package file no host ratchet measures. */
 export function measureGuard(ws: Workspace): {
@@ -82,17 +91,15 @@ export function measureGuard(ws: Workspace): {
 		return fail([
 			`[workspace/guard] ${PACKAGES_FILE} matches no package, so the guard would scan nothing. Fix: restore its packages list.`,
 		]);
-	const skip = measured(ws);
+	const host = measured(ws);
 	const files = new Set(
-		packages
-			.flatMap((p) => sources(ws.root, p))
-			.filter((f) => !skip.some((d) => f.startsWith(`${d}/`))),
+		packages.flatMap((p) => sources(ws.root, p)).filter((f) => !host.all(f)),
 	);
 	const { ids, problems } = familyIds(ws, guard.forbid ?? []);
 	if (problems.length) return fail(problems);
 	for (const f of files) {
 		const text = readFileSync(join(ws.root, f), "utf8");
-		countText(facts, f, text);
+		if (!host.textAndTests(f)) countText(facts, f, text);
 		if (TEST.test(f)) continue;
 		for (const { rule, count } of readForbidden(
 			f,
@@ -146,9 +153,11 @@ export function measureGuard(ws: Workspace): {
 		);
 	const lint = new Map<string, number>();
 	lintFacts(report, toFile, lint);
-	for (const [k, n] of lint)
-		if (files.has(k.slice(0, k.indexOf("\t"))))
+	for (const [k, n] of lint) {
+		const [f = "", rule = ""] = k.split("\t");
+		if (files.has(f) && !(rule.startsWith("T") && host.textAndTests(f)))
 			facts.set(k, (facts.get(k) ?? 0) + n);
+	}
 	return { facts, problems: [] };
 }
 

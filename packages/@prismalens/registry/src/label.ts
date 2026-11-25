@@ -63,6 +63,8 @@ export function labelProblems(i: LabelInput): string[] {
 		}),
 	);
 	const head = parseTsv(i.headTsv);
+	// A ratchet renamed or deleted would read as an empty one, which never rises.
+	if (i.baseTsv && !i.headTsv) out.push(`${i.ratchet} was removed`);
 	// A duplicate record keeps only its last count, which can hide a raise.
 	for (const p of head.problems) out.push(`${i.ratchet}: ${p}`);
 	for (const [k, n] of head.facts) {

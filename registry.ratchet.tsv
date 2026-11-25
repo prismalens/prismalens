@@ -117,6 +117,7 @@ packages/@prismalens/integrations/src/templates/templates.test.ts	T2	16
 packages/@prismalens/logger/src/integrations/nestjs/index.ts	biome-ignore	1
 packages/@prismalens/logger/src/logger.spec.ts	T1	3
 packages/@prismalens/providers/src/registry.ts	biome-ignore	1
+packages/@prismalens/registry/src/gen/guard.test.ts	as-never	1
 packages/@prismalens/registry/src/kernel.test.ts	as-never	7
 packages/@prismalens/registry/src/ratchet.test.ts	as-never	2
 packages/@prismalens/registry/src/ratchet.test.ts	biome-ignore	4
@@ -398,4 +399,8 @@ packages/desktop/src/splash.test.ts	T1	1
 packages/desktop/src/splash.test.ts	T2	2
 packages/desktop/src/supervisor.test.ts	T2	2
 packages/desktop/src/wsl.test.ts	T2	2
+packages/frontend/e2e/bar/checks/cat-18.ts	agent-id-handmade	3
+packages/frontend/e2e/steps/conversation.steps.ts	agent-id-handmade	1
+packages/frontend/e2e/steps/fixtures.ts	agent-id-handmade	12
+packages/frontend/e2e/steps/settings.steps.ts	agent-id-handmade	7
 packages/frontend/third-party-marks.test.ts	T1	1
