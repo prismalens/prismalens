@@ -19,6 +19,10 @@ import {
 	RequestError,
 } from "@agentclientprotocol/sdk";
 import { methods as unstable } from "@agentclientprotocol/sdk/unstable";
+
+/** The ACP major this client speaks; an agent that answers another is held (#1082). */
+export const CLIENT_PROTOCOL_VERSION: number = PROTOCOL_VERSION;
+
 import { type AgentChild, killProcessTree, spawnAgent } from "./process.js";
 import {
 	ACCESS_LEVELS,

@@ -2,7 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
+import { parse } from "yaml";
 import {
 	admissionLegs,
 	applied,
@@ -13,8 +16,9 @@ import {
 	pickVersion,
 	probeArgs,
 	pypiTimes,
+	REQUIRED_LEGS,
 } from "./agent-bump.mjs";
-import { agentPins } from "./agent-pins.mjs";
+import { agentPins, ROOT } from "./agent-pins.mjs";
 
 const NOW = Date.parse("2026-11-25T00:00:00Z");
 const daysAgo = (n) => new Date(NOW - n * 86_400_000).toISOString();
@@ -244,5 +248,32 @@ test("proofs.yml gets one qualification leg per pin, with its package, binary an
 			["gemini", 2],
 			["opencode", 1],
 		],
+	);
+});
+
+test("a candidate publishes only past the product's launch path on Linux and a spaced install on Windows (classes L, P)", () => {
+	const wf = parse(
+		readFileSync(join(ROOT, ".github/workflows/agent-bump.yml"), "utf8"),
+	);
+	const leg = wf.jobs.conformance;
+	assert.deepEqual(leg.strategy.matrix.os, REQUIRED_LEGS);
+	const runs = (text) =>
+		leg.steps.filter((st) => (st.run ?? "").includes(text));
+	// The probe answers initialize alone; the admission launches through the product (#1093).
+	assert.deepEqual(
+		runs('admission-fake.mjs "$AGENT"').map((st) => st.if),
+		["runner.os == 'Linux'"],
+	);
+	assert.deepEqual(
+		runs('--into "$RUNNER_TEMP/dir with space"').map((st) => st.if),
+		[undefined],
+	);
+	// A failed step fails the job, and the job's status is what the gate reads.
+	assert.equal(
+		leg.steps.find(
+			(st) => st.name === "Record this leg's result for the publish gate",
+		).env.OK,
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: a GitHub expression, not a template.
+		"${{ job.status == 'success' }}",
 	);
 });

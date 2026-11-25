@@ -199,7 +199,7 @@ test("the Python extras the lock installs are the uv channel the install hint na
 });
 
 test("every pinned install in a workflow comes from its lock, never from the registry", () => {
-	for (const file of ["proofs.yml", "nightly.yml"]) {
+	for (const file of ["proofs.yml", "nightly.yml", "agent-bump.yml"]) {
 		const text = readFileSync(join(REPO, ".github/workflows", file), "utf8");
 		assert.match(text, /node scripts\/agent-locks\.mjs install /);
 		assert.doesNotMatch(text, /--before|--exclude-newer|uv tool install/);
