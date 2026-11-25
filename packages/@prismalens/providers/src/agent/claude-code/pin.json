@@ -2,7 +2,8 @@
 	"cli": {
 		"package": "@anthropic-ai/claude-code",
 		"version": "2.1.329",
-		"channel": "npm"
+		"channel": "npm",
+		"bin": "claude"
 	},
 	"adapter": {
 		"package": "@agentclientprotocol/claude-agent-acp",
@@ -12,5 +13,6 @@
 		"version": "0.109.0",
 		"date": "2026-11-23",
 		"companion": "2.1.329"
-	}
+	},
+	"tier": 1
 }

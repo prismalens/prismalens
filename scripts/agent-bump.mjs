@@ -7,6 +7,7 @@
  * moves with; a release becomes a candidate only after it has soaked `minimumReleaseAgeDays`.
  *
  *   agent-bump.mjs matrix                          the agents with a pin, as a JSON array
+ *   agent-bump.mjs legs                            proofs.yml's qualification legs, one per pin
  *   agent-bump.mjs pick --agent <id>               the candidate as JSON, { agent, cli, adapter }, or null
  *   agent-bump.mjs apply --agent <id> [--cli <v>] [--adapter <v>] [--date <d>]
  *                                                  write the pin, the adapter dependency and tested
@@ -32,6 +33,15 @@ const ADAPTERS = "packages/@prismalens/agent-adapters/package.json";
  * version to its publish time; a version with no time is never picked (a registry that omits it
  * is not evidence of age).
  */
+/** One qualification leg per pin, in the shape proofs.yml's harness-admission matrix reads. */
+export const admissionLegs = (pins) =>
+	pins.map((p) => ({
+		harness: p.agent,
+		pin: p.cli.package,
+		binary: p.cli.bin,
+		tier: p.tier,
+	}));
+
 export function pickVersion(times, { current, days, now }) {
 	const cutoff = now - days * DAY;
 	const soaked = Object.entries(times)
@@ -276,6 +286,8 @@ async function main() {
 	const pins = agentPins();
 	if (command === "matrix")
 		return console.log(JSON.stringify(pins.map((p) => p.agent)));
+	if (command === "legs")
+		return console.log(JSON.stringify(admissionLegs(pins)));
 	const pin = pins.find((p) => p.agent === values.agent);
 	if (!pin) {
 		console.error(
@@ -340,7 +352,7 @@ async function main() {
 		);
 	}
 	console.error(
-		"usage: agent-bump.mjs matrix | package|pick|probe|body --agent <id> | apply --agent <id> --cli <v> [--adapter <v>] | gate --legs <dir> --digest <d> | hold --agent <id> --legs <dir> --run <url>",
+		"usage: agent-bump.mjs matrix | legs | package|pick|probe|body --agent <id> | apply --agent <id> --cli <v> [--adapter <v>] | gate --legs <dir> --digest <d> | hold --agent <id> --legs <dir> --run <url>",
 	);
 	process.exit(2);
 }

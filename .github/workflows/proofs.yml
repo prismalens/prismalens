@@ -192,10 +192,26 @@ jobs:
           if [ "$RUNNER_OS" = "Linux" ]; then export XDG_RUNTIME_DIR="/run/user/$(id -u)"; fi
           node scripts/gate-side-checks.mjs --no-skip --tarball "$(ls tarballs/prismalens-[0-9]*.tgz | head -1)"
 
+  agent-legs:
+    name: Agents with a pin
+    if: inputs.agents
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      legs: ${{ steps.legs.outputs.legs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: legs
+        run: echo "legs=$(node scripts/agent-bump.mjs legs)" >> "$GITHUB_OUTPUT"
+
   harness-admission:
     # The pinned agent against aimock, so a red run is the code's and not a model's (#884, #914).
-    # A red tier-2 leg leaves the job green (`continue-on-error`).
+    # One leg per pin.json, whose `tier` 2 leaves the job green on a red leg (`continue-on-error`).
     name: Agent qualification (${{ matrix.harness }}, scripted model)
+    needs: agent-legs
     if: inputs.agents
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -203,28 +219,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - harness: opencode
-            pin: opencode-ai
-            binary: opencode
-            tier: 1
-          - harness: claude-code
-            pin: "@anthropic-ai/claude-code"
-            binary: claude
-            tier: 1
-          # The adapter is the shipped one (its pin is in agent-adapters); it runs the codex on PATH.
-          - harness: codex
-            pin: "@openai/codex"
-            binary: codex
-            tier: 1
-          - harness: gemini
-            pin: "@google/gemini-cli"
-            binary: gemini
-            tier: 2
-          - harness: deepagents
-            pin: deepagents-code
-            binary: dcode
-            tier: 2
+        include: ${{ fromJSON(needs.agent-legs.outputs.legs) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

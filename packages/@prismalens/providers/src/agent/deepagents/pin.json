@@ -2,7 +2,8 @@
 	"cli": {
 		"package": "deepagents-code",
 		"version": "0.2.1",
-		"channel": "pypi"
+		"channel": "pypi",
+		"bin": "dcode"
 	},
 	"with": ["deepagents-acp"],
 	"constraints": ["agent-client-protocol<1"],
@@ -10,5 +11,6 @@
 	"tested": {
 		"version": "0.1.75",
 		"date": "2026-09-23"
-	}
+	},
+	"tier": 2
 }

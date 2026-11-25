@@ -152,8 +152,8 @@ export const isAgent = (p: ProviderDef): p is AgentDef =>
 
 /** An agent's `pin.json`: the CLI CI installs, the adapter it moves with, and what a compatibility run passed on. */
 export interface AgentPin {
-	/** `channel` is `npm` or `pypi`; JSON imports widen it, so `channelOf` checks it. */
-	cli: { package: string; version: string; channel: string };
+	/** `channel` is `npm` or `pypi`; JSON imports widen it, so `channelOf` checks it. `bin` answers `--version`. */
+	cli: { package: string; version: string; channel: string; bin: string };
 	/** Mirrors `agent-adapters/package.json`, which pnpm installs from; a script test holds the two equal. */
 	adapter?: { package: string; version: string };
 	/** Packages a Python CLI installs beside it. */
@@ -162,6 +162,8 @@ export interface AgentPin {
 	why?: string;
 	minimumReleaseAgeDays?: number;
 	tested?: { version: string; date: string; companion?: string };
+	/** 1: its qualification leg gates a PR; 2: a red leg is reported and does not. */
+	tier: number;
 }
 
 /** The channel the install hint names, from the pin: users install what CI pins (#1013). */

@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+	admissionLegs,
 	applied,
 	gateVerdict,
 	heldComment,
@@ -13,6 +14,7 @@ import {
 	probeArgs,
 	pypiTimes,
 } from "./agent-bump.mjs";
+import { agentPins } from "./agent-pins.mjs";
 
 const NOW = Date.parse("2026-11-25T00:00:00Z");
 const daysAgo = (n) => new Date(NOW - n * 86_400_000).toISOString();
@@ -222,4 +224,25 @@ test("moves lists the CLI and the adapter that changed, as agent-facts reads the
 		},
 	]);
 	assert.deepEqual(moves(claude, claude), []);
+});
+
+test("proofs.yml gets one qualification leg per pin, with its package, binary and tier", () => {
+	const pins = [
+		{ agent: "a", cli: { package: "@x/a", bin: "a-cli" }, tier: 1 },
+		{ agent: "b", cli: { package: "b-py", bin: "bb" }, tier: 2 },
+	];
+	assert.deepEqual(admissionLegs(pins), [
+		{ harness: "a", pin: "@x/a", binary: "a-cli", tier: 1 },
+		{ harness: "b", pin: "b-py", binary: "bb", tier: 2 },
+	]);
+	assert.deepEqual(
+		admissionLegs(agentPins()).map((l) => [l.harness, l.tier]),
+		[
+			["claude-code", 1],
+			["codex", 1],
+			["deepagents", 2],
+			["gemini", 2],
+			["opencode", 1],
+		],
+	);
 });

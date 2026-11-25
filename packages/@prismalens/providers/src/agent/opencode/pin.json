@@ -2,10 +2,12 @@
 	"cli": {
 		"package": "opencode-ai",
 		"version": "1.19.6",
-		"channel": "npm"
+		"channel": "npm",
+		"bin": "opencode"
 	},
 	"tested": {
 		"version": "1.19.6",
 		"date": "2026-11-21"
-	}
+	},
+	"tier": 1
 }
