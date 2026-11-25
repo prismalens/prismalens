@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { readdirSync, readFileSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -187,14 +188,27 @@ describe("registry facts", () => {
 		expect(isSafeGatewayUrl("http://gw.example")).toBe(false);
 	});
 
-	it("imports no node: module, so the registry is safe for the browser", () => {
+	it("imports no Node built-in, with or without node:, so the registry is safe for the browser", () => {
 		const dir = join(import.meta.dirname, "registry");
 		const files = readdirSync(dir, { recursive: true })
 			.map(String)
 			.filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
 		expect(files).toContain(join("agents", "opencode.ts"));
 		// Static, side-effect, dynamic and require forms; a comment naming `node:` is not one.
-		const nodeImport = /(?:from|import|require)\s*\(?\s*["']node:/;
+		const nodeImport = new RegExp(
+			String.raw`(?:from|import|require)\s*\(?\s*["'](?:node:|(?:${builtinModules.join("|")})["'])`,
+		);
+		const builtins = [
+			'import { readFileSync } from "fs";',
+			"import { readFile } from 'fs/promises';",
+			'import "fs";',
+			'await import("fs");',
+			'require("fs");',
+			'import { join } from "node:path";',
+		];
+		expect(builtins.filter((line) => nodeImport.test(line))).toEqual(builtins);
+		const others = ['from "fs-extra";', 'from "./path";', 'from "@scope/events";'];
+		expect(others.filter((line) => nodeImport.test(line))).toEqual([]);
 		expect(files.filter((f) => nodeImport.test(readFileSync(join(dir, f), "utf8")))).toEqual([]);
 	});
 });
