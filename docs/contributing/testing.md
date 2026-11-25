@@ -4,21 +4,21 @@ The rules every test is held to are in `AGENTS.md` → *Invariants*. This page i
 
 ## When to write which test
 
-Test behaviour once its shape settles. The app changes weekly, so a test pins what a user or caller sees, not how the code does it today.
+Test behaviour once its shape settles. The app changes weekly, so a test pins what a user or caller sees, not how the code does it.
 
 - A bug fix starts with a test that fails on the bug, at the highest seam that shows it (a journey, a route, a service's public method), then the fix.
-- A feature may start as a spike. Before its PR is ready it has tests at its public seam, or a journey, for the behaviour it ships. A test that breaks on a refactor with no change in behaviour is testing the wrong thing, so write no tests first for internals the next change will move.
+- A feature may start as a spike. Before its PR is ready it has tests at its public seam, or a journey, for the behaviour it ships. A test that breaks on a behaviour-preserving refactor tests the wrong thing: write none first for internals the next change will move.
 - Coverage shows a reviewer what is untested; it is not a target. Each package's floor in its `vitest.config.ts` is a ratchet: raise it, never lower it. A new module needs no per-file entry. On a PR, the *Unit tests* job lists the added lines no test runs, in its summary and as notices on the diff (`scripts/changed-line-coverage.mjs`); it never fails. CodeRabbit reviews tests against the test rules in `AGENTS.md`.
 
 A frontend unit test that reaches the API fails (`packages/frontend/src/test-setup.ts`): mock the hook or give the component the data it reads. Every PR touching `packages/frontend` ships or extends a spec covering its changed surface.
 
 ## Time and timeouts
 
-On CI, an api or frontend test that spends over 40% of its timeout fails (`VITEST_TIMEOUT_BUDGET`, read by `scripts/lib/timeout-budget-reporter.mjs`; each turbo test task passes the variable through). A test that uses that much of its timeout on a fast runner times out on a slow one.
+On CI, an api or frontend test that spends over 40% of its timeout fails (`VITEST_TIMEOUT_BUDGET`, read by `scripts/lib/timeout-budget-reporter.mjs`; each turbo test task passes the variable through).
 
-`test-later` in `ci.yml` runs the api's tests again with the clock 40 days ahead (libfaketime). It runs every api test but `test/scenarios/agent-browser.spec.ts`, because a real browser has no coherent clock under libfaketime. A test written against today's date fails there on its PR, not on the day it expires: use fake timers or a measured timeout, never today's date.
+`test-later` in `ci.yml` runs the api's tests again with the clock 40 days ahead (libfaketime). It runs every api test but `test/scenarios/agent-browser.spec.ts`, whose real browser has no coherent clock under it. So a test written against today's date fails on its PR: use fake timers or a measured timeout.
 
-API code reads time and signals through `src/core/clock.ts` and `src/infrastructure/dispatch/process-signals.ts`, so tests can fake them; Biome forbids direct calls.
+API code reads time and signals through `src/core/clock.ts` and `src/infrastructure/dispatch/process-signals.ts`; Biome forbids direct calls.
 
 An api `*.spec.ts` is small: fake clock, no database, process or socket, 1 s a test. A `*.int.spec.ts` is medium: real SQLite, git and timers, a timeout 3x its slowest test.
 
@@ -28,7 +28,7 @@ The core loop's journeys are written once and run on every target: [journeys.md]
 
 ## Flaky e2e tests
 
-A test that passes only on a retry is quarantined, not left to retry. Tag it `@quarantine` with its open `bug` issue's number on the same line as the tag, one issue per test:
+A test that passes only on a retry is quarantined, not retried. Tag it `@quarantine` with its open `bug` issue's number on the same line as the tag, one issue per test:
 
 ```gherkin
   # Quarantined: #891 - the inbox's new-alert-row journey passes on its first attempt
@@ -38,7 +38,7 @@ A test that passes only on a retry is quarantined, not left to retry. Tag it `@q
 
 It then runs in the non-blocking `chromium-quarantine` and `journeys-quarantine` projects, and the issue closes only when the tag comes off. Every run lists its flaky and failed tests in the job summary, and on the default branch a failing one opens or updates the `Quarantined e2e tests failing` issue.
 
-`pnpm quarantine:check` (`scripts/quarantine-check.mjs`) runs in `pnpm format-and-lint`, so in the `lint` job, and reads issue state through `gh`. It fails when a tag names no open issue on its own line, when more than 5 tags exist, or when a named issue is 14 or more days old. It names every offender. Past the limit, fix the test or delete it; do not tag a sixth.
+`pnpm quarantine:check` (`scripts/quarantine-check.mjs`) runs in `pnpm format-and-lint` and reads issue state through `gh`. It fails when a tag names no open issue on its own line, when more than 5 tags exist, or when a named issue is 14 or more days old. It names every offender; past the limit, fix the test or delete it; do not tag a sixth.
 
 ## The agent loop
 
