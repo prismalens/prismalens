@@ -202,6 +202,8 @@ export interface AcpSessionConfig {
 	permission: PermissionPolicy;
 	/** Sent as `_meta` on `session/new`. */
 	sessionMeta?: Record<string, unknown>;
+	/** An ACP `authenticate` method id sent after `initialize` when the agent advertised it (#1235). */
+	authenticate?: string;
 	initTimeoutMs?: number;
 	promptTimeoutMs?: number;
 	/** Raw wire lines, both directions, for the run transcript. Best effort. */
@@ -774,6 +776,24 @@ export class AcpSession {
 		this.takesDirectories =
 			init?.agentCapabilities?.sessionCapabilities?.additionalDirectories !=
 			null;
+		if (
+			config.authenticate &&
+			this.authMethods.some((m) => m.id === config.authenticate)
+		)
+			await this.request(
+				"authenticate",
+				{ methodId: config.authenticate },
+				config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
+			).catch((e: unknown) => {
+				// ACP auth_required, so the run reads as signed out, not as a broken agent.
+				if (!(e instanceof AcpRpcError)) throw e;
+				throw new AcpRpcError(
+					`Authentication required: ${config.authenticate} refused (${e.message})`,
+					-32000,
+					e.data,
+					e.raw,
+				);
+			});
 		const roots = this.takesDirectories && config.roots;
 		const params = {
 			...(roots

@@ -1211,3 +1211,50 @@ describe("AcpSession reopen noteReplayed and prelude (#1168)", () => {
 		await session.close();
 	});
 });
+
+describe("AcpSession authenticate (#1235)", () => {
+	// agent-host's fixture: session/new answers only after authenticate, and LOG records the method.
+	const GATE = join(
+		dirname(fileURLToPath(import.meta.url)),
+		"../../../agent-host/src/__fixtures__/method-gate.mjs",
+	);
+	const open = async (authenticate?: string) => {
+		const wire: string[] = [];
+		const session = new AcpSession({
+			command: process.execPath,
+			args: [GATE],
+			cwd: tmpdir(),
+			env: { ...process.env, LOG: join(tmpdir(), "acp-gate.log") },
+			permission: () => ({ allow: true, optionId: "once" }),
+			initTimeoutMs: 5_000,
+			promptTimeoutMs: 5_000,
+			onWire: (d, line) => {
+				if (d === "out") wire.push(line);
+			},
+			...(authenticate ? { authenticate } : {}),
+		});
+		const opened = await session.open().then(
+			() => "open",
+			(e: Error) => e.message,
+		);
+		await session.close();
+		const sent = wire
+			.map((l) => JSON.parse(l) as { method?: string; params?: unknown })
+			.filter((m) => m.method === "authenticate")
+			.map((m) => m.params);
+		return { opened, sent, sessionId: session.sessionId };
+	};
+
+	it("sends the advertised method before session/new, and the session opens", async () => {
+		expect(await open("oauth-personal")).toEqual({
+			opened: "open",
+			sent: [{ methodId: "oauth-personal" }],
+			sessionId: "s1",
+		});
+	});
+
+	it("never sends a method the agent did not advertise", async () => {
+		const r = await open("cursor_login");
+		expect([r.sent, r.opened]).toEqual([[], "Authentication required"]);
+	});
+});

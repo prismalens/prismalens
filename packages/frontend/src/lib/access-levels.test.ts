@@ -218,6 +218,13 @@ describe("agentNote variants (the four agent notes)", () => {
 	it("deepagents has no agent note", () => {
 		expect(agentNote(mockHarness("deepagents"))).toBeNull();
 	});
+
+	it("Antigravity's note is Google's terms in one line, and Cursor has none (#1235)", () => {
+		expect([agentNote(mockHarness("antigravity")), agentNote(mockHarness("cursor"))]).toEqual([
+			"Google's terms cover one person's own use of a personal sign-in here; runs an alert starts are your call.",
+			null,
+		]);
+	});
 });
 
 describe("levelRowLine, levelModeId, and levelSandbox", () => {
