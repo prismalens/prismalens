@@ -16,11 +16,11 @@ A frontend unit test that reaches the API fails (`packages/frontend/src/test-set
 
 On CI, an api or frontend test that spends over 40% of its timeout fails (`VITEST_TIMEOUT_BUDGET`, read by `scripts/lib/timeout-budget-reporter.mjs`; each turbo test task passes the variable through).
 
-`test-later` in `ci.yml` runs the api's tests again with the clock 40 days ahead (libfaketime). It skips only `test/scenarios/agent-browser.spec.ts`, whose real browser has no coherent clock under it. So a test written against today's date fails on its PR: use fake timers or a measured timeout.
+`test-later` in `ci.yml` runs the api's tests again with the clock 40 days ahead (libfaketime). It runs every api test but `test/scenarios/agent-browser.int.spec.ts`, whose real browser has no coherent clock. So a test written against today's date fails on its PR: use fake timers or a measured timeout.
 
 API code reads time and signals through `src/core/clock.ts` and `src/infrastructure/dispatch/process-signals.ts`; Biome forbids direct calls.
 
-An api `*.spec.ts` is small: fake clock, no database, process or socket, 1 s a test. A `*.int.spec.ts` is medium: real SQLite, git and timers, a timeout 3x its slowest test, at least 5 s. Until renamed, the `*.spec.ts` files in `LEGACY_MEDIUM` (`packages/api/vitest.config.ts`) run as medium, 120 s a test.
+An api `*.spec.ts` is small: fake clock, no database, process or socket (Biome forbids `child_process`), 1 s a test. A `*.int.spec.ts` is medium: real SQLite, git and timers, a timeout 3x its slowest test, at least 5 s.
 
 ## Journeys and scenarios
 

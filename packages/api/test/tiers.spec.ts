@@ -19,6 +19,10 @@ const all = [...specs(join(API, "src")), ...specs(join(API, "test"))].map(
 	(p) => relative(API, p).replaceAll("\\", "/"),
 );
 
+it("names a medium test *.int.spec.ts and no other suffix says medium (#1154)", () => {
+	expect(all.filter((f) => /\.(integration|e2e)\.spec\.ts$/.test(f))).toEqual([]);
+});
+
 it("gives every medium file its own timeout, so none runs on the 5 s default (#1154)", () => {
 	const missing = all
 		.filter((f) => f.endsWith(".int.spec.ts"))
