@@ -12,6 +12,7 @@ import { AgentDetail, parseArgs } from "./AgentDetail";
 
 const mutateSpy = vi.fn();
 let mockSettings: Record<string, unknown> = { harness: "claude-code" };
+let mockSelection: { harness?: string } = { harness: "claude-code" };
 const mutateAsyncSpy = vi.fn();
 
 const mockHarnesses: HarnessStatus[] = [
@@ -84,7 +85,7 @@ vi.mock("@/lib/api/hooks", () => ({
 	useHarnesses: () => ({
 		data: {
 			harnesses: mockHarnesses,
-			selection: { harness: "claude-code" },
+			selection: mockSelection,
 		},
 		isLoading: false,
 		isError: false,
@@ -203,6 +204,9 @@ beforeEach(() => {
 		isError: false,
 	};
 	mockSettings = { harness: "claude-code" };
+	mockSelection = { harness: "claude-code" };
+	mockHarnesses[1].added = false;
+	mockHarnesses[1].off = false;
 });
 
 afterEach(async () => {
@@ -467,6 +471,42 @@ describe("AgentDetail header (#911)", () => {
 	});
 });
 
+describe("AgentDetail last check that did not answer (#1171)", () => {
+	it("states the detail and the time in the line itself, with nothing to hover or focus", async () => {
+		mockHarnesses[0].checked = {
+			at: "2026-11-20T10:00:00.000Z",
+			outcome: "answers-acp",
+			detail: "answers ACP",
+			version: null,
+			companionVersion: null,
+			servedModel: null,
+			effort: null,
+			modes: null,
+			efforts: null,
+			images: false,
+			sandbox: null,
+			lastTry: {
+				at: "2026-11-20T11:00:00.000Z",
+				outcome: "no-answer",
+				detail: "no answer in 10s",
+			},
+		};
+		try {
+			await act(async () => {
+				root.render(<AgentDetail id="claude-code" />);
+			});
+			const line = container.querySelector(
+				'[data-testid="agent-detail-last-try"]',
+			);
+			expect(line?.textContent).toContain("Last check timed out");
+			expect(line?.textContent).toContain("no answer in 10s");
+			expect(line?.hasAttribute("tabindex")).toBe(false);
+		} finally {
+			mockHarnesses[0].checked = null;
+		}
+	});
+});
+
 describe("AgentDetail runtime and environment (#907)", () => {
 	it("says Overrides the environment only under a stored variable the host has too (#911)", async () => {
 		mockHarnesses[0].envVars = [
@@ -486,6 +526,20 @@ describe("AgentDetail runtime and environment (#907)", () => {
 	});
 
 	it("warns under a stored API key only that a signed-in agent may use its own credential (#935)", async () => {
+		// The note waits for a check that answered (#1171).
+		mockHarnesses[0].checked = {
+			at: "",
+			outcome: "answers-acp",
+			detail: "answers ACP",
+			version: null,
+			companionVersion: null,
+			servedModel: null,
+			effort: null,
+			modes: null,
+			efforts: null,
+			images: false,
+			sandbox: null,
+		};
 		mockHarnesses[0].envVars = [
 			{ name: "ANTHROPIC_API_KEY", state: "set", inEnv: false },
 			{ name: "HTTPS_PROXY", state: "set", inEnv: false },
@@ -502,6 +556,7 @@ describe("AgentDetail runtime and environment (#907)", () => {
 		expect(warned("HTTPS_PROXY")).toBe(false);
 		expect(warned("ANTHROPIC_AUTH_TOKEN")).toBe(false);
 		mockHarnesses[0].envVars = [];
+		mockHarnesses[0].checked = null;
 	});
 
 	it("names each variable Not set, Key set or From environment, never a value, and adds one as a password field", async () => {
@@ -599,6 +654,74 @@ describe("AgentDetail runtime and environment (#907)", () => {
 		);
 		expect(container.querySelector('[data-testid="env-add"]')).toBeNull();
 	});
+
+	it("shows Remove from list only for added-only agents, and hides it when off, chosen, or binaryPath set (#1171)", async () => {
+		mockHarnesses[1].added = true;
+		mockHarnesses[1].off = false;
+		mockSettings = { harness: "claude-code" };
+		mockSelection = { harness: "claude-code" };
+
+		await act(async () => {
+			root.render(<AgentDetail id="codex" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-remove"]'),
+		).not.toBeNull();
+
+		mockHarnesses[1].off = true;
+		await act(async () => {
+			root.render(<AgentDetail id="codex" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-remove"]'),
+		).toBeNull();
+
+		mockHarnesses[1].off = false;
+		mockSettings = { harness: "codex" };
+		await act(async () => {
+			root.render(<AgentDetail id="codex" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-remove"]'),
+		).toBeNull();
+
+		mockSettings = { harness: "claude-code" };
+		mockSelection = { harness: "codex" };
+		await act(async () => {
+			root.render(<AgentDetail id="codex" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-remove"]'),
+		).toBeNull();
+
+		mockSelection = { harness: "claude-code" };
+		mockSettings = {
+			harness: "claude-code",
+			binaryPaths: { codex: "/custom/codex" },
+		};
+		await act(async () => {
+			root.render(<AgentDetail id="codex" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-remove"]'),
+		).toBeNull();
+	});
+
+	it("toggling Use this agent switch PATCHes off (#1171)", async () => {
+		await act(async () => {
+			root.render(<AgentDetail id="claude-code" />);
+		});
+		const switchEl = container.querySelector(
+			'[data-testid="agent-detail-on"]',
+		) as HTMLButtonElement;
+		expect(switchEl).not.toBeNull();
+		await act(async () => {
+			switchEl.click();
+		});
+		expect(mutateSpy).toHaveBeenCalledWith({
+			off: { "claude-code": true },
+		});
+	});
 });
 
 describe("parseArgs", () => {
@@ -613,5 +736,52 @@ describe("parseArgs", () => {
 			"Arguments can't hold shell operators.",
 		);
 		expect(parseArgs("")).toEqual([]);
+	});
+});
+
+describe("AgentDetail: which agent runs next", () => {
+	it("offers Use for new runs on a runnable agent that is not the setting, and sets the harness", async () => {
+		mockHarnesses[2].runnable = true;
+		mockHarnesses[2].installed = true;
+		await act(async () => {
+			root.render(<AgentDetail id="opencode" />);
+		});
+		const button = container.querySelector(
+			'[data-testid="agent-detail-use-for-new-runs"]',
+		) as HTMLButtonElement;
+		expect(button.textContent).toBe("Use for new runs");
+		expect(button.disabled).toBe(false);
+		await act(async () => button.click());
+		expect(mutateSpy).toHaveBeenCalledWith({ harness: "opencode" });
+		mockHarnesses[2].runnable = false;
+		mockHarnesses[2].installed = false;
+	});
+
+	it("reads In use, disabled, on the agent the setting names", async () => {
+		mockHarnesses[0].runnable = true;
+		await act(async () => {
+			root.render(<AgentDetail id="claude-code" />);
+		});
+		const button = container.querySelector(
+			'[data-testid="agent-detail-use-for-new-runs"]',
+		) as HTMLButtonElement;
+		expect(button.textContent).toBe("In use");
+		expect(button.disabled).toBe(true);
+	});
+
+	it("names the providers an agent holds a login for as its account", async () => {
+		mockHarnesses[2].checked = {
+			outcome: "answers-acp",
+			detail: "answers ACP",
+			providers: ["Ollama Cloud", "Google"],
+		} as HarnessStatus["checked"];
+		await act(async () => {
+			root.render(<AgentDetail id="opencode" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-detail-account"]')
+				?.textContent,
+		).toBe("Signed in to Ollama Cloud, Google");
+		mockHarnesses[2].checked = null;
 	});
 });

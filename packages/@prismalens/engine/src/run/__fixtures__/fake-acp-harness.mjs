@@ -36,7 +36,10 @@
 // (Claude Code's way), then runs as "ok". argv flags: --clamp-auto answers a switch to `auto` with
 // `acceptEdits` as current; --refuse-mode answers every mode switch with an RPC error.
 // FAKE_AUTH_STATUS=<kind> advertises the authStatus extension and pushes `_auth/status_update`
-// FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing.
+// FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing. It also advertises
+// ACP auth.status and answers auth/status: none is unauthenticated, silent unknown, else authenticated.
+// FAKE_AUTH_LABEL / FAKE_AUTH_EMAIL name the account it pushes and answers.
+// FAKE_MODE_FILE=<path>: the file's text, when present, replaces FAKE_ACP_MODE at startup.
 // FAKE_READ_DIR=<dir under cwd>: "resume" and "continue" first read every file there with a `read`
 // tool call whose output is the file's text, as an agent reading the pre-run copies would.
 // Reopen paths (#942): FAKE_SESSION_RESUME=1 advertises sessionCapabilities.resume and answers
@@ -48,7 +51,15 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
-const mode = process.env.FAKE_ACP_MODE ?? "ok";
+const modeFile = process.env.FAKE_MODE_FILE;
+const mode =
+	(modeFile && existsSync(modeFile)
+		? readFileSync(modeFile, "utf8").trim()
+		: "") ||
+	process.env.FAKE_ACP_MODE ||
+	"ok";
+const authLabel = process.env.FAKE_AUTH_LABEL ?? "fake";
+const authEmail = process.env.FAKE_AUTH_EMAIL;
 const cwd = process.cwd();
 const clampAuto =
 	process.argv.includes("--clamp-auto") || Boolean(process.env.FAKE_CLAMP_AUTO);
@@ -611,7 +622,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 						? { promptCapabilities: { image: true } }
 						: {}),
 					...(process.env.FAKE_AUTH_STATUS
-						? { _meta: { authStatus: {} } }
+						? { _meta: { authStatus: {} }, auth: { status: {} } }
 						: {}),
 					...(process.env.FAKE_ADDITIONAL_DIRS
 						? { sessionCapabilities: { additionalDirectories: {} } }
@@ -632,10 +643,33 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 					send({
 						jsonrpc: "2.0",
 						method: "_auth/status_update",
-						params: { authStatus: { kind, label: "fake" } },
+						params: {
+							authStatus: {
+								kind,
+								label: authLabel,
+								...(authEmail ? { account: { email: authEmail } } : {}),
+							},
+						},
 					}),
 				Number(process.env.FAKE_AUTH_DELAY_MS ?? 0),
 			);
+	} else if (msg.method === "auth/status") {
+		const kind = process.env.FAKE_AUTH_STATUS;
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			result:
+				kind === "none"
+					? { state: "unauthenticated", accounts: [] }
+					: kind === "silent" || !kind
+						? { state: "unknown" }
+						: {
+								state: "authenticated",
+								accounts: [
+									{ label: authLabel, email: authEmail ?? null, active: true },
+								],
+							},
+		});
 	} else if (msg.method === "session/new" && mode === "auth-required") {
 		send({
 			jsonrpc: "2.0",

@@ -29,6 +29,7 @@ import {
 	scopeThreadId,
 } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	attachmentsDir,
@@ -111,7 +112,7 @@ export class DraftsService implements OnApplicationBootstrap, OnModuleDestroy {
 				this.logger.warn(`Could not sweep orphaned draft files: ${String(e)}`),
 			);
 		await sweepFiles();
-		this.orphanTimer = setInterval(
+		this.orphanTimer = clock.setInterval(
 			() => void sweepFiles(),
 			24 * 60 * 60 * 1000,
 		);
@@ -277,7 +278,7 @@ export class DraftsService implements OnApplicationBootstrap, OnModuleDestroy {
 	 * Draft files older than 7 days that no draft lists (removed from the box, or left by a
 	 * draft that is gone) and no run claimed (#1101). Returns how many went.
 	 */
-	async sweepOrphanFiles(now = new Date()): Promise<number> {
+	async sweepOrphanFiles(now = clock.date()): Promise<number> {
 		const before = new Date(now.getTime() - DRAFT_FILE_ORPHAN_AFTER_MS);
 		const old = await this.prisma.attachment.findMany({
 			where: {
@@ -298,7 +299,7 @@ export class DraftsService implements OnApplicationBootstrap, OnModuleDestroy {
 	}
 
 	/** Drafts untouched for 30 days go, with the files uploaded to them and never sent. */
-	async sweep(now = new Date()): Promise<number> {
+	async sweep(now = clock.date()): Promise<number> {
 		const before = new Date(now.getTime() - DRAFT_SWEEP_AFTER_MS);
 		const old = await this.prisma.composerDraft.findMany({
 			where: { updatedAt: { lt: before } },

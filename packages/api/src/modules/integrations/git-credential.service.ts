@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { Injectable, Logger } from "@nestjs/common";
 import type { GitHostView } from "@prismalens/contracts/schemas";
 import { isLegacyTemplateId } from "@prismalens/integrations";
+import * as clock from "../../core/clock.js";
 import {
 	type EnvGitToken,
 	envTokenFor,
@@ -74,7 +75,7 @@ export class GitCredentialAmbiguousError extends GitFailure {
 	}
 }
 
-const expired = (t: HostToken, now = new Date()) =>
+const expired = (t: HostToken, now = clock.date()) =>
 	!!t.tokenExpiresAt && t.tokenExpiresAt < now;
 const usable = (t: HostToken) => t.status === "ACTIVE" && !expired(t);
 /** Every saved token for the host but a revoked one: two make an unpinned repository ambiguous (#848). */
@@ -163,7 +164,7 @@ export class GitCredentialService {
 		if (ref.sourceKind === "folder") return Promise.resolve(FOLDER);
 		const key = `${ref.url}\0${ref.pick ?? ""}\0${ref.connectionId ?? ""}`;
 		const hit = this.cache.get(key);
-		if (hit && Date.now() - hit.at < PREVIEW_TTL_MS) return hit.value;
+		if (hit && clock.now() - hit.at < PREVIEW_TTL_MS) return hit.value;
 		const value = this.resolve(ref, "preview")
 			.then((r) => r.display)
 			.catch((err: unknown) => {
@@ -172,7 +173,7 @@ export class GitCredentialService {
 				);
 				return PUBLIC;
 			});
-		this.cache.set(key, { at: Date.now(), value });
+		this.cache.set(key, { at: clock.now(), value });
 		return value;
 	}
 
@@ -279,7 +280,7 @@ export class GitCredentialService {
 				...envHosts,
 			]),
 		].sort();
-		const now = new Date();
+		const now = clock.date();
 		return Promise.all(
 			hosts.map(async (host): Promise<GitHostView> => {
 				const stored = hostTokens(tokens, host);
@@ -637,7 +638,10 @@ export class GitCredentialService {
 
 	private async markUsed(connectionId: string): Promise<void> {
 		await this.prisma.connection
-			.update({ where: { id: connectionId }, data: { lastUsedAt: new Date() } })
+			.update({
+				where: { id: connectionId },
+				data: { lastUsedAt: clock.date() },
+			})
 			.catch(() => undefined);
 	}
 

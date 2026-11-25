@@ -9,8 +9,22 @@ const CONTEXT_PACK: Record<string, string> = {
 	TELEMETRY: "Telemetry",
 };
 
-/** A report source in words: the brief's own section names never reach the page (#673). */
+const words = (key: string) => key.replace(/[_-]+/g, " ").trim().toLowerCase();
+
+/**
+ * A report source in words: the brief's own section names and the alert's
+ * field paths (`annotations.summary`) never reach the page (#673).
+ */
 export function sourceLabel(source: string): string {
+	const field = /^(?:alert[\s.:]+)?(annotations|labels)\.([\w-]+)$/i.exec(
+		source.trim(),
+	);
+	if (field?.[1] && field[2]) {
+		const what = words(field[2]);
+		return field[1].toLowerCase() === "labels"
+			? `Alert label ${what}`
+			: `Alert ${what}`;
+	}
 	const m = /^context-pack:\s*(.+)$/i.exec(source.trim());
 	if (!m?.[1]) return source;
 	const key = m[1].trim().toUpperCase();

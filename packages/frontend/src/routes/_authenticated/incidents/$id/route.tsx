@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 /**
  * The incident's layout (#811): no band or tabs of its own; the overview and
  * the run pages each draw their header. It holds the record they share and
@@ -50,6 +53,15 @@ export const Route = createFileRoute("/_authenticated/incidents/$id")({
 	component: IncidentLayout,
 });
 
+type DraftState = {
+	choice?: DraftChoice;
+	text: string;
+	verb?: RunVerb;
+	files?: File[];
+};
+// Drafts outlive the page: open Alerts, come Back, and the box reads as it was left (#893).
+const keptDrafts: Record<string, DraftState> = {};
+
 function IncidentLayout() {
 	const { id } = Route.useParams();
 	const search = Route.useSearch();
@@ -69,19 +81,16 @@ function IncidentLayout() {
 	const createNote = useCreateTimelineEntry();
 
 	const [startedId, setStartedId] = useState<string | null>(null);
-	type DraftState = {
-		choice?: DraftChoice;
-		text: string;
-		verb?: RunVerb;
-		files?: File[];
-	};
-	const [drafts, setDrafts] = useState<Record<string, DraftState>>({});
+	const [drafts, setDrafts] = useState<Record<string, DraftState>>(() => ({
+		...keptDrafts,
+	}));
 	const draftOf = drafts[id] ?? { text: "" };
 	const setDraft = (patch: Partial<DraftState>) =>
-		setDrafts((all) => ({
-			...all,
-			[id]: { ...(all[id] ?? { text: "" }), ...patch },
-		}));
+		setDrafts((all) => {
+			const next = { ...(all[id] ?? { text: "" }), ...patch };
+			keptDrafts[id] = next;
+			return { ...all, [id]: next };
+		});
 
 	const runs = incident?.investigations ?? [];
 	const started =

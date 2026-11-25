@@ -30,14 +30,13 @@ e2e/journeys/manual-authorship.spec.ts	T3	1
 e2e/journeys/overview-shots.spec.ts	T2	8
 e2e/journeys/overview.spec.ts	T2	9
 e2e/journeys/pages-titles-more.spec.ts	T1	1
-e2e/journeys/panel-shell.spec.ts	T1	1
 e2e/journeys/panel-shell.spec.ts	T2	2
 e2e/journeys/panel-views.spec.ts	T2	9
 e2e/journeys/run-page.spec.ts	T2	2
 e2e/journeys/schedules.spec.ts	T1	1
 e2e/journeys/settings-frame.spec.ts	T2	1
 e2e/journeys/settings-harness.spec.ts	T2	6
-e2e/journeys/thread-list-more.spec.ts	T2	5
+e2e/journeys/thread-list-more.spec.ts	T2	2
 e2e/journeys/thread-list.spec.ts	T2	1
 e2e/pl-up/single-origin.spec.ts	T1	2
 e2e/stacks.test.ts	T1	4
@@ -67,7 +66,6 @@ measure/ci-minutes	review-findings-sweep.yml	1
 measure/ci-minutes	telemetry-health.yml	7
 measure/security	attacks-failing	1
 measure/security	review-stale-commits	742
-src/components/agent/AgentMark.test.tsx	T2	4
 src/components/agent/AgentPicker.test.ts	T2	1
 src/components/agent/AgentPicker.tsx	fact-unmarked	3
 src/components/alerts/AlertsBlank.tsx	copy-handrolled	1
@@ -208,7 +206,9 @@ src/components/usage/usage-math.ts	time-handmade	4
 src/design/gallery.attention.tsx	L7	1
 src/design/gallery.kit.tsx	L3	2
 src/design/gallery.kit.tsx	L7	1
+src/design/gallery.kit.tsx	agent-id-handmade	6
 src/design/gallery.phone.tsx	fact-unmarked	1
+src/design/gallery.usage.tsx	agent-id-handmade	5
 src/hooks/use-settle-undo.test.tsx	as-never	1
 src/hooks/use-shortcuts.ts	biome-ignore	1
 src/lib/analytics/incident-analytics.test.ts	T2	1
@@ -267,6 +267,7 @@ src/registry/conditions/twoDevices.conditions.ts	G4-debt	3
 src/registry/conditions/twoDevices.conditions.ts	G4-uncased	1
 src/registry/conditions/usage.conditions.ts	G4-debt	4
 src/registry/conditions/usage.conditions.ts	G4-uncased	1
+src/routes/[_]design.tsx	agent-id-handmade	4
 src/routes/_authenticated/automation.tsx	biome-ignore	2
 src/routes/_authenticated/incidents/$id/route.tsx	biome-ignore	1
 src/routes/_authenticated/projects/index.tsx	as-never	1

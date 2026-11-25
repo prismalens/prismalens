@@ -1,31 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { LiveBeat } from "@prismalens/contracts";
-
-const BEAT: LiveBeat = { beat: true };
+import * as clock from "../clock.js";
 
 /**
  * `source`, with a beat first and after every `ms` it stays quiet, so a client can tell a
  * silent drop from a quiet stream (#1101 category 12). Ends when `source` or `signal` ends.
  */
-export async function* withBeat<T>(
+export async function* withBeat<T, B>(
 	source: AsyncGenerator<T>,
 	ms: number,
-	signal?: AbortSignal,
-): AsyncGenerator<T | LiveBeat> {
-	yield BEAT;
+	signal: AbortSignal | undefined,
+	beat: () => B,
+): AsyncGenerator<T | B> {
+	yield beat();
 	let next = source.next();
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
 		while (!signal?.aborted) {
 			const quiet = new Promise<"beat">((r) => {
-				timer = setTimeout(() => r("beat"), ms);
+				timer = clock.setTimeout(() => r("beat"), ms);
 			});
 			const got = await Promise.race([next, quiet]);
 			clearTimeout(timer);
 			if (got === "beat") {
-				yield BEAT;
+				yield beat();
 				continue;
 			}
 			if (got.done) return;

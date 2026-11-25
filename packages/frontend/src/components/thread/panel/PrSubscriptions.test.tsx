@@ -7,13 +7,11 @@ import {
 	type PrSubscriptionView,
 	resolveSpec,
 } from "@prismalens/contracts";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InboundRowView } from "@/components/investigation/transcript/InboundRow";
 import { PrSubscriptionNode } from "@/components/investigation/transcript/PrSubscriptionNode";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { type RenderedApp, renderWithApp } from "@/test/render";
 import { PrSubscriptions } from "./PrSubscriptions";
 
 (
@@ -129,12 +127,10 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 let container: HTMLDivElement;
-let root: Root;
+let app: RenderedApp | undefined;
 
 beforeEach(() => {
-	container = document.createElement("div");
-	document.body.appendChild(container);
-	root = createRoot(container);
+	app = undefined;
 	subState.subs = [];
 	subState.isPending = false;
 	subState.isError = false;
@@ -142,26 +138,10 @@ beforeEach(() => {
 	vi.clearAllMocks();
 });
 
-afterEach(async () => {
-	await act(async () => root.unmount());
-	container.remove();
-});
-
-function renderWithClient(ui: ReactNode) {
-	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false } },
-	});
-	return (
-		<QueryClientProvider client={queryClient}>
-			<TooltipProvider>{ui}</TooltipProvider>
-		</QueryClientProvider>
-	);
-}
-
 async function show(ui: ReactNode) {
-	await act(async () => {
-		root.render(renderWithClient(ui));
-	});
+	if (app) await app.rerender(ui);
+	else app = await renderWithApp(ui);
+	container = app.container;
 }
 
 function baseSub(over: Partial<PrSubscriptionView> = {}): PrSubscriptionView {

@@ -12,7 +12,7 @@
  */
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { GitSpawnError } from "../../core/harness/git-spawn.js";
@@ -119,7 +119,7 @@ describe("RepositoriesService.addSource", () => {
 			expect.objectContaining({
 				data: expect.objectContaining({
 					sourceKind: "folder",
-					url: "/no/such/dir",
+					url: resolve("/no/such/dir"),
 					syncError: "No such folder: /no/such/dir",
 					syncBranch: null,
 					syncHead: null,

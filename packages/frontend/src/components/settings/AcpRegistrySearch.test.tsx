@@ -217,6 +217,7 @@ describe("agent-env (#848)", () => {
 					name="ANTHROPIC_API_KEY"
 					state="set"
 					inEnv={true}
+					answered
 				/>,
 			);
 		});

@@ -12,9 +12,17 @@ export class LiveController {
 	@Implement(liveContract)
 	liveRoutes() {
 		return {
-			changes: implement(liveContract.changes).handler(({ signal }) =>
-				withBeat(liveChanges.subscribe(signal), STREAM_BEAT_MS, signal),
-			),
+			changes: implement(liveContract.changes).handler(({ input, signal }) => {
+				// A beat carries the last cursor this connection sent, never the global one: a beat
+				// ahead of a replay would make the client drop that replay as old (#1181).
+				const sent = { cursor: input.after ?? liveChanges.cursor() };
+				return withBeat(
+					liveChanges.subscribe(signal, input.after, sent),
+					STREAM_BEAT_MS,
+					signal,
+					() => ({ beat: true as const, cursor: sent.cursor }),
+				);
+			}),
 		};
 	}
 }

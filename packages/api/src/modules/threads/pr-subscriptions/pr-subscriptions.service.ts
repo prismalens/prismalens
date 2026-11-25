@@ -39,6 +39,7 @@ import {
 import type { Prisma, PrSubscription } from "@prismalens/database";
 import { sanitizeUntrustedLine } from "@prismalens/engine";
 import { Logger } from "@prismalens/logger";
+import * as clock from "../../../core/clock.js";
 import { PrismaService } from "../../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../../infrastructure/dispatch/dispatch.service.js";
 import {
@@ -197,7 +198,7 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 	private ticking = false;
 	/** Origins refusing for a while, until epoch ms (D2). */
 	private readonly cooling = new Map<string, number>();
-	now: () => Date = () => new Date();
+	now: () => Date = () => clock.date();
 
 	constructor(
 		private readonly prisma: PrismaService,
@@ -214,7 +215,7 @@ export class PrSubscriptionsService implements OnModuleInit, OnModuleDestroy {
 		this.investigations.onEventsAppended((id, events) =>
 			this.onEvents(id, events),
 		);
-		this.timer = setInterval(() => {
+		this.timer = clock.setInterval(() => {
 			void this.tick().catch((e) =>
 				this.logger.warn(`A PR subscription pass failed: ${String(e)}`),
 			);

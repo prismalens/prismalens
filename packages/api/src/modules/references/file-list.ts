@@ -7,6 +7,7 @@ import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
+import * as clock from "../../core/clock.js";
 import { gitEnv } from "../../core/harness/git-env.js";
 
 // `ignore` ships CommonJS whose default export NodeNext types cannot call.
@@ -156,7 +157,7 @@ export class FileLister {
 
 	constructor(
 		private readonly cap = FILE_LIST_CAP,
-		private readonly now: () => number = Date.now,
+		private readonly now: () => number = clock.now,
 		private readonly dirCap = DIR_WALK_CAP,
 	) {}
 

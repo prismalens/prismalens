@@ -11,7 +11,7 @@ import snapshot from "./model-makers.json" with { type: "json" };
 export interface ModelMaker {
 	id: string;
 	name: string;
-	/** Its tile's letters: no maker's logo is drawn while its terms rule that out. */
+	/** Its tile's letters, for a maker with no published logo (`frontend/src/assets/brands.ts`). */
 	letters: string;
 }
 

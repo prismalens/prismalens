@@ -3,10 +3,9 @@
 // Copyright 2026 Sumit Patel
 
 import type { IncidentWithRelations } from "@prismalens/contracts";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { renderWithApp } from "@/test/render";
 import { IncidentHeader } from "./IncidentHeader";
 
 vi.mock("@tanstack/react-router", () => ({
@@ -50,10 +49,6 @@ vi.mock("./NoteDialog", () => ({
 	NoteDialog: () => null,
 }));
 
-(
-	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
 const makeIncident = (
 	overrides: Partial<IncidentWithRelations> = {},
 ): IncidentWithRelations =>
@@ -74,51 +69,26 @@ const makeIncident = (
 	}) as unknown as IncidentWithRelations;
 
 describe("IncidentHeader", () => {
-	let container: HTMLDivElement;
-	let root: Root;
-	let queryClient: QueryClient;
-
-	beforeEach(() => {
-		container = document.createElement("div");
-		document.body.appendChild(container);
-		root = createRoot(container);
-		queryClient = new QueryClient({
-			defaultOptions: {
-				queries: { retry: false },
-				mutations: { retry: false },
-			},
-		});
-	});
-
-	afterEach(async () => {
-		await act(async () => root.unmount());
-		container.remove();
-	});
-
 	it("renders panel-toggle button when details prop is passed, clicking toggles panel", async () => {
 		const onToggle = vi.fn();
 		const incident = makeIncident();
 
-		await act(async () => {
-			root.render(
-				<QueryClientProvider client={queryClient}>
-					<IncidentHeader
-						incident={incident}
-						view="Run 1"
-						onResolve={vi.fn()}
-						onReopen={vi.fn()}
-						onEditCause={vi.fn()}
-						details={{
-							open: false,
-							onToggle,
-							label: "Open the panel",
-							flagged: 0,
-							warns: [],
-						}}
-					/>
-				</QueryClientProvider>,
-			);
-		});
+		const { container } = await renderWithApp(
+			<IncidentHeader
+				incident={incident}
+				view="Run 1"
+				onResolve={vi.fn()}
+				onReopen={vi.fn()}
+				onEditCause={vi.fn()}
+				details={{
+					open: false,
+					onToggle,
+					label: "Open the panel",
+					flagged: 0,
+					warns: [],
+				}}
+			/>,
+		);
 
 		const toggleBtn = container.querySelector<HTMLButtonElement>(
 			'[data-testid="panel-toggle"]',
@@ -138,26 +108,22 @@ describe("IncidentHeader", () => {
 		const onToggle = vi.fn();
 		const incident = makeIncident();
 
-		await act(async () => {
-			root.render(
-				<QueryClientProvider client={queryClient}>
-					<IncidentHeader
-						incident={incident}
-						view="Run 1"
-						onResolve={vi.fn()}
-						onReopen={vi.fn()}
-						onEditCause={vi.fn()}
-						details={{
-							open: true,
-							onToggle,
-							label: "Close pane",
-							flagged: 0,
-							warns: [],
-						}}
-					/>
-				</QueryClientProvider>,
-			);
-		});
+		const { container } = await renderWithApp(
+			<IncidentHeader
+				incident={incident}
+				view="Run 1"
+				onResolve={vi.fn()}
+				onReopen={vi.fn()}
+				onEditCause={vi.fn()}
+				details={{
+					open: true,
+					onToggle,
+					label: "Close pane",
+					flagged: 0,
+					warns: [],
+				}}
+			/>,
+		);
 
 		const toggleBtn = container.querySelector<HTMLButtonElement>(
 			'[data-testid="panel-toggle"]',
@@ -170,19 +136,15 @@ describe("IncidentHeader", () => {
 	it("does not render panel-toggle when details prop is omitted", async () => {
 		const incident = makeIncident();
 
-		await act(async () => {
-			root.render(
-				<QueryClientProvider client={queryClient}>
-					<IncidentHeader
-						incident={incident}
-						view="Run 1"
-						onResolve={vi.fn()}
-						onReopen={vi.fn()}
-						onEditCause={vi.fn()}
-					/>
-				</QueryClientProvider>,
-			);
-		});
+		const { container } = await renderWithApp(
+			<IncidentHeader
+				incident={incident}
+				view="Run 1"
+				onResolve={vi.fn()}
+				onReopen={vi.fn()}
+				onEditCause={vi.fn()}
+			/>,
+		);
 
 		const toggleBtn = container.querySelector('[data-testid="panel-toggle"]');
 		expect(toggleBtn).toBeNull();

@@ -26,7 +26,7 @@ import {
 } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { cpuLoad } from "../../packages/@prismalens/registry/src/stamp.ts";
+import { cpuLoad } from "../../packages/@prismalens/registry/src/ui/stamp.ts";
 import { buildForSim } from "../build-cache.mjs";
 import { freePort } from "../fakes/conditions/lib.mjs";
 import { installFakeAgent } from "../fakes/fake-acp-agent.mjs";
@@ -622,7 +622,13 @@ async function up() {
 				.replaceAll("{slowUrl}", slowUrl ?? url)
 				.replaceAll("{thread}", thread ?? "");
 			log(`probe ${c.id}`);
-			const r = runLine(line, stageEnv, join(SIM, "logs", `probe-${c.id}.log`));
+			const r = runLine(
+				line,
+				stageEnv,
+				join(SIM, "logs", `probe-${c.id}.log`),
+				// A census probe (net.slow-link) measures for most of an hour.
+				3_600_000,
+			);
 			if (!r.ok) log(`probe ${c.id} failed; see .sim/logs/probe-${c.id}.log`);
 		}
 	}

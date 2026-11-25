@@ -1,0 +1,33 @@
+{
+	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+	"files": {
+		"ignoreUnknown": true,
+		"includes": ["**/*.ts", "**/*.tsx", "!**/*.d.ts", "!**/*.gen.ts"]
+	},
+	"javascript": { "parser": { "unsafeParameterDecoratorsEnabled": true } },
+	"linter": { "enabled": true, "rules": { "preset": "none" } },
+	"plugins": [
+		{
+			"path": "./packages/frontend/biome-plugins/registry/l9-hand-list.grit",
+			"includes": [
+				"**",
+				"!**/*.test.ts",
+				"!**/*.test.tsx",
+				"!**/*.spec.ts",
+				"!packages/@prismalens/agent-host/src/registry/**"
+			]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/t1-bare-assertion.grit",
+			"includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/t2-expect-in-branch.grit",
+			"includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"]
+		},
+		{
+			"path": "./packages/frontend/biome-plugins/registry/t3-early-return.grit",
+			"includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts"]
+		}
+	]
+}

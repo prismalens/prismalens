@@ -37,6 +37,23 @@ export function candidateVersion(own, published) {
 }
 
 /**
+ * A draft release keeps its own version and upgrades from the releases published below it, so an
+ * older draft still gets its proof while a newer release holds `latest`.
+ * @param {string} own the draft's version
+ * @param {string[]} published
+ */
+export function draftPlan(own, published) {
+	if (published.includes(own))
+		throw new Error(
+			`${own} is already on npm; a release proof needs an unpublished one`,
+		);
+	return {
+		candidate: own,
+		releases: releasesFrom(published).filter((v) => semver.lt(v, own)),
+	};
+}
+
+/**
  * The upgrades the chain runs: each release to the next, the newest to the candidate, and the
  * oldest straight to the candidate, which skips every migration between.
  * @param {string[]} releases oldest first

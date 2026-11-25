@@ -6,6 +6,7 @@ import { Implement, implement, ORPCError } from "@orpc/nest";
 import { threadTreeContract } from "@prismalens/contracts";
 import type { Request } from "express";
 import { requireOwner } from "../../core/auth/owner.js";
+import { sharedRead } from "../../core/live/shared-read.js";
 import { ProposalsService } from "./proposals.service.js";
 import { ThreadTreeService } from "./thread-tree.service.js";
 import { TreeSettings } from "./tree-settings.service.js";
@@ -33,8 +34,13 @@ export class ThreadTreeController {
 	routes() {
 		return {
 			// GET /threads/:id/links - Started by, and the threads it started
-			links: implement(threadTreeContract.links).handler(({ input }) =>
-				this.linksOf(input.id),
+			links: implement(threadTreeContract.links).handler(({ input, context }) =>
+				sharedRead(
+					"links",
+					input.id,
+					() => this.linksOf(input.id),
+					context?.request,
+				),
 			),
 
 			// POST /threads/:id/proposals/:pid/apply - Host only, through the normal service

@@ -210,7 +210,11 @@ function SavedMark() {
 	useEffect(
 		() =>
 			client.getMutationCache().subscribe((e) => {
-				if (e.type === "updated" && e.mutation.state.status === "success")
+				if (
+					e.type === "updated" &&
+					e.mutation.state.status === "success" &&
+					!e.mutation.meta?.notASave
+				)
 					setAt(Date.now());
 			}),
 		[client],

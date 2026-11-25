@@ -36,3 +36,32 @@ jobs:
 
       - name: Audit (fail on high or critical)
         run: pnpm audit --audit-level=high
+
+  # A red audit opens one issue; the next green one closes it (#1154).
+  report:
+    name: Report the audit
+    needs: audit
+    if: always() && needs.audit.result != 'cancelled' && github.repository == 'prismalens/prismalens'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions
+            scripts
+          sparse-checkout-cone-mode: false
+
+      - uses: ./.github/actions/report-failure
+        with:
+          title: "Dependency audit failing"
+          labels: dependencies
+          ok: ${{ needs.audit.result == 'success' }}
+          body: |
+            The weekly `pnpm audit --audit-level=high` ended `${{ needs.audit.result }}`: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Dependabot opens the fix PRs. This issue closes itself on the next green audit.

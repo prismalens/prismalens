@@ -3,11 +3,10 @@
 // Copyright 2026 Sumit Patel
 
 import type { CanonicalEvent } from "@prismalens/contracts";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ThreadWindowEvents } from "@/lib/thread-window/window-events-context";
+import { renderWithAppSync } from "@/test/render";
 import { useInvestigationEventsHistory } from "./use-investigation-events";
 
 vi.mock("../orpc-client", () => ({
@@ -33,41 +32,20 @@ import { client } from "../orpc-client";
 
 const mockedGetEvents = vi.mocked(client.investigations.getEvents);
 
-(
-	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
 function renderHook<T>(
 	hook: () => T,
-	queryClient: QueryClient,
 	wrapper?: ({ children }: { children: ReactNode }) => ReactNode,
 ) {
 	const result = { current: undefined as unknown as T };
-	const container = document.createElement("div");
-	document.body.appendChild(container);
-	const root = createRoot(container);
-
 	function HookHarness() {
 		result.current = hook();
 		return null;
 	}
-
-	act(() => {
-		const content = <HookHarness />;
-		root.render(
-			<QueryClientProvider client={queryClient}>
-				{wrapper ? wrapper({ children: content }) : content}
-			</QueryClientProvider>,
-		);
-	});
-
-	return {
-		result,
-		unmount: () => {
-			act(() => root.unmount());
-			container.remove();
-		},
-	};
+	const content = <HookHarness />;
+	const app = renderWithAppSync(
+		wrapper ? wrapper({ children: content }) : content,
+	);
+	return { result, unmount: () => app.unmountSync() };
 }
 
 function makeEvent(seq: number, branchId: string = "main"): CanonicalEvent {
@@ -85,17 +63,8 @@ function makeEvent(seq: number, branchId: string = "main"): CanonicalEvent {
 }
 
 describe("useInvestigationEventsHistory", () => {
-	let queryClient: QueryClient;
-
 	beforeEach(() => {
 		vi.clearAllMocks();
-		queryClient = new QueryClient({
-			defaultOptions: {
-				queries: {
-					retry: false,
-				},
-			},
-		});
 	});
 
 	it("with no provider, the hook pages through getEvents until nextCursor is null. Use three pages of one event each. It makes exactly 3 calls, and data holds the 3 events in order.", async () => {
@@ -116,10 +85,7 @@ describe("useInvestigationEventsHistory", () => {
 			return { events: [], nextCursor: null };
 		});
 
-		const { result } = renderHook(
-			() => useInvestigationEventsHistory("t1"),
-			queryClient,
-		);
+		const { result } = renderHook(() => useInvestigationEventsHistory("t1"));
 
 		await vi.waitFor(() => {
 			expect(result.current.data).toEqual([e1, e2, e3]);
@@ -155,7 +121,6 @@ describe("useInvestigationEventsHistory", () => {
 
 		const { result } = renderHook(
 			() => useInvestigationEventsHistory("t1"),
-			queryClient,
 			wrapper,
 		);
 
@@ -184,7 +149,6 @@ describe("useInvestigationEventsHistory", () => {
 
 		const { result } = renderHook(
 			() => useInvestigationEventsHistory("t2"),
-			queryClient,
 			wrapper,
 		);
 
@@ -212,7 +176,6 @@ describe("useInvestigationEventsHistory", () => {
 
 		const { result } = renderHook(
 			() => useInvestigationEventsHistory("t1"),
-			queryClient,
 			wrapper,
 		);
 

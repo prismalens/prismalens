@@ -2,17 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	PrCheckLog,
-	PrCheckRun,
-	PullRequest,
-	ThreadLink,
-} from "@prismalens/contracts";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { PrCheckLog, PrCheckRun, ThreadLink } from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type RenderedApp, renderWithApp } from "@/test/render";
 import { PrView } from "./PrView";
 import type { PullRequestView } from "./PullRequests";
 
@@ -42,6 +35,27 @@ vi.mock("@/lib/api/hooks/use-app-settings-orpc", () => ({
 	}),
 }));
 
+vi.mock("@/lib/api/hooks/use-pr-subscriptions", async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import("@/lib/api/hooks/use-pr-subscriptions")
+	>()),
+	usePrSubscriptions: () => ({
+		data: { subscriptions: [] },
+		isPending: false,
+		isError: false,
+	}),
+}));
+
+/** A kept log for `runId`, so the open row reads no log from the API. */
+const keptLog = (runId: string, headSha: string | null = null): PrCheckLog => ({
+	runId,
+	headSha,
+	step: "Run it",
+	lines: ["failed"],
+	unavailable: null,
+	fetchedAt: "2026-11-18T00:00:00.000Z",
+});
+
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({
 		children,
@@ -68,36 +82,18 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 let container: HTMLDivElement;
-let root: Root;
+let app: RenderedApp | undefined;
 
 beforeEach(() => {
-	container = document.createElement("div");
-	document.body.appendChild(container);
-	root = createRoot(container);
+	app = undefined;
 	threadLinksState.links = [];
 	settingsState.rerunChecks = false;
 });
 
-afterEach(async () => {
-	await act(async () => root.unmount());
-	container.remove();
-});
-
-function renderWithClient(ui: React.ReactNode) {
-	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false } },
-	});
-	return (
-		<QueryClientProvider client={queryClient}>
-			<TooltipProvider>{ui}</TooltipProvider>
-		</QueryClientProvider>
-	);
-}
-
 async function show(ui: React.ReactNode) {
-	await act(async () => {
-		root.render(renderWithClient(ui));
-	});
+	if (app) await app.rerender(ui);
+	else app = await renderWithApp(ui);
+	container = app.container;
 }
 
 const basePr: PullRequestView = {
@@ -185,6 +181,7 @@ describe("PrView (#1176)", () => {
 			...basePr,
 			checks: { state: "failing", total: 1, failed: 1, pending: 0 },
 			checkRuns: [run],
+			checkLogs: [keptLog(run.id ?? "")],
 		};
 
 		await show(<PrView pr={pr} threadId="thread-1" />);
@@ -212,6 +209,7 @@ describe("PrView (#1176)", () => {
 			headSha: "sha123",
 			checks: { state: "failing", total: 1, failed: 1, pending: 0 },
 			checkRuns: [run],
+			checkLogs: [keptLog(run.id ?? "", "sha123")],
 		};
 		// Set covering fix thread link in mock
 		threadLinksState.links = [
@@ -274,6 +272,7 @@ describe("PrView (#1176)", () => {
 			...basePr,
 			checks: { state: "failing", total: 1, failed: 1, pending: 0 },
 			checkRuns: [run],
+			checkLogs: [keptLog(run.id ?? "")],
 		};
 
 		settingsState.rerunChecks = false;

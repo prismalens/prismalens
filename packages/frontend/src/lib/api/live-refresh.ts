@@ -3,18 +3,17 @@
 
 import type { LiveTopic } from "@prismalens/contracts";
 import {
+	matchQuery,
 	partialMatchKey,
 	type Query,
 	type QueryClient,
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
-import { client, orpc } from "./orpc-client";
-import { onDeviceOffline, watchSilence } from "./stream-liveness";
+import { orpc } from "./orpc-client";
 
 /** Lists re-read on this interval only while the change stream is down (walk f27). */
 export const LIVE_REFRESH_MS = 10_000;
-const RETRY_MS = 3_000;
 
 /** The reconnect line shows once the stream has been down this long (study-v2 §6). */
 export const RECONNECT_LINE_AFTER_MS = 10_000;
@@ -29,7 +28,7 @@ interface StreamStatus {
 
 let status: StreamStatus = { connected: false, lostAt: Date.now() };
 const listeners = new Set<() => void>();
-function setConnected(next: boolean) {
+export function setConnected(next: boolean) {
 	if (status.connected === next) return;
 	status = {
 		connected: next,
@@ -45,10 +44,15 @@ function subscribeConnected(l: () => void) {
 	return () => listeners.delete(l);
 }
 
-/** Cuts the stream's wait before its next attempt short; set while it waits. */
+/** Cuts the stream's wait before its next attempt short, in whichever tab holds the stream. */
 let retrySoon: (() => void) | null = null;
 
-/** The connection dock's Retry now (#1101): the next attempt starts at once. */
+/** live-stream.ts sets it: the stream's own retry, or the leader's over the channel. */
+export function setRetry(fn: (() => void) | null): void {
+	retrySoon = fn;
+}
+
+/** The connection dock's Retry now (#1101): the next attempt starts at once, in whichever tab holds the stream. */
 export function reconnectNow(): void {
 	retrySoon?.();
 }
@@ -70,6 +74,12 @@ export const streamUp = (): boolean => status.connected;
 
 /** The change stream was up once on this page: the server was reached at least once. */
 export const hasConnected = (): boolean => status.ever === true;
+
+/**
+ * A write's own hint will reach this page: the stream is up, or its first connect replays from
+ * where the page's reads began. A write's caller re-reads by hand only when this is false (#1181).
+ */
+export const hintComing = (): boolean => status.connected || !status.ever;
 
 /** Whether the change stream is up, and since when it is not. */
 export function useStreamStatus(): StreamStatus {
@@ -114,13 +124,21 @@ const KEYS_BY_TOPIC: Record<LiveTopic, () => unknown[][]> = {
 		orpc.incidents.key(),
 		orpc.schedules.key(),
 		orpc.threads.key(),
+		orpc.threadTree.key(),
 		orpc.prSubscriptions.key(),
 	],
 	// A run a schedule started moves its row and its history (#979).
 	schedules: () => [orpc.schedules.key()],
-	threads: () => [orpc.threads.key(), orpc.prSubscriptions.key()],
+	threads: () => [
+		orpc.threads.key(),
+		orpc.threadTree.key(),
+		orpc.prSubscriptions.key(),
+	],
 	attention: () => [orpc.attention.key(), orpc.threads.key()],
+	visits: () => [orpc.threads.feed.key()],
 };
+
+export const ALL_TOPICS = Object.keys(KEYS_BY_TOPIC) as LiveTopic[];
 
 /** A run's event record and its files at a commit never change; the stream and catch-up extend the record (#874). */
 const IMMUTABLE: readonly unknown[][] = [
@@ -128,85 +146,171 @@ const IMMUTABLE: readonly unknown[][] = [
 	orpc.investigations.getBlob.key(),
 ];
 
+/** Read only their own thread's row, so a hint scoped to other threads skips them (#1181). */
+const PER_THREAD: readonly unknown[][] = [
+	orpc.investigations.get.key(),
+	orpc.investigations.getStatus.key(),
+];
+
 function mutable(query: Query): boolean {
 	return !IMMUTABLE.some((key) => partialMatchKey(query.queryKey, key));
+}
+
+const inputId = (q: Query): unknown =>
+	(q.queryKey[1] as { input?: { id?: unknown } } | undefined)?.input?.id;
+
+/** live-stream.ts re-applies heard activity over any read that lands older. */
+let afterRead: ((qc: QueryClient, q: Query) => void) | null = null;
+export function onRead(fn: (qc: QueryClient, q: Query) => void): void {
+	afterRead = fn;
+}
+
+/** Queries a hint reached mid-fetch, by client: each re-reads once when that fetch ends. */
+const trailing = new WeakMap<QueryClient, Set<string>>();
+/** Each query's latest fetch start in order, and where the change stream joined in it. */
+const fetchOrder = new WeakMap<Query, number>();
+let fetches = 0;
+const joinedAt = new WeakMap<QueryClient, number>();
+
+export function trailingFor(queryClient: QueryClient): Set<string> {
+	let set = trailing.get(queryClient);
+	if (set) return set;
+	const pending = new Set<string>();
+	set = pending;
+	trailing.set(queryClient, pending);
+	queryClient.getQueryCache().subscribe((event) => {
+		const q = event.query;
+		if (event.type === "updated" && event.action.type === "fetch")
+			fetchOrder.set(q, ++fetches);
+		if (
+			event.type === "updated" &&
+			event.action.type === "success" &&
+			!event.action.manual
+		)
+			afterRead?.(queryClient, q);
+		if (q.state.fetchStatus !== "idle" || !pending.delete(q.queryHash)) return;
+		void queryClient.invalidateQueries(
+			{ queryKey: q.queryKey, exact: true },
+			{ cancelRefetch: false },
+		);
+	});
+	return pending;
+}
+
+/**
+ * Marks matching queries stale and re-reads the shown ones, never cancelling a fetch in
+ * flight: on a slow link a hint each second would cancel every read (#1181). A success
+ * clears `isInvalidated`, so a hint that lands mid-fetch queues one trailing read instead.
+ */
+export function refresh(
+	queryClient: QueryClient,
+	filters: readonly {
+		queryKey: unknown[];
+		predicate?: (q: Query) => boolean;
+	}[],
+): void {
+	const pending = trailingFor(queryClient);
+	// One pass over the cache: one invalidate per query scans it again, which a busy page pays per hint.
+	const stale = new Set<string>();
+	const lists = new Set<string>();
+	const feed = orpc.threads.feed.key();
+	for (const q of queryClient.getQueryCache().getAll()) {
+		if (!filters.some((f) => matchQuery(f, q))) continue;
+		if (q.state.fetchStatus === "fetching") pending.add(q.queryHash);
+		else {
+			stale.add(q.queryHash);
+			if (partialMatchKey(q.queryKey, feed)) lists.add(q.queryHash);
+		}
+	}
+	if (!stale.size) return;
+	const all = (q: Query) => stale.has(q.queryHash);
+	if (!lists.size) {
+		void queryClient.invalidateQueries(
+			{ predicate: all },
+			{ cancelRefetch: false },
+		);
+		return;
+	}
+	// The thread list first, the rest once it lands: tabs share the browser's six connections,
+	// so a broad hint in two tabs queued one tab's list behind 25 reads (#1181).
+	const keep = { cancelRefetch: false };
+	void queryClient
+		.invalidateQueries({ predicate: all, refetchType: "none" })
+		.then(() =>
+			queryClient.refetchQueries(
+				{ predicate: (q) => lists.has(q.queryHash), type: "active" },
+				keep,
+			),
+		)
+		.finally(
+			() =>
+				void queryClient.refetchQueries(
+					{
+						predicate: (q) =>
+							all(q) && !lists.has(q.queryHash) && q.state.isInvalidated,
+						type: "active",
+					},
+					keep,
+				),
+		);
 }
 
 export function invalidateTopics(
 	queryClient: QueryClient,
 	topics: readonly LiveTopic[],
+	scope?: readonly string[],
 ): void {
-	const seen = new Set<string>();
-	for (const queryKey of topics.flatMap((t) => KEYS_BY_TOPIC[t]())) {
-		const id = JSON.stringify(queryKey);
-		if (seen.has(id)) continue;
-		seen.add(id);
-		void queryClient.invalidateQueries({ queryKey, predicate: mutable });
-	}
+	const elsewhere = (q: Query) =>
+		!!scope &&
+		PER_THREAD.some((key) => partialMatchKey(q.queryKey, key)) &&
+		!scope.includes(inputId(q) as string);
+	refresh(
+		queryClient,
+		topics
+			.flatMap((t) => KEYS_BY_TOPIC[t]())
+			.map((queryKey) => ({
+				queryKey,
+				predicate: (q: Query) => mutable(q) && !elsewhere(q),
+			})),
+	);
 }
 
-/** Holds the app's one change stream open while signed in; reconnects, refetching what it missed. */
+/** The change stream joined: fetches from here on see every frame after it. */
+export function markJoined(queryClient: QueryClient): void {
+	trailingFor(queryClient);
+	joinedAt.set(queryClient, fetches);
+}
+
+/** Re-reads, once its fetch ends, each live query whose fetch began before the stream joined. */
+export function rereadInFlight(queryClient: QueryClient): void {
+	const joined = joinedAt.get(queryClient) ?? fetches;
+	refresh(
+		queryClient,
+		ALL_TOPICS.flatMap((t) => KEYS_BY_TOPIC[t]()).map((queryKey) => ({
+			queryKey,
+			predicate: (q: Query) =>
+				mutable(q) &&
+				q.state.fetchStatus === "fetching" &&
+				(fetchOrder.get(q) ?? 0) <= joined,
+		})),
+	);
+}
+
+/**
+ * Joins the browser's one change stream while signed in. Its code loads after first paint:
+ * the stream starts once tabs have elected who holds it (#1181).
+ */
 export function useLiveChanges(): void {
 	const queryClient = useQueryClient();
 	useEffect(() => {
-		const controller = new AbortController();
-		const { signal } = controller;
-		void (async () => {
-			let first = true;
-			while (!signal.aborted) {
-				// One attempt: a silent link, the device going offline or the page leaving ends it.
-				const attempt = new AbortController();
-				const end = () => attempt.abort();
-				signal.addEventListener("abort", end, { once: true });
-				const offOffline = onDeviceOffline(end);
-				const watch = watchSilence(end);
-				try {
-					const stream = await client.live.changes(
-						{},
-						{ signal: attempt.signal },
-					);
-					watch.open();
-					setConnected(true);
-					if (!first) {
-						invalidateTopics(queryClient, [
-							"incidents",
-							"alerts",
-							"investigations",
-						]);
-					}
-					first = false;
-					for await (const change of stream) {
-						watch.beat();
-						if ("topics" in change)
-							invalidateTopics(queryClient, change.topics);
-					}
-				} catch {
-					// Dropped, silent or refused: poll until the next attempt connects.
-				} finally {
-					watch.stop();
-					offOffline();
-					signal.removeEventListener("abort", end);
-				}
-				setConnected(false);
-				if (signal.aborted) break;
-				await new Promise<void>((r) => {
-					// Offline, the next try waits for the device to say it is back.
-					const wait = navigator.onLine === false ? null : RETRY_MS;
-					const t = wait === null ? undefined : setTimeout(done, wait);
-					window.addEventListener("online", done);
-					signal.addEventListener("abort", done);
-					function done() {
-						clearTimeout(t);
-						window.removeEventListener("online", done);
-						signal.removeEventListener("abort", done);
-						retrySoon = null;
-						r();
-					}
-					retrySoon = done;
-				});
-				first = false;
-			}
-		})();
-		return () => controller.abort();
+		let stop: (() => void) | undefined;
+		let gone = false;
+		void import("./live-stream").then((m) => {
+			if (!gone) stop = m.startLiveStream(queryClient);
+		});
+		return () => {
+			gone = true;
+			stop?.();
+		};
 	}, [queryClient]);
 }

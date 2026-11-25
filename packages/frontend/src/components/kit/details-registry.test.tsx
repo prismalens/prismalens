@@ -1,7 +1,12 @@
+// @vitest-environment happy-dom
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
 	detailsRows,
 	type IncidentDetails,
@@ -106,6 +111,35 @@ describe("detailsRows for thread", () => {
 		expect(rows.some((r) => r.id === "work")).toBe(false);
 	});
 
+	it("names the branch a detached run copy was cut from", () => {
+		const thread: ThreadDetails = {
+			kind: "thread",
+			detached: "9469cc2",
+			from: "master",
+			place: { name: "repo" },
+		};
+
+		const branchRow = detailsRows(thread).find((r) => r.id === "branch");
+
+		expect(renderToStaticMarkup(<>{branchRow?.label}</>)).toContain(
+			">Run copy of master at 9469cc2</button>",
+		);
+	});
+
+	it("keeps the plain Detached words when the source branch is unknown", () => {
+		const thread: ThreadDetails = {
+			kind: "thread",
+			detached: "9469cc2",
+			place: { name: "repo" },
+		};
+
+		const branchRow = detailsRows(thread).find((r) => r.id === "branch");
+
+		expect(renderToStaticMarkup(<>{branchRow?.label}</>)).toContain(
+			">Detached at 9469cc2</button>",
+		);
+	});
+
 	it("attaches folder open-in node as value of place row (#1176)", () => {
 		const fakeFolderEl = (
 			<button type="button" data-testid="folder-split-btn">
@@ -150,5 +184,38 @@ describe("detailsRows for incident", () => {
 		expect(rows.find((r) => r.id === "severity")?.tone).toBe("sev-high");
 		// Only needs-you and failed carry colour; the word "Firing" says it (sheet §9.1).
 		expect(rows.find((r) => r.id === "alert")?.tone).toBeUndefined();
+	});
+});
+
+describe("the detached branch row", () => {
+	it("reaches the full label and the push guidance from the keyboard, when a long branch cuts the visible text", () => {
+		(
+			globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+		).IS_REACT_ACT_ENVIRONMENT = true;
+		const from = "feature/a-very-long-branch-name-that-the-row-cuts";
+		const row = detailsRows({
+			kind: "thread",
+			detached: "9469cc2",
+			from,
+			place: { name: "repo" },
+		}).find((r) => r.id === "branch");
+		const host = document.createElement("div");
+		document.body.append(host);
+		const root = createRoot(host);
+		act(() => root.render(<TooltipProvider>{row?.label}</TooltipProvider>));
+
+		const label = host.querySelector<HTMLElement>(
+			'[data-testid="details-detached"]',
+		);
+		expect(label?.tagName).toBe("BUTTON");
+		act(() => label?.focus());
+
+		const hint = document.querySelector('[data-testid="hint"]')?.textContent;
+		expect(hint).toContain(`Run copy of ${from} at 9469cc2`);
+		expect(hint).toContain(
+			"No branch yet. Commits here can't be pushed until one is made.",
+		);
+		act(() => root.unmount());
+		host.remove();
 	});
 });

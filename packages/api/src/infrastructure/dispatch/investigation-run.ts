@@ -100,6 +100,7 @@ import {
 import type { HarnessScope } from "@prismalens/integrations/harness";
 import { enrichContext, Logger } from "@prismalens/logger";
 import { runWithWideEvent } from "@prismalens/logger/standalone";
+import * as clock from "../../core/clock.js";
 import { gitEnv } from "../../core/harness/git-env.js";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import { displayNameFor } from "../../core/harness/repo-source.service.js";
@@ -132,7 +133,6 @@ import {
 	NO_FSMONITOR,
 	sameCheckout,
 } from "./checkout-lease.js";
-
 import { checkoutStatus, readGit } from "./checkout-status.js";
 import { isCanonical } from "./folder-lock.js";
 import {
@@ -185,7 +185,7 @@ async function within<T>(
 ): Promise<T | typeof LATE> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const late = new Promise<typeof LATE>((r) => {
-		timer = setTimeout(() => r(LATE), ms);
+		timer = clock.setTimeout(() => r(LATE), ms);
 	});
 	try {
 		return await Promise.race([work, late]);
@@ -467,7 +467,7 @@ async function runJobInternal(
 		// Telemetry is read while the repos clone (#848 ruling 2026-10-24).
 		const window = snapshotWindow(
 			context.alerts,
-			new Date(),
+			clock.date(),
 			context.service?.name,
 		);
 		const telemetry =
@@ -754,7 +754,7 @@ async function gatherPreRun(
 						telemetrySkipped: `it did not finish in ${TELEMETRY_MS / 1000} s, or failed`,
 					}),
 			checkoutsSkipped: input.checkoutsSkipped,
-			now: new Date(),
+			now: clock.date(),
 		});
 		const saved = await saveSnapshot(port, runId, JSON.stringify(snap));
 		// The row keeps our own words, never the driver's message: it is served to the UI (#848).
@@ -955,7 +955,7 @@ async function runbookScan(
 	signal: AbortSignal,
 ): Promise<RunbookIndex> {
 	const deadline = new AbortController();
-	const timer = setTimeout(
+	const timer = clock.setTimeout(
 		() => deadline.abort(new Error("runbook scan deadline")),
 		RUNBOOKS_MS,
 	);
@@ -995,7 +995,7 @@ function usageWriter(
 	const write = () => {
 		if (!latest || latest === written) return Promise.resolve();
 		written = latest;
-		at = Date.now();
+		at = clock.now();
 		const usage = latest;
 		return after()
 			.then(() => ports.recordUsage(id, usage))
@@ -1004,7 +1004,7 @@ function usageWriter(
 	return {
 		onUsage: (usage: RunUsage) => {
 			latest = usage;
-			if (Date.now() - at >= USAGE_WRITE_EVERY_MS) void write();
+			if (clock.now() - at >= USAGE_WRITE_EVERY_MS) void write();
 		},
 		flush: write,
 	};
@@ -1252,7 +1252,7 @@ async function runFollowUp(
 				id,
 				workspace.toolsServer,
 				harness,
-				new Date(),
+				clock.date(),
 				toolScope(data, kind, harness),
 			)
 			.catch((e) => {
@@ -1304,7 +1304,7 @@ async function runFollowUp(
 				})
 			: null;
 		if (missed?.full) writeHandoffTranscript(workspace, missed.transcript);
-		const restartAt = new Date();
+		const restartAt = clock.date();
 		const restartText = resume.restart
 			? composeRestartMessage(
 					await restartFacts(
@@ -1677,7 +1677,7 @@ export function followUpEnd(
 	restore: NonNullable<InvestigationJobData["resume"]>["restore"],
 	outcome: TurnOutcome,
 	sentence: string | null,
-	now: Date = new Date(),
+	now: Date = clock.date(),
 ): {
 	row: {
 		status: WorkflowStatus;
@@ -1955,7 +1955,7 @@ export function followUpNotDelivered(
 		runId,
 		branchId: "run",
 		path: [],
-		ts: new Date().toISOString(),
+		ts: clock.date().toISOString(),
 	};
 	// A recovery's text is PrismaLens's, or a question already in the conversation: never a new user line (#981 OBJ-009).
 	if (resume.restart) return [{ kind: "error", ...base, seq, message }];
@@ -2044,7 +2044,7 @@ export async function logWorkspaceSetup(
 				branchId: "workspace",
 				path: [],
 				seq: first + i,
-				ts: new Date().toISOString(),
+				ts: clock.date().toISOString(),
 				result: {
 					name: "workspace_setup",
 					toolCallId: `workspace-setup-${name}`,
@@ -2087,7 +2087,7 @@ export async function logBorrowed(
 			branchId: "workspace",
 			path: [],
 			seq,
-			ts: new Date().toISOString(),
+			ts: clock.date().toISOString(),
 			result: {
 				name: "workspace_borrowed",
 				toolCallId: "workspace-borrowed",
@@ -2540,6 +2540,7 @@ export async function resolveWorkspace(
 			connectionId: repo.connectionId,
 			head: snap.head,
 			branch: snap.branch,
+			...(snap.from ? { from: snap.from } : {}),
 			services,
 			credential,
 		});
@@ -2776,7 +2777,7 @@ async function checkoutAll<T>(
 	);
 	const outcomes: CheckoutOutcome<T>[] = [];
 	let over = false;
-	const budget = setTimeout(() => {
+	const budget = clock.setTimeout(() => {
 		over = true;
 		for (const c of controllers) c.abort(new Error(OUT_OF_TIME));
 	}, CHECKOUT_BUDGET_MS);
@@ -3251,7 +3252,7 @@ function keepReceipt(runDir: string, pid: number | undefined): void {
 	if (!pid) return;
 	try {
 		mkdirSync(runDir, { recursive: true });
-		writeReceipt(runDir, pid, Date.now(), stampOf(pid));
+		writeReceipt(runDir, pid, clock.now(), stampOf(pid));
 		receiptWatches.get(runDir)?.();
 		receiptWatches.set(runDir, watchReceipt(runDir));
 	} catch (e) {

@@ -29,6 +29,7 @@ import type {
 	Investigation,
 	Service,
 } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { ResetInProgressError } from "../../core/settings/settings.service.js";
@@ -62,7 +63,10 @@ export interface TriggerDecision {
 export const REOPEN_RUN_SPACING_MS = 60 * 60 * 1000;
 
 export const NO_SERVICE_REASON =
-	"The incident has no service, so there is no repository to investigate. Alerts reach a service through a `service` label whose value is the service's name; add it to the alert, or pick the service on the incident and press Investigate.";
+	"This alert did not say which project it is about, so there is no code to look at. Add the label `service=<project name>` (or the field `serviceName`) to the alert, or open the incident, pick its service and press Investigate.";
+
+const plainFolderReason = (name: string) =>
+	`${name} is a folder with no git, so there is no code history to investigate. Start git in it from its project page, then send the alert again.`;
 
 /** The service's own policy from `metadata.investigation.trigger`; the default when absent or invalid. */
 export function readTriggerPolicy(metadata: string | null): TriggerPolicy {
@@ -208,7 +212,7 @@ export class InvestigationTriggerService {
 				where: {
 					incidentId: incident.id,
 					triggerType: "re_trigger",
-					createdAt: { gte: new Date(Date.now() - REOPEN_RUN_SPACING_MS) },
+					createdAt: { gte: new Date(clock.now() - REOPEN_RUN_SPACING_MS) },
 				},
 				orderBy: { createdAt: "desc" },
 				select: { createdAt: true },
@@ -233,6 +237,10 @@ export class InvestigationTriggerService {
 				: policy;
 
 		if (!decision.shouldTrigger) {
+			if (decision.reason === NO_SERVICE_REASON) {
+				const folder = await this.plainFolderNamedBy(alert);
+				if (folder) decision.reason = plainFolderReason(folder);
+			}
 			this.logger.log(
 				`No auto-investigation for incident ${incident.number}: ${decision.reason}`,
 			);
@@ -257,6 +265,27 @@ export class InvestigationTriggerService {
 		await this.triggerInvestigation(incident, decision);
 	}
 
+	/** The no-git folder project the alert's `service` label names, if any. */
+	private async plainFolderNamedBy(alert: Alert): Promise<string | null> {
+		let name = "";
+		try {
+			const parsed = JSON.parse(alert.labels ?? "null") as {
+				service?: unknown;
+			} | null;
+			name = typeof parsed?.service === "string" ? parsed.service.trim() : "";
+		} catch {
+			return null;
+		}
+		if (!name) return null;
+		const folders = await this.prisma.repository.findMany({
+			where: { plain: true },
+			select: { fullName: true },
+		});
+		const wanted = name.toLowerCase();
+		const hit = folders.find((f) => f.fullName.toLowerCase() === wanted);
+		return hit?.fullName ?? null;
+	}
+
 	/**
 	 * Trigger an investigation for an incident
 	 */
@@ -272,8 +301,12 @@ export class InvestigationTriggerService {
 			alertUse ? { harness: alertUse.harness } : {},
 		);
 		if (selection.runnable) {
+			// The model the run will start with: the alert run's own, only on its own agent.
 			const readiness = await this.harnessService.ensureReady(
 				selection.harness,
+				alertUse && selection.harness === alertUse.harness
+					? alertUse.model
+					: undefined,
 			);
 			if (!readiness.ready) {
 				this.logger.log(

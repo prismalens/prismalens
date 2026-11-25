@@ -295,7 +295,7 @@ export default defineConfig({
 					dependencies: ["pair"],
 					use: { ...devices["Desktop Chrome"], storageState: PAIRED_STATE },
 				},
-				// `@quarantine` tests (rule in CONTRIBUTING.md, "Browser e2e tier"): the same
+				// `@quarantine` tests (rule in docs/contributing/testing.md, "Flaky e2e tests"): the same
 				// stacks and specs, run by e2e-browser.yml in a step that cannot fail the job.
 				{
 					name: "chromium-quarantine",

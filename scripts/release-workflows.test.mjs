@@ -70,6 +70,82 @@ test("a cancelled or failed nightly stage is the publish result the tracking iss
 	assert.equal(result("skipped skipped skipped", "skipped"), "result=skipped");
 });
 
+// A failed `live-pack` skips `packed-intake-live`; `report` must still see the failure (#1197 review).
+test("the tracking issue waits on every live job and stays open when one failed", () => {
+	const { jobs } = workflow("nightly.yml");
+	const live = Object.keys(jobs).filter((k) =>
+		String(jobs[k].name).startsWith("Live:"),
+	);
+	assert.deepEqual(live.sort(), [
+		"harness-admission-live",
+		"live-pack",
+		"packed-intake-live",
+	]);
+	const step = jobs.report.steps.find((s) => s.id === "night");
+	for (const job of live) {
+		assert.ok(jobs.report.needs.includes(job), `report.needs lacks ${job}`);
+		assert.ok(
+			step.env.LIVE.includes(`needs.${job}.result`),
+			`LIVE lacks ${job}`,
+		);
+	}
+	// The pack job failed, its dependant was skipped, the rest passed: the issue is not closed.
+	const dir = mkdtempSync(join(tmpdir(), "pl-report-"));
+	const run = (liveResults) =>
+		runStep(
+			step,
+			{
+				PROOFS: "success",
+				PUBLISH: "skipped",
+				LIVE: liveResults,
+				RUNNER_TEMP: dir,
+				REPO: "prismalens/prismalens",
+				RUN_URL: "u",
+				RUN_ID: "1",
+			},
+			{ gh: "true" },
+		).out;
+	assert.match(run("failure skipped success"), /^ok=false$/m);
+	assert.match(run("success success success"), /^ok=true$/m);
+});
+
+test("a night with NIGHTLY_ENABLED unset says it was skipped and touches no issue", () => {
+	const { jobs } = workflow("nightly.yml");
+	const gate = jobs.report.steps.find((s) => s.id === "gate");
+	const dir = mkdtempSync(join(tmpdir(), "pl-gate-"));
+	const summary = join(dir, "summary.md");
+	const env = { EVENT: "schedule", GITHUB_STEP_SUMMARY: summary };
+	const unset = runStep(gate, { ...env, ENABLED: "" });
+	assert.match(unset.out, /^skipped=true$/m);
+	assert.match(readFileSync(summary, "utf8"), /NIGHTLY_ENABLED is "unset"/);
+	assert.doesNotMatch(
+		runStep(gate, { ...env, ENABLED: "true" }).out,
+		/skipped/,
+	);
+	assert.doesNotMatch(
+		runStep(gate, { ...env, EVENT: "workflow_dispatch", ENABLED: "" }).out,
+		/skipped/,
+	);
+	assert.equal(jobs.report.if, "always()");
+	const reporter = jobs.report.steps.find(
+		(s) => s.uses === "./.github/actions/report-failure",
+	);
+	assert.equal(reporter.if, "steps.gate.outputs.skipped != 'true'");
+});
+
+test("the e2e job holds issues: write for its quarantine reporter, which a called workflow cannot get from its caller alone", () => {
+	const e2e = workflow("e2e-browser.yml").jobs.e2e;
+	assert.deepEqual(e2e.permissions, { contents: "read", issues: "write" });
+	assert.equal(
+		e2e.steps.some((s) => s.uses === "./.github/actions/report-failure"),
+		true,
+	);
+	assert.deepEqual(workflow("ci.yml").jobs.e2e.permissions, {
+		contents: "read",
+		issues: "write",
+	});
+});
+
 test("a release takes `latest` only if it is the newest when it is promoted", () => {
 	const step = workflow("release.yml").jobs["publish-release"].steps.find(
 		(s) => s.id === "latest",
@@ -92,21 +168,14 @@ test("npm's dist-tag is `previous` when npm already has a newer latest", () => {
 	const tag = (npmLatest, latest, version) =>
 		runStep(
 			step,
-			{ LATEST: latest, VERSION: version },
+			{ LATEST: latest, VERSION: version, TARBALL: "launcher/pl.tgz" },
 			{ npm: `echo "${npmLatest}"`, node: 'echo "$@"' },
 		).stdout.trim();
-	assert.equal(
-		tag("0.5.7", "true", "0.5.6"),
-		"scripts/pack-launcher.mjs --publish --tag previous",
-	);
-	assert.equal(
-		tag("0.5.5", "true", "0.5.6"),
-		"scripts/pack-launcher.mjs --publish --tag latest",
-	);
-	assert.equal(
-		tag("0.5.5", "false", "0.5.6"),
-		"scripts/pack-launcher.mjs --publish --tag previous",
-	);
+	const publish =
+		"scripts/pack-launcher.mjs --publish --tarball launcher/pl.tgz";
+	assert.equal(tag("0.5.7", "true", "0.5.6"), `${publish} --tag previous`);
+	assert.equal(tag("0.5.5", "true", "0.5.6"), `${publish} --tag latest`);
+	assert.equal(tag("0.5.5", "false", "0.5.6"), `${publish} --tag previous`);
 });
 
 /** Runs `step` as bash with `env` and the stub commands in `bin`; resolves to its exit status. */
@@ -189,4 +258,268 @@ test("two overlapping releases leave npm's latest on the newer one", async () =>
 			`npm's latest went back to an older release (${order ? `in turn, ${order.join(" then ")}` : "at once"})`,
 		);
 	}
+});
+
+/** Every job `job` waits on, directly or through others. */
+function ancestors(jobs, job, seen = new Set()) {
+	for (const need of [jobs[job].needs ?? []].flat()) {
+		if (seen.has(need)) continue;
+		seen.add(need);
+		ancestors(jobs, need, seen);
+	}
+	return seen;
+}
+
+const PROOFS = ["upgrade-chain", "release-side-checks"];
+const runs = (job) => (job.steps ?? []).map((s) => String(s.run ?? ""));
+
+for (const proof of PROOFS)
+	test(`the ${proof} proof runs before publish-release, on the draft's own assets (#1154)`, () => {
+		const { jobs } = workflow("release.yml");
+		const before = ancestors(jobs, proof);
+		assert.equal(before.has("publish-release"), false);
+		assert.equal(before.has("sums"), true);
+		const download = jobs[proof].steps.filter((s) =>
+			String(s.run).includes('gh release download "$TAG"'),
+		);
+		assert.equal(download.length > 0, true);
+		assert.deepEqual(
+			download.map((step) => step.env.GH_TOKEN),
+			download.map(() => "${{ github.token }}"),
+		);
+		assert.deepEqual(
+			jobs[proof].steps.filter((step) =>
+				JSON.stringify(step).includes("PACKED_CHAIN_RELEASE_BASE"),
+			),
+			[],
+		);
+	});
+
+test("the upgrade chain and the side checks each run the launcher and archive of the draft (#1154)", () => {
+	const { jobs } = workflow("release.yml");
+	assert.equal(
+		jobs["upgrade-chain"].steps.at(-1).run,
+		'node scripts/packed-upgrade-chain.mjs --assets assets --launcher "$(ls launcher/prismalens-*.tgz)"',
+	);
+	const sideChecks = jobs["release-side-checks"];
+	assert.deepEqual(
+		sideChecks.strategy.matrix.include.map((m) => [m.os, m.target]),
+		[
+			["ubuntu-latest", "linux-x64"],
+			["macos-latest", "darwin-arm64"],
+			["windows-latest", "win32-x64"],
+		],
+	);
+	assert.ok(
+		sideChecks.steps
+			.at(-1)
+			.run.includes(
+				'node scripts/gate-side-checks.mjs --no-skip --archive "$(ls assets/prismalens-*-"$TARGET".*)" --launcher "$(ls launcher/prismalens-*.tgz)"',
+			),
+	);
+});
+
+for (const job of ["publish-release", "npm"])
+	test(`${job} waits on every release proof (#1154)`, () => {
+		const { jobs } = workflow("release.yml");
+		assert.deepEqual(
+			PROOFS.filter((proof) => [jobs[job].needs].flat().includes(proof)),
+			PROOFS,
+		);
+	});
+
+test("npm waits on publish-release, so the release is public before npm has the launcher (#1154)", () => {
+	const { jobs } = workflow("release.yml");
+	assert.equal(ancestors(jobs, "npm").has("publish-release"), true);
+});
+
+test("a release builds each artifact once: no job after the build stage rebuilds one (#1154)", () => {
+	const { jobs } = workflow("release.yml");
+	const rebuilds = Object.keys(jobs).filter((name) =>
+		runs(jobs[name]).some((r) =>
+			/pack-cli|build-standalone|\bpnpm (run )?(build|pack)\b/.test(r),
+		),
+	);
+	assert.deepEqual(rebuilds, []);
+	const packsLauncher = Object.keys(jobs).filter((name) =>
+		runs(jobs[name]).some(
+			(r) => /pack-launcher.mjs/.test(r) && !r.includes("--tarball"),
+		),
+	);
+	assert.deepEqual(packsLauncher, ["launcher"]);
+	const upload = jobs.launcher.steps.find((s) =>
+		String(s.uses).startsWith("actions/upload-artifact@"),
+	);
+	assert.equal(upload.with.name, "release-launcher");
+});
+
+for (const user of [...PROOFS, "npm"])
+	test(`${user} installs the launcher artifact that the launcher job packed once (#1154)`, () => {
+		const { jobs } = workflow("release.yml");
+		const download = jobs[user].steps.find((s) =>
+			String(s.uses).startsWith("actions/download-artifact@"),
+		);
+		assert.equal(download.with.name, "release-launcher");
+		assert.equal(ancestors(jobs, user).has("launcher"), true);
+	});
+
+test("npm publishes the launcher the proofs ran, as packed", () => {
+	const { jobs } = workflow("release.yml");
+	const publish = jobs.npm.steps.find((s) =>
+		String(s.run).includes("pack-launcher.mjs --publish"),
+	);
+	assert.ok(
+		publish.run
+			.trim()
+			.endsWith(
+				'node scripts/pack-launcher.mjs --publish --tarball "$TARBALL" --tag "$tag"',
+			),
+	);
+	assert.equal(
+		publish.env.TARBALL,
+		"launcher/prismalens-${{ needs.draft.outputs.version }}.tgz",
+	);
+	assert.equal(publish.env.GH_TOKEN, "");
+});
+
+// Which failures count as never started or a network fault is `ci-gate-report.test.mjs`'s.
+test("the rerun workflow watches the Nightly as it watches CI, for a failed first attempt only, and rerun-mode is on (#1085)", () => {
+	const { on, jobs } = workflow("ci-rerun-unstarted.yml");
+	assert.deepEqual(on.workflow_run.workflows, [
+		"CI",
+		"Standalone CLI build",
+		"Nightly",
+	]);
+	assert.equal(workflow("nightly.yml").name, "Nightly");
+	assert.equal(
+		jobs.rerun.if,
+		"github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt == 1",
+	);
+	assert.equal(
+		jobs.rerun.steps.find((s) => s.run === "node scripts/ci-gate-report.mjs")
+			.env.RERUN,
+		"1",
+	);
+});
+
+test("the lint job may read the issues its quarantine check looks up (#1154)", () => {
+	assert.deepEqual(workflow("ci.yml").jobs.lint.permissions, {
+		contents: "read",
+		issues: "read",
+	});
+});
+
+// A draft PR runs lint, build and the ubuntu unit tests; ci-plan.mjs `draft` switches the rest off.
+test("a draft run skips the tarball, the clock-ahead tests and the proofs, and no other job", () => {
+	const { jobs } = workflow("ci.yml");
+	const skipped = ["pack", "test-later", "proofs"];
+	for (const id of skipped)
+		assert.match(jobs[id].if, /needs\.changes\.outputs\.draft != 'true'/, id);
+	assert.deepEqual(jobs.pack.needs, ["build", "changes"]);
+	assert.equal(jobs.build.if, "needs.changes.outputs.code == 'true'");
+	assert.equal(jobs.lint.if, "needs.changes.outputs.skip != 'true'");
+	for (const id of ["test", "build", "lint"])
+		assert.doesNotMatch(String(jobs[id].if), /draft/, id);
+});
+
+/** Runs the `CI gate` assertion over a `needs` object and returns its exit status and what it printed. */
+function runGate(results, outputs) {
+	const step = workflow("ci.yml").jobs["ci-gate"].steps.find(
+		(s) => s.name === "Assert every required job succeeded",
+	);
+	const needs = Object.fromEntries(
+		Object.entries(results).map(([k, result]) => [k, { result }]),
+	);
+	needs.changes.outputs = outputs;
+	const dir = mkdtempSync(join(tmpdir(), "pl-gate-"));
+	const bin = join(dir, "bin");
+	mkdirSync(bin);
+	// The failed-job report calls the API; the assertion under test is the jq above it.
+	writeFileSync(join(bin, "node"), "#!/usr/bin/env bash\nexit 0\n");
+	chmodSync(join(bin, "node"), 0o755);
+	const r = spawnSync("bash", ["-c", step.run], {
+		encoding: "utf8",
+		env: {
+			...process.env,
+			NEEDS_JSON: JSON.stringify(needs),
+			PATH: `${bin}${delimiter}${process.env.PATH}`,
+		},
+	});
+	return { status: r.status, out: `${r.stdout}${r.stderr}` };
+}
+
+const DRAFT_RESULTS = {
+	changes: "success",
+	build: "success",
+	test: "success",
+	"test-later": "skipped",
+	pack: "skipped",
+	"packed-smoke": "skipped",
+	"packed-intake": "skipped",
+	"packed-upgrade-smoke": "skipped",
+	lint: "success",
+	e2e: "skipped",
+	installer: "skipped",
+	proofs: "skipped",
+};
+const DRAFT_PLAN = {
+	skip: "false",
+	code: "true",
+	e2e: "false",
+	intake: "false",
+	full: "false",
+	agents: "false",
+	installer: "false",
+	defer: "false",
+	draft: "true",
+	reason: "draft: the fast tier only; marking it ready runs the full plan",
+};
+
+test("CI gate accepts the draft tier's skips only when the plan says draft", () => {
+	const draft = runGate(DRAFT_RESULTS, DRAFT_PLAN);
+	assert.equal(draft.status, 0, draft.out);
+	assert.match(draft.out, /skipped by the plan: draft: the fast tier only/);
+	// The same results under a ready plan (code on, e2e off) are red, naming exactly the draft-only skips.
+	for (const draftOutput of ["false", "", undefined]) {
+		const ready = runGate(DRAFT_RESULTS, { ...DRAFT_PLAN, draft: draftOutput });
+		assert.equal(ready.status, 1, ready.out);
+		assert.match(
+			ready.out,
+			/did not succeed: test-later=skipped, pack=skipped, packed-smoke=skipped, proofs=skipped\n/,
+		);
+	}
+});
+
+test("CI gate stays red for a draft whose lint, build or unit tests did not run", () => {
+	for (const job of ["lint", "build", "test"]) {
+		const r = runGate({ ...DRAFT_RESULTS, [job]: "skipped" }, DRAFT_PLAN);
+		assert.equal(r.status, 1, job);
+		assert.match(r.out, new RegExp(`did not succeed: ${job}=skipped\n`), job);
+	}
+	const e2e = runGate(
+		{ ...DRAFT_RESULTS, e2e: "failure" },
+		{ ...DRAFT_PLAN, e2e: "true" },
+	);
+	assert.equal(e2e.status, 1);
+});
+
+test("CI gate accepts a skipped installer test only when the plan says `installer` is false", () => {
+	const results = {
+		...DRAFT_RESULTS,
+		"test-later": "success",
+		pack: "success",
+		"packed-smoke": "success",
+		proofs: "success",
+	};
+	const plan = { ...DRAFT_PLAN, draft: "false" };
+	const off = runGate(results, plan);
+	assert.equal(off.status, 0, off.out);
+	for (const installer of ["true", "", undefined]) {
+		const r = runGate(results, { ...plan, installer });
+		assert.equal(r.status, 1, r.out);
+		assert.match(r.out, /did not succeed: installer=skipped\n/);
+	}
+	const failed = runGate({ ...results, installer: "failure" }, plan);
+	assert.equal(failed.status, 1, failed.out);
+	assert.match(failed.out, /did not succeed: installer=failure\n/);
 });

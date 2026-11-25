@@ -2,15 +2,16 @@
 // Copyright 2026 Sumit Patel
 
 import { readdirSync, readFileSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	ACCESS_LEVELS,
 	AGENT_IDS,
 	AGENT_REGISTRY,
+	AGENT_ROWS,
 	factMismatches,
 	GATEWAY_RUN_FILE,
-	PROBED_AT,
 	isSafeGatewayUrl,
 	levelOfAgentMode,
 	MODE_NAMES,
@@ -107,6 +108,17 @@ describe("levels", () => {
 	});
 });
 
+describe("agent rows", () => {
+	it("list every file under registry/agents, in AGENT_IDS order, each keyed by its own id", () => {
+		const files = readdirSync(join(import.meta.dirname, "registry/agents"))
+			.map((f) => f.replace(/[.]ts$/, ""))
+			.sort();
+		expect(AGENT_ROWS.map((r) => r.id).sort()).toEqual(files);
+		expect(AGENT_ROWS.map((r) => r.id)).toEqual([...AGENT_IDS]);
+		expect(Object.entries(AGENT_REGISTRY).map(([k, r]) => k === r.id)).toEqual(AGENT_IDS.map(() => true));
+	});
+});
+
 describe("registry facts", () => {
 	it("keep today's rulings: Claude loads user, project and local settings, no plan-mode tools", () => {
 		// cea3a5938: a stopped turn's background sub-agents stop too unless the user picked "finish".
@@ -131,7 +143,6 @@ describe("registry facts", () => {
 		expect(AGENT_REGISTRY["claude-code"].facts?.systemPromptVia).toMatchObject({
 			value: "claude-meta",
 			via: "source",
-			verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
 		});
 		for (const id of AGENT_IDS.filter((a) => a !== "claude-code"))
 			expect(AGENT_REGISTRY[id].facts?.systemPromptVia, id).toBeUndefined();
@@ -177,22 +188,42 @@ describe("registry facts", () => {
 		expect(isSafeGatewayUrl("http://gw.example")).toBe(false);
 	});
 
-	it("imports no node: module, so the registry is safe for the browser", () => {
+	it("imports no Node built-in, with or without node:, so the registry is safe for the browser", () => {
 		const dir = join(import.meta.dirname, "registry");
-		for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts")))
-			expect(readFileSync(join(dir, file), "utf8")).not.toMatch(/from "node:/);
+		const files = readdirSync(dir, { recursive: true })
+			.map(String)
+			.filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
+		expect(files).toContain(join("agents", "opencode.ts"));
+		// Static, side-effect, dynamic and require forms; a comment naming `node:` is not one.
+		const nodeImport = new RegExp(
+			String.raw`(?:from|import|require)\s*\(?\s*["'](?:node:|(?:${builtinModules.join("|")})["'])`,
+		);
+		const builtins = [
+			'import { readFileSync } from "fs";',
+			"import { readFile } from 'fs/promises';",
+			'import "fs";',
+			'await import("fs");',
+			'require("fs");',
+			'import { join } from "node:path";',
+		];
+		expect(builtins.filter((line) => nodeImport.test(line))).toEqual(builtins);
+		const others = ['from "fs-extra";', 'from "./path";', 'from "@scope/events";'];
+		expect(others.filter((line) => nodeImport.test(line))).toEqual([]);
+		expect(files.filter((f) => nodeImport.test(readFileSync(join(dir, f), "utf8")))).toEqual([]);
 	});
 });
 
 describe("agent facts (#1101)", () => {
-	it("give every probed row its four probed facts on the row's PROBED_AT versions", () => {
+	it("give every probed row its four probed facts, with no version stamp: the probe asserts them live", () => {
 		const rows = AGENT_IDS.filter((id) => AGENT_REGISTRY[id].facts);
 		// deepagents gained its facts in 395d70363.
 		expect(rows).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents"]);
-		for (const id of rows) {
-			const at = PROBED_AT[id as keyof typeof PROBED_AT];
-			expect(staleFacts(AGENT_REGISTRY[id].facts, at, "probe"), id).toEqual([]);
-		}
+		const seen = rows.map((id) => {
+			const f = AGENT_REGISTRY[id].facts;
+			const probed = [f?.loadSession, f?.images, f?.embeddedContext, f?.directories];
+			return [id, probed.map((x) => [x?.via, x?.verifiedAt])];
+		});
+		expect(seen).toEqual(rows.map((id) => [id, [0, 1, 2, 3].map(() => ["probe", undefined])]));
 	});
 
 	it("read probed facts from initialize as the engine does, and name each one an answer contradicts", () => {
@@ -220,15 +251,26 @@ describe("agent facts (#1101)", () => {
 		expect(factMismatches(AGENT_REGISTRY.local.facts, init)).toEqual([]);
 	});
 
-	it("name each fact checked on other versions, optionally only one kind", () => {
-		const facts = AGENT_REGISTRY["claude-code"].facts;
-		const at = { cli: "9.9.9", adapter: "0.106.0" };
-		expect(staleFacts(facts, at, "source")).toEqual([
-			"systemPromptVia (source, checked on cli 2.1.323, adapter 0.106.0)",
-			"subagentsOnStop (source, checked on cli 2.1.323, adapter 0.106.0)",
+	it("name each source-read fact read on other versions, and never a probed one", () => {
+		const read = { cli: "1.0.0", adapter: "0.1.0" };
+		const probe = { value: true, via: "probe" } as const;
+		const facts = {
+			loadSession: probe,
+			images: probe,
+			embeddedContext: probe,
+			directories: probe,
+			systemPromptVia: { value: "claude-meta", via: "source", verifiedAt: read },
+			regroupsLinks: { value: true, via: "source", verifiedAt: { cli: "1.1.0", adapter: null } },
+		} as const;
+		expect(staleFacts(facts, { cli: "9.9.9", adapter: read.adapter })).toEqual([
+			"systemPromptVia (source, checked on cli 1.0.0, adapter 0.1.0)",
+			"regroupsLinks (source, checked on cli 1.1.0)",
 		]);
-		expect(staleFacts(facts, at)).toHaveLength(6);
-		expect(staleFacts(facts, PROBED_AT["claude-code"])).toEqual([]);
+		expect(staleFacts(facts, read)).toEqual(["regroupsLinks (source, checked on cli 1.1.0)"]);
+		expect(staleFacts(facts, { cli: read.cli, adapter: "9.9.9" })).toEqual([
+			"systemPromptVia (source, checked on cli 1.0.0, adapter 0.1.0)",
+			"regroupsLinks (source, checked on cli 1.1.0)",
+		]);
 	});
 
 	it("reopen a finished run only where session load is a fact", () => {

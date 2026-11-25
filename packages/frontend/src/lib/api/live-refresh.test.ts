@@ -1,68 +1,462 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { QueryClient, QueryObserver } from "@tanstack/react-query";
+import type { ThreadFeed } from "@prismalens/contracts";
+import { type InfiniteData, QueryClient, QueryObserver } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import { invalidateTopics, reconnectAsOf } from "./live-refresh";
+import { invalidateTopics, reconnectAsOf, refresh } from "./live-refresh";
+import { applyActivity, applyChange } from "./live-stream";
 import { orpc } from "./orpc-client";
 
-describe("invalidateTopics (walk f27)", () => {
-	it("re-reads the incident lists when an alert or a run changes, once each", () => {
+describe("live refresh and query invalidation (#1181)", () => {
+	it("a query fetching when a hint lands is not cancelled and gets exactly one trailing fetch after it settles", async () => {
 		const queryClient = new QueryClient();
-		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+		let fetchCount = 0;
+		let resolveFirst!: () => void;
+		const firstPromise = new Promise<void>((r) => {
+			resolveFirst = r;
+		});
+		const key = orpc.investigations.list.key();
 
-		invalidateTopics(queryClient, ["alerts", "investigations"]);
+		const queryFn = vi.fn().mockImplementation(async () => {
+			fetchCount++;
+			if (fetchCount === 1) {
+				await firstPromise;
+				return [{ id: "inv-1" }];
+			}
+			return [{ id: "inv-1" }, { id: "inv-2" }];
+		});
 
-		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
-		expect(keys).toEqual([
-			JSON.stringify(orpc.alerts.key()),
-			JSON.stringify(orpc.incidents.key()),
-			JSON.stringify(orpc.setup.key()),
-			JSON.stringify(orpc.webhooks.lastDelivery.key()),
-			JSON.stringify(orpc.investigations.key()),
-			JSON.stringify(orpc.schedules.key()),
-			JSON.stringify(orpc.threads.key()),
-			JSON.stringify(orpc.prSubscriptions.key()),
-		]);
+		const observer = new QueryObserver(queryClient, {
+			queryKey: key,
+			queryFn,
+		});
+		const unsubscribe = observer.subscribe(() => {});
+
+		await vi.waitFor(() => expect(fetchCount).toBe(1));
+		const query = queryClient.getQueryCache().find({ queryKey: key });
+		expect(query?.state.fetchStatus).toBe("fetching");
+
+		// Hint lands while in flight
+		invalidateTopics(queryClient, ["investigations"]);
+
+		// Fetch was not cancelled
+		expect(fetchCount).toBe(1);
+
+		// Settle first fetch
+		resolveFirst?.();
+
+		// Exactly one trailing fetch after settling
+		await vi.waitFor(() => expect(fetchCount).toBe(2));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(fetchCount).toBe(2);
+
+		unsubscribe();
 	});
 
-	it("re-reads schedules when one changes or a run it started moves (#979)", () => {
+	it("refresh: matching idle queries are invalidated by one invalidateQueries call, fetching match re-reads once when fetch ends, and non-matching queries are untouched", async () => {
 		const queryClient = new QueryClient();
-		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+		const idleKey1 = ["matched", "item-1"];
+		const idleKey2 = ["matched", "item-2"];
+		const nonMatchingKey = ["unrelated", "item-3"];
+		const fetchingKey = ["matched", "fetching-4"];
 
-		invalidateTopics(queryClient, ["schedules"]);
+		queryClient.setQueryData(idleKey1, { data: 1 });
+		queryClient.setQueryData(idleKey2, { data: 2 });
+		queryClient.setQueryData(nonMatchingKey, { data: 3 });
 
-		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
-		expect(keys).toEqual([JSON.stringify(orpc.schedules.key())]);
+		let fetchCount = 0;
+		let resolveFetch!: () => void;
+		const fetchPromise = new Promise<void>((r) => {
+			resolveFetch = r;
+		});
+
+		const observer = new QueryObserver(queryClient, {
+			queryKey: fetchingKey,
+			queryFn: async () => {
+				fetchCount++;
+				if (fetchCount === 1) {
+					await fetchPromise;
+					return { status: "initial" };
+				}
+				return { status: "trailing" };
+			},
+		});
+		const unsubscribe = observer.subscribe(() => {});
+
+		await vi.waitFor(() => expect(fetchCount).toBe(1));
+		expect(
+			queryClient.getQueryCache().find({ queryKey: fetchingKey })?.state
+				.fetchStatus,
+		).toBe("fetching");
+
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+		refresh(queryClient, [{ queryKey: ["matched"] }]);
+
+		expect(invalidateSpy).toHaveBeenCalledTimes(1);
+		expect(queryClient.getQueryState(idleKey1)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(idleKey2)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(nonMatchingKey)?.isInvalidated).toBe(false);
+		expect(fetchCount).toBe(1);
+
+		resolveFetch();
+		await vi.waitFor(() => expect(fetchCount).toBe(2));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(fetchCount).toBe(2);
+
+		unsubscribe();
 	});
 
-	it("re-reads only the thread lists when an agent's event lands (#1020)", () => {
+	it("a hint re-reads the thread list first and every other matched query only once the list lands", async () => {
 		const queryClient = new QueryClient();
-		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+		const feedKey = orpc.threads.feed.key({ input: { cursor: 0 } });
+		const asksKey = orpc.threads.asks.key({ input: {} });
+		const order: string[] = [];
+		let landList!: () => void;
+		const observe = (key: unknown[], name: string, wait?: Promise<void>) => {
+			let n = 0;
+			const o = new QueryObserver(queryClient, {
+				queryKey: key,
+				queryFn: async () => {
+					if (n++ > 0) {
+						order.push(name);
+						if (wait) await wait;
+					}
+					return { name };
+				},
+			});
+			return o.subscribe(() => {});
+		};
+		const listLands = new Promise<void>((r) => {
+			landList = r;
+		});
+		const offFeed = observe(feedKey, "feed", listLands);
+		const offAsks = observe(asksKey, "asks");
+		await vi.waitFor(() =>
+			expect(queryClient.getQueryState(asksKey)?.status).toBe("success"),
+		);
+		await vi.waitFor(() =>
+			expect(queryClient.getQueryState(feedKey)?.status).toBe("success"),
+		);
 
 		invalidateTopics(queryClient, ["threads"]);
 
-		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
-		expect(keys).toEqual([
-			JSON.stringify(orpc.threads.key()),
-			JSON.stringify(orpc.prSubscriptions.key()),
-		]);
+		expect(queryClient.getQueryState(asksKey)?.isInvalidated).toBe(true);
+		await vi.waitFor(() => expect(order).toEqual(["feed"]));
+		await new Promise((r) => setTimeout(r, 20));
+		expect(order).toEqual(["feed"]);
+		landList();
+		await vi.waitFor(() => expect(order).toEqual(["feed", "asks"]));
+		expect(queryClient.getQueryState(asksKey)?.isInvalidated).toBe(false);
+
+		offFeed();
+		offAsks();
 	});
 
-	it("invalidates incidents, setup, recommendations and timeline keys in order (#673 walk 4)", () => {
+	it("scope: hint threads/investigations scoped to ['a'] skips get({id:'b'}) and getStatus({id:'b'}) but refreshes get({id:'a'}) and non-per-thread queries", () => {
 		const queryClient = new QueryClient();
-		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+		const keyGetA = orpc.investigations.get.key({ input: { id: "a" } });
+		const keyGetB = orpc.investigations.get.key({ input: { id: "b" } });
+		const keyStatusB = orpc.investigations.getStatus.key({ input: { id: "b" } });
+		const keyList = orpc.investigations.list.key();
+		const keyThreads = orpc.threads.key();
 
-		invalidateTopics(queryClient, ["incidents"]);
+		queryClient.setQueryData(keyGetA, { id: "a" });
+		queryClient.setQueryData(keyGetB, { id: "b" });
+		queryClient.setQueryData(keyStatusB, { status: "running" });
+		queryClient.setQueryData(keyList, []);
+		queryClient.setQueryData(keyThreads, []);
 
-		const keys = invalidate.mock.calls.map(([f]) => JSON.stringify(f?.queryKey));
-		expect(keys).toEqual([
-			JSON.stringify(orpc.incidents.key()),
-			JSON.stringify(orpc.setup.key()),
-			JSON.stringify(orpc.recommendations.key()),
-			JSON.stringify(orpc.timeline.key()),
-			JSON.stringify(orpc.threads.key()),
+		invalidateTopics(queryClient, ["investigations", "threads"], ["a"]);
+
+		expect(queryClient.getQueryState(keyGetB)?.isInvalidated).toBe(false);
+		expect(queryClient.getQueryState(keyStatusB)?.isInvalidated).toBe(false);
+		expect(queryClient.getQueryState(keyGetA)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(keyList)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(keyThreads)?.isInvalidated).toBe(true);
+	});
+
+	it("the investigations and threads topics also re-read a thread's PR subscriptions and its thread tree (#1179)", () => {
+		const reread = (topic: "investigations" | "threads") => {
+			const queryClient = new QueryClient();
+			const subs = orpc.prSubscriptions.list.key({ input: { id: "a" } });
+			const tree = orpc.threadTree.key();
+			queryClient.setQueryData(subs, []);
+			queryClient.setQueryData(tree, []);
+			invalidateTopics(queryClient, [topic]);
+			return [
+				queryClient.getQueryState(subs)?.isInvalidated,
+				queryClient.getQueryState(tree)?.isInvalidated,
+			];
+		};
+		expect(reread("investigations")).toEqual([true, true]);
+		expect(reread("threads")).toEqual([true, true]);
+	});
+
+	it("applyActivity patches feed rows newer only, leaves dataUpdatedAt unchanged, never fetches, skips invalidated query, patches get session.lastActivityAt, and re-applies after non-manual fetch returns older data", async () => {
+		const queryClient = new QueryClient();
+		const feedKey = orpc.threads.feed.key();
+		const getKey = orpc.investigations.get.key({ input: { id: "t1" } });
+
+		const initialFeed = {
+			pageParams: [undefined],
+			pages: [
+				{
+					units: [
+						{
+							section: "active",
+							incident: null,
+							threads: [
+								{
+									id: "t1",
+									lastActivityAt: "2026-11-18T01:00:00.000Z",
+									latestText: "old text",
+								},
+							],
+						},
+					],
+				},
+			],
+		} as unknown as InfiniteData<ThreadFeed>;
+
+		queryClient.setQueryData(feedKey, initialFeed);
+		queryClient.setQueryData(getKey, {
+			id: "t1",
+			session: { lastActivityAt: "2026-11-18T01:00:00.000Z" },
+		});
+
+		const beforeDataUpdatedAt = queryClient.getQueryState(feedKey)?.dataUpdatedAt;
+
+		// 1. Patches newer only
+		applyActivity(queryClient, [
+			{
+				id: "t1",
+				at: "2026-11-18T02:00:00.000Z",
+				text: "new text",
+			},
 		]);
+
+		const feedAfter1 = queryClient.getQueryData<InfiniteData<ThreadFeed>>(feedKey);
+		expect(feedAfter1?.pages[0]?.units[0]?.threads[0]?.lastActivityAt).toBe(
+			"2026-11-18T02:00:00.000Z",
+		);
+		expect(feedAfter1?.pages[0]?.units[0]?.threads[0]?.latestText).toBe("new text");
+
+		// 2. Older activity ignored
+		applyActivity(queryClient, [
+			{
+				id: "t1",
+				at: "2026-11-18T01:30:00.000Z",
+				text: "stale text",
+			},
+		]);
+		const feedAfterOlder = queryClient.getQueryData<InfiniteData<ThreadFeed>>(feedKey);
+		expect(feedAfterOlder?.pages[0]?.units[0]?.threads[0]?.lastActivityAt).toBe(
+			"2026-11-18T02:00:00.000Z",
+		);
+
+		// 3. Leaves dataUpdatedAt unchanged
+		expect(queryClient.getQueryState(feedKey)?.dataUpdatedAt).toBe(
+			beforeDataUpdatedAt,
+		);
+
+		// 4. Patches investigations.get session.lastActivityAt
+		const getAfter = queryClient.getQueryData<{
+			id: string;
+			session?: { lastActivityAt: string };
+		}>(getKey);
+		expect(getAfter?.session?.lastActivityAt).toBe("2026-11-18T02:00:00.000Z");
+
+		// 5. Skips an invalidated query
+		queryClient.invalidateQueries({ queryKey: feedKey });
+		applyActivity(queryClient, [
+			{
+				id: "t1",
+				at: "2026-11-18T03:00:00.000Z",
+				text: "even newer",
+			},
+		]);
+		const feedAfterInvalidated =
+			queryClient.getQueryData<InfiniteData<ThreadFeed>>(feedKey);
+		expect(
+			feedAfterInvalidated?.pages[0]?.units[0]?.threads[0]?.lastActivityAt,
+		).toBe("2026-11-18T02:00:00.000Z");
+
+		// 6. Re-applies after a non-manual successful fetch returns older data
+		const fetchMock = vi.fn().mockResolvedValue({
+			id: "t1",
+			session: { lastActivityAt: "2026-11-18T01:00:00.000Z" },
+		});
+		await queryClient.fetchQuery({ queryKey: getKey, queryFn: fetchMock });
+		const getReApplied = queryClient.getQueryData<{
+			id: string;
+			session?: { lastActivityAt: string };
+		}>(getKey);
+		expect(getReApplied?.session?.lastActivityAt).toBe(
+			"2026-11-18T03:00:00.000Z",
+		);
+	});
+
+	it("activity at t1 then t3 preserves latestText when a feed row has lastActivityAt t2 and latestText B, and applies text A to a row older than t1", async () => {
+		// Feed row newer than text keeps its own text, older row takes earlier activity text.
+		const queryClient = new QueryClient();
+		const feedKey = orpc.threads.feed.key();
+		const t0 = "2026-11-18T00:00:00.000Z";
+		const t1 = "2026-11-18T01:00:00.000Z";
+		const t2 = "2026-11-18T02:00:00.000Z";
+		const t3 = "2026-11-18T03:00:00.000Z";
+
+		applyActivity(queryClient, [{ id: "t1", at: t1, text: "A" }]);
+		applyActivity(queryClient, [{ id: "t1", at: t3 }]);
+
+		await queryClient.fetchQuery({
+			queryKey: feedKey,
+			queryFn: async () =>
+				({
+					pageParams: [undefined],
+					pages: [
+						{
+							units: [
+								{
+									section: "active",
+									incident: null,
+									threads: [
+										{
+											id: "t1",
+											lastActivityAt: t2,
+											latestText: "B",
+										},
+									],
+								},
+							],
+						},
+					],
+				}) as unknown as InfiniteData<ThreadFeed>,
+		});
+
+		const feed1 = queryClient.getQueryData<InfiniteData<ThreadFeed>>(feedKey);
+		const row1 = feed1?.pages[0]?.units[0]?.threads[0];
+		expect(row1?.lastActivityAt).toBe(t3);
+		expect(row1?.latestText).toBe("B");
+
+		await queryClient.fetchQuery({
+			queryKey: feedKey,
+			queryFn: async () =>
+				({
+					pageParams: [undefined],
+					pages: [
+						{
+							units: [
+								{
+									section: "active",
+									incident: null,
+									threads: [
+										{
+											id: "t1",
+											lastActivityAt: t0,
+											latestText: "initial",
+										},
+									],
+								},
+							],
+						},
+					],
+				}) as unknown as InfiniteData<ThreadFeed>,
+		});
+
+		const feed2 = queryClient.getQueryData<InfiniteData<ThreadFeed>>(feedKey);
+		const row2 = feed2?.pages[0]?.units[0]?.threads[0];
+		expect(row2?.lastActivityAt).toBe(t3);
+		expect(row2?.latestText).toBe("A");
+	});
+
+	it("applyChange handles detail, sequence ordering, beat cursor, replay after beat, and reset", () => {
+		const queryClient = new QueryClient();
+		const getAKey = orpc.investigations.get.key({ input: { id: "a" } });
+		const getBKey = orpc.investigations.get.key({ input: { id: "b" } });
+		const listKey = orpc.investigations.list.key();
+		const alertsKey = orpc.alerts.key();
+
+		queryClient.setQueryData(getAKey, { id: "a" });
+		queryClient.setQueryData(getBKey, { id: "b" });
+		queryClient.setQueryData(listKey, []);
+		queryClient.setQueryData(alertsKey, []);
+
+		// detail:["a"] refreshes only get({id:"a"}) and investigations.list
+		applyChange(queryClient, {
+			cursor: "ep1.1",
+			topics: [],
+			detail: ["a"],
+		});
+		expect(queryClient.getQueryState(getAKey)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(getBKey)?.isInvalidated).toBe(false);
+
+		// Frame with seq <= last is dropped
+		queryClient.setQueryData(alertsKey, []);
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(false);
+
+		applyChange(queryClient, {
+			cursor: "ep2.5",
+			topics: ["alerts"],
+		});
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(true);
+
+		queryClient.setQueryData(alertsKey, []);
+		applyChange(queryClient, {
+			cursor: "ep2.5",
+			topics: ["alerts"],
+		});
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(false);
+
+		applyChange(queryClient, {
+			cursor: "ep2.4",
+			topics: ["alerts"],
+		});
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(false);
+
+		// Frame replayed after a beat with lower cursor is applied (OBJ-012 regression)
+		applyChange(queryClient, {
+			cursor: "ep3.10",
+			reset: true,
+		});
+		queryClient.setQueryData(alertsKey, []);
+		applyChange(queryClient, {
+			beat: true,
+			cursor: "ep3.10",
+		});
+		applyChange(queryClient, {
+			cursor: "ep3.11",
+			topics: ["alerts"],
+		});
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(true);
+
+		// Reset refreshes all topics and marks pl:live-reset
+		const markCountBefore = performance.getEntriesByName("pl:live-reset").length;
+		applyChange(queryClient, {
+			reset: true,
+			cursor: "ep4.1",
+		});
+		expect(performance.getEntriesByName("pl:live-reset").length).toBe(
+			markCountBefore + 1,
+		);
+		expect(queryClient.getQueryState(alertsKey)?.isInvalidated).toBe(true);
+		expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true);
+	});
+});
+
+describe("hintComing", () => {
+	it("is true before the stream's first connect and while it is up, and false once it drops", async () => {
+		vi.resetModules();
+		const m = await import("./live-refresh");
+		expect(m.hintComing()).toBe(true);
+		m.setConnected(true);
+		expect(m.hintComing()).toBe(true);
+		m.setConnected(false);
+		expect(m.hintComing()).toBe(false);
+		m.setConnected(true);
+		expect(m.hintComing()).toBe(true);
 	});
 });
 

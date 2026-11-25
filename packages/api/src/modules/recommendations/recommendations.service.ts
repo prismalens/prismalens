@@ -3,6 +3,7 @@
 
 import { Injectable, Logger } from "@nestjs/common";
 import { Recommendation } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { RecommendationStatus } from "../../shared/enums/index.js";
 import { UpdateRecommendationDto } from "./dto/index.js";
@@ -111,7 +112,7 @@ export class RecommendationsService {
 				...(dto.status !== undefined && { status: dto.status }),
 				...(dto.priority !== undefined && { priority: dto.priority }),
 				...(dto.status === RecommendationStatus.completed
-					? { implementedAt: new Date() }
+					? { implementedAt: clock.date() }
 					: dto.status !== undefined && { implementedAt: null }),
 			};
 

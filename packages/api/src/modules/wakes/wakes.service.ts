@@ -3,6 +3,7 @@
 
 import { Injectable } from "@nestjs/common";
 import type { WakeKind } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 
 export type WakeState = "pending" | "done" | "skipped" | "cancelled";
@@ -68,7 +69,7 @@ export class WakesService {
 		const write = async (tx: Pick<PrismaService, "threadWake">) => {
 			await tx.threadWake.updateMany({
 				where: { investigationId: threadId, kind, state: "pending" },
-				data: { state: "cancelled", doneAt: new Date() },
+				data: { state: "cancelled", doneAt: clock.date() },
 			});
 			const row = await tx.threadWake.create({
 				data: {
@@ -89,7 +90,7 @@ export class WakesService {
 	async cancel(wakeId: string): Promise<boolean> {
 		const { count } = await this.prisma.threadWake.updateMany({
 			where: { id: wakeId, state: "pending" },
-			data: { state: "cancelled", doneAt: new Date() },
+			data: { state: "cancelled", doneAt: clock.date() },
 		});
 		return count > 0;
 	}
@@ -98,7 +99,7 @@ export class WakesService {
 	async cancelKind(threadId: string, kind: WakeKind): Promise<number> {
 		const { count } = await this.prisma.threadWake.updateMany({
 			where: { investigationId: threadId, kind, state: "pending" },
-			data: { state: "cancelled", doneAt: new Date() },
+			data: { state: "cancelled", doneAt: clock.date() },
 		});
 		return count;
 	}
@@ -117,7 +118,7 @@ export class WakesService {
 
 	/** Pending wakes whose time has come, oldest first; one missed while PrismaLens was off is due once. */
 	async due(
-		now: Date = new Date(),
+		now: Date = clock.date(),
 		after?: Pick<Wake, "at" | "id">,
 		take = 50,
 	): Promise<Wake[]> {
@@ -146,7 +147,7 @@ export class WakesService {
 		wakeId: string,
 		state: Exclude<WakeState, "pending">,
 		payload?: Record<string, unknown>,
-		now: Date = new Date(),
+		now: Date = clock.date(),
 	): Promise<boolean> {
 		const { count } = await this.prisma.threadWake.updateMany({
 			where: { id: wakeId, state: "pending" },

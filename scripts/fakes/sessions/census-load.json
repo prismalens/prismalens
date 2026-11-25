@@ -1,0 +1,53 @@
+{
+	"description": "The census load (#1181): the runaway agent, ten calls a second, reporting its usage on every pass as real agents do.",
+	"prompt": "The retry test is flaky on CI. Can you make it pass reliably?",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.106.0-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "The retry test still fails. Trying another fix.\n"
+			},
+			{
+				"repeat": {
+					"times": 3000,
+					"steps": [
+						{
+							"delayMs": 100,
+							"tool": {
+								"id": "toolu_runaway_{{i}}",
+								"kind": "search",
+								"title": "`grep -rn retries src/`",
+								"rawInput": {
+									"command": "grep -rn retries src/"
+								},
+								"output": "src/app.txt:10:retries = {{i}}"
+							}
+						},
+						{
+							"say": "Attempt {{i}}: set retries to {{i}}, the test still fails. Trying again.\n"
+						},
+						{
+							"update": {
+								"sessionUpdate": "usage_update",
+								"used": 1000,
+								"size": 200000,
+								"cost": {
+									"amount": 0.01,
+									"currency": "USD"
+								}
+							}
+						}
+					]
+				}
+			}
+		]
+	],
+	"followUp": [
+		{
+			"say": "Stopped looping. The retry test fails because the fixture pins retries to 1.\n"
+		}
+	]
+}

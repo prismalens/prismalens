@@ -3,695 +3,120 @@
 // Copyright 2026 Sumit Patel
 
 /**
- * Packed intake e2e (#630, Unit F on the 2026-09-13 gap study on #337): does a
- * real alert source reach an incident end to end, on the INSTALLED tarball?
- * `packed-smoke.sh` proves the tarball boots; this proves the one thing it
- * does not — a webhook delivery becomes an open incident, and a resolution
- * closes it. No investigation run, no model call, no harness required.
- *
- * Boots `pl up` in a fresh workspace from the packed artifact, reads the
- * generated webhook token (`<workspace>/PRISMALENS_WEBHOOK_SECRET_FILE`,
- * #627), signs in as the owner, POSTs a Prometheus firing payload with a
- * bearer token, asserts an open incident carries that alert's fingerprint,
- * POSTs the resolved payload, asserts the incident resolves.
- *
- * With PACKED_INTAKE_REPO=<git checkout> (or "fixture", a small built-in repo)
- * and a harness on PATH it goes one step further: the alert carries a
- * `service` label naming a service mapped to that repo, and the script asserts
- * the app started an investigation on its own and completed it with a report
- * whose cited paths exist. No human creates an
- * incident or presses Investigate (the unattended gate, prismalens#337).
+ * Packed intake e2e (#630): the core journeys (scripts/journeys) run on the INSTALLED
+ * tarball. `packed-smoke.sh` proves the tarball boots; this proves what a user does with
+ * it: an alert becomes an incident, the app investigates it unattended and ends with a
+ * report citing real files, a resolution closes it, and a restart resumes a cut-off run.
+ * The same journeys run in-process in vitest (packages/api/test/journeys).
  *
  * Usage: packed-intake.mjs <dir-with-tarball>
- *   The dir must hold the single published tarball from
- *   `node scripts/pack-cli.mjs` — the SAME artifact packed-smoke verifies.
- *   PRISMALENS_TARBALL overrides with an exact path (CI reuse). What is installed is the npm
- *   launcher, running this runner's archive of that tarball from a local release mirror (#717).
+ *   The dir must hold the single published tarball from `node scripts/pack-cli.mjs`,
+ *   the SAME artifact packed-smoke verifies. PRISMALENS_TARBALL overrides with an exact
+ *   path (CI reuse). What is installed is the npm launcher, running this runner's archive
+ *   of that tarball from a local release mirror (#717).
  *
- * Env: PACKED_INTAKE_PORT (default 3102). PACKED_INTAKE_REPO (optional, see
- * above); PRISMALENS_HARNESS_MODEL (optional, the model id set on the harness).
- * PACKED_INTAKE_AGENT: "live" (default) uses the harness on PATH; "fake" puts the
- * scripted ACP agent (scripts/fakes/sessions/intake.json) on PATH as `opencode`
- * and needs PACKED_INTAKE_REPO=fixture, the repo that session cites (#884).
- * PACKED_INTAKE_EVENTS_OUT=<file> writes the investigation's paged event stream
- * there once the run ends, completed or not; the nightly tier uploads it (#533).
+ * Env: PACKED_INTAKE_PORT (default 3102). PACKED_INTAKE_REPO: a git checkout to
+ * investigate; "fixture" or unset is the small built-in repo (#876).
+ * PRISMALENS_HARNESS_MODEL (optional, the model id set on the harness).
+ * PACKED_INTAKE_AGENT: "live" (default) is the live target, the harness on PATH;
+ * "fake" is the packed target, the scripted ACP agent (scripts/fakes/sessions) on PATH
+ * as `opencode`, which needs the built-in fixture repo (#884).
+ * PACKED_INTAKE_JOURNEYS: comma-separated journey names; default all of them.
+ * PACKED_INTAKE_EVENTS_OUT=<file> writes the alert-to-report run's paged event stream
+ * there once it ends, completed or not; the nightly tier uploads it (#533).
  */
-import { execFileSync, spawn } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { journeys, runJourneys } from "./journeys/index.mjs";
+import { eventsOf } from "./journeys/lib.mjs";
 import {
-	createWriteStream,
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	readdirSync,
-	readFileSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { delimiter, dirname, join, resolve, sep } from "node:path";
-import { installFakeAgent } from "./fakes/fake-acp-agent.mjs";
-import { reportCitedPaths } from "./lib/cited-paths.mjs";
-import { makeIntakeFixtureRepo } from "./lib/intake-fixture.mjs";
-import { prepareLauncher, tarballVersion } from "./lib/launcher-mirror.mjs";
-import { installWithRetry } from "./lib/npm-install-retry.mjs";
+	findTarball,
+	openPackedTarget,
+	packedConfig,
+} from "./journeys/targets/packed.mjs";
+import { targetGuard } from "./lib/target-guard.mjs";
 
-const PORT = process.env.PACKED_INTAKE_PORT ?? "3102";
-const BASE = `http://127.0.0.1:${PORT}`;
-const FETCH_TIMEOUT_MS = 10_000;
-const SERVICE_NAME = "packed-intake";
-
-function findTarball() {
-	if (process.env.PRISMALENS_TARBALL)
-		return resolve(process.env.PRISMALENS_TARBALL);
-	const dir = process.argv[2];
-	if (!dir) {
-		throw new Error(
-			"usage: packed-intake.mjs <dir-with-tarball> (or set PRISMALENS_TARBALL)",
-		);
-	}
-	const tarballsDir = resolve(dir);
-	const found = readdirSync(tarballsDir).find((f) =>
-		/^prismalens-[0-9].*\.tgz$/.test(f),
-	);
-	if (!found)
-		throw new Error(`no tarball matching prismalens-*.tgz in ${tarballsDir}`);
-	return join(tarballsDir, found);
-}
-
-const prefix = mkdtempSync(join(tmpdir(), "pl-intake-"));
-const workspace = join(prefix, "workspace");
-mkdirSync(workspace, { recursive: true });
-
-// "fixture" builds a small repo instead of reading a checkout (#876).
-const REPO =
-	process.env.PACKED_INTAKE_REPO === "fixture"
-		? makeIntakeFixtureRepo(join(prefix, "fixture"))
-		: process.env.PACKED_INTAKE_REPO
-			? resolve(process.env.PACKED_INTAKE_REPO)
-			: null;
-
-const AGENT = process.env.PACKED_INTAKE_AGENT ?? "live";
-if (AGENT !== "live" && AGENT !== "fake") {
-	throw new Error(`PACKED_INTAKE_AGENT must be live or fake, got ${AGENT}`);
-}
-if (AGENT === "fake" && process.env.PACKED_INTAKE_REPO !== "fixture") {
-	throw new Error("PACKED_INTAKE_AGENT=fake needs PACKED_INTAKE_REPO=fixture");
-}
-
-let child;
-let cleaned = false;
-
-// The API leads each ACP agent in its own process group, so SIGKILL on `pl up`
-// alone orphans it; walk by parent pid instead (#904). pgrep: Linux runner only.
-function descendantPids(root) {
-	const found = [];
-	const queue = [root];
-	while (queue.length > 0) {
-		let out = "";
-		try {
-			out = execFileSync("pgrep", ["-P", String(queue.shift())], {
-				encoding: "utf8",
-			});
-		} catch {
-			continue;
-		}
-		for (const line of out.split("\n")) {
-			const pid = Number(line);
-			if (pid > 0) {
-				found.push(pid);
-				queue.push(pid);
-			}
-		}
-	}
-	return found;
-}
-
-function cleanup(exitCode) {
-	if (cleaned) return;
-	cleaned = true;
-	if (child?.pid) {
-		for (const pid of descendantPids(child.pid).reverse()) {
-			try {
-				process.kill(pid, "SIGKILL");
-			} catch {
-				// already gone
-			}
-		}
-	}
-	try {
-		child?.kill("SIGKILL");
-	} catch {
-		// already gone
-	}
-	rmSync(prefix, { recursive: true, force: true });
-	process.exitCode = exitCode;
-}
-process.on("SIGINT", () => cleanup(130));
-process.on("SIGTERM", () => cleanup(143));
-
-async function main() {
-	const tgz = findTarball();
-	console.log(`[packed-intake] tarball: ${tgz}`);
-	const version = tarballVersion(tgz);
-	const release = prepareLauncher({
-		tgz,
-		work: join(prefix, "release"),
-		releases: [{ version, launcher: true }],
-	});
-	console.log(
-		`[packed-intake] installing the launcher ${version} into ${prefix}; archive from ${release.baseUrl}`,
-	);
-	installWithRetry(
-		"npm",
-		[
-			"install",
-			"--prefix",
-			prefix,
-			"--no-audit",
-			"--no-fund",
-			"--loglevel=error",
-			release.launchers[version],
-		],
-		{ stdio: "inherit" },
-	);
-
-	const bin = join(prefix, "node_modules", ".bin", "pl");
-	if (!existsSync(bin)) throw new Error(`pl bin not linked at ${bin}`);
-	const launcherEnv = {
-		PRISMALENS_RELEASE_BASE_URL: release.baseUrl,
-		PRISMALENS_LAUNCHER_DIR: join(prefix, "launcher-cache"),
-	};
-	Object.assign(process.env, launcherEnv);
-	const printed = execFileSync(bin, ["--version"], {
-		encoding: "utf8",
-		timeout: 600_000,
-	}).trim();
-	if (printed !== version)
-		throw new Error(
-			`the launcher's first run printed ${printed}, not ${version}`,
-		);
-	console.log(`[packed-intake] the launcher unpacked ${version}`);
-
-	let agentPath = process.env.PATH ?? "";
-	if (AGENT === "fake") {
-		const agentBin = join(prefix, "agent-bin");
-		mkdirSync(agentBin);
-		installFakeAgent(agentBin, { session: "intake", binaries: ["opencode"] });
-		agentPath = `${agentBin}${delimiter}${agentPath}`;
-		console.log("[packed-intake] agent: scripted fake as opencode");
-	}
-
-	const logPath = join(prefix, "up.log");
-	const logStream = createWriteStream(logPath);
-	let bootLog = "";
-	console.log(`[packed-intake] pl up on ${BASE} (workspace ${workspace})`);
-	child = spawn(bin, ["up"], {
-		stdio: ["ignore", "pipe", "pipe"],
-		env: {
-			...process.env,
-			CI: process.env.CI ?? "true",
-			// Keeps an exported `off`; otherwise a local run counts as internal (#1021).
-			PRISMALENS_TELEMETRY: process.env.PRISMALENS_TELEMETRY || "internal",
-			PATH: agentPath,
-			PRISMALENS_WORKSPACE_DIR: workspace,
-			// The default (quiet) console level sends info records to the log
-			// file only (#610) — the readiness line this script polls for is
-			// one of them, so without this the wait times out on a server that
-			// already booted (see packed-smoke.sh's UP_LOG for the same fix).
-			PRISMALENS_LOG_CONSOLE: "verbose",
-			PRISMALENS_HOST: "127.0.0.1",
-			PRISMALENS_PORT: PORT,
-			...launcherEnv,
-		},
-	});
-	child.stdout.on("data", (d) => {
-		bootLog += d;
-		logStream.write(d);
-	});
-	child.stderr.on("data", (d) => {
-		bootLog += d;
-		logStream.write(d);
-	});
-
-	const booted = await waitForLog(
-		() => bootLog,
-		/PrismaLens API running/,
-		120_000,
-	);
-	if (!booted) {
-		console.error("----- boot log -----");
-		console.error(bootLog.slice(-4000));
-		throw new Error("pl up did not report ready within 120s");
-	}
-	console.log("[packed-intake] pl up is ready");
-
-	const tokenFile = join(workspace, "PRISMALENS_WEBHOOK_SECRET_FILE");
-	if (!existsSync(tokenFile)) {
-		throw new Error(`${tokenFile} does not exist after boot`);
-	}
-	const token = readFileSync(tokenFile, "utf8").trim();
-	console.log(`[packed-intake] read webhook token from ${tokenFile}`);
-
-	const json = (path, init) =>
-		fetch(BASE + path, {
-			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-			...init,
-			headers: {
-				"content-type": "application/json",
-				origin: BASE,
-				...(init?.headers ?? {}),
-			},
-		});
-
-	// --- pairing: pair a device instead of creating an owner ---
-	const pairOut = execFileSync(
-		bin,
-		["pair", "--start-runs", "--workspace", workspace],
-		{
-			encoding: "utf8",
-		},
-	);
-	const pairToken = pairOut.match(/\/pair#([^\s#]+)/)?.[1] ?? "";
-
-	const redeem = await json("/api/pairing/redeem", {
-		method: "POST",
-		body: JSON.stringify({ token: pairToken, name: "packed intake" }),
-	});
-	const setCookie = redeem.headers.getSetCookie?.() ?? [];
-	const deviceCookie = setCookie.find((c) =>
-		c.startsWith("prismalens.device."),
-	);
-	const cookie = deviceCookie ? deviceCookie.split(";")[0] : "";
-	if (redeem.status !== 200 || !cookie) {
-		throw new Error(
-			`POST /api/pairing/redeem failed: status ${redeem.status}, cookies ${setCookie.length}`,
-		);
-	}
-	console.log(
-		"[packed-intake] OK   POST /api/pairing/redeem 200 with device cookie",
-	);
-
-	const whoamiWith = await json("/api/operator/whoami", {
-		headers: { cookie },
-	});
-	const whoamiWithBody = await whoamiWith.json().catch(() => ({}));
-	if (whoamiWith.status !== 200 || whoamiWithBody.via !== "device") {
-		throw new Error(
-			`GET /api/operator/whoami with cookie failed: status ${whoamiWith.status}, via ${whoamiWithBody.via}`,
-		);
-	}
-	console.log(
-		"[packed-intake] OK   GET /api/operator/whoami with cookie says device",
-	);
-
-	const whoamiWithout = await json("/api/operator/whoami");
-	const whoamiWithoutBody = await whoamiWithout.json().catch(() => ({}));
-	if (whoamiWithout.status !== 200 || whoamiWithoutBody.via !== null) {
-		throw new Error(
-			`GET /api/operator/whoami without cookie failed: status ${whoamiWithout.status}, via ${whoamiWithoutBody.via}`,
-		);
-	}
-	console.log(
-		"[packed-intake] OK   GET /api/operator/whoami without cookie says null",
-	);
-
-	const redeemAgain = await json("/api/pairing/redeem", {
-		method: "POST",
-		body: JSON.stringify({ token: pairToken, name: "packed intake" }),
-	});
-	if (redeemAgain.status !== 400) {
-		throw new Error(
-			`POST /api/pairing/redeem again failed: status ${redeemAgain.status}`,
-		);
-	}
-	console.log("[packed-intake] OK   POST /api/pairing/redeem again 400");
-
-	const devices = await fetch(BASE + "/api/pairing/devices", {
-		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-		headers: { cookie },
-	});
-	if (devices.status !== 403) {
-		throw new Error(
-			`GET /api/pairing/devices with device cookie failed: status ${devices.status}`,
-		);
-	}
-	console.log(
-		"[packed-intake] OK   GET /api/pairing/devices with device cookie 403",
-	);
-
-	if (REPO) await mapRepository(json, cookie);
-
-	// --- the firing delivery ---------------------------------------------------
-	const fingerprint = `packed-intake-${Date.now()}`;
-	const nowIso = new Date().toISOString();
-	const firing = {
-		status: "firing",
-		alerts: [
-			{
-				status: "firing",
-				labels: {
-					alertname: "PackedIntakeProbe",
-					severity: "critical",
-					...(REPO ? { service: SERVICE_NAME } : {}),
-				},
-				annotations: {
-					summary: "Synthetic alert for the packed intake e2e",
-					...(REPO
-						? {
-								description:
-									"POST /api/webhooks/prometheus answers 500 when the bearer token file under the workspace is empty. Find the cause.",
-							}
-						: {}),
-				},
-				startsAt: nowIso,
-				fingerprint,
-			},
-		],
-	};
-	const firingRes = await fetch(BASE + "/api/webhooks/prometheus", {
-		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-		method: "POST",
-		headers: {
-			"content-type": "application/json",
-			origin: BASE,
-			authorization: `Bearer ${token}`,
-		},
-		body: JSON.stringify(firing),
-	});
-	if (firingRes.status < 200 || firingRes.status >= 300) {
-		throw new Error(
-			`POST /api/webhooks/prometheus (firing) failed: status ${firingRes.status}: ${(await firingRes.text()).slice(0, 200)}`,
-		);
-	}
-	console.log("[packed-intake] OK   POST /api/webhooks/prometheus (firing)");
-
-	const openIncident = await findIncidentByFingerprint(
-		json,
-		cookie,
-		fingerprint,
-		{
-			requireOpen: true,
-		},
-	);
-	if (!openIncident) {
-		throw new Error(
-			`no open incident with an alert fingerprint ${fingerprint} after the firing delivery`,
-		);
-	}
-	console.log(
-		`[packed-intake] OK   open incident #${openIncident.number} carries the alert`,
-	);
-
-	if (REPO) await assertUnattendedInvestigation(json, cookie, openIncident);
-
-	// --- the resolved delivery --------------------------------------------------
-	const resolved = {
-		status: "resolved",
-		alerts: [
-			{
-				status: "resolved",
-				labels: { alertname: "PackedIntakeProbe", severity: "critical" },
-				annotations: { summary: "Synthetic alert for the packed intake e2e" },
-				startsAt: nowIso,
-				endsAt: new Date().toISOString(),
-				fingerprint,
-			},
-		],
-	};
-	const resolvedRes = await fetch(BASE + "/api/webhooks/prometheus", {
-		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-		method: "POST",
-		headers: {
-			"content-type": "application/json",
-			origin: BASE,
-			authorization: `Bearer ${token}`,
-		},
-		body: JSON.stringify(resolved),
-	});
-	if (resolvedRes.status < 200 || resolvedRes.status >= 300) {
-		throw new Error(
-			`POST /api/webhooks/prometheus (resolved) failed: status ${resolvedRes.status}: ${(await resolvedRes.text()).slice(0, 200)}`,
-		);
-	}
-	console.log("[packed-intake] OK   POST /api/webhooks/prometheus (resolved)");
-
-	const closedIncident = await pollUntil(
-		() =>
-			findIncidentByFingerprint(json, cookie, fingerprint, {
-				requireOpen: false,
-			}),
-		(incident) =>
-			incident?.status === "resolved" || incident?.status === "closed",
-		15_000,
-	);
-	if (!closedIncident) {
-		throw new Error(
-			`incident with fingerprint ${fingerprint} did not resolve within 15s of the resolved delivery`,
-		);
-	}
-	console.log(
-		`[packed-intake] OK   incident #${closedIncident.number} resolved (status=${closedIncident.status})`,
-	);
-
-	console.log("PACKED INTAKE OK");
-}
-
-/** A service named by the alert's `service` label, pointed at REPO. */
-async function mapRepository(json, cookie) {
-	const model = process.env.PRISMALENS_HARNESS_MODEL;
-	if (model) {
-		// The model is stored per harness, so it goes under the one auto selects.
-		const selected = await json("/api/settings/harnesses", {
-			headers: { cookie },
-		});
-		const harness = (await selected.json()).selection?.harness;
-		if (selected.status !== 200 || !harness) {
-			throw new Error(
-				`GET /api/settings/harnesses named no harness to set ${model} on (status ${selected.status})`,
-			);
-		}
-		const res = await json("/api/settings/harness", {
-			method: "PATCH",
-			headers: { cookie },
-			body: JSON.stringify({ harness: "auto", models: { [harness]: model } }),
-		});
-		if (res.status !== 200) {
-			throw new Error(
-				`PATCH /api/settings/harness failed: status ${res.status}: ${(await res.text()).slice(0, 200)}`,
-			);
-		}
-		console.log(
-			`[packed-intake] OK   PATCH /api/settings/harness ${harness} model=${model}`,
-		);
-	}
-
-	const serviceRes = await json("/api/services", {
-		method: "POST",
-		headers: { cookie },
-		body: JSON.stringify({ name: SERVICE_NAME }),
-	});
-	if (serviceRes.status < 200 || serviceRes.status >= 300) {
-		throw new Error(
-			`POST /api/services failed: status ${serviceRes.status}: ${(await serviceRes.text()).slice(0, 200)}`,
-		);
-	}
-	const service = await serviceRes.json();
-	console.log(`[packed-intake] OK   POST /api/services (${service.id})`);
-
-	const repoRes = await json("/api/repositories/source", {
-		method: "POST",
-		headers: { cookie },
-		body: JSON.stringify({ serviceId: service.id, source: REPO }),
-	});
-	if (repoRes.status < 200 || repoRes.status >= 300) {
-		throw new Error(
-			`POST /api/repositories/source failed: status ${repoRes.status}: ${(await repoRes.text()).slice(0, 200)}`,
-		);
-	}
-	console.log(`[packed-intake] OK   POST /api/repositories/source (${REPO})`);
-}
-
-/**
- * The app must start an investigation for the incident by itself and finish it
- * with a report. Every path the report cites must exist in REPO.
- */
-async function assertUnattendedInvestigation(json, cookie, incident) {
-	const investigation = await pollUntil(
-		async () => {
-			const res = await json("/api/investigations?limit=50", {
-				headers: { cookie },
-			});
-			if (res.status !== 200) return undefined;
-			const body = await res.json();
-			return (body.data ?? []).find((inv) => inv.incidentId === incident.id);
-		},
-		(inv) => inv !== undefined,
-		60_000,
-	);
-	if (!investigation) {
-		throw new Error(
-			`no investigation was started for incident #${incident.number} within 60s of the alert`,
-		);
-	}
-	console.log(
-		`[packed-intake] OK   investigation ${investigation.id} started on its own`,
-	);
-
-	const finished = await pollUntil(
-		async () => {
-			const res = await json(`/api/investigations/${investigation.id}`, {
-				headers: { cookie },
-			});
-			if (res.status !== 200) return undefined;
-			const body = await res.json();
-			return body.investigation ?? body;
-		},
-		(inv) => inv !== undefined && !["pending", "running"].includes(inv.status),
-		600_000,
-	);
-	const exportError = await saveEvents(json, cookie, investigation.id).then(
-		() => undefined,
-		(error) => error,
-	);
-	if (!finished) {
-		await logStall(json, cookie, investigation.id);
-		throw new Error(
-			`investigation ${investigation.id} did not reach a terminal state within 10 minutes`,
-		);
-	}
-	if (finished.status !== "completed" || !finished.report) {
-		throw new Error(
-			`investigation ${investigation.id} ended ${finished.status} without a report: ${finished.error ?? ""}`,
-		);
-	}
-	if (exportError) throw exportError;
-	const hypotheses = finished.report.hypotheses ?? [];
-	if (hypotheses.length === 0) {
-		throw new Error(
-			`investigation ${investigation.id} completed with no hypothesis`,
-		);
-	}
-	const cited = reportCitedPaths(finished.report);
-	if (cited.size === 0) {
-		throw new Error(
-			`report for investigation ${investigation.id} cites no file path in any evidence source`,
-		);
-	}
-	// A path counts only inside REPO: an absolute path or a `..` escape is
-	// "missing" however real the file it names.
-	const root = resolve(REPO) + sep;
-	const missing = [...cited].filter((p) => {
-		const abs = resolve(REPO, p);
-		return !abs.startsWith(root) || !existsSync(abs);
-	});
-	if (missing.length > 0) {
-		throw new Error(
-			`report cites paths that do not exist in ${REPO}: ${missing.join(", ")}`,
-		);
-	}
-	console.log(
-		`[packed-intake] OK   report: ${hypotheses.length} hypothesis(es), ${cited.size} cited path(s) all present`,
-	);
-}
-
-/** Poll the incident list for the one whose alerts carry `fingerprint` (Alert.externalId, not the internal dedup Alert.fingerprint). */
-async function findIncidentByFingerprint(
-	json,
-	cookie,
-	fingerprint,
-	{ requireOpen },
-) {
-	return pollUntil(
-		async () => {
-			const res = await json("/api/incidents?limit=50", {
-				headers: { cookie },
-			});
-			if (res.status !== 200) return undefined;
-			const body = await res.json();
-			const incidents = body.data ?? [];
-			return incidents.find((incident) =>
-				(incident.alerts ?? []).some(
-					(alert) => alert.externalId === fingerprint,
-				),
-			);
-		},
-		(incident) =>
-			incident !== undefined &&
-			(!requireOpen || !["resolved", "closed"].includes(incident.status)),
-		15_000,
-	);
-}
-
-/** Every event of an investigation, following `/events` paging to the end. */
-async function fetchEvents(json, cookie, id) {
-	const events = [];
-	for (let cursor; ; ) {
-		const res = await json(
-			`/api/investigations/${id}/events?limit=200${cursor === undefined ? "" : `&cursor=${cursor}`}`,
-			{ headers: { cookie } },
-		);
-		const page = await res.json();
-		events.push(...page.events);
-		if (page.nextCursor == null || page.events.length === 0) break;
-		cursor = page.nextCursor;
-	}
-	return events;
-}
+const log = (/** @type {string} */ message) =>
+	console.log(`[packed-intake] ${message}`);
 
 /** The event stream to PACKED_INTAKE_EVENTS_OUT (#533); throws so a completed attempt without its recording fails. */
-async function saveEvents(json, cookie, id) {
-	const out = process.env.PACKED_INTAKE_EVENTS_OUT;
-	if (!out) return;
+async function saveEvents(
+	/** @type {import("./journeys/types.mjs").Target} */ app,
+	/** @type {string} */ out,
+	/** @type {string} */ id,
+) {
 	try {
-		const events = await fetchEvents(json, cookie, id);
+		const events = await eventsOf(app, id);
 		mkdirSync(dirname(resolve(out)), { recursive: true });
 		const body = JSON.stringify({ investigationId: id, events }, null, 2);
 		writeFileSync(resolve(out), `${body}\n`);
-		console.log(`[packed-intake] saved ${events.length} events to ${out}`);
+		log(`saved ${events.length} events to ${out}`);
 	} catch (error) {
 		console.error(`[packed-intake] could not save the event stream: ${error}`);
 		throw error;
 	}
 }
 
-/** What a run that never finished was doing, so the next failure names its cause (#876). */
-async function logStall(json, cookie, id) {
-	try {
-		const events = await fetchEvents(json, cookie, id);
-		console.error(
-			`[packed-intake] stalled run: ${events.length} events; last 8:`,
+/**
+ * The whole run, with its collaborators passed in so a test can cancel during boot.
+ * @param {{ guard: ReturnType<typeof targetGuard>, openTarget?: typeof openPackedTarget, run?: typeof runJourneys, env?: NodeJS.ProcessEnv, argv?: string[] }} deps
+ */
+export async function main({
+	guard,
+	openTarget = openPackedTarget,
+	run = runJourneys,
+	env = process.env,
+	argv = process.argv,
+}) {
+	const config = packedConfig(env);
+	const known = journeys.map((j) => j.name);
+	const wanted = config.journeys ?? known;
+	const unknown = wanted.filter((name) => !known.includes(name));
+	if (unknown.length > 0) {
+		throw new Error(
+			`PACKED_INTAKE_JOURNEYS names no journey ${unknown.join(", ")}; known: ${known.join(", ")}`,
 		);
-		for (const e of events.slice(-8)) {
-			console.error(`  ${e.ts} ${e.kind} ${JSON.stringify(e).slice(0, 240)}`);
-		}
+	}
+	const tgz = findTarball(argv[2], env);
+	const app = await guard.adopt(await openTarget({ ...config, tgz }, log));
+	/** @type {Map<string, string[]>} */
+	const ran = new Map();
+	let failure;
+	try {
+		await run(
+			app,
+			journeys.filter((j) => wanted.includes(j.name)),
+			log,
+			ran,
+		);
 	} catch (error) {
-		console.error(`[packed-intake] could not read the stalled run: ${error}`);
+		failure = error;
 	}
+	const recorded = ran.get("alert-to-report")?.[0];
+	const exportError =
+		config.eventsOut && recorded
+			? await saveEvents(app, config.eventsOut, recorded).then(
+					() => undefined,
+					(error) => error,
+				)
+			: undefined;
+	if (failure) throw failure;
+	if (exportError) throw exportError;
+	console.log("PACKED INTAKE OK");
 }
 
-async function pollUntil(read, satisfies, timeoutMs) {
-	const start = Date.now();
-	for (;;) {
-		const value = await read();
-		if (satisfies(value)) return value;
-		if (Date.now() - start >= timeoutMs) return undefined;
-		await new Promise((r) => setTimeout(r, 500));
-	}
+if (
+	process.argv[1] &&
+	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+	const guard = targetGuard();
+	process.on("SIGINT", () => void guard.cleanup(130));
+	process.on("SIGTERM", () => void guard.cleanup(143));
+	main({ guard })
+		.then(() => guard.cleanup(0))
+		.catch((error) => {
+			console.error(`INTAKE FAIL: ${error?.stack ?? error}`);
+			return guard.cleanup(1);
+		});
 }
-
-async function waitForLog(readLog, pattern, timeoutMs) {
-	const start = Date.now();
-	while (Date.now() - start < timeoutMs) {
-		if (pattern.test(readLog())) return true;
-		if (child?.exitCode !== null && child?.exitCode !== undefined) return false;
-		await new Promise((r) => setTimeout(r, 300));
-	}
-	return false;
-}
-
-main()
-	.then(() => cleanup(0))
-	.catch((error) => {
-		console.error(`INTAKE FAIL: ${error?.stack ?? error}`);
-		cleanup(1);
-	});

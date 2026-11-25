@@ -40,6 +40,52 @@ export const slowLink = define.condition({
 			],
 		},
 		{ metric: "connection.wordAfterDrop", max: 2000, unit: "ms" },
+		// The request census (#1181): an idle tab while another thread's agent works ten calls a second.
+		{ metric: "census.liveRequestsPerMin", max: 60, unit: "/min" },
+		{ metric: "census.listLagMs", max: 2000, unit: "ms" },
+		{ metric: "census.liveApiBytesPerMin", max: 100000, unit: "B" },
+		{
+			metric: "census.longLivedConnections",
+			max: 1,
+			pages: [
+				{
+					page: "thread.live",
+					max: 2,
+					said: {
+						date: "2026-11-18",
+						quote:
+							"one change stream per browser, plus the watched live thread",
+						where: "#1181 spec, §4",
+					},
+				},
+				{
+					page: "pool5h.direct",
+					max: 2,
+					said: {
+						date: "2026-11-18",
+						quote: "hidden tabs hold no transcript stream",
+						where: "#1181 spec, §4",
+					},
+				},
+				{
+					page: "pool3.direct",
+					max: 4,
+					said: {
+						date: "2026-11-18",
+						quote:
+							"three visible live tabs: one change stream and three transcripts",
+						where: "#1181 spec, §4",
+					},
+				},
+			],
+		},
+		// Seven routes each tab re-reads, eight edges a minute: two tabs sharing reads stay under it.
+		{ metric: "census.sharedComputesPerMin", max: 56, unit: "/min" },
+		// A thread made while the link was down shows once it is back; closing the stream's tab hands it on.
+		{ metric: "census.resumeShowsMs", max: 2000, unit: "ms" },
+		{ metric: "census.handoffShowsMs", max: 7000, unit: "ms" },
+		{ metric: "census.poolSettingsMs", max: 5000, unit: "ms" },
+		{ metric: "load.duplicateFetches", max: 1 },
 		{ state: "the connection word shows, no reload, the draft kept" },
 		{ state: "a score earned without the slow link doesn't count" },
 	],
@@ -51,7 +97,7 @@ export const slowLink = define.condition({
 		live: "{slowUrl}, the same app behind the slow link; Playwright walks add the 4x CPU with e2e/journeys/slow-link.ts",
 	},
 	probe: {
-		run: "node scripts/fakes/conditions/slow-link-measure.mjs --ui {slowUrl} --thread {thread} --stamp",
+		run: "node scripts/fakes/conditions/slow-link-measure.mjs --ui {slowUrl} --direct {url} --thread {thread} --census 30 --runs 3 --tabs 2 --pool --stamp",
 	},
 	trigger: {
 		run: "node scripts/fakes/conditions/slow-link-proxy.mjs drop --for 10",

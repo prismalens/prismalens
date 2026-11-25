@@ -760,6 +760,8 @@ function ListRowView({
 						)}
 						data-testid="thread-row"
 						data-id={t.id}
+						// The slow-link census reads how stale the row is (#1181).
+						data-activity={Date.parse(t.lastActivityAt)}
 						data-state={mark}
 						data-started-by={by?.via}
 						data-quiet={quiet || undefined}

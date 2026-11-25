@@ -8,7 +8,6 @@
  * (`scripts/fakes/sessions/`); nothing is written to the database.
  */
 
-import { join } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { investigateButton } from "../journeys/verb";
 import { Given, Then, When } from "./fixtures";
@@ -48,9 +47,6 @@ const inc = (page: Page): Made => {
 	return i;
 };
 
-const PAIRED_STATE = () =>
-	join(process.env.PRISMALENS_E2E_WORKSPACE_DIR ?? "", "paired-state.json");
-
 /** The element's box once it renders, scrolled or not; fails when it is not laid out. */
 async function box(l: Locator) {
 	// boundingBox() does not wait: a report still rendering read as "not laid out".
@@ -59,9 +55,6 @@ async function box(l: Locator) {
 	if (!b) throw new Error("not laid out");
 	return b;
 }
-
-/** A visible one among several matches (the share actions render per width). */
-const shown = (l: Locator) => l.locator("visible=true").first();
 
 async function reportFrom(
 	page: Page,
@@ -105,27 +98,21 @@ async function reportFrom(
 const finished = (s: string) => s === "completed";
 const failed = (s: string) => s === "failed";
 
+/**
+ * The report's evidence lives in the panel's Incident tab (`?panel=incident`), its result in
+ * the transcript under the summary; the overview's why card left the run page in #1101.
+ */
 async function openReport(page: Page) {
 	await page.goto(`/incidents/${inc(page).id}/conversation?panel=incident`);
-	await expect(
-		page.getByTestId("why-card").or(page.getByTestId("why-failed")).first(),
-	).toBeVisible();
+	await expect(page.getByTestId("run-details-summary")).toBeVisible();
 }
 
-async function ensureCauseReport(
-	page: Page,
-	fixtures: Parameters<typeof reportFrom>[2],
-) {
-	if (!w(page).inc)
-		await reportFrom(
-			page,
-			{ name: "PaymentsCheckoutErrorRate", session: "cause" },
-			fixtures,
-			finished,
-		);
-	await openReport(page);
-	await expect(page.getByTestId("why-cause")).toBeVisible();
-}
+/** One titled section of the panel's evidence, e.g. "Likely cause". */
+const section = (page: Page, title: string | RegExp) =>
+	page
+		.getByTestId("run-details-summary")
+		.locator("section")
+		.filter({ has: page.getByRole("heading", { name: title }) });
 
 // --- Shell and Back: connection lost ------------------------------------------
 
@@ -161,6 +148,12 @@ async function installApiSwitch(page: Page) {
 						: input.url;
 			if (down && url.includes("/api/")) throw new TypeError("Failed to fetch");
 			const res = await original(input, init);
+			// A call in flight when the API went down must not land after it: a stream that
+			// connected then stayed live and the line never showed (#1154).
+			if (down && url.includes("/api/")) {
+				void res.body?.cancel();
+				throw new TypeError("Failed to fetch");
+			}
 			if (!url.includes("/api/live/changes") || !res.body) return res;
 			const reader = res.body.getReader();
 			const body = new ReadableStream<Uint8Array>({
@@ -240,9 +233,14 @@ Then(
 		const [lead] = text.split("<time>");
 		const line = page.getByTestId("reconnect-line");
 		await expect(line).toBeVisible({ timeout: 15_000 });
-		await expect(line).toHaveText(
-			new RegExp(`^${(lead ?? "").replace(/[.?]/g, "\\$&")}\\d\\d:\\d\\d\\.?$`),
-		);
+		// The line also holds the phone's shorter reason, hidden at this width.
+		await expect(
+			line.getByText(
+				new RegExp(
+					`^${(lead ?? "").replace(/[.?]/g, "\\$&")}\\d\\d:\\d\\d\\.?$`,
+				),
+			),
+		).toBeVisible();
 		const top = await box(line);
 		expect(top.y).toBeLessThan(5);
 	},
@@ -466,66 +464,80 @@ When("I open the Report tab", async ({ page }) => {
 });
 
 Then(
-	/^the first thing I read is a confidence word \("(.+)"\) and the cause as a headline, with inline code rendered$/,
-	async ({ page }, word: string) => {
-		await expect(page.getByTestId("why-tag")).toHaveText(word);
-		await expect(page.getByTestId("why-cause")).toContainText(
-			"Checkout calls the payment provider with no timeout",
+	"the conversation ends on {string} under the report's summary",
+	async ({ page }, title: string) => {
+		await expect(page.getByTestId("transcript-report")).toContainText(title);
+		await expect(page.getByTestId("situation-brief")).toContainText(
+			"Checkout's provider call has no timeout since 7f3c2a1",
 		);
 	},
 );
 
 Then(
-	'"Why we think so" lists up to three evidence lines, each marked For or Against and seen or inferred, each with a link that opens the command or file in the Conversation',
+	'"Likely cause" heads the cause with its evidence, and an evidence step shows that step in the conversation',
 	async ({ page }) => {
-		const rows = page.getByTestId("why-evidence-row");
-		const n = await rows.count();
-		expect(n).toBeGreaterThan(0);
-		expect(n).toBeLessThanOrEqual(3);
-		for (let i = 0; i < n; i++) {
-			const row = rows.nth(i);
-			await expect(row).toContainText(/For|Against/);
-		}
-		await rows.first().click();
-		await expect(page).toHaveURL(/\/conversation\?.*call=/);
-		await expect(
-			page.locator("[data-testid=step][data-highlight]"),
-		).toBeVisible();
-		await page.goBack();
-		await expect(page.getByTestId("why-cause")).toBeVisible();
+		const cause = section(page, "Likely cause");
+		const rows = cause.getByTestId("detail-row");
+		await expect(rows.first()).toContainText(
+			"Checkout calls the payment provider with no `timeout`",
+		);
+		// The cause, then the supporting evidence: two read by a step, one inferred.
+		await expect(rows).toHaveCount(4);
+		await expect(rows.nth(3)).toContainText("Inferred from");
+		const step = cause.getByTestId("detail-step").first();
+		const n = ((await step.textContent()) ?? "").replace(/\D/g, "");
+		await step.click();
+		const shown = page.locator(`[data-testid="step"][data-step="${n}"]`);
+		await expect(shown).toBeInViewport();
+		await expect(shown.getByTestId("step-toggle")).toBeFocused();
 	},
 );
 
 Then(
-	'"What we could not check" lists each gap as a sentence',
+	'"Not checked" lists each gap with a way to connect a source',
 	async ({ page }) => {
-		await expect(page.getByTestId("why-unchecked")).toBeVisible();
+		const gaps = section(page, "Not checked");
+		await expect(gaps.getByTestId("detail-row").first()).toHaveText(
+			"prometheus",
+		);
+		await expect(gaps.getByTestId("detail-link")).toHaveText(
+			"Connect a source",
+		);
 	},
 );
 
 Then(
-	'"Do now" is a checklist with one sentence saying PrismaLens did not run the steps',
+	'"Stop the impact" and the agent\'s suggested next steps say what to do now',
 	async ({ page }) => {
 		await expect(page.getByTestId("stop-impact-card")).toBeVisible();
+		await expect(
+			section(page, "Agent's suggested next steps")
+				.getByTestId("detail-row")
+				.first(),
+		).toContainText("Roll back 7f3c2a1 or set a 5 s timeout");
 	},
 );
 
 Then(
-	'below the fold: "Ruled out" and "Grounded in" as a list of paths one per line, and no "Event log"',
+	'"Ruled out" lists what the run excluded, and no "Event log"',
 	async ({ page }) => {
-		await expect(page.getByTestId("why-ruled-out")).toBeVisible();
+		await expect(section(page, "Ruled out")).toContainText("The database");
 		await expect(page.getByRole("link", { name: "Event log" })).toHaveCount(0);
 	},
 );
 
-Then(
-	'"Export" is at the top right of the report\'s header',
-	async ({ page }) => {
-		await page.getByTestId("header-more").click();
-		await expect(page.getByTestId("header-export")).toBeVisible();
-		await page.keyboard.press("Escape");
-	},
-);
+/** Export is a row of the header's ⋯ menu (#1101). */
+async function expectExport(page: Page) {
+	await page.getByTestId("header-more").click();
+	await expect(page.getByTestId("menu-export")).toHaveText(
+		"Export report as Markdown",
+	);
+	await page.keyboard.press("Escape");
+}
+
+Then('"Export" is in the header\'s menu', async ({ page }) => {
+	await expectExport(page);
+});
 
 Given(
 	"the run finished with no root cause and one supported finding",
@@ -541,32 +553,32 @@ Given(
 );
 
 Then(
-	'the first thing I read is "No cause found" and a headline saying what stopped it',
-	async ({ page }) => {
-		await expect(page.getByTestId("why-tag")).toHaveText(
-			/No cause (found|named)/,
-		);
-		await expect(page.getByTestId("why-cause")).toContainText(
-			"The live code was not in its copy.",
-		);
+	"the conversation ends on {string} and the panel heads the leading idea {string}",
+	async ({ page }, title: string, heading: string) => {
+		await expect(page.getByTestId("transcript-report")).toContainText(title);
+		await expect(section(page, heading)).toBeVisible();
+		await expect(section(page, "Likely cause")).toHaveCount(0);
 	},
 );
 
 Then(
-	'the supported finding appears under "What it did find", never as the answer',
+	"the supported finding leads under it as an idea, never as the cause",
 	async ({ page }) => {
 		const finding = /The alert('s p99 rose| started at 14:03)/;
-		await expect(page.getByTestId("why-evidence")).toContainText(finding);
-		await expect(page.getByTestId("why-cause")).not.toContainText(finding);
+		await expect(
+			section(page, "No cause named").getByTestId("detail-row").first(),
+		).toContainText(finding);
+		await expect(page.getByTestId("transcript-report")).not.toContainText(
+			finding,
+		);
 	},
 );
 
-Then(
-	'a refused query appears under "What we could not check" with its plain reason',
-	async ({ page }) => {
-		await expect(page.getByTestId("why-unchecked")).toBeVisible();
-	},
-);
+Then('a refused query appears under "Not checked"', async ({ page }) => {
+	await expect(
+		section(page, "Not checked").getByTestId("detail-row").first(),
+	).not.toBeEmpty();
+});
 
 Given(
 	/^the run failed with "(.+)"$/,
@@ -580,17 +592,24 @@ Given(
 	},
 );
 
+const NOT_SIGNED_IN = /is not signed in|Not logged in/;
+
 Then(
-	`I read "No report", the agent's own error verbatim, a line saying whether the alert still fires, and a link to the conversation`,
+	`I read "No report", the agent's own error verbatim, that the alert still fires, and the conversation ends on the failure`,
 	async ({ page }) => {
-		await expect(page.getByTestId("why-failed")).toContainText(
-			/is not signed in|Not logged in/,
+		await expect(section(page, "No report")).toContainText(
+			"The run failed before it reported.",
+		);
+		await expect(section(page, /^Run$/)).toContainText(NOT_SIGNED_IN);
+		await expect(page.getByTestId("header-firing")).toContainText("Firing");
+		await expect(page.getByTestId("transcript-end")).toContainText(
+			NOT_SIGNED_IN,
 		);
 	},
 );
 
-Then('the band\'s menu offers "New run"', async ({ page }) => {
-	await expect(page.getByTestId("incident-header")).toBeVisible();
+Then('the run strip offers "Retry"', async ({ page }) => {
+	await expect(page.getByTestId("run-strip-retry")).toHaveText("Retry");
 });
 
 Given(
@@ -638,8 +657,9 @@ Then(
 		// A stopped run that can reopen its session continues to a report (R4.4); sending continues it.
 		await expect(page.getByTestId("composer-mode")).toHaveCount(0);
 		await expect(page.getByTestId("composer-send")).toBeVisible();
+		// The box is an editor now: its placeholder is its accessible name.
 		await expect(page.getByTestId("composer-input")).toHaveAttribute(
-			"placeholder",
+			"aria-label",
 			/^Message /,
 		);
 	},
@@ -658,10 +678,14 @@ Given(
 );
 
 Then(
-	/^I read "No report\. The run failed after 9m\." and how many commands and files it got through, with a link to the Conversation$/,
+	'I read "No report" and "The run failed before it reported.", and the conversation keeps what the run did',
 	async ({ page }) => {
-		// The fake fails seconds in, not nine minutes; the sentence carries the real elapsed time.
-		await expect(page.getByTestId("why-failed")).toBeVisible();
+		// The fake fails seconds in, not nine minutes; what it ran stays in the conversation.
+		await expect(section(page, "No report")).toContainText(
+			"The run failed before it reported.",
+		);
+		await expect(page.getByTestId("transcript-end")).toBeVisible();
+		await expect(page.getByTestId("transcript-tools").first()).toBeVisible();
 	},
 );
 
@@ -679,25 +703,26 @@ Given(
 );
 
 Then(
-	'without scrolling I see the confidence word, the cause, and the summary of the cause, the first "Do now" step and the alert',
+	"without scrolling I see the summary of the cause, the alert, and the conclusion with its first step",
 	async ({ page }) => {
-		await expect(page.getByTestId("why-tag")).toBeVisible();
-		await expect(page.getByTestId("why-cause")).toBeVisible();
+		// On a phone the panel is a sheet over the page; the first screen is the page under it.
+		await page.goto(`/incidents/${inc(page).id}/conversation`);
+		await expect(page.getByTestId("run-details")).toHaveCount(0);
+		await expect(page.getByTestId("situation-brief")).toBeInViewport();
+		await expect(page.getByTestId("situation-where")).toContainText(
+			"Alert still firing",
+		);
+		const report = page.getByTestId("transcript-report");
+		await expect(report).toContainText("likely cause");
+		await expect(report).toBeInViewport();
+		await expect(report.getByTestId("report-stop")).toBeInViewport();
 	},
 );
 
 Then(
-	'"Export" sits in the report\'s header, beside the run',
+	'"Export" sits in the header\'s menu, beside the run',
 	async ({ page }) => {
-		const close = page.getByTestId("run-details-close");
-		if (await close.isVisible().catch(() => false)) {
-			await close.click();
-		}
-		const more = page.getByTestId("header-more");
-		await more.focus();
-		await page.keyboard.press("Enter");
-		await expect(page.getByTestId("header-export")).toBeVisible();
-		await page.keyboard.press("Escape");
+		await expectExport(page);
 	},
 );
 
@@ -756,9 +781,7 @@ Then(
 			/is not signed in|Not logged in/,
 		);
 		await openReport(page);
-		await expect(page.getByTestId("why-failed")).toContainText(
-			/is not signed in|Not logged in/,
-		);
+		await expect(section(page, /^Run$/)).toContainText(NOT_SIGNED_IN);
 	},
 );
 

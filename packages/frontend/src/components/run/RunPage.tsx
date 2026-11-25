@@ -294,8 +294,15 @@ export function RunPage() {
 		else setRightPanel(open);
 		// biome-ignore lint/correctness/useExhaustiveDependencies: only a breakpoint crossing moves the state.
 	}, [phone, rightPanel, setRightPanel, sheetOpen]);
+	// What had focus when the panel opened: closing gives focus back to it.
+	const opener = useRef<Element | null>(null);
+	const panelOpen = useRef(panel);
+	panelOpen.current = panel;
 	const setPanel = useCallback(
-		(open: boolean) => (phone ? setSheetOpen : setRightPanel)(open),
+		(open: boolean) => {
+			if (open && !panelOpen.current) opener.current = document.activeElement;
+			(phone ? setSheetOpen : setRightPanel)(open);
+		},
 		[phone, setRightPanel],
 	);
 	const focusLater = useFocusLater();
@@ -460,13 +467,23 @@ export function RunPage() {
 		}, 60);
 	}, []);
 	useEffect(() => () => window.clearTimeout(timer.current), []);
+	// The panel shuts on the deferred render (#1130); focus moved before then is pulled back
+	// into the closing sheet, so what follows a close waits for it (#1154).
+	const afterClose = useRef<(() => void) | null>(null);
+	useEffect(() => {
+		const then = afterClose.current;
+		if (panelShown || !then) return;
+		afterClose.current = null;
+		window.setTimeout(then, 0);
+	}, [panelShown]);
 	// The step is under the sheet on a phone: lift the sheet to show it.
 	const jumpOut = useCallback(
 		(n: number) => {
-			if (phone) hidePanel();
-			jump(n);
+			if (!phone || !panelShown) return jump(n);
+			afterClose.current = () => jump(n);
+			hidePanel();
 		},
-		[phone, jump, hidePanel],
+		[phone, panelShown, jump, hidePanel],
 	);
 	const previewOpener = useCallback(() => previewFrom.current, []);
 	const onPreview = useCallback((open: boolean) => {
@@ -496,14 +513,22 @@ export function RunPage() {
 	const closePanel = useCallback(() => {
 		setSubagentId(null);
 		hidePanel();
-		// Focus goes back to the ⋯ that holds the details toggle.
-		window.setTimeout(
-			() =>
-				document
-					.querySelector<HTMLButtonElement>('[data-testid="header-more"]')
-					?.focus(),
-			0,
-		);
+		// Focus goes back to what opened the panel; a ⋯ menu's item is gone, so to that ⋯; with no
+		// opener (a link, a key), to the header's details toggle (#1176).
+		afterClose.current = () => {
+			const from = opener.current as HTMLElement | null;
+			const back =
+				from?.isConnected &&
+				from !== document.body &&
+				!from.closest("#run-details")
+					? from
+					: document.querySelector<HTMLElement>(
+							from && !from.isConnected
+								? '[data-testid="header-more"]'
+								: '[data-testid="panel-toggle"], [data-testid="header-more"]',
+						);
+			back?.focus();
+		};
 	}, [hidePanel]);
 	useEffect(() => {
 		if (!panel) return;

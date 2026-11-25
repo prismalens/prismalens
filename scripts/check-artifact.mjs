@@ -5,7 +5,9 @@
 /**
  * Gate one release artifact: its deepest path under every Windows install prefix it
  * lands in, its bytes and file count against scripts/artifact-budgets.json, and a
- * licence text for every package it carries (#906).
+ * licence text for every package it carries (#906). Upstream agent packages (the bundled
+ * adapters and the Claude Agent SDK) are measured apart and only reported, so an agent pin
+ * bump cannot fail our budget and our own growth still does (#1082 P1).
  *
  *   node scripts/check-artifact.mjs <file.tgz|file.tar.gz|file.zip> [--budgets <json>]
  *
@@ -26,6 +28,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { gzipSync } from "node:zlib";
 import { missingLicences } from "./lib/node-modules-tree.mjs";
 
 export const LIMIT = 220;
@@ -34,6 +37,12 @@ const HOME = `C:\\Users\\${U}`;
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const win = (entry) => entry.split("/").join("\\");
+
+/**
+ * Nightlies live on GitHub only (#717): no Scoop bucket carries one, and their version
+ * (`0.5.6-nightly.20261121.27`) is 20 chars longer than a release's, twice in a Scoop path.
+ */
+const scoopCarries = (version) => !version.includes("-nightly.");
 
 /** Where each Windows install channel puts the artifact's entries, as [model, prefix, entry]. */
 export function pathModels({ kind, name, version, top }, entries) {
@@ -53,11 +62,12 @@ export function pathModels({ kind, name, version, top }, entries) {
 					`${HOME}\\AppData\\Local\\prismalens\\runtime\\${version}\\`,
 					`app/${rel}`,
 				]);
-				models.push([
-					"scoop",
-					`${HOME}\\scoop\\apps\\prismalens\\${version}\\_tmp\\`,
-					`prismalens-${version}-win32-x64/app/${rel}`,
-				]);
+				if (scoopCarries(version))
+					models.push([
+						"scoop",
+						`${HOME}\\scoop\\apps\\prismalens\\${version}\\_tmp\\`,
+						`prismalens-${version}-win32-x64/app/${rel}`,
+					]);
 			}
 		} else {
 			// install.ps1 unpacks without the top dir; Scoop's extract_dir unpacks into _tmp (#905).
@@ -66,11 +76,12 @@ export function pathModels({ kind, name, version, top }, entries) {
 				`${HOME}\\AppData\\Local\\prismalens\\runtime\\${version}\\`,
 				entry.slice(top.length + 1),
 			]);
-			models.push([
-				"scoop",
-				`${HOME}\\scoop\\apps\\prismalens\\${version}\\_tmp\\`,
-				entry,
-			]);
+			if (scoopCarries(version))
+				models.push([
+					"scoop",
+					`${HOME}\\scoop\\apps\\prismalens\\${version}\\_tmp\\`,
+					entry,
+				]);
 		}
 	}
 	const deepest = new Map();
@@ -132,6 +143,27 @@ function files(root) {
 	return out;
 }
 
+/** Files an agent pin bump moves: the bundled adapters, their packed licence texts and the SDK. */
+export const UPSTREAM = [
+	/(^|\/)dist\/adapters\/(?!bundled\.json$)/,
+	/(^|\/)node_modules\/@anthropic-ai\/claude-agent-sdk\//,
+	/(^|\/)@prismalens\/agent-adapters\/THIRD_PARTY_LICENSES\//,
+];
+
+/** The adapters' own tarball holds those licence texts at its root; another package's are its own. */
+export const isUpstream = (entry, name) =>
+	UPSTREAM.some((r) => r.test(entry)) ||
+	(name === "@prismalens/agent-adapters" &&
+		entry.startsWith("package/THIRD_PARTY_LICENSES/"));
+
+/** `entries` compressed the way `file` compresses them: each apart in a zip, one stream in a tarball. */
+export function compressedBytes(file, root, entries) {
+	const bodies = entries.map((e) => readFileSync(join(root, e)));
+	return file.endsWith(".zip")
+		? bodies.reduce((n, b) => n + gzipSync(b).length, 0)
+		: gzipSync(Buffer.concat(bodies)).length;
+}
+
 /** The biggest unpacked files, so a budget breach names what grew (#885). */
 export function largest(root, entries, count = 5) {
 	return entries
@@ -155,10 +187,17 @@ export function checkArtifact(file, budgets) {
 					`${model}: ${length} chars is over ${LIMIT} for a 20-char username: ${prefix}${entry}`,
 				);
 		}
-		const bytes = statSync(file).size;
+		const upstream = entries.filter((e) => isUpstream(e, info.name));
+		const own = entries.filter((e) => !isUpstream(e, info.name));
+		// Never the archive's size less an estimate of upstream's: that can reach 0 and hide our growth.
+		const bytes = upstream.length
+			? compressedBytes(file, root, own)
+			: statSync(file).size;
+		const upBytes = upstream.length ? compressedBytes(file, root, upstream) : 0;
+		const count = own.length;
 		const budget = budgets[info.key];
 		lines.push(
-			`${info.key} ${bytes} bytes, ${entries.length} files (budget ${budget ? `${budget.bytes} bytes, ${budget.files} files` : "none"})`,
+			`${info.key} ${bytes} bytes, ${count} files of our own (budget ${budget ? `${budget.bytes} bytes, ${budget.files} files` : "none"}); upstream agent packages ${upBytes} bytes, ${upstream.length} files, not budgeted`,
 		);
 		if (!budget) problems.push(`no budget for ${info.key} in the budget file`);
 		else {
@@ -166,9 +205,9 @@ export function checkArtifact(file, budgets) {
 				problems.push(
 					`${info.key}: ${bytes} bytes is over its budget of ${budget.bytes}`,
 				);
-			if (entries.length > budget.files)
+			if (count > budget.files)
 				problems.push(
-					`${info.key}: ${entries.length} files is over its budget of ${budget.files}`,
+					`${info.key}: ${count} files is over its budget of ${budget.files}`,
 				);
 		}
 		if (problems.some((p) => p.includes("over its budget")))

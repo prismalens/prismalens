@@ -160,6 +160,9 @@ describe("probeHarness", () => {
 			outcome: "sign-in-needed",
 			detail: "sign in needed (Log in with Fake)",
 			hard: false,
+			// `initialize` answered before `session/new` asked for the sign-in: the version stays.
+			version: "0",
+			signInMethods: ["Log in with Fake"],
 		});
 	});
 
@@ -203,6 +206,7 @@ describe("probeHarness", () => {
 		expect(classify(probed)).toEqual({
 			outcome: "sign-in-needed",
 			detail: "sign in needed (API Key, ChatGPT)",
+			signInMethods: ["API Key", "ChatGPT"],
 		});
 	});
 
@@ -300,6 +304,44 @@ describe("probeHarness", () => {
 		sweepStaleRunDirs(ownTmp);
 		expect(doctorDirs()).toEqual(["pl-doctor-fresh"]);
 		rmSync(fresh, { recursive: true });
+	});
+
+	it("reads a run folder's age off its name, so a clock running ahead never sweeps another process's live one (#1154)", () => {
+		const DAY = 24 * 60 * 60 * 1000;
+		const real = Date.now();
+		const ahead = real + 40 * DAY;
+		// Made a second ago by a process whose clock reads 40 days ahead; its mtime is the file system's, 40 days behind.
+		const live = `pl-doctor-${ahead - 1000}-live`;
+		const old = `pl-doctor-${real - 2 * DAY}-old`;
+		mkdirSync(join(ownTmp, live));
+		mkdirSync(join(ownTmp, old));
+		sweepStaleRunDirs(ownTmp, ahead);
+		expect(doctorDirs()).toEqual([live]);
+		rmSync(join(ownTmp, live), { recursive: true });
+	});
+
+	it("names the folder a probe makes with its own clock, so a sweep ahead of the file system keeps it (#1154)", async () => {
+		const ahead = Date.now() + 40 * 24 * 60 * 60 * 1000;
+		vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+		vi.setSystemTime(ahead);
+		let during: string[] = [];
+		try {
+			await probeHarness("opencode", {
+				descriptor: {
+					...descriptor("ok"),
+					// Runs while the probe's folder exists: sweep it with the clock the probe stamped it by.
+					acpEnv: () => {
+						sweepStaleRunDirs(ownTmp, Date.now());
+						during = doctorDirs();
+						return { FAKE_ACP_MODE: "ok" };
+					},
+				},
+			});
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(during).toHaveLength(1);
+		expect(during[0]).toMatch(new RegExp(`^pl-doctor-${ahead}-`));
 	});
 });
 

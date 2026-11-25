@@ -22,6 +22,7 @@ import {
 	PR_FILE_PATCH_MAX,
 } from "@prismalens/contracts";
 import type { AuthenticatedRequestFn } from "@prismalens/integrations";
+import * as clock from "../../../core/clock.js";
 import { TRUNCATED_HEADER } from "../../integrations/source-request.js";
 
 export interface HostRead {
@@ -103,7 +104,7 @@ export class HostReadError extends Error {
 /** When a 403/429 says to come back: `retry-after` (seconds or an HTTP date), else `x-ratelimit-reset` at remaining 0. */
 export function rateLimitRetryAt(
 	res: Pick<Response, "status" | "headers">,
-	now = Date.now(),
+	now = clock.now(),
 ): number | undefined {
 	if (res.status !== 403 && res.status !== 429) return undefined;
 	// RFC 9110 §10.2.3: digits only, or an HTTP date; anything else falls through to the reset header.

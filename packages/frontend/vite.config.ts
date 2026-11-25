@@ -12,6 +12,7 @@ import { devPair } from "./dev-pair.ts";
 import { apiProxy } from "./dev-proxy.ts";
 import { firstPaintReport } from "./first-paint-report.ts";
 import { iconImports } from "./icon-imports.ts";
+import { pinFields } from "./pin-fields.ts";
 import { thirdPartyNotices } from "./third-party-notices.ts";
 
 /**
@@ -96,6 +97,7 @@ export default defineConfig({
 	plugins: [
 		devPair({ apiOrigin: API_ORIGIN }),
 		iconImports(),
+		pinFields(),
 		// Enables Vite to resolve imports using path aliases
 		tsConfigPaths(),
 		// SPA mode is what makes `pl up` possible (issue #237). Without it

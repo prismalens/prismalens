@@ -40,6 +40,9 @@ describe("InvestigationTriggerService", () => {
 		incident: {
 			findUnique: vi.fn(),
 		},
+		repository: {
+			findMany: vi.fn(),
+		},
 	};
 
 	const mockDispatchService = {
@@ -230,6 +233,22 @@ describe("InvestigationTriggerService", () => {
 			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
 		});
 
+		it("says a no-git folder named by the alert's service label has no code history", async () => {
+			mockPrisma.repository.findMany.mockResolvedValue([{ fullName: "notes" }]);
+			const incident = { ...withService("always"), service: null };
+
+			await service.onAlertCorrelated(
+				{ id: "a1", labels: JSON.stringify({ service: "Notes" }) } as unknown as Alert,
+				incident,
+				true,
+			);
+
+			expect(mockTimelineService.create.mock.calls[0][0].description).toBe(
+				"notes is a folder with no git, so there is no code history to investigate. Start git in it from its project page, then send the alert again.",
+			);
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+		});
+
 		it("a policy of never leaves a timeline entry naming the service and where to change it", async () => {
 			await service.onAlertCorrelated(alert, withService("never"), true);
 			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
@@ -318,6 +337,46 @@ describe("InvestigationTriggerService", () => {
 					type: TimelineEntryType.custom,
 					title: "Auto-investigation skipped: Codex: sign in needed (API Key, ChatGPT)",
 				}),
+			);
+		});
+
+		it("checks readiness for the alert run's own model, and skips when that model is not ready", async () => {
+			mockHarnessService.getSettings.mockResolvedValue({
+				harness: "auto",
+				useDefaults: { alert: { harness: "opencode", model: "google/gemini-4-neon" } },
+			});
+			mockHarnessService.resolveSelection.mockResolvedValue({
+				runnable: true,
+				harness: "opencode",
+			});
+			mockHarnessService.ensureReady.mockImplementation((async (
+				_id: string,
+				model?: string | null,
+			) =>
+				model === "google/gemini-4-neon"
+					? { ready: false, reason: "OpenCode: not signed in for google" }
+					: { ready: true }) as never);
+
+			await service.triggerInvestigation(incident, decision);
+
+			expect(mockHarnessService.ensureReady).toHaveBeenCalledWith(
+				"opencode",
+				"google/gemini-4-neon",
+			);
+			expect(mockInvestigationsService.startOrGet).not.toHaveBeenCalled();
+			expect(mockTimelineService.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					title: "Auto-investigation skipped: OpenCode: not signed in for google",
+				}),
+			);
+		});
+
+		it("leaves the model to readiness, which takes the Settings one, when the alert run names none", async () => {
+			await service.triggerInvestigation(incident, decision);
+
+			expect(mockHarnessService.ensureReady).toHaveBeenCalledWith(
+				"codex",
+				undefined,
 			);
 		});
 

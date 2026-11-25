@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import {
 	hideQueryDevtools,
@@ -14,6 +14,15 @@ import {
 } from "./live-stream-fixtures";
 
 const INCIDENT_ID = "b0111111-1111-4111-8111-111111111111";
+
+/** The ⋯ remounts when the run loads and its thread section joins, dropping an earlier open; the details toggle marks that load. */
+async function openDetailsFromMenu(page: Page) {
+	await expect(page.getByTestId("panel-toggle")).toBeVisible({
+		timeout: 15_000,
+	});
+	await page.getByTestId("header-more").click();
+	await page.getByTestId("menu-details").click();
+}
 
 function makeToolStepEvents(count: number, prose = true): CanonicalEvent[] {
 	const events: CanonicalEvent[] = [];
@@ -105,8 +114,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(step1.getByTestId("step-body")).toBeVisible();
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("header-more details opens #run-details; Esc closes it and focus returns to header-more", async ({
+	test("header-more details opens #run-details; Esc closes it and focus returns to header-more", async ({
 		page,
 	}) => {
 		await page.goto(
@@ -116,8 +124,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(more).toBeVisible({ timeout: 15_000 });
 		await expect(page.locator("#run-details")).toBeHidden();
 
-		await more.click();
-		await page.getByTestId("menu-incident.details").click();
+		await openDetailsFromMenu(page);
 		await expect(page.locator("#run-details")).toBeVisible();
 
 		await page.keyboard.press("Escape");
@@ -206,8 +213,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(flag).toBeHidden();
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("in the panel, detail-step and steps-row jump to and open that step; steps-filter-* filter with aria-pressed; arrow keys move between tabs", async ({
+	test("in the panel, detail-step and steps-row jump to and open that step; steps-filter-* filter with aria-pressed; arrow keys move between tabs", async ({
 		page,
 	}) => {
 		await serveEventsHistory(page, INVESTIGATION_ID, makeToolStepEvents(4));
@@ -241,8 +247,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
-		await page.getByTestId("header-more").click();
-		await page.getByTestId("menu-incident.details").click();
+		await openDetailsFromMenu(page);
 		await expect(page.locator("#run-details")).toBeVisible({ timeout: 15_000 });
 
 		// Click detail-step in the evidence, now on Summary (#973)
@@ -313,13 +318,6 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		);
 	});
 
-	test("run-strip-code reads credential, hidden while panel is open", async () => {
-		test.skip(
-			true,
-			"run-strip-code was removed in #1101; the credential sits in Run details under Code (RunStrip.tsx:23)",
-		);
-	});
-
 	test("run-strip warning reads 'X, asked Y' when served model differs", async ({
 		page,
 	}) => {
@@ -371,13 +369,6 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(page.getByTestId("composer-stop")).toHaveCount(0);
 	});
 
-	test("runs-menu lists runs-menu-item + runs-menu-new; current run has aria-current=page", async () => {
-		test.skip(
-			true,
-			"runs-menu was removed from the run page in #1101; runs sit in the header's ⋯ menu (RunStrip.tsx:23)",
-		);
-	});
-
 	test("crumb-incident goes to /incidents/$id; incident-back goes to /new", async ({
 		page,
 	}) => {
@@ -402,8 +393,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(page).toHaveURL(/\/new$/);
 	});
 
-	// #1154: UI moved or app changed: expected /^Message /, received ""
-	test.fixme("finished run has no verb chip and offers Investigate again in the header menu; live run: no chip, Enter queues and Ctrl+Enter sends now", async ({
+	test("finished run has no verb chip and offers Investigate again in the header menu; live run: no chip, Enter queues and Ctrl+Enter sends now", async ({
 		page,
 	}) => {
 		// 1. Finished run with report; the seeded row has no workspace, so the handoff preview is served.
@@ -444,16 +434,14 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		);
 		// Continuing is typing and sending (rulings 2, 3): no chip, the hint says where it goes.
 		await expect(page.getByTestId("composer-input")).toHaveAttribute(
-			"placeholder",
+			"aria-label",
 			/^Message /,
 			{ timeout: 15_000 },
 		);
 		await expect(page.getByTestId("composer-mode")).toHaveCount(0);
 		await expect(page.getByTestId("composer-hint")).toContainText("session.");
 		await page.getByTestId("header-more").click();
-		await expect(
-			page.getByTestId("menu-incident.investigateAgain"),
-		).toBeVisible();
+		await expect(page.getByTestId("menu-investigateAgain")).toBeVisible();
 		await page.keyboard.press("Escape");
 
 		// 2. Live run
@@ -478,7 +466,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		const input = page.getByTestId("composer-input");
 		await expect(input).toBeVisible({ timeout: 15_000 });
 		// The one-option Message chip is gone on live runs too (ruling 17).
-		await expect(input).toHaveAttribute("placeholder", "Message the agent");
+		await expect(input).toHaveAttribute("aria-label", "Message the agent");
 		await expect(page.getByTestId("composer-mode")).toHaveCount(0);
 
 		// Enter queues
@@ -558,8 +546,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await expect(step6.getByTestId("step-body")).toBeVisible();
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("failed run: Summary status 'Failed'; Evidence 'The run failed before it reported.'", async ({
+	test("failed run: Summary status 'Failed'; Evidence 'The run failed before it reported.'", async ({
 		page,
 	}) => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -571,8 +558,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
-		await page.getByTestId("header-more").click();
-		await page.getByTestId("menu-incident.details").click();
+		await openDetailsFromMenu(page);
 		await expect(page.locator("#run-details")).toBeVisible({ timeout: 15_000 });
 
 		// Summary status "Failed"
@@ -589,8 +575,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('menu-incident.details')`, which no longer renders
-	test.fixme("Summary Access line shows 'No sandbox on this machine.' when no sandbox is proven", async ({
+	test("Summary Access line shows 'No sandbox on this machine.' when no sandbox is proven", async ({
 		page,
 	}) => {
 		await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -601,8 +586,7 @@ test.describe("Run Page redesign (#811, PR #814)", () => {
 		await page.goto(
 			`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 		);
-		await page.getByTestId("header-more").click();
-		await page.getByTestId("menu-incident.details").click();
+		await openDetailsFromMenu(page);
 		await expect(page.locator("#run-details")).toBeVisible({ timeout: 15_000 });
 
 		const accessRow = page

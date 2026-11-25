@@ -8,7 +8,7 @@
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { streamUp, useLiveRefreshInterval } from "@/lib/api/live-refresh";
+import { hintComing, useLiveRefreshInterval } from "@/lib/api/live-refresh";
 import { client, orpc } from "@/lib/api/orpc-client";
 
 export function useAttentionEvents(
@@ -125,6 +125,8 @@ export function useTabFocused(): boolean {
 }
 
 const READ_DEBOUNCE_MS = 800;
+/** While new lines keep arriving, the read position moves at most this often (#1181). */
+export const READ_EVERY_MS = 10_000;
 
 /**
  * Advances the thread's read position to the last event on screen, only while the
@@ -138,16 +140,32 @@ export function useReadAdvance(
 	const visible = useTabVisible();
 	const queryClient = useQueryClient();
 	const sent = useRef<string | null>(null);
+	const sentAt = useRef(0);
+	const latest = useRef(lastOnScreen);
+	latest.current = lastOnScreen;
+	const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	useEffect(
+		() => () => {
+			clearTimeout(timer.current);
+			timer.current = undefined;
+		},
+		[id],
+	);
 	useEffect(() => {
 		if (!ready || !visible || !lastOnScreen || sent.current === lastOnScreen)
 			return;
-		const t = setTimeout(() => {
-			sent.current = lastOnScreen;
+		if (timer.current) return;
+		const send = () => {
+			timer.current = undefined;
+			const key = latest.current;
+			if (!key || sent.current === key || document.hidden) return;
+			sent.current = key;
+			sentAt.current = Date.now();
 			void client.attention
-				.markThreadRead({ id, key: lastOnScreen })
+				.markThreadRead({ id, key })
 				.then((r) => {
-					// While the change stream is up, the server's hint re-reads the list.
-					if (r.advanced && !streamUp())
+					// The change stream's hint re-reads the list, now or in its first connect's replay.
+					if (r.advanced && !hintComing())
 						void queryClient.invalidateQueries({
 							queryKey: orpc.attention.events.key(),
 						});
@@ -155,7 +173,10 @@ export function useReadAdvance(
 				.catch(() => {
 					sent.current = null;
 				});
-		}, READ_DEBOUNCE_MS);
-		return () => clearTimeout(t);
+		};
+		timer.current = setTimeout(
+			send,
+			Math.max(READ_DEBOUNCE_MS, sentAt.current + READ_EVERY_MS - Date.now()),
+		);
 	}, [id, lastOnScreen, ready, visible, queryClient]);
 }

@@ -18,6 +18,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { getAppDataDir } from "@prismalens/config";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { API_GLOBAL_PREFIX } from "../../shared/constants/routes.js";
 import {
@@ -52,7 +53,7 @@ export class ImagesService implements OnModuleInit {
 
 	// Fields rather than constructor parameters: Nest would try to inject them. Tests set them.
 	fetchImpl: typeof fetch = fetch;
-	now: () => number = Date.now;
+	now: () => number = clock.now;
 	cacheDir = (): string => join(getAppDataDir(), "cache", "images");
 
 	constructor(private readonly prisma: PrismaService) {}

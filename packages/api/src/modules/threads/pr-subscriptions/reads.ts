@@ -9,6 +9,7 @@
  */
 import type { PrEventGroup, PrHost } from "@prismalens/contracts";
 import type { AuthenticatedRequestFn } from "@prismalens/integrations";
+import * as clock from "../../../core/clock.js";
 import { TRUNCATED_HEADER } from "../../integrations/source-request.js";
 import {
 	arr,
@@ -69,7 +70,7 @@ function refusal(res: Response): RateLimited | null {
 	const at = rateLimitRetryAt(res);
 	if (at !== undefined) return new RateLimited(at);
 	if (res.status === 403 || res.status === 429)
-		return new RateLimited(Date.now() + REFUSED_MS);
+		return new RateLimited(clock.now() + REFUSED_MS);
 	return null;
 }
 

@@ -133,6 +133,7 @@ import {
 	retryPrompt,
 	stampReport,
 } from "./report.js";
+import { withCwdRelativeSources } from "./report-paths.js";
 import { userServerByOurName } from "./reserved-name.js";
 import { checkSandbox } from "./sandbox-check.js";
 import { turnInputOf } from "./turn-input.js";
@@ -2135,7 +2136,12 @@ async function* runSession(
 		yield* toolsSummary();
 		yield adapter.branchDone(mapStopReason(outcome.stop));
 		const found = opts.gateway?.findings?.();
-		const answered = found ? withFindings(parsed.report, found) : parsed.report;
+		const merged = found ? withFindings(parsed.report, found) : parsed.report;
+		// One repository: the prompt asks for cwd-relative paths, so no answer or recorded finding may name the worktree.
+		const answered =
+			(opts.context.workspace?.repos.length ?? 0) > 1
+				? merged
+				: withCwdRelativeSources(merged, opts.cwd);
 		const gapped = noNetwork ? withSandboxGap(answered, label) : answered;
 		yield adapter.report(
 			stampReport(withPreRunCoverage(gapped, opts.context), fidelity),

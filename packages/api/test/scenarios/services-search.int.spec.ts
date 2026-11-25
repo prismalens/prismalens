@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { ScenarioApp } from "./support/scenario-app.js";
+
+vi.setConfig({ testTimeout: 5_000 }); // slowest test 243 ms; 3x, rounded up to the second, at least 5 s (#1154)
+
+const pl = new ScenarioApp();
+
+beforeAll(async () => {
+	await pl.boot();
+}, 60_000);
+afterAll(async () => {
+	await pl.dispose();
+});
+
+describe("Services filter on SQLite", () => {
+	it("Given a service, When the list is searched in another case, Then it is found and nothing 500s", async () => {
+		await pl.api("/services", {
+			method: "POST",
+			body: { name: "booklogr-api", displayName: "Booklogr API" },
+		});
+		const found = await pl.api<{ data: Array<{ name: string }> }>(
+			"/services?search=BOOKLOGR",
+		);
+		expect(found.data.map((s) => s.name)).toContain("booklogr-api");
+		const none = await pl.api<{ data: unknown[] }>("/services?search=nothing-here");
+		expect(none.data).toEqual([]);
+	});
+
+	it("rejects metadata.investigation.notes over 4096 characters with 400 (#673 w21)", async () => {
+		await expect(
+			pl.api("/services", {
+				method: "POST",
+				body: {
+					name: "long-notes-service",
+					metadata: { investigation: { notes: "x".repeat(4097) } },
+				},
+			}),
+		).rejects.toThrow(/400/);
+	});
+});

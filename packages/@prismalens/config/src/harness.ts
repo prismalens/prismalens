@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+export { signInCommand, versionVsTested } from "./providers/agent-status.js";
 export {
 	ACCESS_LEVELS,
 	type AccessLevel,
@@ -34,6 +35,10 @@ export {
 	modeFidelity,
 	NO_MODE_KEY,
 	type PermissionFidelity,
+	preferredModel,
+	providerKey,
+	providerSignedOutLine,
+	providerSignIn,
 	type ResolvedModel,
 	refuseModel,
 	reopens,

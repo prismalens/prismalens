@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useOperator } from "@/hooks/use-operator";
 import { useLiveRefreshInterval } from "../live-refresh";
 import { orpc } from "../orpc-client";
@@ -23,6 +23,18 @@ export function useLastDelivery(enabled = true) {
 		...orpc.webhooks.lastDelivery.queryOptions({ input: {} }),
 		enabled,
 		refetchInterval: useLiveRefreshInterval(),
+	});
+}
+
+/** A sample alert for a project, through the generic webhook's own path (#1008). */
+export function useSendTestAlert() {
+	const queryClient = useQueryClient();
+	return useMutation({
+		...orpc.webhooks.sendTest.mutationOptions(),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: orpc.incidents.key() });
+			void queryClient.invalidateQueries({ queryKey: orpc.alerts.key() });
+		},
 	});
 }
 

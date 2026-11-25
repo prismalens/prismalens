@@ -179,7 +179,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 		});
 		expect(events.at(-1)).toMatchObject({
 			kind: "error",
-			message: "rejected: model=asked/model",
+			message: "OpenCode would not switch to asked/model; it offered served/model, asked/model",
 		});
 		expect(readFileSync(join(runDir, "transcript.jsonl"), "utf8")).not.toContain("session/prompt");
 	});
@@ -452,7 +452,25 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(errCalls).toEqual([{ phase: "start", turnId: 1 }]);
 	});
 
-	it.skip("a hook that never resolves lets the turn go on after TURN_HOOK_MS (needs fake timers; investigate.test.ts uses real timers with subprocesses)", () => {});
+	it("a hook that never resolves lets the turn go on after TURN_HOOK_MS, and its signal is aborted", async () => {
+		vi.useFakeTimers();
+		try {
+			const signals: AbortSignal[] = [];
+			const { events, runDir } = await collect("ok", {
+				onTurn: (_phase, _turnId, signal) => {
+					signals.push(signal);
+					vi.advanceTimersByTime(15_000);
+					return new Promise<void>(() => {});
+				},
+			});
+			expect(events.at(-1)?.kind).toBe("report");
+			expect(promptsSent(runDir).length).toBeGreaterThan(0);
+			expect(signals.length).toBeGreaterThan(0);
+			expect(signals.every((s) => s.aborted)).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 
 	it("delivers a queued message when the turn ends and answers it before the report (#743)", async () => {
 		const queue = [{ text: "Check the 13:58 deploy first." }];
@@ -1251,20 +1269,23 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(buildRunFidelity("codex", {}, "read-only")).toMatchObject({ mode: "read-only", fidelity: "cooperative", mechanism: "agent" });
 	});
 
-	it("records enforced only when the run's sandbox check for its mode says so (#673 w51)", async () => {
+	// One run per case: each starts a fake agent, ~0.5 s of node startup alone on Windows (#1154).
+	it.each([
+		["enforced", "enforced"],
+		["unknown", "cooperative"],
+		["none", "cooperative"],
+	] as const)("records enforced only when the run's sandbox check for its mode says so: %s is %s (#673 w51)", async (state, want) => {
 		const asked: string[][] = [];
-		const check = (state: "enforced" | "none" | "unknown") => async (_h: string, modes: readonly string[]) => {
+		const check = async (_h: string, modes: readonly string[]) => {
 			asked.push([...modes]);
 			return Object.fromEntries(modes.map((m) => [m, { state, reason: "probe" }]));
 		};
 		const env = { ...process.env, FAKE_ACP_MODE: "ok", FAKE_MODES: "read-only,agent,agent-full-access" };
-		for (const [state, want] of [["enforced", "enforced"], ["unknown", "cooperative"], ["none", "cooperative"]] as const) {
-			const { events } = await collect("ok", { harness: "codex", env, sandboxCheck: check(state) });
-			const report = events.at(-1);
-			if (report?.kind !== "report") throw new Error("no report");
-			expect(report.report.fidelity).toMatchObject({ mode: "read-only", fidelity: want });
-		}
-		expect(asked).toEqual([["read-only"], ["read-only"], ["read-only"]]);
+		const { events } = await collect("ok", { harness: "codex", env, sandboxCheck: check });
+		const report = events.at(-1);
+		if (report?.kind !== "report") throw new Error("no report");
+		expect(report.report.fidelity).toMatchObject({ mode: "read-only", fidelity: want });
+		expect(asked).toEqual([["read-only"]]);
 	});
 
 	it("gives OpenCode its config inline with no permission block of PrismaLens's own", () => {
@@ -1316,8 +1337,7 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(setMode?.params?.modeId).toBe("build");
 	});
 
-	it("each level on Codex sets the mode via config option (#673 w21)", async () => {
-		const levels = [
+	it.each([
 			{
 				level: "supervised" as const,
 				initialModes: "agent=Approve for me,read-only=Ask for approval",
@@ -1329,8 +1349,7 @@ describe("the agent's own mode (#673 w21)", () => {
 				initialModes: "",
 				wantMode: "agent-full-access",
 			},
-		];
-		for (const { level, initialModes, wantMode } of levels) {
+	])("$level on Codex sets the mode via config option (#673 w21)", async ({ level, initialModes, wantMode }) => {
 			const { events, runDir } = await collect("ok", {
 				harness: "codex",
 				accessLevel: level,
@@ -1366,11 +1385,9 @@ describe("the agent's own mode (#673 w21)", () => {
 				access: level,
 				ranAccess: level,
 			});
-		}
 	});
 
-	it("each level on Claude Code sets the mode via session/set_mode (#673 w21)", async () => {
-		const levels = [
+	it.each([
 			{
 				level: "supervised" as const,
 				initialModes: "plan=Plan,default=Manual",
@@ -1383,8 +1400,7 @@ describe("the agent's own mode (#673 w21)", () => {
 				initialModes: "",
 				wantMode: "bypassPermissions",
 			},
-		];
-		for (const { level, initialModes, wantMode } of levels) {
+	])("$level on Claude Code sets the mode via session/set_mode (#673 w21)", async ({ level, initialModes, wantMode }) => {
 			const { events, runDir } = await collect("ok", {
 				harness: "claude-code",
 				accessLevel: level,
@@ -1410,22 +1426,19 @@ describe("the agent's own mode (#673 w21)", () => {
 				access: level,
 				ranAccess: level,
 			});
-		}
 	});
 
-	it("each level on OpenCode applies the right overlay and mode build (#673 w21)", async () => {
-		const levels = [
-			{ level: "supervised" as const, edit: "ask", bash: "ask" },
-			{ level: "auto-edits" as const, edit: "allow", bash: "ask" },
-			{ level: "auto" as const, edit: "ask", bash: "ask" },
-			{ level: "full-access" as const, edit: "allow", bash: "allow" },
-		];
+	it.each([
+		{ level: "supervised" as const, edit: "ask", bash: "ask" },
+		{ level: "auto-edits" as const, edit: "allow", bash: "ask" },
+		{ level: "auto" as const, edit: "ask", bash: "ask" },
+		{ level: "full-access" as const, edit: "allow", bash: "allow" },
+	])("$level on OpenCode applies the right overlay and mode build (#673 w21)", async ({ level, edit, bash }) => {
 		const wrapper = join(tmp("opencode-probe"), "capture.mjs");
 		writeFileSync(
 			wrapper,
 			'import fs from "node:fs"; import { pathToFileURL } from "node:url"; if (process.env.OPENCODE_CONFIG_CONTENT) fs.writeFileSync("opencode-config.json", process.env.OPENCODE_CONFIG_CONTENT); await import(pathToFileURL(process.argv[2]).href);\n',
 		);
-		for (const { level, edit, bash } of levels) {
 			const { events, cwd } = await collect("ok", {
 				harness: "opencode",
 				accessLevel: level,
@@ -1451,7 +1464,6 @@ describe("the agent's own mode (#673 w21)", () => {
 				access: level,
 				ranAccess: level,
 			});
-		}
 	});
 
 	it("When setMode receives a JSON-RPC error, Then it returns false and the fallback runs (#673 w21)", async () => {

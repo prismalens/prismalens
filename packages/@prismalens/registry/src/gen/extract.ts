@@ -357,10 +357,96 @@ export interface Forbid {
 	readonly components?: readonly string[];
 	/** Regular expressions matched against the file's text, for patterns no call or tag names. */
 	readonly patterns?: readonly string[];
-	/** Root-relative files, or `*<suffix>` for every file ending so, that may use them. */
+	/** A provider family whose member ids, read from the registry, may not be listed, keyed, switched or compared on. */
+	readonly ids?: string;
+	/** Root-relative files, `<dir>/` for every file under it, or `*<suffix>` for every file ending so, that may use them. */
 	readonly allow?: readonly string[];
 	/** A regular expression: a file whose text matches it is exempt, as one that marks what it renders. */
 	readonly unless?: string;
+}
+
+/** A member id that is also an everyday word: it counts only beside another member, or against an id. */
+const GENERIC = new Set(["local"]);
+
+const COMPARISONS = new Set([
+	ts.SyntaxKind.EqualsEqualsEqualsToken,
+	ts.SyntaxKind.ExclamationEqualsEqualsToken,
+	ts.SyntaxKind.EqualsEqualsToken,
+	ts.SyntaxKind.ExclamationEqualsToken,
+]);
+
+/**
+ * Whether `n` hand-writes one of `ids`: an array element, enum value, object key,
+ * case label or comparison operand. Comments, types and call arguments do not count.
+ */
+function isHandId(n: ts.Node, ids: readonly string[]): boolean {
+	if (!ids.length || !n.parent) return false;
+	const parent = n.parent;
+	const known = (t: string | undefined) =>
+		t !== undefined && ids.includes(t) ? t : undefined;
+	/** The member id a string literal (or plain template) writes, casts aside. */
+	const written = (x: ts.Expression | undefined) => {
+		const e = x && unwrap(x);
+		return e && (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e))
+			? known(e.text)
+			: undefined;
+	};
+	const counts = (id: string, beside: readonly (string | undefined)[]) =>
+		!GENERIC.has(id) || beside.some((o) => o !== undefined && o !== id);
+	if (ts.isObjectLiteralExpression(parent)) {
+		const keyOf = (p: ts.ObjectLiteralElementLike) =>
+			known(p.name && propName(p.name));
+		const key =
+			ts.isPropertyAssignment(n) || ts.isShorthandPropertyAssignment(n)
+				? keyOf(n)
+				: undefined;
+		return key !== undefined && counts(key, parent.properties.map(keyOf));
+	}
+	if (ts.isEnumMember(n) && ts.isEnumDeclaration(parent)) {
+		const id = written(n.initializer);
+		return (
+			id !== undefined &&
+			counts(
+				id,
+				parent.members.map((m) => written(m.initializer)),
+			)
+		);
+	}
+	if (ts.isCaseClause(n) && ts.isCaseBlock(parent)) {
+		const id = written(n.expression);
+		return (
+			id !== undefined &&
+			counts(
+				id,
+				parent.clauses.map((c) =>
+					ts.isCaseClause(c) ? written(c.expression) : undefined,
+				),
+			)
+		);
+	}
+	if (!ts.isStringLiteral(n) && !ts.isNoSubstitutionTemplateLiteral(n))
+		return false;
+	const id = known(n.text);
+	if (id === undefined) return false;
+	let at: ts.Expression = n;
+	while (
+		ts.isAsExpression(at.parent) ||
+		ts.isSatisfiesExpression(at.parent) ||
+		ts.isParenthesizedExpression(at.parent) ||
+		ts.isTypeAssertionExpression(at.parent)
+	)
+		at = at.parent;
+	const holder = at.parent;
+	if (ts.isArrayLiteralExpression(holder))
+		return counts(id, holder.elements.map(written));
+	if (
+		ts.isBinaryExpression(holder) &&
+		COMPARISONS.has(holder.operatorToken.kind)
+	) {
+		const other = holder.left === at ? holder.right : holder.left;
+		return !GENERIC.has(id) || /[iI]d$/.test(other.getText());
+	}
+	return false;
 }
 
 /** How many times a file uses each forbidden pattern. */
@@ -368,10 +454,15 @@ export function readForbidden(
 	file: string,
 	text: string,
 	forbid: readonly Forbid[],
+	ids: ReadonlyMap<string, readonly string[]> = new Map(),
 ): { rule: string; count: number }[] {
 	const allowed = (f: Forbid) =>
 		(f.allow ?? []).some((a) =>
-			a.startsWith("*") ? file.endsWith(a.slice(1)) : file === a,
+			a.startsWith("*")
+				? file.endsWith(a.slice(1))
+				: a.endsWith("/")
+					? file.startsWith(a)
+					: file === a,
 		) ||
 		(f.unless !== undefined && new RegExp(f.unless).test(text));
 	const counts = new Map<string, number>();
@@ -383,10 +474,11 @@ export function readForbidden(
 		);
 		if (n) counts.set(f.rule, n);
 	}
+	const members = (f: Forbid) => (f.ids ? (ids.get(f.ids) ?? []) : []);
 	const live = forbid.filter(
 		(f) =>
 			!allowed(f) &&
-			[...(f.calls ?? []), ...(f.components ?? [])].some((w) =>
+			[...(f.calls ?? []), ...(f.components ?? []), ...members(f)].some((w) =>
 				text.includes(w.split(".").at(-1) ?? w),
 			),
 	);
@@ -400,7 +492,8 @@ export function readForbidden(
 					(f.calls ?? []).includes(n.expression.getText(sf))) ||
 				((ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) &&
 					(f.components ?? []).includes(n.tagName.getText(sf)));
-			if (hit) counts.set(f.rule, (counts.get(f.rule) ?? 0) + 1);
+			if (hit || isHandId(n, members(f)))
+				counts.set(f.rule, (counts.get(f.rule) ?? 0) + 1);
 		}
 		ts.forEachChild(n, visit);
 	};

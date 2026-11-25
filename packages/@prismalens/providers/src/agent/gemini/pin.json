@@ -1,0 +1,9 @@
+{
+	"cli": {
+		"package": "@google/gemini-cli",
+		"version": "0.65.0",
+		"channel": "npm",
+		"bin": "gemini"
+	},
+	"tier": 2
+}

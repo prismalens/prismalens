@@ -18,6 +18,11 @@ import {
 	PROTOCOL_VERSION,
 	RequestError,
 } from "@agentclientprotocol/sdk";
+import { methods as unstable } from "@agentclientprotocol/sdk/unstable";
+
+/** The ACP major this client speaks; an agent that answers another is held (#1082). */
+export const CLIENT_PROTOCOL_VERSION: number = PROTOCOL_VERSION;
+
 import { type AgentChild, killProcessTree, spawnAgent } from "./process.js";
 import {
 	ACCESS_LEVELS,
@@ -42,6 +47,8 @@ export const PROBE_BUDGETS_MS = {
 	initialize: 30_000,
 	session: 60_000,
 } as const;
+/** The `auth/status` fallback's budget; its silence never changes the outcome (#1171). */
+export const AUTH_STATUS_BUDGET_MS = 6_000;
 export type ProbeStep = "initialize" | "session/new";
 
 const KEY = String.raw`[A-Z][A-Z0-9_]*_API_KEY\b`;
@@ -85,6 +92,57 @@ export interface ProbeInput {
 	authStatusWaitMs?: number;
 }
 
+export interface ProbeAccount {
+	label: string;
+	email: string | null;
+	organization: string | null;
+	plan: string | null;
+}
+
+const str = (v: unknown): string | null =>
+	typeof v === "string" && v.trim() ? v : null;
+
+/** `_auth/status_update`'s `{kind, label, account?}`, as both shipped adapters push it (#1171). */
+function pushedAccount(status: Record<string, unknown>): ProbeAccount | null {
+	const label = str(status.label);
+	if (status.kind === "none" || !label) return null;
+	const account = (status.account ?? {}) as Record<string, unknown>;
+	return {
+		label,
+		email: str(account.email),
+		organization: str(account.organization),
+		plan: str(account.plan),
+	};
+}
+
+/** ACP `auth/status`: the active account, else the first; one without a string label is none. */
+function answeredAccount(res: unknown): {
+	state: string | null;
+	account: ProbeAccount | null;
+} {
+	const body = (res ?? {}) as { state?: unknown; accounts?: unknown };
+	const state = str(body.state);
+	const accounts = Array.isArray(body.accounts)
+		? (body.accounts as Record<string, unknown>[]).filter(
+				(a) => a && typeof a === "object",
+			)
+		: [];
+	const pick = accounts.find((a) => a.active === true) ?? accounts[0];
+	const label = pick ? str(pick.label) : null;
+	return {
+		state,
+		account:
+			pick && label && state === "authenticated"
+				? {
+						label,
+						email: str(pick.email),
+						organization: str(pick.organization),
+						plan: null,
+					}
+				: null,
+	};
+}
+
 export interface LevelCheck {
 	mode: string | null;
 	/** The level's mode, or its fallback, is in what the agent offered; true for an agent with no modes. */
@@ -106,6 +164,10 @@ export interface ProbeResult {
 	detail: string | null;
 	/** The kind the agent pushed on `_auth/status_update`; null when it pushed none in time. */
 	authStatus: string | null;
+	/** ACP `auth/status`'s state, or `authenticated`/`unauthenticated` from a push; null when neither came. */
+	authState: string | null;
+	/** The account it reported as signed in; null when it reported none. */
+	account: ProbeAccount | null;
 	/** The answers as sent, for what a product shows beyond this summary (efforts, images). */
 	raw: {
 		initialize: InitializeResponse | null;
@@ -192,6 +254,8 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		levels: null,
 		detail: null,
 		authStatus: null,
+		authState: null,
+		account: null,
 		raw: { initialize: null, session: null },
 	};
 	let child: AgentChild;
@@ -241,10 +305,15 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 		}))
 		.onNotification(methods.client.session.update, () => {})
 		.onNotification("*", ({ method, params }) => {
-			const kind = (params as { authStatus?: { kind?: unknown } } | undefined)
-				?.authStatus?.kind;
+			const status = (
+				params as { authStatus?: Record<string, unknown> } | undefined
+			)?.authStatus;
+			const kind = status?.kind;
 			if (/^_?auth\/status_update$/.test(method) && typeof kind === "string") {
 				result.authStatus = kind;
+				result.authState =
+					kind === "none" ? "unauthenticated" : "authenticated";
+				result.account = status ? pushedAccount(status) : null;
 				pushed?.();
 			}
 		})
@@ -275,6 +344,22 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 			timer = setTimeout(() => resolve("timeout"), ms);
 		});
 		return Promise.race([call, died, deadline]);
+	};
+	/** Never throws and never waits past its budget; the probe's outcome stands either way. */
+	const askAuthStatus = async () => {
+		let t: NodeJS.Timeout | undefined;
+		const call = connection.agent
+			.request<unknown>(unstable.agent.auth.status, {})
+			.then(answeredAccount, () => null);
+		const answer = await Promise.race([
+			call,
+			died.then(() => null),
+			new Promise<null>((resolve) => {
+				t = setTimeout(() => resolve(null), AUTH_STATUS_BUDGET_MS);
+			}),
+		]);
+		clearTimeout(t);
+		return answer;
 	};
 	const ended = (
 		why: "died" | "timeout",
@@ -344,6 +429,17 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 					resolve();
 				};
 			});
+		const auth = (
+			init.agentCapabilities as { auth?: { status?: unknown } } | undefined
+		)?.auth;
+		if (result.authStatus === null && auth?.status != null) {
+			const answer = await askAuthStatus();
+			// A push that landed during the ask is the fresher word.
+			if (answer && result.authStatus === null) {
+				result.authState = answer.state;
+				result.account = answer.account;
+			}
+		}
 		const modes = offeredModes(session);
 		return {
 			...result,

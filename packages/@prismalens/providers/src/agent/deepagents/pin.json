@@ -1,0 +1,16 @@
+{
+	"cli": {
+		"package": "deepagents-code",
+		"version": "0.2.1",
+		"channel": "pypi",
+		"bin": "dcode"
+	},
+	"with": ["deepagents-acp"],
+	"constraints": ["agent-client-protocol<1"],
+	"why": "A Python lock resolves the rest as of its regen: 0.2.1 as of its soak date fails the killed-mid-turn check (R11), and with the constraint passes (#1204).",
+	"tested": {
+		"version": "0.1.75",
+		"date": "2026-09-23"
+	},
+	"tier": 2
+}

@@ -81,11 +81,12 @@ export function uninstallCommand(
 	}
 }
 
-/** Where the installer keeps its runtimes and receipt. */
+/** Where the installer keeps its runtimes and receipt; `PRISMALENS_HOME` moves it, as it moves the installer. */
 export function installerDataDir(
 	env: NodeJS.ProcessEnv = process.env,
 	platform: NodeJS.Platform = process.platform,
 ): string {
+	if (env.PRISMALENS_HOME) return env.PRISMALENS_HOME;
 	if (platform === "win32") {
 		return join(
 			env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"),

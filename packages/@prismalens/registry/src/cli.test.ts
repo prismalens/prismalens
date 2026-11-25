@@ -2,15 +2,19 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readFileSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main, USAGE } from "./cli.ts";
+import { git } from "./gen/git.ts";
 
 // A minimal kind module that generate() can read.
 const KIND_SRC = `import { defineKind } from "@prismalens/registry";
@@ -280,12 +284,135 @@ describe("new", () => {
 		expect(err.mock.calls).toEqual([[USAGE]]);
 	});
 
+	// Git answers with the real path, so the config's own may not be under it (macOS's /var).
+	it("new kind adds its plugin to the repo's biome.json by repo path when reached through a link", () => {
+		git(["init", "-q"], { cwd: root });
+		put("biome.json", '{ "plugins": [] }');
+		// The formatter is resolved from the host; this one does nothing.
+		put("app/node_modules/@biomejs/biome/bin/biome", "");
+		put("app/src/registry/kinds/widget.ts", KIND_SRC);
+		put("app/src/a/b.widgets.ts", ENTRY_SRC);
+		put("app/registry.config.json", readFileSync(cfgFile, "utf8"));
+		const links = mkdtempSync(join(tmpdir(), "registry-link-"));
+		try {
+			const link = join(links, "repo");
+			symlinkSync(root, link, "junction");
+			vi.spyOn(console, "log").mockReturnValue(undefined);
+			const cfg = join(link, "app/registry.config.json");
+			expect(main(["--config", cfg, "new", "kind", "chip"])).toBe(0);
+		} finally {
+			rmSync(links, { recursive: true, force: true });
+		}
+		const { plugins } = JSON.parse(
+			readFileSync(join(root, "biome.json"), "utf8"),
+		);
+		expect(plugins).toEqual([
+			{
+				path: "./app/biome-plugins/registry/l1-chip.grit",
+				includes: [
+					"app/src/**",
+					"!app/src/**/*.chips.ts",
+					"!app/src/**/*.test.ts",
+					"!app/src/**/*.test.tsx",
+				],
+			},
+		]);
+	});
+
 	it("prints why it cannot scaffold to stderr and returns 1 when the kind has no scaffold", () => {
 		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
 		const code = main(["--config", cfgFile, "new", "widget", "w.one"]);
 		expect(code).toBe(1);
 		expect(err.mock.calls).toEqual([
 			['No kind "widget" with a scaffold. Kinds: widget.'],
+		]);
+	});
+});
+
+describe("a host that names its workspace", () => {
+	const workspace = (boundaries: unknown[], others: string[] = []) => {
+		put(
+			"registry.workspace.json",
+			JSON.stringify({
+				hosts: ["registry.config.json", ...others],
+				boundaries,
+			}),
+		);
+		writeFileSync(
+			cfgFile,
+			JSON.stringify({
+				workspace: "registry.workspace.json",
+				src: "src",
+				kinds: "src/registry/kinds",
+				out: "src/registry",
+				gallery: "src/design",
+			}),
+		);
+	};
+
+	it("fails gen on an import across a boundary, naming the file, the specifier and the fix", () => {
+		workspace([
+			{ from: "src/a", deny: ["@acme/server"], why: "screens read it from the API." },
+		]);
+		put("src/a/screen.tsx", 'import { x } from "@acme/server/adapter";\n');
+		const err = vi.spyOn(console, "error").mockReturnValue(undefined);
+		expect(main(["--config", cfgFile, "gen"])).toBe(1);
+		expect(err.mock.calls).toEqual([
+			[
+				"[workspace/boundary] src/a/screen.tsx imports @acme/server/adapter. Fix: screens read it from the API.",
+			],
+		]);
+	});
+
+	it("gen --own-host writes only this config's files; plain gen writes every host's", () => {
+		workspace([]);
+		const gizmo = (t: string) => t.replaceAll("widget", "gizmo").replaceAll("Widget", "Gizmo");
+		put("other/src/registry/kinds/gizmo.ts", gizmo(KIND_SRC));
+		put("other/src/a/b.gizmos.ts", gizmo(ENTRY_SRC));
+		put("other/src/design/.keep", "");
+		put(
+			"other/registry.config.json",
+			JSON.stringify({ src: "src", kinds: "src/registry/kinds", out: "src/registry", gallery: "src/design" }),
+		);
+		put("registry.workspace.json", JSON.stringify({ hosts: ["registry.config.json", "other/registry.config.json"] }));
+		vi.spyOn(console, "log").mockReturnValue(undefined);
+		const outputs = () =>
+			["src/registry", "other/src/registry"].flatMap((dir) =>
+				["registry.gen.ts", "registry.manifest.json"].map((f) => existsSync(join(root, dir, f))),
+			);
+		expect(main(["--config", cfgFile, "gen", "--own-host"])).toBe(0);
+		expect(outputs()).toEqual([true, true, false, false]);
+		expect(main(["--config", cfgFile, "gen"])).toBe(0);
+		expect(outputs()).toEqual([true, true, true, true]);
+	});
+
+	it("lists the workspace's kinds through the host's config", () => {
+		put(
+			"other/registry.config.json",
+			JSON.stringify({
+				src: "src",
+				kinds: "src/registry/kinds",
+				out: "src/registry",
+				gallery: "src/design",
+			}),
+		);
+		put(
+			"other/src/registry/kinds/gadget.ts",
+			KIND_SRC.replaceAll("widget", "gadget").replace(
+				"defineWidget",
+				"defineGadget",
+			),
+		);
+		put(
+			"other/src/a/b.gadgets.ts",
+			'export const g = define.gadget({ id: "g.one", label: "One" });',
+		);
+		put("other/src/design/.keep", "");
+		workspace([], ["other/registry.config.json"]);
+		const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+		expect(main(["--config", cfgFile, "ls"])).toBe(0);
+		expect(log.mock.calls).toEqual([
+			["widget\t1\t.widgets.ts\ngadget\t1\t.gadgets.ts"],
 		]);
 	});
 });

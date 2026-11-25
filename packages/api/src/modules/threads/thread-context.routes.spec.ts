@@ -112,8 +112,11 @@ describe("thread context settings", () => {
 	it("lists editors, and lets only the host change the settings", async () => {
 		const db = store();
 		const c = new ThreadContextSettingsController(db as never);
+		// The editor scan stats every PATH entry on disk; this test asserts the route, not the machine.
+		vi.stubEnv("PATH", "");
 		const editors = (await call(c.editors().list, undefined)) as { editors: unknown[] };
-		expect(Array.isArray(editors.editors)).toBe(true);
+		vi.unstubAllEnvs();
+		expect(editors.editors).toEqual([]);
 		const routes = c.threadContext();
 		const next = { prStatus: false, editor: "system", rerunChecks: false };
 		await expect(call(routes.update, next, false)).rejects.toThrow(/Only the owner can/);

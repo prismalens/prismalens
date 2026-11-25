@@ -88,4 +88,34 @@ describe("terminal store", () => {
 		store.runDraft(id);
 		expect(send).not.toHaveBeenCalled();
 	});
+
+	it("stage fresh: true opens a new tab and fires onEnd once on markExited, not on close (#1171)", () => {
+		const onEnd = vi.fn();
+		const tab1 = store.newTab();
+		store.stage("git status", { fresh: true, onEnd });
+		expect(store.get().tabs).toHaveLength(2);
+		const tab2 = store.get().active as number;
+		expect(tab2).not.toBe(tab1);
+		expect(store.get().tabs.find((t) => t.id === tab2)?.draft).toBe("git status");
+
+		expect(onEnd).not.toHaveBeenCalled();
+		store.markExited(tab2, 0);
+		expect(onEnd).toHaveBeenCalledTimes(1);
+
+		store.closeTab(tab2);
+		expect(onEnd).toHaveBeenCalledTimes(1);
+	});
+
+	it("stage with onEnd fires once on closeTab of running tab, not again on later close (#1171)", () => {
+		const onEnd = vi.fn();
+		store.stage("git status", { fresh: true, onEnd });
+		const tabId = store.get().active as number;
+		expect(onEnd).not.toHaveBeenCalled();
+
+		store.closeTab(tabId);
+		expect(onEnd).toHaveBeenCalledTimes(1);
+
+		store.closeTab(tabId);
+		expect(onEnd).toHaveBeenCalledTimes(1);
+	});
 });

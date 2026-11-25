@@ -308,7 +308,18 @@ test("B6: a commit on the detached worktree shows its tip and offers a branch th
 		],
 		{ cwd: before.workspace?.cwd ?? "" },
 	);
-	const ctx = await context(page);
+	// The context read is shared for up to a second (#1181), and a git commit moves no topic:
+	// ask until the answer is the one after the commit.
+	let ctx = before;
+	await expect
+		.poll(async () => {
+			ctx = await context(page);
+			const now = ctx.workspace?.repos[0];
+			return (
+				now?.detached === true && now.tip !== before.workspace?.repos[0]?.tip
+			);
+		})
+		.toBe(true);
 	const repo = ctx.workspace?.repos[0];
 	const branch = ctx.workspace?.suggestedBranch ?? "";
 	expect(repo?.detached).toBe(true);
@@ -322,7 +333,7 @@ test("B6: a commit on the detached worktree shows its tip and offers a branch th
 	expect(branch.length).toBeLessThanOrEqual(50);
 	await openThread(page);
 	await expect(page.getByTestId("details-detached").first()).toHaveText(
-		`Detached at ${repo?.tip?.slice(0, 7)}`,
+		`Run copy of main at ${repo?.tip?.slice(0, 7)}`,
 	);
 	const action = page.getByTestId("details-git-action").first();
 	await expect(action).toHaveAttribute("data-action", "branchAndPush");

@@ -12,9 +12,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { type ReactNode, useRef, useState } from "react";
 import {
 	defaultAccessOf,
-	unreadyLine,
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
+import { composerGate } from "@/components/agent/agent-choice";
 import { modeOnSwitch } from "@/components/agent/agent-modes";
 import type { SchedulePrefill } from "@/components/schedules/ScheduleDialog";
 import {
@@ -34,6 +34,7 @@ import {
 	uploadEach,
 } from "@/lib/composer-send";
 import { rememberSubject } from "@/lib/last-subject";
+import { randomId } from "@/lib/random-id";
 import { CarryLine } from "./CarryLine";
 import { Composer, type SlashCommand } from "./Composer";
 import { takeNewThreadSeed } from "./composer/quote";
@@ -66,6 +67,7 @@ interface Picked {
  */
 export function NewThread({
 	subject,
+	scopeSubject,
 	draft,
 	branch,
 	incident = null,
@@ -73,6 +75,7 @@ export function NewThread({
 	top,
 	tools,
 	slash,
+	onText,
 	place,
 	placeholder,
 	autoFocus = true,
@@ -80,6 +83,8 @@ export function NewThread({
 	onRepeat,
 }: {
 	subject: ThreadStartSubject;
+	/** The subject the box keeps its draft under, when that differs from the one the send starts on. */
+	scopeSubject?: ThreadStartSubject;
 	/** A seeded box's own draft id, from the address. */
 	draft?: string;
 	branch: string | null;
@@ -90,6 +95,8 @@ export function NewThread({
 	top?: ReactNode;
 	tools?: ReactNode;
 	slash?: SlashCommand[];
+	/** The box's text, as it changes. */
+	onText?: (text: string) => void;
 	/** A no-subject helper's empty page; the server words its context, never the page's data. */
 	place?: HelperPlace;
 	placeholder?: string;
@@ -137,7 +144,11 @@ export function NewThread({
 				: null;
 	const accessLevel =
 		picked.accessLevel ?? defaultAccessOf(harness, choice.axes).level.level;
-	const unready = harness ? unreadyLine(harness) : null;
+	// A note starts no run, so nothing about the agent applies to it.
+	const gate =
+		harness && !choice.isLoading && !(incident && note)
+			? composerGate(harness, model)
+			: {};
 
 	const agentMode = picked.agentMode ?? null;
 	const run = {
@@ -222,7 +233,7 @@ export function NewThread({
 			});
 			return;
 		}
-		const draftKey = crypto.randomUUID();
+		const draftKey = randomId();
 		const uploaded = await uploadEach(env.attachments, (f) =>
 			uploadThreadAttachment({ draftKey }, f),
 		);
@@ -254,7 +265,8 @@ export function NewThread({
 			usageRing
 			lean={lean}
 			onSend={onSend}
-			scope={newThreadScope(subject, draft)}
+			onText={onText}
+			scope={newThreadScope(scopeSubject ?? subject, draft)}
 			seed={seed}
 			placeholder={
 				placeholder ?? (incident ? "What's wrong?" : "Ask or describe a change")
@@ -284,7 +296,8 @@ export function NewThread({
 				}))
 			}
 			branch={branch}
-			blockedReason={choice.isLoading || (incident && note) ? null : unready}
+			blockedReason={gate.blockedReason}
+			notice={gate.warning}
 			autoFocus={autoFocus}
 			top={
 				seed?.forkOf ? (

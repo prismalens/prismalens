@@ -1,5 +1,5 @@
 {
-	"updatedAt": "2026-11-15T00:00:00Z",
+	"updatedAt": "2026-11-23T00:00:00Z",
 	"source": "https://models.dev/api.json",
 	"makers": {
 		"alibaba": {
@@ -291,6 +291,9 @@
 		},
 		"commandcode": {
 			"name": "CommandCode"
+		},
+		"concentrate": {
+			"name": "Concentrate"
 		},
 		"confidential-ai": {
 			"name": "Confidential AI"
@@ -762,6 +765,9 @@
 		},
 		"powerspring": {
 			"name": "Powerspring"
+		},
+		"primalabs": {
+			"name": "PrimaLabs"
 		},
 		"prime": {
 			"name": "Prime Inference"

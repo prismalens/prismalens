@@ -30,3 +30,13 @@ export function git(
 		env: gitChildEnv(process.env),
 	}) as string;
 }
+
+/**
+ * Where `dir` sits in its repository: `prefix` from the root (no trailing slash), `toRoot` back up.
+ * Git answers both, as a linked `dir` (macOS's /var) is not under the root's real path.
+ */
+export function repoPaths(dir: string): { prefix: string; toRoot: string } {
+	const ask = (flag: string) =>
+		git(["rev-parse", flag], { cwd: dir }).trim().replace(/\/$/, "");
+	return { prefix: ask("--show-prefix"), toRoot: ask("--show-cdup") };
+}

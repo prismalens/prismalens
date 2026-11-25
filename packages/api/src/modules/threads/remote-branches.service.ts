@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { PR_WATCH_EVERY_MS, RunWorkspaceSchema } from "@prismalens/contracts";
 import { Logger } from "@prismalens/logger";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import {
@@ -34,7 +35,7 @@ export class RemoteBranchesService implements OnModuleInit, OnModuleDestroy {
 	constructor(private readonly prisma: PrismaService) {}
 
 	onModuleInit(): void {
-		this.timer = setInterval(() => {
+		this.timer = clock.setInterval(() => {
 			void this.tick().catch((e) =>
 				this.logger.warn(`A remote branch pass failed: ${String(e)}`),
 			);
@@ -46,7 +47,7 @@ export class RemoteBranchesService implements OnModuleInit, OnModuleDestroy {
 		if (this.timer) clearInterval(this.timer);
 	}
 
-	async tick(now = new Date()): Promise<void> {
+	async tick(now = clock.date()): Promise<void> {
 		if (this.ticking) return;
 		this.ticking = true;
 		try {

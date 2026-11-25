@@ -41,6 +41,13 @@ describe("the host's folder listing (#1020)", () => {
 		expect(JSON.stringify(got)).not.toContain("secret-plans");
 	});
 
+	it("names a folder stored with a private-use colon by the colon, keeping its real path", async () => {
+		mkdirSync(join(root, "C"));
+		const got = await browseFolders(root);
+		expect(got.ok && got.entries.map((e) => e.name)).toEqual(["C:"]);
+		expect(got.ok && got.entries[0]?.path).toBe(join(root, "C"));
+	});
+
 	it("never lists or follows a link or junction", async () => {
 		const outside = mkdtempSync(join(tmpdir(), "pl-outside-"));
 		try {

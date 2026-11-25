@@ -18,6 +18,7 @@ import { HarnessService } from "../../core/harness/harness.service.js";
 import { SessionLifecycleService } from "../wakes/session-lifecycle.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { composerStubs, telemetryStub } from "../../../test/factories/index.js";
+import { onFakeTime } from "../../../test/support/fake-time.js";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -101,11 +102,14 @@ describe("InvestigationsController.message (#743)", () => {
 		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
 		const procs = controller.investigations() as Record<string, any>;
 		const h = procs.message["~orpc"].handler;
+		// The handler retries on a timer; the fake clock runs it so the test waits on none.
 		return (args) =>
-			h({
-				context: { request: operateRequest },
-				...args,
-			});
+			onFakeTime(
+				h({
+					context: { request: operateRequest },
+					...args,
+				}),
+			);
 	}
 
 	it("queues a message on a running run", async () => {
@@ -339,11 +343,13 @@ describe("messages on a live row (#673 w59, T15, OBJ-004)", () => {
 	});
 	// biome-ignore lint/suspicious/noExplicitAny: unwrap the oRPC procedure wrapper.
 	const send = (input: { id: string; text: string; mode: "queue"; kind?: "chat" | "continue" }): Promise<any> =>
-		// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
-		(controller.investigations() as Record<string, any>).message["~orpc"].handler({
-			input,
-			context: { request: operateRequest },
-		});
+		onFakeTime(
+			// biome-ignore lint/suspicious/noExplicitAny: procedure map is loosely typed.
+			(controller.investigations() as Record<string, any>).message["~orpc"].handler({
+				input,
+				context: { request: operateRequest },
+			}),
+		);
 	const live = (liveTurn: string | null, kind = "investigation") => ({
 		...investigation("inv-1", "running"),
 		kind,

@@ -70,6 +70,8 @@ export interface StubGateway {
 	/** Every call, as the run will record it. */
 	harnessCalls: () => HarnessCall[];
 	count: () => number;
+	/** Authorized MCP requests of any method, so a turn can tell an agent that connected and listed tools. */
+	requests: () => number;
 	close: () => Promise<void>;
 }
 
@@ -94,6 +96,7 @@ export async function startStubGateway(
 	const search = opts.search ?? stubSearch(opts.harness ?? "");
 	const title = opts.incidentTitle ?? STUB_FACTS.incident;
 	let connected = false;
+	let requests = 0;
 	let open = true;
 	const waiters = new Set<(ok: boolean) => void>();
 	const listeners = new Set<(c: GatewayCall) => void>();
@@ -469,6 +472,7 @@ export async function startStubGateway(
 				res.writeHead(401, { "WWW-Authenticate": "Bearer" }).end();
 				return;
 			}
+			requests += 1;
 			if (!connected) {
 				connected = true;
 				for (const done of waiters) done(true);
@@ -535,6 +539,7 @@ export async function startStubGateway(
 		},
 		harnessCalls: () => [...seen],
 		count: () => seen.length,
+		requests: () => requests,
 		close: () => {
 			open = false;
 			return new Promise<void>((resolve) => {

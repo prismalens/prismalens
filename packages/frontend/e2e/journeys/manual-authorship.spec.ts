@@ -281,6 +281,9 @@ test.describe("C10 — manual authorship without an alert source", () => {
 	});
 
 	test("cannot submit an incident with no title", async ({ page }) => {
+		// The box restores the stack's saved new:home draft after its read lands, over the
+		// fill below; a draft another test left would refill it (#1154).
+		await page.request.delete("/api/drafts/new%3Ahome");
 		await page.goto("/new?incident=true&note=true&none=true");
 		await page.getByTestId("composer-input").fill("");
 		const send = page.getByTestId("composer-send");

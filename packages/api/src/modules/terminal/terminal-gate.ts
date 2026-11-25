@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { ACCESS_SCOPE, terminalKeyMatches } from "@prismalens/auth";
 import type { TerminalAvailability } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
 import { localRequestRefusal } from "./local-request.js";
 
 export interface GateDevice {
@@ -82,7 +83,7 @@ export class TerminalGate {
 			return { reason: "no-key" };
 		this.sweep();
 		const ticket = randomBytes(32).toString("base64url");
-		const expires = Date.now() + (this.options.ticketTtlMs ?? 30_000);
+		const expires = clock.now() + (this.options.ticketTtlMs ?? 30_000);
 		this.tickets.set(ticket, { deviceId: device.id, expires });
 		return { ticket, expiresAt: new Date(expires) };
 	}
@@ -92,12 +93,12 @@ export class TerminalGate {
 		if (!ticket) return null;
 		const entry = this.tickets.get(ticket);
 		this.tickets.delete(ticket);
-		if (!entry || entry.expires <= Date.now()) return null;
+		if (!entry || entry.expires <= clock.now()) return null;
 		return entry.deviceId;
 	}
 
 	private sweep(): void {
-		const now = Date.now();
+		const now = clock.now();
 		for (const [ticket, entry] of this.tickets)
 			if (entry.expires <= now) this.tickets.delete(ticket);
 	}

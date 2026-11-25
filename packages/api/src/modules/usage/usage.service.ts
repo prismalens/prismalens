@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
+import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import {
 	type Enforcement,
 	type EnforcementRow,
@@ -15,6 +16,8 @@ import {
 	type UsageSummary,
 	type UsageWindow,
 } from "@prismalens/contracts";
+import * as clock from "../../core/clock.js";
+import { HarnessService } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	addTurn,
@@ -33,11 +36,14 @@ const SEP = "\u0000";
 /** The Usage view's numbers, from the turns agents reported into PrismaLens's own record (#1101 cat 17). */
 @Injectable()
 export class UsageService {
-	constructor(private readonly prisma: PrismaService) {}
+	constructor(
+		private readonly prisma: PrismaService,
+		@Optional() private readonly harness?: HarnessService,
+	) {}
 
 	async summary(
 		query: UsageQuery,
-		now: Date = new Date(),
+		now: Date = clock.date(),
 	): Promise<UsageSummary> {
 		const span = RANGE_SPAN[query.range];
 		const since = new Date(now.getTime() - span.ms);
@@ -133,7 +139,7 @@ export class UsageService {
 		};
 	}
 
-	/** Each agent's windows: the latest `agent_quota` it sent for each window. */
+	/** Each installed agent and each that ran: the latest `agent_quota` it sent per window, or why there is none (#1171). */
 	async limits(): Promise<UsageLimits> {
 		const events = await this.prisma.investigationEvent.findMany({
 			where: { event: { contains: '"kind":"agent_quota"' } },
@@ -156,17 +162,29 @@ export class UsageService {
 			const key = w.type ?? w.window ?? "window";
 			if (!windows.has(key)) windows.set(key, w);
 		}
+		const ran = await this.agentsThatRan();
 		const agents = new Set([
-			...(await this.agentsThatRan()),
+			...((await this.harness?.installedIds()) ?? []),
+			...ran,
 			...byAgent.keys(),
 		]);
 		return {
-			agents: [...agents].sort().map((agent) => ({
-				agent,
-				windows: [...(byAgent.get(agent)?.values() ?? [])].sort(
+			agents: [...agents].sort().map((agent) => {
+				const windows = [...(byAgent.get(agent)?.values() ?? [])].sort(
 					(a, b) => windowRank(a.window) - windowRank(b.window),
-				),
-			})),
+				);
+				const reports =
+					HARNESS_REGISTRY[agent as HarnessId]?.reportsLimits === true;
+				return {
+					agent,
+					windows,
+					empty: windows.length
+						? null
+						: reports && !ran.includes(agent)
+							? "no-run-yet"
+							: "not-reported",
+				};
+			}),
 		};
 	}
 

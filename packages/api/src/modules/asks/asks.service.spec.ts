@@ -31,7 +31,7 @@ function store(events: CanonicalEvent[] = []) {
 	const rows = new Map<string, Row>();
 	const log: CanonicalEvent[] = [...events];
 	const pushes: unknown[] = [];
-	const tick = () => new Promise((r) => setTimeout(r, 0));
+	const tick = () => vi.advanceTimersByTimeAsync(0);
 	const taken = (e: CanonicalEvent) =>
 		log.some((x) => x.seq === e.seq && "branchId" in x && "branchId" in e && x.branchId === e.branchId);
 	const maxSeq = async () => {

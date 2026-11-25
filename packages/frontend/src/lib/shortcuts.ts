@@ -430,7 +430,7 @@ export function typeToCompose(e: KeyboardEvent): boolean {
 /** No field or row holds focus and no dialog or menu is open. */
 function composeFree(): boolean {
 	const at = document.activeElement;
-	if (typing(at) || at?.closest("[data-surface]")) return false;
+	if (typing(at) || at?.closest("[data-surface], [role=listbox]")) return false;
 	return !document.querySelector(
 		"[role=dialog], [role=alertdialog], [role=menu]",
 	);

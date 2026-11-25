@@ -6,10 +6,9 @@ import {
 	PROJECT_SCRIPT_COMMAND_MAX,
 	PROJECT_SCRIPT_NAME_MAX,
 } from "@prismalens/contracts";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithApp } from "@/test/render";
 import { ScriptDialog, scriptErrors } from "./ScriptDialog";
 
 const { addScriptSpy, updateScriptSpy, removeScriptSpy } = vi.hoisted(() => ({
@@ -109,42 +108,24 @@ describe("scriptErrors", () => {
 
 describe("ScriptDialog", () => {
 	let container: HTMLDivElement;
-	let queryClient: QueryClient;
 
 	beforeEach(() => {
-		container = document.createElement("div");
-		document.body.appendChild(container);
-		queryClient = new QueryClient({
-			defaultOptions: {
-				queries: { retry: false },
-				mutations: { retry: false },
-			},
-		});
 		vi.clearAllMocks();
-		return () => {
-			container.remove();
-		};
 	});
 
-	function renderDialog(props: {
+	async function renderDialog(props: {
 		projectId: string;
 		script?: { id: string; name: string; command: string };
 		onClose: () => void;
 	}) {
-		const root = createRoot(container);
-		act(() => {
-			root.render(
-				<QueryClientProvider client={queryClient}>
-					<ScriptDialog {...props} />
-				</QueryClientProvider>,
-			);
-		});
-		return root;
+		const app = await renderWithApp(<ScriptDialog {...props} />);
+		container = app.container;
+		return app;
 	}
 
-	it("renders add script mode with empty inputs", () => {
+	it("renders add script mode with empty inputs", async () => {
 		const onClose = vi.fn();
-		renderDialog({ projectId: "proj-123", onClose });
+		await renderDialog({ projectId: "proj-123", onClose });
 
 		const title = container.querySelector("h2");
 		expect(title?.textContent).toBe("Add script");
@@ -160,9 +141,9 @@ describe("ScriptDialog", () => {
 		expect(commandInput?.value).toBe("");
 	});
 
-	it("renders edit script mode with prepopulated values", () => {
+	it("renders edit script mode with prepopulated values", async () => {
 		const onClose = vi.fn();
-		renderDialog({
+		await renderDialog({
 			projectId: "proj-123",
 			script: { id: "s-1", name: "test", command: "pnpm test" },
 			onClose,
@@ -182,9 +163,9 @@ describe("ScriptDialog", () => {
 		expect(commandInput?.value).toBe("pnpm test");
 	});
 
-	it("shows validation error messages when submitting empty form", () => {
+	it("shows validation error messages when submitting empty form", async () => {
 		const onClose = vi.fn();
-		renderDialog({ projectId: "proj-123", onClose });
+		await renderDialog({ projectId: "proj-123", onClose });
 
 		const form = container.querySelector("form");
 		act(() => {
@@ -208,7 +189,7 @@ describe("ScriptDialog", () => {
 
 	it("submits valid add form and triggers onClose on success", async () => {
 		const onClose = vi.fn();
-		renderDialog({ projectId: "proj-123", onClose });
+		await renderDialog({ projectId: "proj-123", onClose });
 
 		const nameInput = container.querySelector(
 			'[data-testid="script-name"]',
@@ -250,12 +231,13 @@ describe("ScriptDialog", () => {
 			name: "build",
 			command: "pnpm build",
 		});
-		expect(onClose).toHaveBeenCalled();
+		// The save settles some ticks after the submit's act scope ends (#1185).
+		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
 	});
 
 	it("submits valid update form and triggers onClose on success", async () => {
 		const onClose = vi.fn();
-		renderDialog({
+		await renderDialog({
 			projectId: "proj-123",
 			script: { id: "s-1", name: "test", command: "pnpm test" },
 			onClose,
@@ -290,7 +272,7 @@ describe("ScriptDialog", () => {
 			name: "test",
 			command: "pnpm test:unit",
 		});
-		expect(onClose).toHaveBeenCalled();
+		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
 	});
 
 	it("displays server error when save mutation fails", async () => {
@@ -298,7 +280,7 @@ describe("ScriptDialog", () => {
 			new Error("Database error saving script"),
 		);
 		const onClose = vi.fn();
-		renderDialog({ projectId: "proj-123", onClose });
+		await renderDialog({ projectId: "proj-123", onClose });
 
 		const nameInput = container.querySelector(
 			'[data-testid="script-name"]',
@@ -335,8 +317,11 @@ describe("ScriptDialog", () => {
 			);
 		});
 
-		const errEl = container.querySelector('[data-testid="script-error"]');
-		expect(errEl?.textContent).toBe("Database error saving script");
+		await vi.waitFor(() =>
+			expect(
+				container.querySelector('[data-testid="script-error"]')?.textContent,
+			).toBe("Database error saving script"),
+		);
 		expect(onClose).not.toHaveBeenCalled();
 	});
 });

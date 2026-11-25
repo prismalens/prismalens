@@ -11,6 +11,7 @@ import { relative } from "node:path";
 import type { BorrowedCheckout } from "@prismalens/contracts";
 import { LIVE_WORKFLOW_STATUSES } from "@prismalens/contracts";
 import type { Prisma } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { gitEnv } from "../../core/harness/git-env.js";
 import {
 	GIT_PROBE_TIMEOUT_MS,
@@ -183,7 +184,7 @@ export async function takeLease(
 	await db.checkoutLease.upsert({
 		where: { canonicalPath: path },
 		create: { canonicalPath: path, investigationId, generation },
-		update: { investigationId, generation, takenAt: new Date() },
+		update: { investigationId, generation, takenAt: clock.date() },
 	});
 }
 
@@ -228,7 +229,7 @@ export async function releaseIfGone(
 	db: LeaseStore,
 	gone: AgentGone,
 	path: string | null = null,
-	now: Date = new Date(),
+	now: Date = clock.date(),
 	containMs: number = CONTAINMENT_TIMEOUT_MS,
 ): Promise<{ released: number; failed: number }> {
 	const rows = await db.checkoutLease.findMany();
@@ -299,7 +300,7 @@ async function withinContainment(
 	const stop = new AbortController();
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const late = new Promise<"timed-out">((resolve) => {
-		timer = setTimeout(() => {
+		timer = clock.setTimeout(() => {
 			stop.abort();
 			resolve("timed-out");
 		}, ms);

@@ -25,6 +25,7 @@ import {
 import { fail, type ToolOutcome } from "@prismalens/integrations/harness";
 import { Logger } from "@prismalens/logger";
 import type { BrowserContext, CDPSession, Page } from "playwright-core";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import type {
 	BrowserAction,
@@ -234,7 +235,7 @@ export class BrowserHostService implements OnModuleDestroy {
 	/** Closes the browser after a quiet spell with no tabs; the profile stays on disk. */
 	private touch(): void {
 		clearTimeout(this.idle);
-		this.idle = setTimeout(() => {
+		this.idle = clock.setTimeout(() => {
 			if (this.tabs.size === 0)
 				void this.engine?.context.close().catch(() => {});
 		}, IDLE_MS);
@@ -333,14 +334,14 @@ export class BrowserHostService implements OnModuleDestroy {
 			push(tab.console, {
 				level: m.type(),
 				text: `${m.text().slice(0, 2_000)}${m.location().url ? ` (${m.location().url}:${m.location().lineNumber})` : ""}`,
-				at: new Date().toISOString(),
+				at: clock.date().toISOString(),
 			}),
 		);
 		page.on("pageerror", (e) =>
 			push(tab.console, {
 				level: "error",
 				text: `Uncaught ${e.name}: ${e.message}`.slice(0, 2_000),
-				at: new Date().toISOString(),
+				at: clock.date().toISOString(),
 			}),
 		);
 		page.on("request", (r) => {
@@ -356,14 +357,14 @@ export class BrowserHostService implements OnModuleDestroy {
 				status: null,
 				failure: null,
 				ms: null,
-				started: Date.now(),
+				started: clock.now(),
 			});
 		});
 		const settle = (url: string, set: (e: NetworkEntry) => void) => {
 			for (let i = tab.network.length - 1; i >= 0; i--) {
 				const e = tab.network[i] as NetworkEntry;
 				if (e.url === url.slice(0, 2_000) && e.ms === null) {
-					e.ms = Date.now() - e.started;
+					e.ms = clock.now() - e.started;
 					set(e);
 					return;
 				}

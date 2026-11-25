@@ -5,18 +5,14 @@ import swc from "unplugin-swc";
 import { defineConfig } from "vitest/config";
 
 /**
- * Coverage gate (repo policy since #58): NEW code ships test-first with ≥80%
- * per-metric coverage, enforced per-glob. When you add a module, add it (or its
- * dir) to `thresholds` below — reviewers treat a new source file with no
- * threshold entry as a missing test. The package-wide numbers stay as the floor
- * for the pre-#58 files, which are exempt until touched.
+ * Coverage floors (docs/contributing/testing.md, #1206): a ratchet, never a target.
+ * A per-file entry below guards a module that already has its tests; a new module needs none.
  */
 /**
  * Package floor = the coverage this package ACTUALLY had when the gate was first
  * wired into CI (#58's policy was written but never run, so the old numbers were
  * aspirational, not real). It is a RATCHET, not a target: raise it as coverage
- * improves, never lower it to make a red build pass. New code still ships at the
- * 80% per-glob threshold below.
+ * improves, never lower it to make a red build pass.
  */
 const PACKAGE_FLOOR = {
 	statements: 46,
@@ -57,14 +53,44 @@ export default defineConfig({
 		}),
 	],
 	test: {
+		// CI fails a test that spends over VITEST_TIMEOUT_BUDGET of its timeout here (#1085).
+		...(process.env.VITEST_TIMEOUT_BUDGET
+			? {
+					reporters: [
+						"default",
+						"../../scripts/lib/timeout-budget-reporter.mjs",
+					],
+				}
+			: {}),
 		globals: true,
 		environment: "node",
 		root: "./",
-		include: ["src/**/*.spec.ts", "test/**/*.spec.ts"],
+		// Two sizes by file name (#1154): `*.spec.ts` is small, `*.int.spec.ts` medium.
+		projects: [
+			{
+				extends: true,
+				test: {
+					name: "small",
+					include: ["src/**/*.spec.ts", "test/**/*.spec.ts"],
+					exclude: ["**/*.int.spec.ts", "**/node_modules/**"],
+					setupFiles: ["./vitest.small.setup.ts"],
+					// Without this a node:timers or node:timers/promises sleep stays real.
+					fakeTimers: { fakeNodeBuiltins: true },
+					testTimeout: 1_000,
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: "medium",
+					include: ["src/**/*.int.spec.ts", "test/**/*.int.spec.ts"],
+				},
+			},
+		],
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "lcov", "html"],
-			reportsDirectory: "../coverage",
+			reportsDirectory: "coverage",
 			include: ["src/**/*.ts"],
 			exclude: [
 				"src/**/*.spec.ts",
@@ -142,6 +168,8 @@ export default defineConfig({
 				"src/shared/utils/literal-like.ts": NEW_CODE_THRESHOLD,
 				"src/modules/gateway/tools/serves.ts": NEW_CODE_THRESHOLD,
 				"src/modules/repositories/folder-browser.ts": NEW_CODE_THRESHOLD,
+				"src/modules/repositories/native-folder-dialog.ts": NEW_CODE_THRESHOLD,
+				"src/core/auth/host.ts": NEW_CODE_THRESHOLD,
 				"src/modules/repositories/start-git.ts": NEW_CODE_THRESHOLD,
 				"src/infrastructure/dispatch/folder-lock.ts": NEW_CODE_THRESHOLD,
 				"src/modules/schedules/allowed-asks.ts": NEW_CODE_THRESHOLD,

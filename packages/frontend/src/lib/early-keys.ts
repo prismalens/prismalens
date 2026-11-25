@@ -6,12 +6,13 @@ import { composePage } from "@/lib/compose-pending";
 /**
  * The prerendered shell shows the page before React runs, so a shortcut pressed then
  * reached no listener (#1020). This pre-paint script keeps those keys, with when and where
- * they were pressed, until the shortcuts mount; typing in a field is left. A modified key
+ * they were pressed, until the shortcuts mount; typing in a field, or in an open list or menu
+ * whose typeahead owns plain letters, is left. A modified key
  * (Ctrl K) keeps its modifiers, since the key listeners mount after the first content.
  */
 export const EARLY_KEYS_SCRIPT = `(function(){try{window.__plEarlyKeys=[];
 window.addEventListener('keydown',function(e){var k=window.__plEarlyKeys;if(!k||k.length>=64)return;
-var t=e.target,n=t&&t.tagName,mod=e.metaKey||e.ctrlKey||e.altKey;if(!mod&&(n==='INPUT'||n==='TEXTAREA'||n==='SELECT'||(t&&t.isContentEditable)))return;
+var t=e.target,n=t&&t.tagName,mod=e.metaKey||e.ctrlKey||e.altKey;if(!mod&&(n==='INPUT'||n==='TEXTAREA'||n==='SELECT'||(t&&t.isContentEditable)||(t&&t.closest&&t.closest('[role=listbox],[role=menu]'))))return;
 var r={k:e.key,t:Date.now(),p:location.pathname};if(mod){r.c=e.ctrlKey;r.m=e.metaKey;r.a=e.altKey;r.s=e.shiftKey;r.d=e.code;}k.push(r);},true);}catch(_){}})();`;
 
 /** Older keys are dropped; slow first loads still keep a key pressed as the page appeared. */
@@ -47,8 +48,9 @@ const editable = (el: Element | null) => {
 
 /**
  * The keys still worth replaying, oldest first; keeping stops here, so each is taken once.
- * None when a dialog is open now; with a field focused only modified keys, as live keys behave,
- * except on a page with a message box, where plain keys were typing that the box takes.
+ * None when a dialog is open now; with a field focused, or a list or menu open, only modified keys,
+ * as live keys behave: the open list's typeahead owns a plain letter pressed before the mount (#1154).
+ * A field on a page with a message box does not count: plain keys there were typing the box takes.
  */
 export function takeEarlyKeys(now = Date.now()): EarlyKey[] {
 	if (typeof window === "undefined") return [];
@@ -57,7 +59,9 @@ export function takeEarlyKeys(now = Date.now()): EarlyKey[] {
 	w.__plEarlyKeys = null;
 	if (document.querySelector("[role=dialog], [role=alertdialog]")) return [];
 	const typing =
-		editable(document.activeElement) && !composePage(window.location.pathname);
+		(editable(document.activeElement) &&
+			!composePage(window.location.pathname)) ||
+		!!document.querySelector("[role=listbox], [role=menu]");
 	return keys.filter(
 		(e) =>
 			now - e.t <=

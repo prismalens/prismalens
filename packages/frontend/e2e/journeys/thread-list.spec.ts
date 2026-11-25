@@ -114,7 +114,7 @@ async function serveFeed(
 
 /** A sidebar row's title: the row's link also carries its state words for screen readers. */
 const rowTitle = (page: Page) =>
-	page.getByTestId("thread-row").locator("span[dir=auto]");
+	page.getByTestId("thread-row").getByTestId("row-title");
 
 /** The list renders only once the app has hydrated and read the feed, so keys and clicks land. */
 const hydrated = (page: Page) =>
@@ -123,8 +123,7 @@ const hydrated = (page: Page) =>
 test.describe("#1020 — thread list and Home", () => {
 	test.beforeEach(({ page }) => hideQueryDevtools(page));
 
-	// #1154: UI moved: waits for `getByRole('menuitemradio', { name: 'No project' })`, which no longer renders
-	test.fixme("a. New on a project starts the thread there and opens its page", async ({
+	test("a. New on a project starts the thread there and opens its page", async ({
 		page,
 	}) => {
 		const started = await captureStart(page);
@@ -133,19 +132,21 @@ test.describe("#1020 — thread list and Home", () => {
 		await expect(page).toHaveURL(/\/new/);
 		await expect(page.getByTestId("home")).toBeVisible({ timeout: 15_000 });
 		await page.getByTestId("composer-subject").click();
+		// The subject is a searchable picker (#1101): No project, the projects, the services, then adds.
+		const picker = page.getByRole("dialog", { name: "Subject" });
 		await expect(
-			page.getByRole("menuitemradio", { name: "No project" }),
+			picker.getByRole("option", { name: /^No project/ }),
 		).toBeVisible();
 		await expect(
-			page.getByRole("menuitem", { name: "Add project" }),
+			picker.getByRole("option", { name: "Add project" }),
 		).toBeVisible();
 		await expect(
-			page.getByRole("menuitem", { name: "Add a service" }),
+			picker.getByRole("option", { name: "Add a service" }),
 		).toBeVisible();
 		await page.getByTestId(`subject-project-${projectId}`).click();
 		await expect(page).toHaveURL(new RegExp(`project=${projectId}`));
-		// An incident carries a service, not a project, so Incident is off here.
-		await expect(page.getByTestId("composer-incident")).toBeDisabled();
+		// An incident carries a service, not a project, so a project's box offers no Incident.
+		await expect(page.getByTestId("composer-incident")).toHaveCount(0);
 		await page.getByTestId("composer-input").fill("Tidy the retry helper");
 		await page.getByTestId("composer-input").press("Enter");
 		await expect(page).toHaveURL(new RegExp(`/threads/${THREAD_ID}`));
@@ -179,6 +180,8 @@ test.describe("#1020 — thread list and Home", () => {
 				});
 			},
 		);
+		// The box restores the stack's saved new:home draft after its read lands (#1154).
+		await page.request.delete("/api/drafts/new%3Ahome");
 		await page.goto("/threads/new?incident=true&none=true");
 		await expect(page).toHaveURL(/\/new\?.*incident=true/);
 		await expect(page.getByTestId("new-thread-page")).toBeVisible({
@@ -208,14 +211,25 @@ test.describe("#1020 — thread list and Home", () => {
 		});
 	});
 
-	// #1154: UI moved: waits for `getByTestId('composer-incident')`, which no longer renders
-	test.fixme("b2. the composer's slash commands turn Incident on, as an investigation or a note", async ({
+	// Incident is a facet of a service thread (#1101): a plain thread's box offers neither it nor its words.
+	test("b2. on a service, the composer's slash commands turn Incident on, as an investigation or a note", async ({
 		page,
 	}) => {
 		await page.goto("/new?none=true");
 		const input = page.getByTestId("composer-input");
 		await expect(input).toBeVisible({ timeout: 15_000 });
 		const incident = page.getByTestId("composer-incident");
+		await expect(incident).toHaveCount(0);
+		await input.fill("/");
+		await expect(page.getByTestId("composer-slash-investigate")).toHaveCount(0);
+		await input.fill("");
+
+		await page.getByTestId("composer-subject").click();
+		await page
+			.getByRole("dialog", { name: "Subject" })
+			.getByRole("option", { name: "API Gateway" })
+			.click();
+		await expect(page).toHaveURL(/service=/);
 		await expect(incident).toHaveAttribute("aria-pressed", "false");
 
 		await input.fill("/");
@@ -230,8 +244,7 @@ test.describe("#1020 — thread list and Home", () => {
 		await expect(page.getByTestId("composer-note")).toHaveText("Note only");
 	});
 
-	// #1154: UI moved: waits for `getByTestId('thread-section-recents').getByTestId('thread-row')`, which no longer renders
-	test.fixme("c. a thread settles from its row, and Undo brings it back", async ({
+	test("c. a thread settles from its row, and Undo brings it back", async ({
 		page,
 	}) => {
 		let settledAt: string | null = null;
@@ -266,19 +279,18 @@ test.describe("#1020 — thread list and Home", () => {
 		);
 
 		await page.goto("/incidents");
-		const recents = page.getByTestId("thread-section-recents");
+		const recents = page.getByTestId("thread-section-threads");
 		const row = recents.getByTestId("thread-row");
-		await expect(row).toHaveAttribute("data-state", "new");
+		await expect(row).toHaveAttribute("data-state", "done");
 		await expect(row).toHaveAttribute("data-id", RUN_ID);
 		await recents.getByTestId("thread-row-wrap").hover();
-		await expect(recents.getByTestId("thread-stop")).toHaveCount(0);
 		await recents.getByTestId("thread-settle").click();
 		// Undo waits for Settle's answer: without it, it would not know what to restore.
 		await expect(page.getByTestId("settle-undo")).toBeDisabled();
 		await expect(row).toHaveCount(0);
 		answer();
 		await expect(page.getByTestId("settle-undo")).toBeEnabled();
-		await expect(recents.getByTestId("settle-undo-line")).toContainText(
+		await expect(page.getByTestId("settle-undo-line")).toContainText(
 			"Settled Why does checkout cache miss",
 		);
 		await expect(row).toHaveCount(0);
@@ -292,11 +304,8 @@ test.describe("#1020 — thread list and Home", () => {
 		]);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('thread-section-recents').getByTestId('thread-row-wrap').getByTestId('thre...
-	test.fixme("c2. a live thread offers Stop on its row instead of Settle", async ({
-		page,
-	}) => {
-		const cancelled: string[] = [];
+	// The row's Stop went with #1101's row actions; a working thread stops from its own page.
+	test("c2. a live thread offers no Settle on its row", async ({ page }) => {
 		await serveFeed(page, () => [
 			threadRow({
 				status: "running",
@@ -305,29 +314,17 @@ test.describe("#1020 — thread list and Home", () => {
 				unseen: false,
 			}),
 		]);
-		await page.route(
-			(url) => url.pathname === `/api/investigations/${RUN_ID}/cancel`,
-			async (route) => {
-				cancelled.push(route.request().method());
-				await route.fulfill({
-					status: 200,
-					contentType: "application/json",
-					body: JSON.stringify(threadRow({ status: "cancelled" })),
-				});
-			},
-		);
 		await page.goto("/incidents");
 		const wrap = page
-			.getByTestId("thread-section-recents")
+			.getByTestId("thread-section-threads")
 			.getByTestId("thread-row-wrap");
 		await expect(wrap.getByTestId("thread-row")).toHaveAttribute(
 			"data-state",
 			"working",
 		);
 		await wrap.hover();
+		await expect(wrap.getByTestId("thread-menu")).toBeEnabled();
 		await expect(wrap.getByTestId("thread-settle")).toHaveCount(0);
-		await wrap.getByTestId("thread-stop").click();
-		await expect.poll(() => cancelled).toEqual(["POST"]);
 	});
 
 	test("d. Search finds a thread and places by name", async ({ page }) => {
@@ -352,44 +349,39 @@ test.describe("#1020 — thread list and Home", () => {
 		await expect(page).toHaveURL(/\/services/);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('thread-search-more')`, which no longer renders
-	test.fixme("e. Search reaches a match past its first page with More results", async ({
+	// More results went with the palette's paging (#1101 category 19): one search reads 30.
+	test("e. Search asks the server for the words, lists up to 30 matches, and the one waiting on you first", async ({
 		page,
 	}) => {
-		const cursors: string[] = [];
-		const searching = (p: URLSearchParams) => p.get("search") === "retry";
-		await serveFeed(
-			page,
-			(params) => {
-				if (!searching(params)) return [];
-				const cursor = params.get("cursor") ?? "0";
-				cursors.push(cursor);
-				const ids =
-					cursor === "0" ? Array.from({ length: 20 }, (_, i) => i) : [20];
-				return ids.map((i) =>
-					threadRow({
-						id: `f7777777-7777-4777-8777-${String(i).padStart(12, "0")}`,
-						title: `Retry thread ${i}`,
-					}),
-				);
-			},
-			(params) =>
-				searching(params) && (params.get("cursor") ?? "0") === "0" ? 20 : null,
-		);
+		const asked: URLSearchParams[] = [];
+		await serveFeed(page, (params) => {
+			if (params.get("search") !== "retry") return [];
+			asked.push(params);
+			return Array.from({ length: 31 }, (_, i) =>
+				threadRow({
+					id: `f7777777-7777-4777-8777-${String(i).padStart(12, "0")}`,
+					title: `Retry thread ${i}`,
+					lastActivityAt: new Date(Date.now() - i * 60_000).toISOString(),
+					...(i === 30
+						? {
+								status: "running",
+								completedAt: null,
+								awaitingApprovalAt: new Date().toISOString(),
+								section: "needs",
+							}
+						: {}),
+				}),
+			);
+		});
 		await page.goto("/incidents");
 		await hydrated(page);
 		await page.keyboard.press("Control+k");
 		await page.getByTestId("thread-search-input").fill("retry");
-		await expect(page.getByTestId("thread-search-result")).toHaveCount(20);
-		await page.getByTestId("thread-search-more").click();
-		await expect(page.getByTestId("thread-search-result")).toHaveCount(21);
-		await expect(
-			page
-				.getByTestId("thread-search-result")
-				.filter({ hasText: "Retry thread 20" }),
-		).toBeVisible();
-		await expect(page.getByTestId("thread-search-more")).toHaveCount(0);
-		expect(cursors).toContain("20");
+		const results = page.getByTestId("thread-search-result");
+		await expect(results).toHaveCount(30);
+		await expect(results.first()).toContainText("Retry thread 30");
+		await expect(results.nth(1)).toContainText("Retry thread 0");
+		expect(asked.at(-1)?.get("limit")).toBe("30");
 	});
 
 	test("f. Search opens with the sidebar hidden, on Settings, and reaches the terminal", async ({
@@ -439,8 +431,7 @@ test.describe("#1020 — thread list and Home", () => {
 		await expect(page.getByTestId("general-settle-days")).toHaveText(/3 days/);
 	});
 
-	// #1154: UI moved: waits for `getByTestId('thread-row-wrap').first().getByTestId('thread-rename')`, which no longer ...
-	test.fixme("i. Rename from a row keeps the typed name as plain text", async ({
+	test("i. Rename from a row keeps the typed name as plain text", async ({
 		page,
 	}) => {
 		let title = "Why does checkout cache miss";
@@ -460,9 +451,20 @@ test.describe("#1020 — thread list and Home", () => {
 			},
 		);
 		await page.goto("/incidents");
-		const row = page.getByTestId("thread-row-wrap").first();
-		await row.hover();
-		await row.getByTestId("thread-rename").click();
+		// Rename is the first row of the row's ⋯ menu (#1101 category 1).
+		const rename = async () => {
+			// The row's menus load after first paint and their arrival remounts the row (#1154):
+			// a menu opened before then is torn down, so act once the row's surface is in place.
+			const row = page
+				.locator('[data-testid="thread-row-wrap"][data-surface="thread.row"]')
+				.first();
+			const menu = row.getByTestId("thread-menu");
+			await expect(menu).toBeEnabled();
+			await row.hover();
+			await menu.click();
+			await page.getByRole("menuitem", { name: "Rename" }).click();
+		};
+		await rename();
 		const input = page.getByTestId("thread-rename-input");
 		await expect(input).toBeFocused();
 		await input.fill("<b>Cache</b> misses");
@@ -470,16 +472,14 @@ test.describe("#1020 — thread list and Home", () => {
 		await expect(rowTitle(page).first()).toHaveText("<b>Cache</b> misses");
 		await expect(page.getByTestId("thread-row").locator("b")).toHaveCount(0);
 		expect(sent).toEqual([{ title: "<b>Cache</b> misses" }]);
-		await page.getByTestId("thread-row-wrap").first().hover();
-		await page.getByTestId("thread-rename").first().click();
+		await rename();
 		await page.getByTestId("thread-rename-input").fill("dropped");
 		await page.getByTestId("thread-rename-input").press("Escape");
 		await expect(rowTitle(page).first()).toHaveText("<b>Cache</b> misses");
 		expect(sent).toHaveLength(1);
 	});
 
-	// #1154: UI moved or app changed: expected 3, received 0
-	test.fixme("j. J and K move through the rows and Enter opens the focused one", async ({
+	test("j. J and K move through the rows and Enter opens the focused one", async ({
 		page,
 	}) => {
 		const ids = [0, 1, 2].map(
@@ -497,7 +497,7 @@ test.describe("#1020 — thread list and Home", () => {
 		);
 		await page.goto("/incidents");
 		const rows = page
-			.getByTestId("thread-section-recents")
+			.getByTestId("thread-section-threads")
 			.getByTestId("thread-row");
 		await expect(rows).toHaveCount(3);
 		await page.evaluate(() =>
@@ -519,8 +519,7 @@ test.describe("#1020 — thread list and Home", () => {
 	test.describe("on a phone", () => {
 		test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-		// #1154: UI moved: waits for `getByTestId('phone-menu').getByTestId('menu-threads')`, which no longer renders
-		test.fixme("g. the menu opens Search, which reaches Automation by touch", async ({
+		test("g. the menu opens Search, which reaches Automation by touch", async ({
 			page,
 		}) => {
 			await page.goto("/incidents");
@@ -528,20 +527,21 @@ test.describe("#1020 — thread list and Home", () => {
 			await expect(strip.getByTestId("strip-new")).toBeVisible();
 			await expect(page.getByTestId("sidebar")).toBeHidden();
 			const menu = page.getByTestId("phone-menu");
-			// The server-rendered strip shows before it hydrates; tap until the menu opens.
-			await expect(async () => {
-				await strip.getByTestId("strip-menu").tap();
-				await expect(menu).toBeVisible({ timeout: 1000 });
-			}).toPass({ timeout: 15_000 });
+			// The server renders the strip but not the board: once the board shows, a tap lands.
+			await expect(page.getByTestId("inbox")).toBeVisible();
+			await strip.getByTestId("strip-menu").tap();
+			await expect(menu).toBeVisible();
+			// The menu holds the thread list itself, so it has no Threads door (#1101 sheet §1).
 			for (const id of [
 				"menu-new",
 				"menu-search",
-				"menu-threads",
 				"menu-automation",
-				"menu-services",
+				"menu-projects",
 				"menu-settings",
 			])
 				await expect(menu.getByTestId(id)).toBeVisible();
+			await expect(menu.getByTestId("menu-threads")).toHaveCount(0);
+			await expect(menu.getByTestId("thread-list")).toBeVisible();
 			await menu.getByTestId("menu-search").tap();
 			await expect(menu).toHaveCount(0);
 			await expect(page.getByTestId("thread-search")).toBeVisible();
@@ -550,17 +550,24 @@ test.describe("#1020 — thread list and Home", () => {
 			await expect(
 				page.getByTestId("thread-search-action-terminal"),
 			).toHaveCount(0);
-			await page.getByTestId("thread-search-input").fill("auto");
+			// The server's matches land under the places and move them: tap once they are in.
+			const matched = page.waitForResponse(
+				(r) =>
+					new URL(r.url()).pathname === "/api/threads/feed" &&
+					new URL(r.url()).searchParams.get("search") === "trig",
+			);
+			await page.getByTestId("thread-search-input").fill("trig");
+			await matched;
 			await page
 				.getByTestId("thread-search-place")
-				.filter({ hasText: "Automation" })
+				.filter({ hasText: "Triggers" })
 				.tap();
 			await expect(page).toHaveURL(/\/automation/);
 			await expect(page.getByTestId("automation-page")).toBeVisible();
 		});
 
-		// #1154: UI moved or app changed: expected /\/threads\?state=waiting/, received 4202/incidents"
-		test.fixme("g2. the strip shows what waits on you and leads to it", async ({
+		// The Threads page is gone (#1101 sheet §1): the count opens the menu, where Needs you heads the list.
+		test("g2. the strip shows what waits on you and leads to it", async ({
 			page,
 		}) => {
 			await serveFeed(page, () => [
@@ -577,8 +584,13 @@ test.describe("#1020 — thread list and Home", () => {
 			await expect(waiting).toHaveText("1");
 			await expect(waiting).toHaveAttribute("aria-label", "1 waiting for you");
 			await waiting.tap();
-			await expect(page).toHaveURL(/\/threads\?state=waiting/);
-			await expect(page.getByTestId("threads-page")).toBeVisible();
+			const needs = page
+				.getByTestId("phone-menu")
+				.getByTestId("thread-section-needs");
+			await expect(needs.getByTestId("thread-row")).toHaveAttribute(
+				"data-id",
+				RUN_ID,
+			);
 		});
 	});
 });

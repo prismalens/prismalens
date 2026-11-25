@@ -28,12 +28,12 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { installLocked } from "./agent-locks.mjs";
+import { pythonConstraints, readPins } from "./agent-pins.mjs";
 
 const WINDOWS = process.platform === "win32";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const PINS = JSON.parse(
-	readFileSync(join(ROOT, "scripts/agent-pins.json"), "utf8"),
-).pins;
+const PINS = readPins();
 
 /** Keys that get an agent past its own start-up key check; none ever reaches a model (#914). */
 const PROBE_ENV = {
@@ -95,9 +95,31 @@ export async function latestOf(channel) {
 	return (await res.json()).info.version;
 }
 
-/** One entry per version: a latest that is also the pin runs once. */
+/** What a pinned Python agent needs that its channel leaves uncapped, from its pin.json (#1204). */
+export const PIN_CONSTRAINTS = pythonConstraints();
+
+/**
+ * The `uv pip install` arguments for a probe's Python CLI. The cap goes to any probe whose version is the
+ * pin, a latest leg that names the pin's version included, never to a version that is not (#1204).
+ */
+export function uvInstallArgs(probe, python, pins = PINS) {
+	const [cli, ...extras] = probe.channel.uv;
+	return [
+		"pip",
+		"install",
+		"--quiet",
+		"--python",
+		python,
+		`${cli}==${probe.version}`,
+		...extras,
+		...(probe.version === pins[cli] ? (PIN_CONSTRAINTS[cli] ?? []) : []),
+	];
+}
+
+/** A latest leg and a pin leg, even when they name the same version. */
 function atLatestAndPin(latest, pin, make) {
-	if (!pin || pin === latest) return [make(latest, "latest, pin")];
+	// The same version still runs twice: the pin installs as CI does, latest as users do.
+	if (!pin) return [make(latest, "latest")];
 	return [make(latest, "latest"), make(pin, "pin")];
 }
 
@@ -135,9 +157,19 @@ export function plan(registry, pins, latest) {
 				channel: row.nextChannel,
 				version: latest[channelPackage(row.nextChannel)],
 				label: "next major, latest",
+				next: true,
 			});
 	}
 	return out;
+}
+
+/** The probed facts a probe is held to: the row's, with its next major's differences on a `next` probe. */
+export function factsFor(row, probe) {
+	if (!probe.next || !row.facts || !row.nextFacts) return row.facts;
+	const facts = { ...row.facts };
+	for (const [name, value] of Object.entries(row.nextFacts))
+		facts[name] = { ...facts[name], value };
+	return facts;
 }
 
 const npmInstall = (dir, specs) =>
@@ -161,7 +193,7 @@ function binScript(prefix, pkg, binary) {
 }
 
 /** Installs the probe's CLI from its channel under `dir`; returns the bin folder and any adapter. */
-function install(built, row, probe, dir) {
+async function install(built, row, probe, dir) {
 	const { channel } = probe;
 	if (row.adapterPackage) {
 		let adapter;
@@ -174,9 +206,14 @@ function install(built, row, probe, dir) {
 			adapter = binScript(prefix, row.adapterPackage, row.binary);
 		}
 		const cli = join(dir, "cli");
+		if (probe.label === "pin")
+			return { bin: installLocked(channel.npm, cli), adapter };
 		npmInstall(cli, [`${channel.npm}@${probe.companion}`]);
 		return { bin: join(cli, "node_modules", ".bin"), adapter };
 	}
+	// A pin installs from its committed lock, the same bytes everywhere (#1154).
+	if (probe.label === "pin")
+		return { bin: installLocked(channelPackage(channel), join(dir, "pin")) };
 	if (channel.npm) {
 		npmInstall(dir, [`${channel.npm}@${probe.version}`]);
 		return { bin: join(dir, "node_modules", ".bin") };
@@ -185,16 +222,7 @@ function install(built, row, probe, dir) {
 	const venv = join(dir, "venv");
 	run("uv", ["venv", "--quiet", "--python", "3.14", venv]);
 	const bin = join(venv, WINDOWS ? "Scripts" : "bin");
-	const [cli, ...extras] = channel.uv;
-	run("uv", [
-		"pip",
-		"install",
-		"--quiet",
-		"--python",
-		join(bin, WINDOWS ? "python.exe" : "python"),
-		`${cli}==${probe.version}`,
-		...extras,
-	]);
+	run("uv", uvInstallArgs(probe, join(bin, WINDOWS ? "python.exe" : "python")));
 	return { bin };
 }
 
@@ -212,13 +240,20 @@ function hostEnv(bin, extra) {
 /**
  * One line for a probe result. `ok` when it answered ACP, or asked for a sign-in on a row
  * run with no key; a row handed a probe key that still asks has broken its start-up. A
- * probed registry fact the `initialize` answer contradicts fails it too (`mismatches`).
+ * probed registry fact the `initialize` answer contradicts fails it too (`mismatches`), and so
+ * does an agent that answers another protocol major than the client's (`protocol`).
  */
-export function verdict(result, { keyless: noKey, mismatches = [] }) {
+export function verdict(
+	result,
+	{ keyless: noKey, mismatches = [], protocol = 1 },
+) {
 	const answered =
 		result.outcome === "answers-acp" ||
 		(noKey && result.outcome === "sign-in-needed");
-	const ok = answered && mismatches.length === 0;
+	const otherMajor =
+		typeof result.protocolVersion === "number" &&
+		result.protocolVersion !== protocol;
+	const ok = answered && !otherMajor && mismatches.length === 0;
 	const agent = result.agentInfo
 		? `${result.agentInfo.name} ${result.agentInfo.version}`
 		: "no agentInfo";
@@ -232,7 +267,10 @@ export function verdict(result, { keyless: noKey, mismatches = [] }) {
 		: mismatches.length
 			? `; facts differ: ${mismatches.join("; ")}`
 			: "; facts hold";
-	return { ok, text: `${text}${facts}` };
+	const major = otherMajor
+		? `; agent speaks protocol ${result.protocolVersion}; client speaks ${protocol}`
+		: "";
+	return { ok, text: `${text}${major}${facts}` };
 }
 
 async function probeOne(built, probe) {
@@ -241,7 +279,7 @@ async function probeOne(built, probe) {
 	try {
 		let installed;
 		try {
-			installed = install(built, row, probe, dir);
+			installed = await install(built, row, probe, dir);
 		} catch (e) {
 			return {
 				ok: false,
@@ -291,8 +329,9 @@ async function probeOne(built, probe) {
 		});
 		return verdict(result, {
 			keyless: keyless(row.id),
+			protocol: host.CLIENT_PROTOCOL_VERSION,
 			mismatches: result.raw?.initialize
-				? host.factMismatches(row.facts, result.raw.initialize)
+				? host.factMismatches(factsFor(row, probe), result.raw.initialize)
 				: [],
 		});
 	} finally {
@@ -345,8 +384,16 @@ async function main() {
 					channel: row.channel,
 					adapter: values.version,
 					companion: values.companion ?? PINS[channelPackage(row.channel)],
+					...(!values.companion ? { label: "pin" } : {}),
 				}
-			: { id: row.id, channel: row.channel, version: values.version };
+			: {
+					id: row.id,
+					channel: row.channel,
+					version: values.version,
+					...(values.version === PINS[channelPackage(row.channel)]
+						? { label: "pin" }
+						: {}),
+				};
 		const result = await probeOne(built, probe);
 		console.log(`${row.id} ${shown(probe)}: ${result.text}`);
 		process.exit(result.ok ? 0 : 1);

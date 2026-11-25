@@ -11,6 +11,7 @@ import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useForkThread, useKeepAside } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
+import { randomId } from "@/lib/random-id";
 import { type Listener, listeners } from "./aside-bus";
 import { CarryLine } from "./CarryLine";
 
@@ -85,7 +86,7 @@ export function AsideHost({ threadId }: { threadId: string }) {
 	useEffect(() => {
 		const set = listeners.get(threadId) ?? new Set<Listener>();
 		const l: Listener = (question) => {
-			const id = crypto.randomUUID();
+			const id = randomId();
 			setEntries((all) => {
 				const next = [
 					...all,

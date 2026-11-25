@@ -78,13 +78,23 @@ function mdText(n: MdNode): string {
  * The index cuts previews mid-markup, so an unclosed fence or marker is dropped too.
  */
 export function plainText(markdown: string): string {
+	const known = PLAIN.get(markdown);
+	if (known !== undefined) return known;
 	const cut = markdown.replace(/```[\s\S]*?(?:```|$)/g, " ");
 	const text = mdText(fromMarkdown(cut) as MdNode)
 		.replace(/[*_~`]{2,}/g, "")
 		.replace(/\s+/g, " ")
 		.trim();
-	return /^[{[]\s*["{[]/.test(text) ? "" : text;
+	const plain = /^[{[]\s*["{[]/.test(text) ? "" : text;
+	if (PLAIN.size >= PLAIN_MAX)
+		PLAIN.delete(PLAIN.keys().next().value as string);
+	PLAIN.set(markdown, plain);
+	return plain;
 }
+
+/** Parsed previews by their text: the rail redraws on every index change of a live run (#1181). */
+const PLAIN = new Map<string, string>();
+const PLAIN_MAX = 2_000;
 
 /** A turn's first words; a delivered message names its sender, never the envelope the agent got. */
 function turnTitle(text: string): string {
@@ -108,6 +118,9 @@ export function railItems(
 	const items: RailItem[] = [];
 	// The break that ended a turn before the agent said anything.
 	const stops = new Map<RailItem, RailBreak>();
+	// Each turn's agent messages and breaks, in order: only the ones that decide are parsed.
+	const said = new Map<RailItem, string[]>();
+	const breaks = new Map<RailItem, [RailBreak, number][]>();
 	let turn: RailItem | null = null;
 	for (const [key, author, mark, text, at, detail] of entries) {
 		const brk = mark ? BREAK_OF[mark] : undefined;
@@ -120,9 +133,16 @@ export function railItems(
 				items.push(turn);
 			}
 			// The excerpt is the turn's last agent message, the one that answers.
-			turn.body = plainText(text) || turn.body;
+			const list = said.get(turn);
+			if (list) list.push(text);
+			else said.set(turn, [text]);
 		} else if (mark && brk) {
-			if (turn && !turn.body) stops.set(turn, brk);
+			if (turn) {
+				const at: [RailBreak, number] = [brk, said.get(turn)?.length ?? 0];
+				const list = breaks.get(turn);
+				if (list) list.push(at);
+				else breaks.set(turn, [at]);
+			}
 			if (items[items.length - 1]?.kind === brk) continue;
 			const name = markLabel(mark, detail);
 			const why = text.trim();
@@ -138,6 +158,16 @@ export function railItems(
 					.join(" · "),
 			});
 		}
+	}
+	for (const it of items) {
+		const texts = said.get(it) ?? [];
+		for (let i = texts.length - 1; i >= 0 && !it.body; i--)
+			it.body = plainText(texts[i] as string) || undefined;
+		// A break counts as the turn's stop while nothing the agent said before it had words.
+		let first = 0;
+		while (first < texts.length && !plainText(texts[first] as string)) first++;
+		const stop = (breaks.get(it) ?? []).filter(([, n]) => n <= first).at(-1);
+		if (stop) stops.set(it, stop[0]);
 	}
 	for (const it of items) {
 		if (it.kind !== "turn" || it.body) continue;

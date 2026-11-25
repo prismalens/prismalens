@@ -14,6 +14,7 @@ import {
 	SECRET_ENV_NAME,
 } from "@prismalens/contracts";
 import { Logger } from "@prismalens/logger";
+import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import {
 	DispatchService,
@@ -122,7 +123,7 @@ export class ToolAsksService implements OnModuleInit {
 			requiresHost: false,
 			source: { kind: "tool", tool: ASK_USER, requestId: askId },
 			title: first.slice(0, 500),
-			expiresAt: new Date(Date.now() + timeout).toISOString(),
+			expiresAt: new Date(clock.now() + timeout).toISOString(),
 			questions,
 		});
 		this.deliverOnClose(askId);
@@ -151,7 +152,7 @@ export class ToolAsksService implements OnModuleInit {
 			title: input.name,
 			detail: input.reason,
 			// A request nobody answers closes like a question does, never waiting for good.
-			expiresAt: new Date(Date.now() + timeout).toISOString(),
+			expiresAt: new Date(clock.now() + timeout).toISOString(),
 		});
 		return { requestId, name: input.name };
 	}
@@ -180,7 +181,7 @@ export class ToolAsksService implements OnModuleInit {
 				where: { requestId, answeredAt: null },
 				data: {
 					valueEnc: this.credentials.encryptToBase64(value),
-					answeredAt: new Date(),
+					answeredAt: clock.date(),
 				},
 			});
 			if (set.count !== 1) return false;

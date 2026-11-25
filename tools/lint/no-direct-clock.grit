@@ -1,0 +1,28 @@
+// The API reads time, timers and process signals through core/clock.ts and
+// infrastructure/dispatch/process-signals.ts, so a test that fakes time or a process host controls
+// all of it (#1154). Grit regexes take no groups; each construct is its own pattern.
+language js
+
+or {
+	`Date.now` as $c where {
+		register_diagnostic(span=$c, message="Read the clock through clock.now() from core/clock.ts; a direct Date.now cannot be faked by a test.", severity="error")
+	},
+	`new Date()` as $c where {
+		register_diagnostic(span=$c, message="Read the clock through clock.date() from core/clock.ts; a zero-argument new Date() cannot be faked by a test.", severity="error")
+	},
+	`setTimeout($...)` as $c where {
+		register_diagnostic(span=$c, message="Use clock.setTimeout or clock.sleep from core/clock.ts; a direct setTimeout waits in real time under test.", severity="error")
+	},
+	`setInterval($...)` as $c where {
+		register_diagnostic(span=$c, message="Use clock.setInterval from core/clock.ts; a direct setInterval ticks in real time under test.", severity="error")
+	},
+	`globalThis.setTimeout($...)` as $c where {
+		register_diagnostic(span=$c, message="Use clock.setTimeout or clock.sleep from core/clock.ts; a direct setTimeout waits in real time under test.", severity="error")
+	},
+	`globalThis.setInterval($...)` as $c where {
+		register_diagnostic(span=$c, message="Use clock.setInterval from core/clock.ts; a direct setInterval ticks in real time under test.", severity="error")
+	},
+	`process.kill($...)` as $c where {
+		register_diagnostic(span=$c, message="Signal a process through signalProcess or isProcessAlive in infrastructure/dispatch/process-signals.ts; a direct process.kill can hit a real pid under test.", severity="error")
+	}
+}

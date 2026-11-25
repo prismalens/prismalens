@@ -15,6 +15,7 @@ export function measures(dir) {
 		out[state] = {
 			contrastFails: m.contrast.length,
 			smallTargets: m.smallTargets.length,
+			tapOverlaps: (m.tapOverlaps ?? []).length,
 			clipped: m.clipped.length,
 			sideways: (m.sideways ?? []).filter(
 				(s) => !s.startsWith("composer-chips"),

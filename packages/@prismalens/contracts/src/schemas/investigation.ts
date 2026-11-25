@@ -457,6 +457,8 @@ export const RunWorkspaceRepoSchema = /* @__PURE__ */ lazySchema(() =>
 		/** Full commit sha the run saw. */
 		head: z.string(),
 		branch: z.string().nullable(),
+		/** The source's branch the run's copy was cut from; absent on a run from before or a pinned follow-up. */
+		from: z.string().optional(),
 		/** Service names that link this repo. */
 		services: z.array(z.string()),
 		/** Which credential cloned it (#673); absent on a run from before. */

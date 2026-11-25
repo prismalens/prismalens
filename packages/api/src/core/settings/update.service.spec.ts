@@ -92,12 +92,14 @@ function service(opts: {
 	channel?: "installer" | "npm";
 	running?: () => number;
 	spawn?: ReturnType<typeof fakeInstaller>;
+	build?: string | null;
 }) {
 	const { prisma, settings } = fakePrisma(opts.running ?? (() => 0));
 	const admission = new AdmissionService();
 	const drain = vi.fn();
 	admission.attach({ drain, running: () => 0 });
 	const about = new AboutService();
+	about.build = opts.build === undefined ? "abc1234" : opts.build;
 	const env: NodeJS.ProcessEnv = {
 		...(opts.channel === "npm" ? {} : { PRISMALENS_INSTALL: "standalone" }),
 		LOCALAPPDATA: workspace,
@@ -117,10 +119,11 @@ function service(opts: {
 	return { s, admission, drain, handoff, installer, settings };
 }
 
+// The install waits only on the fake installer's setImmediate, so one fake tick ends it.
+// vi.waitFor would poll on a real 50 ms timer.
 async function settled(s: UpdateService) {
-	await vi.waitFor(() =>
-		expect(["restarting", "failed"]).toContain(s.getStatus().phase),
-	);
+	await vi.advanceTimersByTimeAsync(1);
+	expect(["restarting", "failed"]).toContain(s.getStatus().phase);
 	return s.getStatus();
 }
 
@@ -294,6 +297,16 @@ describe("autoInstallTick", () => {
 		expect(await s.autoInstallTick()).toBe(true);
 		expect(installer).toHaveBeenCalledOnce();
 		await settled(s);
+	});
+
+	it("never installs on its own from a copy with no build stamp", async () => {
+		const { s, installer } = service({ build: null });
+		await s.setPrefs({ autoInstall: "idle" }, true);
+		const now = Date.now() + 16 * 60_000;
+		s.now = () => now;
+		expect(await s.autoInstallTick()).toBe(false);
+		expect(s.getStatus().phase).toBe("idle");
+		expect(installer).not.toHaveBeenCalled();
 	});
 
 	it("restarts the quiet window whenever a run is live", async () => {

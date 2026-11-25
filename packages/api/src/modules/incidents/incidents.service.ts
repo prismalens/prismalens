@@ -18,7 +18,9 @@ import {
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
 import type { Alert, Incident, Prisma, Service } from "@prismalens/database";
+import * as clock from "../../core/clock.js";
 import { shownRepoUrl } from "../../core/harness/git-credential.js";
+import { stepText } from "../../core/live/step-text.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { TelemetryService } from "../../core/telemetry/telemetry.service.js";
 import { TimelineEntryType, TimelineSource } from "../../shared/enums/index.js";
@@ -193,7 +195,7 @@ export class IncidentsService {
 								: {}),
 						})
 					: null,
-				occurredAt: new Date(),
+				occurredAt: clock.date(),
 			},
 		});
 		this.logger.log(
@@ -568,7 +570,7 @@ export class IncidentsService {
 	): Promise<"linked" | "same" | "taken" | "missing"> {
 		const { count } = await this.prisma.incident.updateMany({
 			where: { id, serviceId: null },
-			data: { serviceId, updatedAt: new Date() },
+			data: { serviceId, updatedAt: clock.date() },
 		});
 		if (count > 0) return "linked";
 		const row = await this.prisma.incident.findUnique({ where: { id } });
@@ -580,7 +582,7 @@ export class IncidentsService {
 	async unlinkService(id: string, serviceId: string): Promise<void> {
 		await this.prisma.incident.updateMany({
 			where: { id, serviceId },
-			data: { serviceId: null, updatedAt: new Date() },
+			data: { serviceId: null, updatedAt: clock.date() },
 		});
 	}
 
@@ -597,7 +599,7 @@ export class IncidentsService {
 
 			const updateData: Record<string, unknown> = {
 				...dto,
-				updatedAt: new Date(),
+				updatedAt: clock.date(),
 			};
 			// Clearing the recorded cause after Resolve (R1a d3).
 			if (dto.actualCause === "") updateData.actualCause = null;
@@ -609,16 +611,16 @@ export class IncidentsService {
 			// Track status changes
 			if (dto.status && dto.status !== existing.status) {
 				if (dto.status === "investigating" && !existing.acknowledgedAt) {
-					updateData.acknowledgedAt = new Date();
+					updateData.acknowledgedAt = clock.date();
 					updateData.timeToAcknowledge = Math.floor(
-						(Date.now() - existing.triggeredAt.getTime()) / 1000,
+						(clock.now() - existing.triggeredAt.getTime()) / 1000,
 					);
 				}
 				// Only the source's ending is "alerts cleared"; Resolve stamps closedAt.
 				if (dto.status === "resolved" && !existing.resolvedAt) {
-					updateData.resolvedAt = new Date();
+					updateData.resolvedAt = clock.date();
 					updateData.timeToResolve = Math.floor(
-						(Date.now() - existing.triggeredAt.getTime()) / 1000,
+						(clock.now() - existing.triggeredAt.getTime()) / 1000,
 					);
 				}
 				// Reopened: the next resolve stamps a fresh resolve time (#743).
@@ -631,12 +633,12 @@ export class IncidentsService {
 				if (existing.status === "closed" && !isIncidentEnded(dto.status)) {
 					updateData.closedAt = null;
 					updateData.timeToClose = null;
-					updateData.reopenedAt = new Date();
+					updateData.reopenedAt = clock.date();
 					updateData.reopenReason = "operator";
 				}
 				// Every path to `closed` records the operator's Resolve (R1a d3).
 				if (dto.status === "closed" && dto.closedAt === undefined) {
-					const now = new Date();
+					const now = clock.date();
 					updateData.closedAt = now;
 					updateData.timeToClose = Math.max(
 						0,
@@ -733,7 +735,7 @@ export class IncidentsService {
 		incidentId: string,
 		reason: "incident-resolved" | "incident-closed",
 	): Promise<void> {
-		const now = new Date();
+		const now = clock.date();
 		const firing = await tx.alert.findMany({
 			where: { incidentId, status: { in: [...OPEN_ALERT_STATUSES] } },
 			select: { id: true },
@@ -832,7 +834,7 @@ export class IncidentsService {
 							description: `Alert "${existingAlert.title}" was correlated to this incident`,
 							source: TimelineSource.system,
 							metadata: JSON.stringify({ alertId }),
-							occurredAt: new Date(),
+							occurredAt: clock.date(),
 						},
 					});
 
@@ -964,7 +966,7 @@ export class IncidentsService {
 					},
 				});
 				const alertIds = alerts.map((a) => a.id);
-				const now = new Date();
+				const now = clock.date();
 				await tx.alert.updateMany({
 					where: { id: { in: alertIds } },
 					data: { incidentId: targetId, updatedAt: now },
@@ -1079,7 +1081,7 @@ export class IncidentsService {
 		});
 		if (!existing) return null;
 		const actualCause = cause.actualCause?.trim() || undefined;
-		const now = new Date();
+		const now = clock.date();
 		const incident = await this.update(
 			id,
 			{
@@ -1253,11 +1255,7 @@ export async function literalIncidentIds(
 	return rows.map((r) => r.id);
 }
 
-export function stepText(raw: string): string | null {
-	const parsed = safeParseJsonObject(raw) as { text?: unknown } | null;
-	const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
-	return text ? text.slice(0, 280) : null;
-}
+export { stepText };
 
 function topEvidenceCount(raw: string | null): number | null {
 	const report = safeParseJsonObject(raw) as {

@@ -3,6 +3,7 @@
 
 import type { HarnessId } from "@prismalens/config/harness";
 import type { Quote, ReferenceRef } from "@prismalens/contracts";
+import { randomId } from "@/lib/random-id";
 
 /** A quote is cut here (#1024); the chip says so. */
 export const QUOTE_CAP_CHARS = 4000;
@@ -22,7 +23,7 @@ export function quoteOf(
 	if (!clean) return null;
 	const cut = clean.length > QUOTE_CAP_CHARS;
 	return {
-		key: crypto.randomUUID(),
+		key: randomId(),
 		quote: { source, text: cut ? clean.slice(0, QUOTE_CAP_CHARS) : clean },
 		cut,
 	};
@@ -201,7 +202,7 @@ export function openNewThread(
 	search: NewThreadSearch | null = null,
 ) {
 	// Its own draft, never the page's: a seeded box must not pick up another one (#1101).
-	const draft = crypto.randomUUID();
+	const draft = randomId();
 	seedNewThread(draft, seed);
 	if (go) go(search, draft);
 	else window.location.assign(`/new?draft=${draft}`);

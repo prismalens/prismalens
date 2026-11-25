@@ -220,6 +220,8 @@ export interface HarnessSelectionInput {
 	localAgent?: LocalAgent | null;
 	/** Auto skips an agent this answers false for: its remembered check failed (#907). */
 	isRunnable?: (id: HarnessId) => boolean;
+	/** Auto takes the first agent this answers true for, else the first runnable one. */
+	isSignedIn?: (id: HarnessId) => boolean;
 	/** Whether a binary path can run; `isExecutableFile` when absent. */
 	isExecutable?: (path: string) => boolean;
 	/** One agent's env for `envModel`, with its Settings rows; `env` when absent. */
@@ -357,11 +359,12 @@ export function resolveHarnessSelection(
 		};
 	}
 	const runnable = input.isRunnable ?? (() => true);
-	for (const id of HARNESS_AUTO_ORDER) {
-		if (present(id) && runnable(id)) {
-			return { runnable: true, harness: id, auto: true };
-		}
-	}
+	const candidates = HARNESS_AUTO_ORDER.filter(
+		(id) => present(id) && runnable(id),
+	);
+	const known = input.isSignedIn ?? (() => true);
+	const pick = candidates.find(known) ?? candidates[0];
+	if (pick) return { runnable: true, harness: pick, auto: true };
 	return {
 		runnable: false,
 		failure: "no-harness",
