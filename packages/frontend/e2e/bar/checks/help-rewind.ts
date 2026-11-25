@@ -127,6 +127,8 @@ export async function rewindFixture(
 			subject: { kind: "project", repositoryId: seed.repositoryId },
 			text: "fake-session:rewind The checkout client retries too little. Raise the retries step by step.",
 			workIn: "worktree",
+			// Claude Code: the one agent whose rewind can fork; an earlier check may leave another as default.
+			harness: "claude-code",
 		},
 	);
 	const first = await idle(page, id);

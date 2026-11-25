@@ -28,6 +28,25 @@ async function firstAgentMessage(
 		: null;
 }
 
+/** The picker's row for `target`, searched by its title when the first page does not hold it. */
+async function pickerRow(page: Page, target: string) {
+	const dialog = page.getByTestId("quote-in");
+	const row = dialog.locator(`[data-thread="${target}"]`);
+	await expect(dialog.getByTestId("quote-in-thread").first()).toBeVisible();
+	if ((await row.count()) > 0) return row;
+	const res = await page.request.get(`/api/investigations/${target}`);
+	const title = res.ok()
+		? ((await res.json()) as { title?: string }).title
+		: undefined;
+	if (!title) return row;
+	await dialog.getByTestId("quote-in-input").fill(title);
+	await row
+		.first()
+		.waitFor({ timeout: 15_000 })
+		.catch(() => undefined);
+	return row;
+}
+
 /** Sends a follow-up into `to` quoting `from`'s message; true once the API took it. */
 async function sendCitation(
 	page: Page,
@@ -535,10 +554,10 @@ export default defineChecks([
 			const listed = await rows.count();
 			if ((await dialog.locator(`[data-thread="${idOf(source)}"]`).count()) > 0)
 				fails.push("the picker lists the open thread");
-			const pick = dialog.locator(`[data-thread="${target}"]`);
+			const pick = await pickerRow(page, target);
 			if ((await pick.count()) === 0)
 				return notSetUp(
-					`the target thread ${target} is not in the picker's first ${listed}`,
+					`the target thread ${target} is not in the picker's first ${listed}, nor found by its title`,
 				);
 			await pick.click();
 			await page.getByTestId("quote-in-open").click();
@@ -649,11 +668,11 @@ export default defineChecks([
 			const target = idOf(sim.thread("huge.diff", 2));
 			for (const n of [0, 1]) {
 				await quoteInFromMessage(page, open, sim.thread("huge.diff", n));
-				const pick = page
-					.getByTestId("quote-in")
-					.locator(`[data-thread="${target}"]`);
+				const pick = await pickerRow(page, target);
 				if ((await pick.count()) === 0)
-					return notSetUp(`the target thread ${target} is not in the picker`);
+					return notSetUp(
+						`the target thread ${target} is not in the picker, nor found by its title`,
+					);
 				await pick.click();
 			}
 			await open(`/threads/${target}`);

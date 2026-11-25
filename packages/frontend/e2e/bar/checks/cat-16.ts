@@ -666,7 +666,7 @@ export default defineChecks([
 				await idle(page, fx.id);
 				const u = await apiPost<{ state: string; reason?: string }>(
 					page,
-					`/threads/${fx.id}/rewind/undo`,
+					`/threads/${fx.id}/rewind/${r.rewindId}/undo`,
 					{ id: fx.id, rewindId: r.rewindId },
 				);
 				if (u.state !== "done")
@@ -774,7 +774,7 @@ export default defineChecks([
 				if (late.ok()) fails.push("answering the superseded ask was taken");
 				if (r?.rewindId) {
 					await idle(page, fx.id);
-					await apiPost(page, `/threads/${fx.id}/rewind/undo`, {
+					await apiPost(page, `/threads/${fx.id}/rewind/${r.rewindId}/undo`, {
 						id: fx.id,
 						rewindId: r.rewindId,
 					});
