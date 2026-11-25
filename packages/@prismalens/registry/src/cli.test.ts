@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
@@ -323,6 +324,25 @@ describe("a host that names its workspace", () => {
 				"[workspace/boundary] src/a/screen.tsx imports @acme/server/adapter. Fix: screens read it from the API.",
 			],
 		]);
+	});
+
+	it("gen --own-host writes only this config's files; plain gen writes every host's", () => {
+		workspace([]);
+		const gizmo = (t: string) => t.replaceAll("widget", "gizmo").replaceAll("Widget", "Gizmo");
+		put("other/src/registry/kinds/gizmo.ts", gizmo(KIND_SRC));
+		put("other/src/a/b.gizmos.ts", gizmo(ENTRY_SRC));
+		put("other/src/design/.keep", "");
+		put(
+			"other/registry.config.json",
+			JSON.stringify({ src: "src", kinds: "src/registry/kinds", out: "src/registry", gallery: "src/design" }),
+		);
+		put("registry.workspace.json", JSON.stringify({ hosts: ["registry.config.json", "other/registry.config.json"] }));
+		vi.spyOn(console, "log").mockReturnValue(undefined);
+		const other = join(root, "other/src/registry/registry.gen.ts");
+		expect(main(["--config", cfgFile, "gen", "--own-host"])).toBe(0);
+		expect([existsSync(join(root, "src/registry/registry.gen.ts")), existsSync(other)]).toEqual([true, false]);
+		expect(main(["--config", cfgFile, "gen"])).toBe(0);
+		expect(existsSync(other)).toBe(true);
 	});
 
 	it("lists the workspace's kinds through the host's config", () => {

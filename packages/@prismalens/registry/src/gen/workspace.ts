@@ -115,9 +115,12 @@ export function mergeManifests(manifests: readonly Manifest[]): {
 /** Generates every host, then the checks that span hosts. */
 export function generateWorkspace(
 	ws: Workspace,
-	opts: { writeLedger?: boolean } = {},
+	opts: { writeLedger?: boolean; only?: string } = {},
 ): { manifest: Manifest; problems: string[] } {
-	const runs = ws.hosts.map((h) => generate(h, opts));
+	// `only` writes one host's files, so per-package gen tasks running in parallel never write the same file.
+	const runs = ws.hosts.map((h) =>
+		generate(h, { ...opts, write: !opts.only || h.root === opts.only }),
+	);
 	const merged = mergeManifests(runs.map((r) => r.manifest));
 	return {
 		manifest: merged.manifest,

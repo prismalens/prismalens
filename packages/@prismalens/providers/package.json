@@ -14,9 +14,10 @@
 		"./conformance": "./src/conformance/index.ts"
 	},
 	"scripts": {
-		"build": "node ../registry/src/cli.ts --config registry.config.json gen && tsc -p tsconfig.build.json",
+		"registry:gen": "node ../registry/src/cli.ts --config registry.config.json gen --own-host",
+		"build": "tsc -p tsconfig.build.json",
 		"test": "vitest run --coverage",
-		"typecheck": "node ../registry/src/cli.ts --config registry.config.json gen && tsc --noEmit",
+		"typecheck": "tsc --noEmit",
 		"clean": "rm -rf dist && rm -rf node_modules"
 	},
 	"dependencies": {

@@ -32,7 +32,7 @@ A guard is `guard(name, fix, check)` in its kind's file. `check` gets the manife
 
 ## Stored ids
 
-An id the database stores is declared on its entry as `stored: [{ column, value, where? }]`. `where` tells apart members that share one value, such as `git-host-token` rows by host. `stored-ids.tsv` records every shipped claim and is append-only. `pnpm registry gen --write-ledger` appends new rows. Removing a row or changing its owner needs the `registry-approved` label; rename an entry through `aliases` instead.
+An id the database stores is declared on its entry as `stored: [{ column, value, where? }]`. `where` tells apart members that share one value, such as `git-host-token` rows by host. `stored-ids.tsv` records every shipped claim and is append-only. `pnpm registry gen --write-ledger` appends new rows. A package's own `registry:gen` passes `--own-host`, so it writes only its files while still checking every host. Removing a row or changing its owner needs the `registry-approved` label; rename an entry through `aliases` instead.
 
 ## Boundaries
 
