@@ -176,9 +176,14 @@ describe("Registry search under Add agent's tiles (#911)", () => {
 			"opencode",
 			"opencode-v2",
 			"deepagents",
+			"github-copilot-cli",
+			"kiro",
+			"grok-build",
+			"qwen-code",
+			"goose",
 		])
 			expect(ids).not.toContain(tile);
-		expect(ids).toContain("goose");
+		expect(ids).toContain("amp-acp");
 		expect(searchRegistry("codex").map((e) => e.id)).not.toContain("codex-acp");
 	});
 });

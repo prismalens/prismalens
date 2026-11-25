@@ -143,7 +143,7 @@ const authenticateOf = (
 	env: Readonly<Record<string, string | undefined>>,
 ) => {
 	const method = authenticateMethod(row, env);
-	return method ? { authenticate: method.methodId } : {};
+	return method ? { authenticate: method } : {};
 };
 
 import { turnInputOf } from "./turn-input.js";

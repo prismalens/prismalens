@@ -31,6 +31,7 @@ import {
 	type AgentId,
 	authenticateMethod,
 	type NamedMode,
+	sendsAuthenticate,
 } from "./registry/index.js";
 
 export const PROBE_OUTCOMES = [
@@ -407,7 +408,7 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 			return { ...result, outcome: "sign-in-needed", authRequired: true };
 
 		const method = authenticateMethod(AGENT_REGISTRY[input.agent], input.env);
-		if (method && init.authMethods?.some((m) => m.id === method.methodId)) {
+		if (method && sendsAuthenticate(method, init.authMethods)) {
 			const signedIn = await race(
 				connection.agent
 					.request(methods.agent.authenticate, { methodId: method.methodId })
@@ -477,12 +478,21 @@ export async function probeAgent(input: ProbeInput): Promise<ProbeResult> {
 			levels: checkLevels(input.agent, modes?.available ?? null),
 		};
 	} catch (err) {
-		if (err instanceof RequestError && err.code === AUTH_REQUIRED)
+		// goose 1.60.2 puts its reason in `data`, under a bare "Internal error".
+		const reason =
+			err instanceof RequestError && typeof err.data === "string"
+				? err.data
+				: "";
+		if (
+			err instanceof RequestError &&
+			(err.code === AUTH_REQUIRED ||
+				AGENT_REGISTRY[input.agent].signedOutText?.test(reason))
+		)
 			return {
 				...result,
 				outcome: "sign-in-needed",
 				authRequired: true,
-				detail: oneLine(err.message),
+				detail: oneLine(err.code === AUTH_REQUIRED ? err.message : reason),
 			};
 		const message = err instanceof Error ? err.message : String(err);
 		// A closed connection is the child exiting; its stderr may still be in flight.
