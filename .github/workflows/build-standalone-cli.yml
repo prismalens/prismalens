@@ -12,6 +12,10 @@ on:
       - "scripts/artifact-budgets.json"
       - "scripts/lib/**"
       - "packages/@prismalens/agent-adapters/scripts/**"
+      # The archives install the packed tarball, so any dependency change can grow them (#1269).
+      - "**/package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/build-standalone-cli.yml"
   # release.yml calls this with the draft release's tag to attach the archives (#717).
   # Nightly: the macOS, Windows and arm targets a PR no longer builds.

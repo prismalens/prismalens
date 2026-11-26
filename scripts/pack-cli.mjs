@@ -102,6 +102,7 @@ import {
 	readdirSync,
 	readFileSync,
 	realpathSync,
+	renameSync,
 	rmSync,
 	statSync,
 	writeFileSync,
@@ -146,6 +147,96 @@ const VENDORED = ["@prisma/adapter-better-sqlite3"];
  */
 const NESTED = ["@prismalens/agent-adapters"];
 const NESTED_SHORT = new Set(NESTED.map((n) => n.replace("@prismalens/", "")));
+
+/**
+ * A package a NESTED package carries that a copied package also imports ships once,
+ * from the nested copy at the top of node_modules. From the registry, the Claude Agent
+ * SDK pulls a ~370 MB native copy that PrismaLens never runs (#1269).
+ */
+function hoistShared(union) {
+	const hoisted = {};
+	for (const nested of NESTED) {
+		const dir = join(STAGING, "node_modules", ...nested.split("/"));
+		const manifestPath = join(dir, "package.json");
+		const manifest = readJson(manifestPath);
+		for (const name of [...(manifest.bundleDependencies ?? [])]) {
+			const entry = union.get(name);
+			if (!entry) continue;
+			const from = join(dir, "node_modules", ...name.split("/"));
+			const { version } = readJson(join(from, "package.json"));
+			if (entry.range !== version)
+				fail(
+					`${entry.requiredBy.join(", ")} want ${name}@${entry.range}, ${nested} ` +
+						`carries ${version}: pin them alike so it ships once`,
+				);
+			const to = join(STAGING, "node_modules", ...name.split("/"));
+			mkdirSync(dirname(to), { recursive: true });
+			renameSync(from, to);
+			// Left declared, npm would make an empty nested directory that shadows the hoisted copy.
+			delete manifest.dependencies[name];
+			manifest.bundleDependencies = manifest.bundleDependencies.filter(
+				(n) => n !== name,
+			);
+			union.delete(name);
+			hoisted[name] = { version, owner: nested };
+		}
+		writeFileSync(manifestPath, `${JSON.stringify(manifest, null, "\t")}\n`);
+	}
+	return hoisted;
+}
+
+/**
+ * The peers a hoisted copy's code imports join the union; its manifest drops them
+ * (stageAdapters, #906), and an unimported peer such as `@anthropic-ai/sdk` stays out.
+ */
+function hoistPeers(hoisted, workspace, union) {
+	const require = createRequire(join(ROOT, "package.json"));
+	const semver = require("semver");
+	for (const [name, { owner }] of Object.entries(hoisted)) {
+		const source = realpathSync(
+			join(workspace.get(owner).dir, "node_modules", ...name.split("/")),
+		);
+		const meta = readJson(join(source, "package.json"));
+		const imported = importedRoots(join(STAGING, "node_modules", name));
+		for (const [peer, range] of Object.entries(meta.peerDependencies ?? {})) {
+			if (meta.peerDependenciesMeta?.[peer]?.optional || !imported.has(peer))
+				continue;
+			const existing = union.get(peer);
+			if (!existing) {
+				union.set(peer, { range, requiredBy: [`${name} (peer)`] });
+				continue;
+			}
+			const floor = semver.minVersion(existing.range);
+			if (!floor || !semver.satisfies(floor, range))
+				fail(
+					`${name} needs its peer ${peer}@${range}; the union has ${existing.range}`,
+				);
+			existing.requiredBy.push(`${name} (peer)`);
+		}
+	}
+}
+
+/**
+ * A dependency npm installs from the registry must not pull a native agent copy:
+ * PrismaLens runs the user's own agent, never the one an SDK bundles (#818, #1269).
+ */
+export function nativeCopyOffenders(union, workspace) {
+	const offenders = [];
+	for (const [name, { requiredBy }] of union) {
+		const owner = workspace.get(requiredBy[0]);
+		const path = owner && join(owner.dir, "node_modules", ...name.split("/"));
+		if (!path || !existsSync(join(path, "package.json"))) continue;
+		const natives = Object.keys(
+			readJson(join(realpathSync(path), "package.json")).optionalDependencies ??
+				{},
+		).filter((dep) => NATIVE_COPIES.test(`node_modules/${dep}`));
+		if (natives.length)
+			offenders.push(
+				`${name} (from ${requiredBy.join(", ")}) would install ${natives.join(", ")}`,
+			);
+	}
+	return offenders;
+}
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
@@ -465,6 +556,21 @@ function* walkFiles(dir) {
  * is satisfiable. This is the invariant that copying alone cannot give you: it
  * catches a first-party package that grew a dependency nobody hoisted.
  */
+/** The third-party package roots a tree's JS imports. */
+function importedRoots(dir) {
+	const roots = new Set();
+	for (const file of walkFiles(dir)) {
+		if (!/\.[cm]?js$/.test(file)) continue;
+		for (const match of readFileSync(file, "utf8").matchAll(IMPORT_RE)) {
+			const specifier = match[1];
+			if (specifier.startsWith(".") || specifier.startsWith("/")) continue;
+			if (BUILTINS.has(specifier) || !SPECIFIER_RE.test(specifier)) continue;
+			roots.add(rootPackageOf(specifier));
+		}
+	}
+	return roots;
+}
+
 function scanImports(stagedModules, union, copiedNames, optional) {
 	const missing = new Map(); // specifier -> Set(files)
 	for (const file of walkFiles(stagedModules)) {
@@ -534,7 +640,7 @@ function tarList(tarball) {
 	return tar(tarball, ["-tzf"]).split("\n").filter(Boolean);
 }
 
-export function assertTarball(tarball, copiedNames) {
+export function assertTarball(tarball, copiedNames, hoistedNames = []) {
 	const entries = tarList(tarball);
 	const has = (predicate) => entries.some(predicate);
 
@@ -573,6 +679,17 @@ export function assertTarball(tarball, copiedNames) {
 			fail(`vendored ${name} still declares dependencies`);
 		}
 	}
+	for (const name of hoistedNames) {
+		const entry = `package/node_modules/${name}/package.json`;
+		if (!has((e) => e === entry)) fail(`the tarball has no hoisted ${name}`);
+		const { dependencies, optionalDependencies } = JSON.parse(
+			tar(tarball, ["-xzOf", entry]),
+		);
+		if (dependencies || optionalDependencies)
+			fail(`hoisted ${name} still declares dependencies npm would install`);
+	}
+	const native = entries.find((e) => NATIVE_COPIES.test(e));
+	if (native) fail(`the tarball carries a native agent copy: ${native}`);
 
 	if (
 		!has((e) => e === "package/node_modules/@prismalens/api/public/index.html")
@@ -895,9 +1012,22 @@ export function packCli() {
 		}
 	}
 
+	const hoisted = hoistShared(union);
+	hoistPeers(hoisted, workspace, union);
 	const vendored = stageVendored(copied, workspace, union);
+	const offenders = nativeCopyOffenders(union, workspace);
+	if (offenders.length)
+		fail(
+			`from the registry, ${offenders.join("; ")}. Ship it through a NESTED ` +
+				`package's flat copy instead (#1269).`,
+		);
 
-	scanImports(stagedModules, union, new Set(copied), optional);
+	scanImports(
+		stagedModules,
+		union,
+		new Set([...copied, ...Object.keys(hoisted)]),
+		optional,
+	);
 	console.log(
 		`==> import scan: every bare specifier resolves` +
 			(optional.size > 0
@@ -920,6 +1050,9 @@ export function packCli() {
 		dependencies[name] = workspace.get(name).manifest.version;
 	}
 	Object.assign(dependencies, vendored);
+	for (const [name, { version }] of Object.entries(hoisted))
+		dependencies[name] = version;
+	const shipped = [...VENDORED, ...Object.keys(hoisted)];
 
 	const buildSha = resolveBuildSha();
 	const publishManifest = {
@@ -927,13 +1060,13 @@ export function packCli() {
 		// npm refuses to publish it anywhere (EPRIVATE); the gates publish launchers, never this (#717).
 		private: true,
 		dependencies,
-		bundleDependencies: [...copied, ...VENDORED].sort(),
+		bundleDependencies: [...copied, ...shipped].sort(),
 		files: [
 			"dist",
 			"NOTICE",
 			NOTICES,
 			"node_modules/@prismalens",
-			...VENDORED.map((name) => `node_modules/${name}`),
+			...shipped.map((name) => `node_modules/${name}`),
 		],
 		engines: {
 			// Every package in this tarball declares >=24 (#673 s6); the one
@@ -970,7 +1103,7 @@ export function packCli() {
 		fail(`npm pack produced no tarball in ${OUT_DIR}`);
 	}
 	const tarball = join(OUT_DIR, packed);
-	const entries = assertTarball(tarball, copied);
+	const entries = assertTarball(tarball, copied, Object.keys(hoisted));
 	const bytes = statSync(tarball).size;
 
 	console.log(
