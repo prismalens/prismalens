@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentDetail, parseArgs } from "./AgentDetail";
 
 const mutateSpy = vi.fn();
+let mockSaving = false;
 let mockSettings: Record<string, unknown> = { harness: "claude-code" };
 let mockSelection: { harness?: string } = { harness: "claude-code" };
 const mutateAsyncSpy = vi.fn();
@@ -98,7 +99,7 @@ vi.mock("@/lib/api/hooks", () => ({
 	useUpdateHarnessSettings: () => ({
 		mutate: mutateSpy,
 		mutateAsync: mutateAsyncSpy,
-		isPending: false,
+		isPending: mockSaving,
 		error: null,
 	}),
 	useCheckHarness: () => ({
@@ -890,6 +891,24 @@ describe("AgentDetail models: filter, favourites, names and labels (#1180)", () 
 		}
 	});
 
+	it("takes no favourite while the last change is still saving", async () => {
+		mockHarnesses[0].models = listed;
+		mockSaving = true;
+		mutateSpy.mockClear();
+		try {
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			const heart = container.querySelector(
+				'[data-testid="agent-model-opus"] [data-testid="agent-model-favourite"]',
+			) as HTMLButtonElement;
+			expect(heart.getAttribute("aria-disabled")).toBe("true");
+			await act(async () => heart.click());
+			expect(mutateSpy).not.toHaveBeenCalled();
+		} finally {
+			mockSaving = false;
+			mockHarnesses[0].models = { source: "harness", asOf: "", entries: [] };
+		}
+	});
+
 	it("a custom model shows its own name and labels; a stored bare id still renders; a listed model shows none", async () => {
 		mockHarnesses[0].models = listed;
 		mockChoice.customModels = {
@@ -971,9 +990,11 @@ describe("AgentDetail update, sign-out and change account (#1180)", () => {
 		try {
 			await act(async () => root.render(<AgentDetail id="claude-code" />));
 			expect(q("update-claude-code")).toBeNull();
+			Object.assign(mockHarnesses[0], { newerRelease: "2.2.0" });
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			expect(q("update-claude-code")?.textContent).toBe("Update");
 			Object.assign(mockHarnesses[0], {
 				update: { line: "Download the latest release" },
-				newerRelease: "2.2.0",
 			});
 			await act(async () => root.render(<AgentDetail id="claude-code" />));
 			expect(q("update-claude-code")).toBeNull();
@@ -1007,9 +1028,14 @@ describe("AgentDetail update, sign-out and change account (#1180)", () => {
 				"claude auth logout; exit",
 				"claude auth login; exit",
 			]);
-			const { onEnd } = stageSpy.mock.calls[0][1] as { onEnd: () => void };
-			await act(async () => onEnd());
-			expect(checkHarnessSpy).toHaveBeenCalledWith({ id: "claude-code" });
+			const [signedOut, changed] = stageSpy.mock.calls.map(
+				(c) => (c[1] as { onEnd: () => void }).onEnd,
+			);
+			await act(async () => signedOut?.());
+			expect(checkHarnessSpy.mock.calls).toEqual([[{ id: "claude-code" }]]);
+			checkHarnessSpy.mockClear();
+			await act(async () => changed?.());
+			expect(checkHarnessSpy.mock.calls).toEqual([[{ id: "claude-code" }]]);
 		} finally {
 			reset();
 		}

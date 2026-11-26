@@ -66,9 +66,12 @@ export function useUpdateHarnessSettings() {
 
 	return useMutation({
 		...orpc.settings.harnesses.updateSettings.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: harnessKeys.settings() });
-			queryClient.invalidateQueries({ queryKey: harnessKeys.status() });
+		// Pending until the saved settings are read back, so a next list builds on them (#1180).
+		onSuccess: async () => {
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: harnessKeys.settings() }),
+				queryClient.invalidateQueries({ queryKey: harnessKeys.status() }),
+			]);
 		},
 	});
 }
