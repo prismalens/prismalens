@@ -436,6 +436,37 @@ describe("RewindService (#1193)", () => {
 		expect((await visible(id)).length).toBe(count);
 	});
 
+	it("a row appended to a folded branch during the file writes refuses the rewind stale, folds nothing, and puts the files back", async () => {
+		const { id, cwd } = await fixture();
+		const seq = await seqOf(id, MESSAGE_2);
+		const prisma = await pl.prisma();
+		let late = "";
+		vi.mocked(rewindFiles).mockImplementationOnce(async (...a) => {
+			const r = await actual.rewindFiles(...a);
+			// An ask answered meanwhile commits on `asks` without the thread's admission.
+			const { _max } = await prisma.investigationEvent.aggregate({ where: { investigationId: id }, _max: { seq: true } });
+			const at = (_max.seq ?? 0) + 1;
+			const row = await prisma.investigationEvent.create({
+				data: {
+					investigationId: id,
+					seq: at,
+					branchId: "asks",
+					event: JSON.stringify({ kind: "error", runId: id, branchId: "asks", path: [], seq: at, ts: new Date(0).toISOString(), message: "late" }),
+				},
+			});
+			late = row.id;
+			return r;
+		});
+
+		const r = await rewindAt(id, seq);
+
+		expect(r).toEqual({ state: "refused", reason: "stale", paths: [] });
+		expect((await prisma.investigationEvent.findUniqueOrThrow({ where: { id: late } })).foldedBy).toBeNull();
+		expect((await visible(id)).some((e) => e.kind === "thread_rewound")).toBe(false);
+		expect(await interruptedOf(id)).toEqual([]);
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
+	});
+
 	it("a rewind whose file writer fails partway is refused interrupted, folds nothing, and marks its operation interrupted for Restore", async () => {
 		const { id, cwd } = await fixture();
 		const seq = await seqOf(id, MESSAGE_2);

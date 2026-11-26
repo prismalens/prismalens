@@ -104,7 +104,7 @@ type Thread = {
 };
 
 class Refuse extends Error {
-	constructor(readonly reason: "running") {
+	constructor(readonly reason: "running" | "stale") {
 		super(reason);
 	}
 }
@@ -564,6 +564,16 @@ export class RewindService {
 					select: { id: true },
 				});
 				if (job) throw new Refuse("running");
+				// A row the preview did not show (an ask answered during the writes) is never folded.
+				const late = await tx.investigationEvent.findFirst({
+					where: {
+						investigationId: t.id,
+						branchId: { in: look.branches },
+						ordinal: { gt: look.preview.revision },
+					},
+					select: { ordinal: true },
+				});
+				if (late) throw new Refuse("stale");
 				const range = {
 					investigationId: t.id,
 					foldedBy: null,
@@ -607,7 +617,7 @@ export class RewindService {
 			});
 		} catch (e) {
 			if (!(await compensate())) return interrupted();
-			if (e instanceof Refuse) return refused("running");
+			if (e instanceof Refuse) return refused(e.reason);
 			throw e;
 		}
 		for (const d of done)
