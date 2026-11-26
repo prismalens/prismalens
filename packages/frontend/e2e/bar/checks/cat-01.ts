@@ -173,9 +173,11 @@ export default defineChecks([
 				fails.push(
 					"the armed limit thread (limit.mid-turn) sits in the sidebar's Needs you",
 				);
-			// With the sidebar's Needs you on screen, Home does not list it again (GUIDELINES rule 3).
-			const home = page.getByTestId("home-needs");
-			const homeBeside = await home.isVisible();
+			// Home never lists Needs you: the sidebar does, or its badge where the list is off screen (#1247 D25).
+			const homeBeside = await page
+				.getByTestId("home-handover")
+				.getByTestId("needs-row")
+				.count();
 			if (homeBeside)
 				fails.push("Home lists Needs you beside the sidebar's own Needs you");
 			const ids = (rows: Locator) =>
@@ -183,40 +185,41 @@ export default defineChecks([
 					els.map((e) => e.getAttribute("data-id") ?? "").sort(),
 				);
 			const sidebarIds = await ids(needsRows);
-			// With the sidebar hidden, Home's list takes over with the same count and threads.
+			// With the sidebar hidden, its badge keeps the count and opens the same threads.
 			await page.getByTestId("sidebar-hide").click();
-			await expect(home).toBeVisible();
+			const badge = page.getByTestId("hidden-needs");
+			await expect(badge).toBeVisible();
 			const homeCount = Number.parseInt(
-				(
-					(await home.locator("h2 .tabular-nums").first().textContent()) ?? ""
-				).trim(),
+				((await badge.textContent()) ?? "").trim(),
 				10,
 			);
 			if (homeCount !== headerCount)
 				fails.push(
-					`Home's Needs you counts ${homeCount}, the sidebar's ${headerCount}`,
+					`the hidden sidebar's badge counts ${homeCount}, the sidebar's ${headerCount}`,
 				);
-			const allRows = home.getByTestId("home-needs-all");
-			if (await allRows.isVisible()) await allRows.click();
-			const homeIds = await ids(home.getByTestId("home-needs-row"));
+			await badge.click();
+			const home = page.getByTestId("needs-popover");
+			await expect(home).toBeVisible();
+			const homeIds = await ids(home.getByTestId("needs-row"));
 			if (homeIds.join() !== sidebarIds.join())
 				fails.push(
-					`Home's Needs you lists ${homeIds.length} threads, not the sidebar's ${sidebarIds.length}: ${homeIds.filter((id) => !sidebarIds.includes(id)).join(", ") || "none extra"}`,
+					`the badge lists ${homeIds.length} threads, not the sidebar's ${sidebarIds.length}: ${homeIds.filter((id) => !sidebarIds.includes(id)).join(", ") || "none extra"}`,
 				);
 			if (
 				(await home
-					.locator(`[data-testid="home-needs-row"][data-id="${limitId}"]`)
+					.locator(`[data-testid="needs-row"][data-id="${limitId}"]`)
 					.count()) > 0
 			)
 				fails.push(
-					"the armed limit thread (limit.mid-turn) sits in Home's Needs you",
+					"the armed limit thread (limit.mid-turn) sits in the badge's list",
 				);
+			await page.keyboard.press("Escape");
 			await page.getByTestId("sidebar-show").click();
 			await expect(needsSection).toBeVisible();
 
 			return verdict(
 				fails,
-				`needs-you section sits on top with full count ${headerCount} matching ${rowsCount} rows; Home ${homeBeside ? "repeats it" : "leaves it out"} beside the sidebar and lists the same ${homeIds.length} threads (count ${homeCount}) with the sidebar hidden; the armed limit thread is out of Needs you`,
+				`needs-you section sits on top with full count ${headerCount} matching ${rowsCount} rows; Home ${homeBeside ? "repeats it" : "leaves it out"}; with the sidebar hidden its badge counts ${homeCount} and lists the same ${homeIds.length} threads; the armed limit thread is out of Needs you`,
 			);
 		},
 	},

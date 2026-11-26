@@ -11,7 +11,7 @@ import type { ThreadRow, ThreadUnit } from "@prismalens/contracts";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HomeNeeds } from "@/components/home/HomeHandover";
+import { NeedsList } from "@/components/shell/NeedsBadge";
 import { ThreadTreeView } from "@/components/shell/ThreadTree";
 import { threadList } from "@/lib/thread-list";
 
@@ -180,27 +180,20 @@ describe("threads never nest (lens threads.flat, #1101 decision 2026-11-13)", ()
 		expect(ids("threads")).toEqual(["0", "14", "13", "12", "11", "10", "9"]);
 	});
 
-	it("gives Home one Needs-you row per waiting thread, with no row standing for a starter's group", async () => {
+	it("gives the Needs you badge's list one row per waiting thread, with no row standing for a starter's group", async () => {
 		await draw(
-			createElement(HomeNeeds, {
+			createElement(NeedsList, {
 				needs: model.needs,
-				count: model.needsCount,
 				asks: new Map(),
 				now: NOW,
 			}),
 		);
-		const rows = () =>
-			Array.from(
-				container.querySelectorAll('[data-testid="home-needs-row"]'),
-			).map((r) => r.getAttribute("data-id"));
+		const rows = Array.from(
+			container.querySelectorAll('[data-testid="needs-row"]'),
+		).map((r) => r.getAttribute("data-id"));
 		const ids = model.needs.map((n) => n.id);
 		expect(ids).toHaveLength(8);
-		expect(rows()).toEqual(ids.slice(0, 5));
-		const more = container.querySelector(
-			'[data-testid="home-needs-all"]',
-		) as HTMLButtonElement;
-		await act(async () => more.click());
-		expect(rows()).toEqual(ids);
+		expect(rows.sort()).toEqual([...ids].sort());
 		expect(container.textContent).not.toMatch(/threads it started/);
 	});
 });

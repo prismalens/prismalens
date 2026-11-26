@@ -74,9 +74,9 @@ export const factPlaces = defineClosed(
 			facts: ["title", "status", "agent", "cause", "startedBy", "activity"],
 		},
 		"home.card": {
-			title: "A card or row on Home and Needs you",
+			title: "A card or row on Home and in the Needs you badge's list",
 			match:
-				'[data-testid="home-needs-card"], [data-testid="home-needs"], [data-testid="home-handover"], [data-testid="home"]',
+				'[data-testid="home-needs-card"], [data-testid="needs-popover"], [data-testid="home-handover"], [data-testid="home"]',
 			facts: ["title", "status", "agent", "cause", "activity", "project"],
 		},
 		"list.row": {

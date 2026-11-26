@@ -35,10 +35,10 @@ import {
 import { HomeIcon } from "@/components/home/home-icon";
 import { PrismaLensMark } from "@/components/icons/prismalens-mark";
 import { useActiveIncidents } from "@/components/inbox/use-inbox-data";
-import { MARKS, markLook } from "@/components/kit/marks";
 import { useAbout } from "@/components/settings/use-about";
 import { Hint } from "@/components/shared/Hint";
 import { ConnectionWord } from "@/components/shell/ConnectionWord";
+import { NeedsBadge } from "@/components/shell/NeedsBadge";
 import { SearchHost, useOpenSearch } from "@/components/shell/SearchHost";
 import {
 	ThreadList,
@@ -124,7 +124,6 @@ function useDoors(signedIn: boolean): Door[] {
 			// No storage: the door still shows once the data says so.
 		}
 	}, [earned]);
-	const waiting = useWaitingCount(signedIn);
 	const unmapped = useUnmappedAlerts(signedIn);
 	return [
 		{
@@ -134,9 +133,6 @@ function useDoors(signedIn: boolean): Door[] {
 			icon: <MessagesSquare className={ICON} />,
 			narrowOnly: true,
 			sheet: true,
-			...(waiting
-				? { count: waiting, countLabel: `${waiting} waiting for you` }
-				: {}),
 		},
 		placeDoor("automation"),
 		placeDoor("projects"),
@@ -219,7 +215,7 @@ function Shell({ pathname }: { pathname: string }) {
 	return (
 		<SearchHost enabled={signedIn}>
 			{hidden ? (
-				<ShowSidebar onShow={toggleSidebar} />
+				<ShowSidebar onShow={toggleSidebar} signedIn={signedIn} />
 			) : (
 				<aside
 					className="fixed bottom-0 left-0 top-0 z-40 hidden w-(--sidebar-w) flex-col bg-surface-1 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-hairline md:flex"
@@ -344,6 +340,15 @@ function MainBar({
 							// The rail's door to the list; at full width the list itself shows.
 							<div key={door.label} className={RAIL_ONLY}>
 								<ThreadsSheet door={door} />
+								{/* What waits, by urgency, where the list is off screen (#1247 D25). */}
+								{signedIn && (
+									<NeedsBadge
+										testId="rail-needs"
+										side="right"
+										className="h-12 flex-col justify-center gap-1 px-0"
+										countClassName="text-[10px] leading-none"
+									/>
+								)}
 							</div>
 						) : (
 							<div
@@ -462,7 +467,36 @@ function useFoldKey(toggle: () => void, enabled: boolean) {
  * The page bar's button while the bar is hidden: it sits at the left of
  * every page bar, which tokens.css pads for it.
  */
-function ShowSidebar({ onShow }: { onShow: () => void }) {
+function ShowSidebar({
+	onShow,
+	signedIn,
+}: {
+	onShow: () => void;
+	signedIn: boolean;
+}) {
+	const waiting = useWaitingCount(signedIn);
+	// Page bars pad for Show and, while something waits, the badge beside it (tokens.css).
+	useEffect(() => {
+		const root = document.documentElement.style;
+		if (waiting) root.setProperty("--needs-badge-w", "3.5rem");
+		else root.removeProperty("--needs-badge-w");
+		return () => {
+			root.removeProperty("--needs-badge-w");
+		};
+	}, [waiting]);
+	return (
+		<>
+			<ShowButton onShow={onShow} />
+			<div className="fixed top-(--frame-top) left-[calc(var(--header-h)+0.25rem)] z-40 hidden h-(--header-h) items-center md:flex">
+				{signedIn && (
+					<NeedsBadge testId="hidden-needs" className="h-8 px-2 text-meta" />
+				)}
+			</div>
+		</>
+	);
+}
+
+function ShowButton({ onShow }: { onShow: () => void }) {
 	return (
 		<Hint label="Show the sidebar" keys={["["]} side="right">
 			<button
@@ -512,17 +546,7 @@ function ThreadsSheet({ door }: { door: Door }) {
 						<span aria-hidden className={cn(RAIL_LABEL, "order-last")}>
 							{door.label}
 						</span>
-						<span className="relative">
-							{door.icon}
-							{door.count !== undefined && (
-								<span
-									aria-hidden
-									className="absolute -top-2 -right-2.5 min-w-4 rounded-full bg-warn px-1 text-center text-[10px] leading-4 font-semibold text-canvas tabular-nums"
-								>
-									{door.count}
-								</span>
-							)}
-						</span>
+						{door.icon}
 					</button>
 				</SheetTrigger>
 			</Hint>
@@ -662,9 +686,6 @@ function PhoneStrip({
 }) {
 	const [open, setOpen] = useState(false);
 	const openSearch = useOpenSearch();
-	const waiting = doors.find((d) => d.sheet && d.count !== undefined);
-	const waitingLook = markLook("ask", "approval");
-	const WaitingIcon = waitingLook.icon;
 	useKeyboardInset();
 	return (
 		<nav
@@ -747,22 +768,11 @@ function PhoneStrip({
 				</SheetContent>
 			</Sheet>
 			{signedIn ? <ConnectionWord /> : <span className="flex-1" />}
-			{waiting && (
-				<Hint label={`${waiting.count} ${MARKS.ask.label.toLowerCase()}`}>
-					<button
-						type="button"
-						onClick={() => setOpen(true)}
-						aria-label={`${waiting.count} ${MARKS.ask.label.toLowerCase()}`}
-						className="flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control px-2 text-meta font-medium text-text-1 tabular-nums hover:bg-surface-2"
-						data-testid="strip-waiting"
-					>
-						<WaitingIcon
-							aria-hidden
-							className={cn("size-3.5", waitingLook.className)}
-						/>
-						{waiting.count}
-					</button>
-				</Hint>
+			{signedIn && (
+				<NeedsBadge
+					testId="strip-waiting"
+					className="min-h-11 shrink-0 whitespace-nowrap px-2 text-meta"
+				/>
 			)}
 			<NavLink
 				to="/new"
