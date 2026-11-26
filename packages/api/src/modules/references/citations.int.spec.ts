@@ -102,8 +102,9 @@ afterAll(async () => {
 
 const tool = () => {
 	const [t] = citationTools({ turn: (r, th, k) => citations.turn(r, th, k) });
+	if (!t) throw new Error("citationTools offers no tool");
 	return async (runId: string, args: unknown) => {
-		const c = await executeTool(t as never, args, {
+		const c = await executeTool(t, args, {
 			runId,
 			signal: new AbortController().signal,
 		});
