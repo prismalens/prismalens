@@ -194,14 +194,23 @@ async function projectThread(api: Api, workspace: string): Promise<string> {
 		if (!["pending", "running", "queued"].includes(run.status)) {
 			const cwd = run.workspace?.cwd;
 			if (!cwd) throw new Error("The thread has no worktree");
-			// The change the PR carries, so the review thread's file is in the diff.
 			const file = join(cwd, "packages/api/src/orders/query.ts");
+			const remote = process.argv.includes("--remote");
+			// With a remote, the worktree sits on #412's head, so that PR is the thread's own (#1176 D5).
+			if (remote)
+				execFileSync("git", ["-C", cwd, "checkout", "-q", "fix/orders-index"]);
+			// One edit past what the branch holds, so the review thread's file is in the diff.
 			writeFileSync(
 				file,
-				readFileSync(file, "utf8").replace(
-					"findMany({ where: { customerId } })",
-					'findMany({ where: { customerId }, orderBy: { createdAt: "desc" } })',
-				),
+				remote
+					? readFileSync(file, "utf8").replace(
+							'orderBy: { createdAt: "desc" } })',
+							'orderBy: { createdAt: "desc" }, take: 50 })',
+						)
+					: readFileSync(file, "utf8").replace(
+							"findMany({ where: { customerId } })",
+							'findMany({ where: { customerId }, orderBy: { createdAt: "desc" } })',
+						),
 			);
 			await prisma.investigation.update({
 				where: { id },
