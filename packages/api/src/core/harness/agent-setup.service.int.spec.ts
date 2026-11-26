@@ -140,6 +140,18 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 		expect(docs?.recipients).toEqual(["claude-code", "codex", "gemini"]);
 	});
 
+	it("refuses a value that fills an argument with a relative or absolute file path, and stores nothing", async () => {
+		const outcomes = await Promise.all(
+			["scripts/server.js", command].map((DB) =>
+				service
+					.approveSharedServer({ name: "docs", def: docsDef, values: { TOKEN: SECRET, DB }, recipients: [], from: null })
+					.then(() => "approved", (e: unknown) => e),
+			),
+		);
+		const no = refused("A value names a file; put a path in the definition and a token in env");
+		expect([outcomes, await names()]).toEqual([[no, no], []]);
+	});
+
 	it("refuses an approved URL that carries sign-in, a query or a fragment", async () => {
 		const urls = ["https://u:p@mcp.example/v1", "https://mcp.example/v1?key=x", "https://mcp.example/v1#f"];
 		const outcomes = await Promise.all(

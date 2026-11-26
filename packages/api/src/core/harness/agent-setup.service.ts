@@ -42,6 +42,7 @@ import {
 	type RunShared,
 	readMcpSource,
 	readOnDisk,
+	refuseValueFiles,
 	sharedServerHash,
 	sharedServerName,
 	valueNamesOf,
@@ -308,6 +309,14 @@ export class AgentSetupService {
 					names.includes(n),
 				),
 			);
+			try {
+				refuseValueFiles(bound.def, values);
+			} catch (err) {
+				throw new AgentSetupError(
+					"BAD_REQUEST",
+					err instanceof Error ? err.message : String(err),
+				);
+			}
 			const entered =
 				Object.keys(input.values).length > 0 ||
 				names.length === 0 ||
