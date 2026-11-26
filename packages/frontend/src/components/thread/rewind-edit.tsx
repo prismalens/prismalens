@@ -12,10 +12,6 @@ export interface TranscriptEdit {
 	block: RewindBlock | null;
 	/** Opens the confirm dialog for the edited text of message `seq`. */
 	send: (seq: number, text: string) => void;
-	/** The message a refused admission handed back, kept open in its editor. */
-	kept?: { seq: number; text: string; why: string } | null;
-	/** Drops the kept text when its editor is cancelled. */
-	dismiss?: () => void;
 }
 
 interface EditState {
@@ -68,13 +64,7 @@ export function EditableMessage({
 	const state = useContext(EditContext);
 	const edit = state?.edit;
 	if (!state || !edit || seq === undefined) return <>{children(undefined)}</>;
-	const kept = edit.kept?.seq === seq ? edit.kept : null;
-	const open =
-		state.editing?.key === itemKey
-			? state.editing
-			: kept
-				? { key: itemKey, text: kept.text }
-				: null;
+	const open = state.editing?.key === itemKey ? state.editing : null;
 	if (open)
 		return (
 			<li data-testid="message-edit">
@@ -96,29 +86,16 @@ export function EditableMessage({
 							state.setEditing({ key: itemKey, text: e.target.value })
 						}
 						onKeyDown={(e) => {
-							if (e.key !== "Escape") return;
-							state.setEditing(null);
-							edit.dismiss?.();
+							if (e.key === "Escape") state.setEditing(null);
 						}}
 						data-testid="message-edit-text"
 					/>
-					{kept && (
-						<span
-							className="text-meta text-warn"
-							data-testid="message-edit-why"
-						>
-							{kept.why}
-						</span>
-					)}
 					<span className="flex justify-end gap-2">
 						<Button
 							type="button"
 							variant="secondary"
 							size="sm"
-							onClick={() => {
-								state.setEditing(null);
-								edit.dismiss?.();
-							}}
+							onClick={() => state.setEditing(null)}
 						>
 							Cancel
 						</Button>

@@ -376,6 +376,12 @@ export function ThreadPage({ id }: { id: string }) {
 	const [openSteps, setOpenSteps] = useState<ReadonlySet<number>>(new Set());
 	const [subagentId, setSubagentId] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
+	// Why a rewind kept its edited text in the box unsent; it goes when the box empties.
+	const [keptWhy, setKeptWhy] = useState<string | null>(null);
+	const onDraft = useCallback((t: string) => {
+		setDraft(t);
+		if (!t.trim()) setKeptWhy(null);
+	}, []);
 	const [focusSignal, setFocusSignal] = useState(0);
 	// "Ask the agent to fix" on a PR check or review thread drafts here; you still press Send.
 	useEffect(
@@ -1896,8 +1902,6 @@ export function ThreadPage({ id }: { id: string }) {
 											? "queued"
 											: null,
 									send: (seq, text) => rewind.open({ mode: "edit", seq, text }),
-									kept: rewind.kept,
-									dismiss: () => rewind.setKept(null),
 								}}
 							/>
 						</RewindRowsProvider>
@@ -1916,7 +1920,11 @@ export function ThreadPage({ id }: { id: string }) {
 							threadId={inv.id}
 							target={rewind.target}
 							onClose={rewind.close}
-							onKept={rewind.setKept}
+							onKept={(kept) => {
+								setDraft(kept.text);
+								setKeptWhy(kept.why);
+								setFocusSignal((n) => n + 1);
+							}}
 						/>
 					)}
 					<Composer
@@ -2017,7 +2025,8 @@ ${about}`
 						blockedReason={blocked ?? switchBlocked}
 						blockedQuiet={!!failedDock}
 						text={draft}
-						onText={setDraft}
+						onText={onDraft}
+						notice={keptWhy ?? undefined}
 						focusSignal={focusSignal}
 						footer={slots.composerFooter}
 						usageRing

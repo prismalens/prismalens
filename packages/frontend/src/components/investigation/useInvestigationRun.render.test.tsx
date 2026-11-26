@@ -79,6 +79,12 @@ function Probe() {
 	return null;
 }
 
+let captured: ReturnType<typeof useInvestigationRun> | undefined;
+function Capture() {
+	captured = useInvestigationRun("inv");
+	return null;
+}
+
 describe("useInvestigationRun: a run that ends with its stream down", () => {
 	it("reads the rest of the record once when the run turns terminal", async () => {
 		const root = createRoot(document.createElement("div"));
@@ -133,11 +139,6 @@ describe("useInvestigationRun: a run that ends with its stream down", () => {
 	});
 
 	it("exposes eventsLoading and eventsError from history (#848)", async () => {
-		let captured: ReturnType<typeof useInvestigationRun> | undefined;
-		function Capture() {
-			captured = useInvestigationRun("inv");
-			return null;
-		}
 		const root = createRoot(document.createElement("div"));
 		h.isLoading = true;
 		h.isError = false;
@@ -155,21 +156,41 @@ describe("useInvestigationRun: a run that ends with its stream down", () => {
 });
 
 describe("useInvestigationRun: an ended thread's own rows (#1193)", () => {
+	const KIND: Record<string, string> = {
+		answerAsk: "permission_answer",
+		rewindUndo: "rewind_undone",
+		rewindRestore: "rewind_restored",
+	};
+	const row = (key: string) => ({
+		kind: KIND[key],
+		runId: "inv",
+		branchId: "rewinds",
+		path: [],
+		seq: 9,
+		ts: "2026-11-26T05:00:00.000Z",
+	});
 	it.each(["answerAsk", "rewindUndo", "rewindRestore"])(
-		"reads the record on once %s succeeds, since no stream carries its row",
+		"exposes the row the record holds once %s succeeds, since no stream carries it",
 		async (key) => {
 			const root = createRoot(document.createElement("div"));
 			h.status = "completed";
 			h.history = [];
 			h.succeeded = {};
-			await act(async () => root.render(<Probe />));
-			h.catchUp.mockClear();
+			await act(async () => root.render(<Capture />));
+			h.catchUp.mockReset();
+			// The catch-up reads the record: the server's row lands in the history.
+			h.catchUp.mockImplementation(async () => {
+				h.history = [row(key)];
+			});
 
 			h.succeeded = { [key]: [1] };
-			await act(async () => root.render(<Probe />));
+			await act(async () => root.render(<Capture />));
+			await act(async () => root.render(<Capture />));
 
-			expect(h.catchUp).toHaveBeenCalledTimes(1);
+			expect(captured?.events).toEqual([row(key)]);
 			h.succeeded = {};
+			h.catchUp.mockReset();
+			h.catchUp.mockResolvedValue();
 			await act(async () => root.unmount());
 		},
 	);

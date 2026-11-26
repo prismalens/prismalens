@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { CanonicalEvent } from "@prismalens/contracts";
+import { type CanonicalEvent, systemWritten } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { History, TriangleAlert, Undo2 } from "lucide-react";
 import {
@@ -11,6 +11,7 @@ import {
 	useEffect,
 	useState,
 } from "react";
+import { markLook } from "@/components/kit/marks";
 import type { RewindTarget } from "@/components/thread/use-rewind";
 import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
@@ -88,22 +89,66 @@ function FoldedTurns({
 		}),
 	);
 	const ready = useThreadSchemasReady();
+	const [schemaTry, setSchemaTry] = useState(0);
+	const [schemaFailed, setSchemaFailed] = useState(false);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: each Retry loads again.
 	useEffect(() => {
-		void loadThreadSchemas().catch(() => {});
-	}, []);
+		let live = true;
+		loadThreadSchemas().catch(() => {
+			if (live) setSchemaFailed(true);
+		});
+		return () => {
+			live = false;
+		};
+	}, [schemaTry]);
 	const schemas = ready ? threadSchemas() : null;
+	if (q.isError || (schemaFailed && !schemas))
+		return (
+			<p
+				className="flex items-center gap-1.5 text-meta text-danger"
+				data-testid="rewind-folded-failed"
+			>
+				Couldn't read the folded turns
+				<Button
+					variant="text"
+					size="xs"
+					onClick={() => {
+						setSchemaFailed(false);
+						setSchemaTry((n) => n + 1);
+						if (q.isError) void q.refetch();
+					}}
+					data-testid="rewind-folded-retry"
+				>
+					Retry
+				</Button>
+			</p>
+		);
 	if (q.isPending || !schemas)
 		return <p className="text-meta text-text-3">Loading</p>;
-	if (q.isError)
-		return (
-			<p className="text-meta text-danger">Couldn't read the folded turns</p>
-		);
-	const lines = q.data.events.flatMap((raw, i) => {
+	const events = q.data.events.flatMap((raw) => {
 		const p = schemas.CanonicalEventSchema.safeParse(raw);
-		if (!p.success) return [];
-		const e = p.data;
-		if (e.kind === "operator_message")
-			return [{ key: `${i}`, who: "You", text: e.text }];
+		return p.success ? [p.data] : [];
+	});
+	// A message another thread, a schedule or a PR sent: its inbound event names the sender.
+	const senders = new Map(
+		events.flatMap((e) =>
+			e.kind === "message_inbound"
+				? [
+						[
+							e.messageId,
+							e.from?.name ?? markLook("inbound", e.source).word ?? e.source,
+						] as const,
+					]
+				: [],
+		),
+	);
+	const lines = events.flatMap((e, i) => {
+		if (e.kind === "operator_message") {
+			const who = systemWritten(e)
+				? "PrismaLens"
+				: ((e.messageId && senders.get(e.messageId)) ?? "You");
+			return [{ key: `${i}`, who, text: e.text }];
+		}
 		if (e.kind === "agent_step" && e.text.trim())
 			return [{ key: `${i}`, who: "Agent", text: e.text.trim() }];
 		return [];

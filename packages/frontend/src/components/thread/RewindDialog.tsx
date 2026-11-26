@@ -46,6 +46,7 @@ const UNAVAILABLE_WORDS: Record<string, string> = {
 	"no-snapshot": "has no snapshot from before this message, so its files stay",
 	removed: "was removed",
 	linked: "has a link in a file's path, so its files stay",
+	"too-many": "changed too many files to list here, so its files stay",
 };
 
 const SESSION_WORDS: Record<RewindPreview["session"]["via"], string> = {
@@ -138,7 +139,7 @@ export function RewindEditFacts({
 			)}
 			{kept.length > 0 && (
 				<Fact testid="rewind-kept">
-					Keeps {plural(kept.length, "file")} you changed: {kept.join(", ")}
+					Keeps {plural(kept.length, "file")}: {kept.join(", ")}
 				</Fact>
 			)}
 			{during.length > 0 && (
@@ -280,6 +281,36 @@ export function RestoreFacts({
 class Refused extends Error {}
 
 /**
+ * The preview as first shown. A refetch waits behind a "changed" line until the user takes it,
+ * so a confirm, its ticks and its consent bind to what the user saw (#1193).
+ */
+function useShown<T>(live: T | undefined) {
+	const [shown, setShown] = useState<T | undefined>(live);
+	if (shown === undefined && live !== undefined) setShown(live);
+	const changed =
+		shown !== undefined &&
+		live !== undefined &&
+		JSON.stringify(live) !== JSON.stringify(shown);
+	return { shown, changed, take: () => setShown(live) };
+}
+
+function Changed({ what, onTake }: { what: string; onTake: () => void }) {
+	return (
+		<p className="text-meta text-warn" data-testid="rewind-changed">
+			{what} changed since this was shown.{" "}
+			<Button
+				variant="text"
+				size="xs"
+				onClick={onTake}
+				data-testid="rewind-changed-show"
+			>
+				Show what it would do now
+			</Button>
+		</p>
+	);
+}
+
+/**
  * The one confirm for edit, undo and restore (#1193): fresh preview, the facts one per line,
  * the accepted residuals as small print.
  */
@@ -292,8 +323,8 @@ export function RewindDialog(
 interface DialogProps {
 	threadId: string;
 	onClose: () => void;
-	/** A rewind that ran but whose message was not admitted: its text goes back in the editor. */
-	onKept: (kept: { seq: number; text: string; why: string } | null) => void;
+	/** A rewind that ran but whose message was not admitted: its text goes back in the composer. */
+	onKept: (kept: { text: string; why: string }) => void;
 }
 
 function OpenDialog({
@@ -309,6 +340,8 @@ function OpenDialog({
 	const calls = useRewindCalls(threadId);
 	const [during, setDuring] = useState(false);
 	const [ticked, setTicked] = useState<Set<string>>(new Set());
+	const editShown = useShown(preview.data);
+	const restoreShown = useShown(restorePreview.data);
 
 	const close = (open: boolean) => {
 		if (open) return;
@@ -341,7 +374,7 @@ function OpenDialog({
 		);
 
 	const confirmEdit = async () => {
-		const p = preview.data;
+		const p = editShown.shown;
 		if (!edit || !p) return;
 		const repos = Object.fromEntries(
 			p.repos.flatMap((r) =>
@@ -363,11 +396,7 @@ function OpenDialog({
 			include,
 		});
 		if (r.state === "refused") throw new Refused(rewindRefusalWords(r));
-		onKept(
-			r.sent
-				? null
-				: { seq: edit.seq, text: edit.text, why: r.why ?? "It was not sent." },
-		);
+		if (!r.sent) onKept({ text: edit.text, why: r.why ?? "It was not sent." });
 		toast({
 			title: rewoundWords(r.reverted.length, r.kept.length),
 			action: (
@@ -395,7 +424,7 @@ function OpenDialog({
 	};
 
 	const confirmRestore = async () => {
-		const p = restorePreview.data;
+		const p = restoreShown.shown;
 		if (!restore || !p) return;
 		const r = await calls.restore.mutateAsync({
 			id: threadId,
@@ -443,8 +472,8 @@ function OpenDialog({
 		);
 
 	if (target.mode === "restore") {
-		const p = restorePreview.data;
-		const blocked = p?.block;
+		const p = restoreShown.shown;
+		const blocked = restorePreview.data ? restorePreview.data.block : p?.block;
 		return (
 			<DestructiveConfirm
 				open
@@ -462,6 +491,15 @@ function OpenDialog({
 				}
 				description={
 					<div data-testid="rewind-confirm" data-mode="restore">
+						{restoreShown.changed && (
+							<Changed
+								what="The files"
+								onTake={() => {
+									restoreShown.take();
+									setTicked(new Set());
+								}}
+							/>
+						)}
 						{p ? (
 							<RestoreFacts
 								threadId={threadId}
@@ -480,7 +518,8 @@ function OpenDialog({
 		);
 	}
 
-	const p = preview.data;
+	const p = editShown.shown;
+	const block = preview.data ? preview.data.block : p?.block;
 	const conversationOnly =
 		!!p && p.repos.every((r) => r.state === "unavailable");
 	return (
@@ -492,16 +531,25 @@ function OpenDialog({
 				conversationOnly ? "Rewind conversation and send" : "Rewind and send"
 			}
 			onConfirm={confirmEdit}
-			isLoading={!p || !!p.block}
+			isLoading={!p || !!block}
 			error={
 				preview.error
 					? getErrorMessage(preview.error)
-					: p?.block
-						? REWIND_BLOCK_WORDS[p.block]
+					: block
+						? REWIND_BLOCK_WORDS[block]
 						: null
 			}
 			description={
 				<div data-testid="rewind-confirm" data-mode="edit">
+					{editShown.changed && (
+						<Changed
+							what="The thread or its files"
+							onTake={() => {
+								editShown.take();
+								setDuring(false);
+							}}
+						/>
+					)}
 					{p ? (
 						<RewindEditFacts
 							preview={p}

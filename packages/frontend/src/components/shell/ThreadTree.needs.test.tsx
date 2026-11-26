@@ -153,7 +153,7 @@ describe("Needs you lists each thread that waits, flat (#1101 cat 1)", () => {
 });
 
 describe("an ask row's details line (#1101 cat 8)", () => {
-	it("is reserved on each approval and question row before its asks load, empty, so their arrival moves no row", async () => {
+	it("is reserved, empty, on each approval and question row before its asks load", async () => {
 		await render();
 		const lines = Array.from(
 			container.querySelectorAll(
