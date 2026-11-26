@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
 import type { GitCredentialService } from "../integrations/git-credential.service.js";
+import { ServicesController } from "./services.controller.js";
 import { ServicesService } from "./services.service.js";
 
 function serviceWith(teams: Array<string | null>) {
@@ -43,7 +44,6 @@ describe("ServicesService.listTeams (#325)", () => {
 
 describe("ServicesController metadata.investigation.notes validation (#673 w21)", () => {
 	it("rejects metadata.investigation.notes over 4096 chars on create and update", async () => {
-		const { ServicesController } = await import("./services.controller.js");
 		const mockServicesService = {
 			findByName: vi.fn().mockResolvedValue(null),
 			create: vi.fn(),

@@ -465,6 +465,7 @@ describe("RewindService (#1193)", () => {
 		expect([...((await storeOps(gitDir)).get(op)?.refs ?? [])].toSorted()).toEqual(["backup", "interrupted", "meta"]);
 	});
 
+	// Two turns, a rewind and its turn: 8.5-19.6 s over 15 local runs, 12.9 s on CI; a restart is 0.3 s.
 	it("boot writes committed for an operation whose event committed but whose committed ref was lost, and appends no event", async () => {
 		const { id } = await fixture();
 		const seq = await seqOf(id, MESSAGE_2);
@@ -488,7 +489,7 @@ describe("RewindService (#1193)", () => {
 		expect((await storeOps(gitDir)).get(op)?.refs.has("committed")).toBe(true);
 		expect((await storeOps(gitDir)).get(op)?.refs.has("interrupted")).toBe(false);
 		expect((await visible(id)).length).toBe(count);
-	});
+	}, 60_000);
 
 	it("a row appended to a folded branch during the file writes refuses the rewind stale, folds nothing, and puts the files back", async () => {
 		const { id, cwd } = await fixture();
