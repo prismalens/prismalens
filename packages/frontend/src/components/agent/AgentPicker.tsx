@@ -101,6 +101,17 @@ interface ModelRow {
 
 const pickId = (h: HarnessStatus, model: string) => `${h.id}::${model}`;
 
+/** The name the person gave a custom model; undefined when they gave none. */
+function customName(
+	prefs: ReturnType<typeof useAgentChoice>,
+	agentId: string,
+	model: string,
+): string | undefined {
+	return customModelsOf(prefs.customModels[agentId as HarnessId]).find(
+		(m) => m.id === model,
+	)?.name;
+}
+
 /** One agent's models as its list orders them, with the stored and served ones it may not list. */
 function agentRows(
 	agent: HarnessStatus,
@@ -114,7 +125,7 @@ function agentRows(
 		return {
 			harness: agent,
 			model: m,
-			name: modelName(agent, m) ?? m,
+			name: customName(prefs, id, m) ?? modelName(agent, m) ?? m,
 			provider: providerOf(agent.id, m),
 			...(entry?.status === "legacy" ? { legacy: true } : {}),
 			// A free tier that trains on what it is sent says so on its row.
@@ -278,7 +289,10 @@ export function ModelChip({
 							{
 								harness: h,
 								model: f.model,
-								name: modelName(h, f.model) ?? f.model,
+								name:
+									customName(prefs, h.id, f.model) ??
+									modelName(h, f.model) ??
+									f.model,
 							},
 							"",
 							true,
@@ -340,7 +354,12 @@ export function ModelChip({
 		(model && !isFoldedId(harness, model)
 			? model
 			: (defaultModel(harness, models[harness.id as HarnessId])?.id ?? model));
-	const shown = !model && emptyName ? emptyName : chipModel(harness, model);
+	const own =
+		harness && current && harness.modelVia !== "unsupported"
+			? customName(prefs, harness.id, current)
+			: undefined;
+	const shown =
+		!model && emptyName ? emptyName : (own ?? chipModel(harness, model));
 	const early = isLoading
 		? knownChip(known === "default" ? null : known)
 		: null;
