@@ -26,7 +26,7 @@ vi.mock("./investigate.js", () => ({
 }));
 
 const { conductRun } = await import("./conductor.js");
-const { injectedSecrets, redactEvent, requestedSecrets, scrub } = await import(
+const { injectedSecrets, redactEvent, requestedSecrets, scrub, StreamScrubber } = await import(
 	"./redact.js"
 );
 
@@ -82,5 +82,50 @@ describe("requestedSecrets (#1024 spec B)", () => {
 		expect(secrets).toEqual(["abcdef", "abc"]);
 		expect(scrub("token abcdef and abc", secrets)).toBe("token [redacted] and [redacted]");
 		expect(redactEvent({ text: "say abc" }, secrets)).toEqual({ text: "say [redacted]" });
+	});
+});
+
+describe("shared values never reach a stream, even split across pieces (#1180 §3.3)", () => {
+	const VALUE = 'sv-"quoted"\back\nline-9f';
+	const joined = (units: string[][]) => units.map((u) => u.join("")).join("");
+	const run = (s: InstanceType<typeof StreamScrubber>, units: string[][]) => [
+		...units.flatMap((u) => s.push(u)),
+		...s.end(),
+	];
+
+	it("replaces a value split across two stderr chunks in both chunks", () => {
+		const out = run(new StreamScrubber([VALUE]), [[`err ${VALUE.slice(0, 7)}`], [`${VALUE.slice(7)} tail`]]);
+		expect(out).toEqual([["err [redacted]"], ["[redacted] tail"]]);
+	});
+
+	it("replaces a value split across three streamed chunks with a tool update between two of them", () => {
+		const a = VALUE.slice(0, 5);
+		const b = VALUE.slice(5, 12);
+		const c = VALUE.slice(12);
+		const msg = (text: string) => ({ text, channel: "message" });
+		const out = run(new StreamScrubber([VALUE]), [[msg(a)], [msg(b), "tool_call_update"], [msg(c), "done"]]);
+		expect(joined(out)).not.toContain(VALUE);
+		expect(out).toEqual([["[redacted]"], ["[redacted]", "tool_call_update"], ["[redacted]", "done"]]);
+	});
+
+	it("holds a unit back until enough text follows it, and releases the rest at the end", () => {
+		const s = new StreamScrubber(["0123456789"]);
+		expect(s.push(["abc"])).toEqual([]);
+		expect(s.push(["defghijklmnop"])).toEqual([["abc"]]);
+		expect(s.end()).toEqual([["defghijklmnop"]]);
+	});
+
+	it("replaces the JSON-escaped form inside a string that carries encoded JSON", () => {
+		const encoded = JSON.stringify({ arg: VALUE });
+		expect(joined(run(new StreamScrubber([VALUE]), [[encoded]]))).toBe('{"arg":"[redacted]"}');
+	});
+
+	it("redactEvent replaces inside string values only, never a key or a kind, so an argument equal to an event kind cannot change an event", () => {
+		const event = { kind: "turn_usage", turn_usage: "turn_usage", nested: [{ text: `x turn_usage y` }] };
+		expect(redactEvent(event, ["turn_usage"])).toEqual({
+			kind: "turn_usage",
+			turn_usage: "[redacted]",
+			nested: [{ text: "x [redacted] y" }],
+		});
 	});
 });

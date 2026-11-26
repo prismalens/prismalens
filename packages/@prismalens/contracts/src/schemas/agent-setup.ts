@@ -251,3 +251,15 @@ export const RevealSharedRowInputSchema = /* @__PURE__ */ lazySchema(() =>
 	}),
 );
 export type RevealSharedRowInput = z.infer<typeof RevealSharedRowInputSchema>;
+
+/** What one session reported loading (`agent_loadout`, one per session): the event's payload. */
+export const AgentLoadoutReportSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		profile: LoadoutProfileSchema,
+		cwd: z.string().max(1024),
+		/** `configFingerprint` at session open; a view merges only a report whose fingerprint equals its own. */
+		fingerprint: z.string(),
+		items: z.array(LoadedItemSchema).max(500),
+	}),
+);
+export type AgentLoadoutReport = z.infer<typeof AgentLoadoutReportSchema>;

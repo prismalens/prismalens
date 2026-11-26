@@ -5,6 +5,7 @@
  * What an agent's own config files hold on disk, per its provider's `configLayout` (#1180 §3.1).
  * Never returns a command, argument, URL, env or header value: names, paths and transports only.
  */
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
@@ -315,4 +316,44 @@ export function foundMcpNames(
 				.map((i) => i.name),
 		),
 	];
+}
+
+/** What a session's launch policy adds to its fingerprint. */
+export interface LoadoutPolicy {
+	profile: "own" | "clean";
+	/** Which `probeIsolation` or `cleanProfile` applied, or null. */
+	isolation: string | null;
+	/** The PrismaLens set's revision, and whether this agent receives it. */
+	sharedRevision: string;
+	member: boolean;
+}
+
+/**
+ * A hash over the sorted on-disk items with each source file's content, the shared set's
+ * revision and membership, and the launch policy. A view merges a session's report only when
+ * its fingerprint equals the view's own (§3.1).
+ */
+export function configFingerprint(
+	agent: string,
+	env: Env,
+	repoRoot: string | null,
+	policy: LoadoutPolicy,
+	fs: ConfigFs = nodeConfigFs,
+): string {
+	const items = readOnDisk(agent, env, repoRoot, fs);
+	const content = (path: string | null) => {
+		if (!path) return "";
+		const text = fs.text(path) ?? fs.text(join(path, "SKILL.md")) ?? "";
+		return createHash("sha256").update(text).digest("hex");
+	};
+	const rows = items
+		.map((i) =>
+			[i.kind, i.name, i.scope, i.path ?? "", i.state, content(i.path)].join(
+				" ",
+			),
+		)
+		.sort();
+	return createHash("sha256")
+		.update(JSON.stringify({ agent, rows, policy }))
+		.digest("hex");
 }

@@ -4,7 +4,7 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { memoryFs } from "./__fixtures__/memory-fs.js";
-import { foundMcpNames, readOnDisk } from "./agent-config.js";
+import { configFingerprint, foundMcpNames, readOnDisk } from "./agent-config.js";
 
 const home = resolve("/home/user");
 const repo = resolve(home, "src", "app");
@@ -178,5 +178,27 @@ describe("foundMcpNames (#1180 R1)", () => {
 
 	it("leaves out the names the launch sends itself", () => {
 		expect(foundMcpNames("claude-code", env, null, fs, ["prismalens"])).toEqual(["docs"]);
+	});
+});
+
+describe("configFingerprint (#1180 §3.1)", () => {
+	const policy = { profile: "own" as const, isolation: null, sharedRevision: "r1", member: true };
+	const files = { [r(".mcp.json")]: JSON.stringify({ mcpServers: { a: {} } }) };
+
+	it("changes when a config file's content, the profile or the shared revision changes, and not otherwise", () => {
+		const base = configFingerprint("claude-code", env, repo, policy, memoryFs(files));
+		expect(configFingerprint("claude-code", env, repo, policy, memoryFs(files))).toBe(base);
+		const edited = memoryFs({ [r(".mcp.json")]: JSON.stringify({ mcpServers: { a: { command: "x" } } }) });
+		expect(configFingerprint("claude-code", env, repo, policy, edited)).not.toBe(base);
+		expect(configFingerprint("claude-code", env, repo, { ...policy, profile: "clean" }, memoryFs(files))).not.toBe(base);
+		expect(configFingerprint("claude-code", env, repo, { ...policy, sharedRevision: "r2" }, memoryFs(files))).not.toBe(base);
+	});
+
+	it("differs between two worktrees of one project whose .mcp.json differ", () => {
+		const other = resolve(home, "src", "app-wt");
+		const fs = memoryFs({ ...files, [resolve(other, ".mcp.json")]: JSON.stringify({ mcpServers: { b: {} } }) });
+		expect(configFingerprint("claude-code", env, repo, policy, fs)).not.toBe(
+			configFingerprint("claude-code", env, other, policy, fs),
+		);
 	});
 });
