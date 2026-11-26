@@ -190,16 +190,16 @@ describe("threads never nest (lens threads.flat, #1101 decision 2026-11-13)", ()
 		);
 		const rows = () =>
 			Array.from(
-				container.querySelectorAll(
-					'[data-testid="home-needs-row"] [data-fact=title]',
-				),
-			).map((a) => a.textContent);
-		expect(new Set(rows()).size).toBe(5);
+				container.querySelectorAll('[data-testid="home-needs-row"]'),
+			).map((r) => r.getAttribute("data-id"));
+		const ids = model.needs.map((n) => n.id);
+		expect(ids).toHaveLength(8);
+		expect(rows()).toEqual(ids.slice(0, 5));
 		const more = container.querySelector(
 			'[data-testid="home-needs-all"]',
 		) as HTMLButtonElement;
 		await act(async () => more.click());
-		expect(new Set(rows()).size).toBe(8);
+		expect(rows()).toEqual(ids);
 		expect(container.textContent).not.toMatch(/threads it started/);
 	});
 });
