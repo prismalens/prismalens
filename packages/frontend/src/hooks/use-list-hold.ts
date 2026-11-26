@@ -48,7 +48,7 @@ const OPEN = '[data-state="open"], [data-card-open]';
 export function useListHold(
 	ref: RefObject<HTMLElement | null>,
 	live: ThreadListModel,
-): Held & { update: () => void } {
+): Held & { update: () => void; expectMore: () => void } {
 	// The list can mount after a loading render, so the listeners follow the element.
 	const [el, setEl] = useState<HTMLElement | null>(null);
 	const inside = useRef(false);
@@ -58,6 +58,8 @@ export function useListHold(
 	const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const slideFrom = useRef<Map<string, number> | null>(null);
 	const latest = useRef(live);
+	// Until then, rows a Show more or an opened Settled brings join the held list below.
+	const moreUntil = useRef(0);
 	const [, redraw] = useReducer((n: number) => n + 1, 0);
 
 	const engaged = useCallback(() => {
@@ -100,8 +102,9 @@ export function useListHold(
 	const own = ownMoves();
 	const base =
 		held.current && own.size ? rebase(held.current, live, own) : held.current;
+	const tail = Date.now() < moreUntil.current;
 	const result: Held = base
-		? heldModel(live, base)
+		? heldModel(live, base, tail)
 		: { model: live, moving: new Map(), pending: 0 };
 	const pending = result.pending;
 
@@ -113,6 +116,7 @@ export function useListHold(
 			held.current = base;
 			for (const id of own) moved.delete(id);
 		}
+		if (held.current && tail) held.current = layoutOf(result.model);
 		if (!held.current) shown.current = layoutOf(live);
 	});
 
@@ -183,5 +187,8 @@ export function useListHold(
 		}
 	});
 
-	return { ...result, update: release };
+	const expectMore = useCallback(() => {
+		moreUntil.current = Date.now() + OWN_MS;
+	}, []);
+	return { ...result, update: release, expectMore };
 }

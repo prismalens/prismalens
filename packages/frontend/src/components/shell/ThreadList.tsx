@@ -434,6 +434,8 @@ export function ThreadList() {
 		);
 	const hidden = undo?.id;
 	const more = () => {
+		// The rows the reader asked for show though the list is held.
+		held.expectMore();
 		if (feed.hasNextPage && !feed.isFetchingNextPage) void feed.fetchNextPage();
 	};
 	// Pinned threads list apart from Threads; hidden agent rows have no server count.

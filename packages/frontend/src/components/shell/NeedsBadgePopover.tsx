@@ -10,6 +10,7 @@ import {
 	type BadgeFaceProps,
 	type BadgeProps,
 	badgeLabel,
+	takeEarlyClick,
 } from "@/components/shell/NeedsBadge";
 import { NeedsPopoverList } from "@/components/shell/NeedsList";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,12 @@ export function NeedsBadgePopover({
 	const returning = useRef(false);
 	const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 	useEffect(() => () => clearTimeout(timer.current), []);
+	// A click on the badge before this code arrived opens the list now, kept open.
+	useEffect(() => {
+		if (!takeEarlyClick(testId)) return;
+		pinned.current = true;
+		setOpen(true);
+	}, [testId]);
 	const later = (next: boolean) => {
 		clearTimeout(timer.current);
 		timer.current = setTimeout(() => setOpen(next), HOVER_MS);

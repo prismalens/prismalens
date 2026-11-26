@@ -44,7 +44,12 @@ export function layoutOf(m: ThreadListModel): HeldLayout {
  * A row still in its section takes its live content; one the live list moved or dropped keeps
  * what it showed, marked moving; a row that arrived waits. Counts stay live.
  */
-export function heldModel(live: ThreadListModel, held: HeldLayout): Held {
+export function heldModel(
+	live: ThreadListModel,
+	held: HeldLayout,
+	/** The reader asked for more rows: new ones below every held row of a section join it. */
+	tail = false,
+): Held {
 	const where = new Map<string, HoldSection>();
 	const liveNode = new Map<string, ListNode>();
 	for (const s of SECTIONS)
@@ -69,8 +74,15 @@ export function heldModel(live: ThreadListModel, held: HeldLayout): Held {
 			.map((n) => n.id)
 			.filter((id) => ids.includes(id));
 		pending += stayed.filter((id, i) => liveStayed[i] !== id).length;
+		if (!tail) continue;
+		const liveIds = live[s].map((n) => n.id);
+		const last = Math.max(-1, ...ids.map((id) => liveIds.indexOf(id)));
+		for (const n of live[s].slice(last + 1))
+			if (!held.nodes.has(n.id)) out[s].push(n);
 	}
-	for (const id of where.keys()) if (!held.nodes.has(id)) pending++;
+	const shown = new Set(SECTIONS.flatMap((s) => out[s].map((n) => n.id)));
+	for (const id of where.keys())
+		if (!held.nodes.has(id) && !shown.has(id)) pending++;
 	pending += moving.size;
 	return { model: { ...live, ...out }, moving, pending };
 }

@@ -73,6 +73,13 @@ const withD = threadList([
 	unit("c", "question", "2026-11-12T09:00:00.000Z"),
 	unit("d", "working", "2026-11-12T08:00:00.000Z"),
 ]);
+// The next page brings an older thread; a newer one arrives on top at the same time.
+const paged = threadList([
+	unit("n", "working", "2026-11-12T11:45:00.000Z"),
+	unit("a", "working", "2026-11-12T11:00:00.000Z"),
+	unit("b", "working", "2026-11-12T10:00:00.000Z"),
+	unit("old", "working", "2026-11-12T07:00:00.000Z"),
+]);
 // b starts waiting after a's move was applied.
 const fourth = threadList([
 	unit("a", "question", "2026-11-12T11:00:00.000Z"),
@@ -86,6 +93,7 @@ let seen: {
 	active: string[];
 	pending: number;
 	update: () => void;
+	expectMore: () => void;
 };
 
 function Probe({
@@ -102,6 +110,7 @@ function Probe({
 		active: held.model.active.map((n) => n.id),
 		pending: held.pending,
 		update: held.update,
+		expectMore: held.expectMore,
 	};
 	if (loading) return createElement("p", null, "Loading");
 	return createElement(
@@ -252,5 +261,15 @@ describe("useListHold keeps the list still while the reader is in it (#1247 D25)
 		});
 		await act(async () => root.render(tree(next)));
 		expect(seen).toMatchObject({ needs: [], active: ["a", "b"], pending: 1 });
+	});
+	it("shows the rows the reader asked for (Show more) below the held ones, and holds a new arrival on top", async () => {
+		await draw(first);
+		await pointer("pointerenter");
+		await act(async () => seen.expectMore());
+		await draw(paged);
+		expect(seen).toMatchObject({
+			active: ["a", "b", "old"],
+			pending: 1,
+		});
 	});
 });

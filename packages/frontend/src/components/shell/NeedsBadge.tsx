@@ -44,6 +44,14 @@ export function NeedsBadge(props: BadgeProps) {
 	return <NeedsBadgePart {...props} count={count} top={top} />;
 }
 
+let clickedEarly: string | null = null;
+/** True once for the badge a click reached before its code had loaded: it opens on arrival. */
+export const takeEarlyClick = (testId: string) => {
+	if (clickedEarly !== testId) return false;
+	clickedEarly = null;
+	return true;
+};
+
 /** The popover, its list and the fixes' registry load after the first paint (entry-budget.json). */
 export const NeedsBadgePart = lazyPart(
 	() => import("./NeedsBadgePopover").then((m) => m.NeedsBadgePopover),
@@ -53,6 +61,10 @@ export const NeedsBadgePart = lazyPart(
 			aria-label={badgeLabel(p.count)}
 			onPointerEnter={() => void NeedsBadgePart.preload(true)}
 			onFocus={() => void NeedsBadgePart.preload(true)}
+			onClick={() => {
+				clickedEarly = p.testId;
+				void NeedsBadgePart.preload(true);
+			}}
 			className={cn(BADGE_CLASS, p.className)}
 			data-testid={p.testId}
 			data-urgent={p.top}

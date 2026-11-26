@@ -291,4 +291,23 @@ describe("the Needs you badge (#1247 D25)", () => {
 		await act(async () => vi.advanceTimersByTime(300));
 		expect(popover()).toBeNull();
 	});
+	it("opens the list for a click that came before the badge's code had loaded", async () => {
+		vi.resetModules();
+		const fresh = await import("./NeedsBadge");
+		listed = threadList([unit(thread("q", "question"))]);
+		await act(async () =>
+			root.render(createElement(fresh.NeedsBadge, { testId: "badge" })),
+		);
+		await act(async () => badge().click());
+		await act(async () => {
+			await fresh.NeedsBadgePart.preload(true);
+		});
+		await vi.waitFor(() =>
+			expect(
+				document.querySelector(
+					'[data-testid="needs-popover"][data-state="open"]',
+				),
+			).not.toBeNull(),
+		);
+	});
 });
