@@ -19,8 +19,9 @@ const TURN = {
 function setup(turn: CitationsData["turn"] = async () => TURN) {
 	const data = { turn: vi.fn(turn) } satisfies CitationsData;
 	const [tool] = citationTools(data);
+	if (!tool) throw new Error("citationTools offers no tool");
 	const call = async (args: unknown) => {
-		const c = await executeTool(tool as never, args, ctx);
+		const c = await executeTool(tool, args, ctx);
 		return { isError: c.isError, body: resultValue(c.output) };
 	};
 	return { data, call };
