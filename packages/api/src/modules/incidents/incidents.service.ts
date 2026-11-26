@@ -509,6 +509,7 @@ export class IncidentsService {
 					this.prisma.investigationEvent.findFirst({
 						// A step with no prose (a tool call, or its command filled in) says nothing new (#820).
 						where: {
+							foldedBy: null,
 							investigationId: id,
 							AND: [
 								{ event: { contains: '"kind":"agent_step"' } },

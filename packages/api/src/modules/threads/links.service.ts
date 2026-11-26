@@ -285,6 +285,7 @@ export class LinksService {
 	): Promise<{ id: string; title: string }[]> {
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId: id,
 				event: { contains: '"artifact_published"' },
 			},

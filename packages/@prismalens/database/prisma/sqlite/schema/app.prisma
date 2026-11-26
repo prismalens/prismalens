@@ -510,6 +510,7 @@ model InvestigationEvent {
   ordinal         Int      @default(0) // commit order, stamped by a trigger (migration 20261112100000_event_ordinal)
   branchId        String // CanonicalEvent.branchId; "__report__" for the terminal report event
   event           String // JSON: the full CanonicalEvent
+  foldedBy        String? // null = visible; a rewindId, or "undo:<rewindId>" (#1193)
   createdAt       DateTime @default(now())
 
   investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
@@ -517,6 +518,7 @@ model InvestigationEvent {
   @@unique([investigationId, branchId, seq])
   @@index([investigationId, seq])
   @@index([investigationId, ordinal])
+  @@index([investigationId, foldedBy])
   @@map("investigation_events")
 }
 

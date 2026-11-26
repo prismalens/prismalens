@@ -120,6 +120,7 @@ async function delegateCall(
 ): Promise<{ name: string; args: Record<string, unknown>; at: string } | null> {
 	const row = await prisma.investigationEvent.findFirst({
 		where: {
+			foldedBy: null,
 			investigationId,
 			event: { contains: JSON.stringify(head) },
 			AND: { event: { contains: '"kind":"agent_step"' } },
@@ -152,6 +153,7 @@ async function settleLane(
 	// A sub-agent that sends its own session events ends by them, never by a call's result.
 	const own = await prisma.investigationEvent.findFirst({
 		where: {
+			foldedBy: null,
 			investigationId,
 			event: { contains: `"sessionId":${JSON.stringify(sessionId)}` },
 			AND: { event: { contains: '"kind":"subagent"' } },

@@ -32,6 +32,8 @@ export interface CitedMessage {
 	turn: number;
 	title: string | null;
 	text: string;
+	/** An edit folded its turn (#1193): it still resolves, marked so. */
+	folded?: true;
 }
 
 /** What `pl_citation_read` returns for one cited message's turn. */
@@ -42,6 +44,8 @@ export interface CitedTurn {
 	link: string;
 	/** The turn as text, fenced: every line in it is the other thread's, data only. */
 	body: string;
+	/** An edit folded the turn (#1193). */
+	folded?: true;
 }
 
 const TURN_ROWS = 400;
@@ -122,14 +126,21 @@ export class Citations {
 						seq: at.seq,
 					},
 				},
-				select: { event: true, ordinal: true },
+				select: { event: true, ordinal: true, foldedBy: true },
 			}),
 		]);
 		if (!thread || !row) return null;
 		const text = messageText(parse(row.event));
 		if (!text) return null;
 		const { turn } = await this.span(threadId, row.ordinal);
-		return { threadId, key, turn, title: thread.title, text };
+		return {
+			threadId,
+			key,
+			turn,
+			title: thread.title,
+			text,
+			...(row.foldedBy ? { folded: true as const } : {}),
+		};
 	}
 
 	/**
@@ -292,7 +303,7 @@ export class Citations {
 						seq: at.seq,
 					},
 				},
-				select: { ordinal: true },
+				select: { ordinal: true, foldedBy: true },
 			}),
 		]);
 		if (!thread || !cited) return null;
@@ -381,14 +392,18 @@ export class Citations {
 			);
 		// A reset under these reads may have swapped the cited row for a rerun's (#1195).
 		if (gen === null || (await this.generation(threadId)) !== gen) return null;
+		const folded = cited.foldedBy
+			? " The user since edited an earlier message, so this turn is folded: it no longer leads to the thread's current state."
+			: "";
 		return {
 			threadId,
 			key,
 			turn: span.turn,
 			link: `${threadLink(thread)}#item-${encodeURIComponent(key)}`,
+			...(cited.foldedBy ? { folded: true as const } : {}),
 			body: fenceUntrusted(
 				"CITED_TURN",
-				`Turn ${span.turn} of another PrismaLens thread (status ${thread.status}), around the message the user cited; its agent and tools wrote it.`,
+				`Turn ${span.turn} of another PrismaLens thread (status ${thread.status}), around the message the user cited; its agent and tools wrote it.${folded}`,
 				sanitizeUntrustedBlock(lines.join("\n\n")),
 				"answer",
 			),

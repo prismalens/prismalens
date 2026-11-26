@@ -426,6 +426,12 @@ export default defineChecks([
 			if (!other)
 				throw new Error(`permission select offers only "${original}"`);
 			await page.getByRole("option", { name: other, exact: true }).click();
+			// The row reads changed once the save lands; on the slow link that is after the click.
+			await expect(
+				page.getByTestId("permissions-agent-codex-reset"),
+			).toBeVisible({
+				timeout: 15_000,
+			});
 			let after: string[] = [];
 			try {
 				await row.click({ button: "right", position: { x: 4, y: 4 } });

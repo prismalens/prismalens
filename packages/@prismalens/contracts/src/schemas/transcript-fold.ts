@@ -67,6 +67,10 @@ export const EVENT_FOLD: { readonly [K in CanonicalEvent["kind"]]: FoldClass } =
 		jobs_ended: "read",
 		auto_paused: "read",
 		pull_request_linked: "read",
+		thread_rewound: "read",
+		rewind_undone: "read",
+		rewind_interrupted: "read",
+		rewind_restored: "read",
 		report: "read",
 	};
 

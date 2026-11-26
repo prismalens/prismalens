@@ -19,6 +19,7 @@ import {
 	reopens,
 	reservedEnvNames,
 	resolveLevel,
+	rewindViaOf,
 	staleFacts,
 	USER_SETUPS,
 } from "./registry/index.js";
@@ -303,5 +304,51 @@ describe("agent facts (#1101)", () => {
 			"antigravity",
 			"deepagents",
 		]);
+	});
+});
+
+describe("rewind facts (#1193)", () => {
+	const probe = { value: false, via: "probe" } as const;
+	const forkFacts = {
+		loadSession: probe,
+		images: probe,
+		embeddedContext: probe,
+		directories: probe,
+		rewindVia: {
+			value: "fork-at-message",
+			via: "source",
+			verifiedAt: { cli: "1.0.0", adapter: "0.1.0" },
+		},
+	} as const;
+
+	it("fork at the message only on the exact adapter version the fact was read on; every other case replays", () => {
+		const claude = AGENT_REGISTRY["claude-code"].facts;
+		const pin = claude?.rewindVia?.verifiedAt.adapter ?? "";
+		expect(pin).toMatch(/^\d+\.\d+\.\d+$/);
+		expect(
+			[pin, `${pin}.1`, `0.${pin}`, "", null, undefined].map((v) => rewindViaOf(claude, v)),
+		).toEqual(["fork-at-message", "replay", "replay", "replay", "replay", "replay"]);
+	});
+
+	it("replay for an agent whose fact is replay, one with no rewind fact, and one with no facts, whatever version it reports", () => {
+		expect(rewindViaOf(AGENT_REGISTRY.codex.facts, "2.6.0")).toBe("replay");
+		const { rewindVia: _, ...noFact } = forkFacts;
+		expect(rewindViaOf(noFact, "0.1.0")).toBe("replay");
+		expect(rewindViaOf(undefined, "0.1.0")).toBe("replay");
+	});
+
+	it("name a fork-at-message agent whose initialize offers no session/fork as a mismatch, and not one that offers it", () => {
+		expect(factMismatches(forkFacts, { agentCapabilities: {} })).toEqual([
+			"rewindVia: registry fork-at-message, agent offers no session/fork",
+		]);
+		expect(factMismatches(forkFacts, { agentCapabilities: { sessionCapabilities: { fork: null } } })).toEqual([
+			"rewindVia: registry fork-at-message, agent offers no session/fork",
+		]);
+		expect(factMismatches(forkFacts, { agentCapabilities: { sessionCapabilities: { fork: {} } } })).toEqual([]);
+	});
+
+	it("never ask a replay agent to offer session/fork", () => {
+		const replay = { ...forkFacts, rewindVia: { ...forkFacts.rewindVia, value: "replay" } } as const;
+		expect(factMismatches(replay, { agentCapabilities: {} })).toEqual([]);
 	});
 });

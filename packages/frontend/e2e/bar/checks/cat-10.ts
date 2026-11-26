@@ -2,7 +2,18 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Page } from "@playwright/test";
-import { defineChecks, verdict } from "../bar";
+import { defineChecks, notSetUp, verdict } from "../bar";
+import {
+	apiGet,
+	apiPost,
+	apiPut,
+	eventsOf,
+	idle,
+	MESSAGE_2,
+	MESSAGE_3,
+	rewindFixture,
+	sendMessage,
+} from "./help-rewind";
 
 interface Links {
 	started: { id: string; title: string | null }[];
@@ -248,6 +259,127 @@ export default defineChecks([
 			return verdict(
 				fails,
 				`Settings: agents may start threads "${start}", caps ${caps.join(", ")}; the loop stopped with "${noticeText.slice(0, 90)}"; a start refused or capped by them was not exercised`,
+			);
+		},
+	},
+	{
+		item: "10.6",
+		async run({ page, sim }) {
+			const fails: string[] = [];
+			const settings = await apiGet<Record<string, unknown>>(
+				page,
+				"/threads/tree-settings",
+			);
+			const setStart = (agentsStartThreads: "ask" | "allow" | "never") =>
+				apiPut(page, "/threads/tree-settings", {
+					...settings,
+					agentsStartThreads,
+				});
+			const markers = async (id: string) =>
+				(await eventsOf(page, id)).filter((e) => e.kind === "thread_rewound");
+			/** A thread whose fake agent calls pl_thread_rewind on `target`'s last message. */
+			const caller = async (target: string) => {
+				const { investigationId } = await apiPost<{ investigationId: string }>(
+					page,
+					"/threads",
+					{
+						subject: { kind: "none" },
+						text: `fake-session:rewind-caller Edit the last message of ${target}`,
+						// The fake sessions speak as Claude Code; the sim's default agent may be another.
+						harness: "claude-code",
+					},
+				);
+				return investigationId;
+			};
+			const askOf = async (threadId: string) => {
+				for (let i = 0; i < 40; i++) {
+					const { asks } = await apiGet<{
+						asks: {
+							ask: { askId: string; threadId: string };
+							ended: boolean;
+						}[];
+					}>(page, "/threads/asks");
+					const a = asks.find((x) => !x.ended && x.ask.threadId === threadId);
+					if (a) return a.ask.askId;
+					await page.waitForTimeout(500);
+				}
+				return null;
+			};
+			const lines: string[] = [];
+			try {
+				for (const mode of ["never", "allow", "ask"] as const) {
+					const fx = await rewindFixture(page, sim, { messages: [MESSAGE_2] });
+					if (typeof fx === "string") return notSetUp(fx);
+					await setStart(mode);
+					const by = await caller(fx.path);
+					if (mode === "ask") {
+						const askId = await askOf(by);
+						if (!askId) {
+							fails.push("ask: no approval card opened");
+							continue;
+						}
+						if ((await markers(fx.id)).length)
+							fails.push("ask: the rewind ran before approval");
+						await apiPost(page, `/investigations/${by}/asks/${askId}`, {
+							askId,
+							decision: "approve",
+						});
+					}
+					await idle(page, by);
+					await idle(page, fx.id);
+					const got = await markers(fx.id);
+					const want = mode === "never" ? 0 : 1;
+					if (got.length !== want)
+						fails.push(`${mode}: ${got.length} rewinds, not ${want}`);
+					if (got[0] && (got[0].by as { kind?: string })?.kind !== "thread")
+						fails.push(`${mode}: the rewind is not recorded as the thread's`);
+					lines.push(`${mode} ${got.length}`);
+				}
+
+				// A running target is refused until stopped.
+				const busy = await rewindFixture(page, sim, { messages: [MESSAGE_2] });
+				if (typeof busy === "string") return notSetUp(busy);
+				await setStart("allow");
+				await sendMessage(
+					page,
+					busy.id,
+					"Check the retries again, take your time",
+				);
+				const by = await caller(busy.path);
+				await idle(page, by);
+				if ((await markers(busy.id)).length)
+					fails.push("running: a running thread was rewound");
+				await apiPost(page, `/investigations/${busy.id}/cancel`, {}).catch(
+					() => undefined,
+				);
+				await idle(page, busy.id);
+
+				// An approval bound to a thread that changed since is refused as stale.
+				const stale = await rewindFixture(page, sim, { messages: [MESSAGE_2] });
+				if (typeof stale === "string") return notSetUp(stale);
+				await setStart("ask");
+				const asker = await caller(stale.path);
+				const askId = await askOf(asker);
+				if (!askId) fails.push("stale: no approval card opened");
+				else {
+					await sendMessage(page, stale.id, MESSAGE_3);
+					await idle(page, stale.id);
+					await apiPost(page, `/investigations/${asker}/asks/${askId}`, {
+						askId,
+						decision: "approve",
+					});
+					await idle(page, asker);
+					if ((await markers(stale.id)).length)
+						fails.push("stale: the approval ran on a changed thread");
+				}
+			} finally {
+				await apiPut(page, "/threads/tree-settings", settings).catch(
+					() => undefined,
+				);
+			}
+			return verdict(
+				fails,
+				`rewinds by setting: ${lines.join(", ")}; a running thread was refused and a changed one refused the approval as stale`,
 			);
 		},
 	},

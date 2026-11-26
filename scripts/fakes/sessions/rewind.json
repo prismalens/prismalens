@@ -1,0 +1,111 @@
+{
+	"description": "Edit and rewind (#1193): three turns that each edit src/app.txt and end on a plain agent message, so a rewind of message 2 or 3 can fork at the turn before it. Speaks as the pinned claude-agent-acp, which offers session/fork; a rewind's process answers initialize before it picks this script, so its caller sets the fake's `fork` capability and `setFakeAgentVersion(\"0.109.0\")`.",
+	"prompt": "The checkout client retries too little. Raise the retries step by step.",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.109.0"
+	},
+	"fork": true,
+	"turns": [
+		[
+			{
+				"say": "Raising the retries in **src/app.txt**.\n\n"
+			},
+			{
+				"write": {
+					"path": "src/app.txt",
+					"content": "line 1\nline 2\ntimeout = 5\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nretries = 2\n"
+				}
+			},
+			{
+				"tool": {
+					"id": "toolu_rw1",
+					"title": "Edit src/app.txt",
+					"kind": "edit",
+					"rawInput": {
+						"file_path": "{{cwd}}/src/app.txt",
+						"old_string": "retries = 1",
+						"new_string": "retries = 2"
+					},
+					"output": "Edited src/app.txt"
+				}
+			},
+			{
+				"say": "Set retries to 2 in src/app.txt:10."
+			}
+		]
+	],
+	"followUpWhen": [
+		{
+			"match": "take your time",
+			"steps": [
+				{
+					"say": "Looking at it slowly.\n"
+				},
+				{
+					"delayMs": 120000,
+					"say": "Done looking."
+				}
+			]
+		},
+		{
+			"match": "retries to 3",
+			"steps": [
+				{
+					"write": {
+						"path": "src/app.txt",
+						"content": "line 1\nline 2\ntimeout = 5\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nretries = 3\n"
+					}
+				},
+				{
+					"tool": {
+						"id": "toolu_rw2",
+						"title": "Edit src/app.txt",
+						"kind": "edit",
+						"rawInput": {
+							"file_path": "{{cwd}}/src/app.txt",
+							"old_string": "retries = 2",
+							"new_string": "retries = 3"
+						},
+						"output": "Edited src/app.txt"
+					}
+				},
+				{
+					"say": "Set retries to 3 in src/app.txt:10."
+				}
+			]
+		},
+		{
+			"match": "retries to 4",
+			"steps": [
+				{
+					"write": {
+						"path": "src/app.txt",
+						"content": "line 1\nline 2\ntimeout = 5\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nretries = 4\n"
+					}
+				},
+				{
+					"tool": {
+						"id": "toolu_rw3",
+						"title": "Edit src/app.txt",
+						"kind": "edit",
+						"rawInput": {
+							"file_path": "{{cwd}}/src/app.txt",
+							"old_string": "retries = 3",
+							"new_string": "retries = 4"
+						},
+						"output": "Edited src/app.txt"
+					}
+				},
+				{
+					"say": "Set retries to 4 in src/app.txt:10."
+				}
+			]
+		}
+	],
+	"followUp": [
+		{
+			"say": "Done as edited: {{reply}}"
+		}
+	]
+}

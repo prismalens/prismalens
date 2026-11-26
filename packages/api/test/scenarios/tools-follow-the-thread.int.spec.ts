@@ -201,6 +201,9 @@ function inputFor(tool: string, run: Seeded) {
 			return { id: "none" };
 		case "pl_citation_read":
 			return run.cite ?? {};
+		// An earlier thread this one can read; its edit opens a card, as a start does.
+		case "pl_thread_rewind":
+			return { id: run.other ?? "starter", text: "Check the cart pods instead.", requestId: "cov-rewind" };
 		case "pl_secret_request":
 			return { name: "CART_TOKEN", reason: "Read the cart admin API" };
 		default:

@@ -8,6 +8,7 @@ import { composerNodes } from "./nodes.composer";
 import { contextNodes } from "./nodes.context";
 import { panelNodes } from "./nodes.panel";
 import { prNodes } from "./nodes.pr";
+import { rewindNodes } from "./nodes.rewind";
 import type {
 	TranscriptNodeEntry,
 	TranscriptNodeProps,
@@ -26,6 +27,7 @@ const lanes = {
 	...appNodes,
 	...contextNodes,
 	...prNodes,
+	...rewindNodes,
 };
 
 /** Typed from `EVENT_VIEWS` (#1125): each "node" kind has a node, and no node draws another kind. */

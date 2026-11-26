@@ -1,5 +1,5 @@
 {
-	"description": "Asks to write a file, then the agent dies while the ask is open: the run ends by itself with its ask unanswered (#1101 bar 8.5).",
+	"description": "Asks to write two files at once, then the agent dies while both asks are open: the dock pages them oldest first, and the run ends by itself with its asks unanswered (#1101 bar 8.5).",
 	"agent": {
 		"name": "claude-agent-acp",
 		"version": "0.85.1-fake"
@@ -7,21 +7,45 @@
 	"turns": [
 		[
 			{
-				"say": "Writing the probe file.\n\n"
+				"say": "Writing the probe files.\n\n"
 			},
 			{
-				"tool": {
-					"id": "toolu_01",
-					"title": "Write /tmp/pl-crash-probe.txt",
-					"kind": "edit",
-					"rawInput": {
-						"file_path": "/tmp/pl-crash-probe.txt",
-						"content": "probe"
-					},
-					"ask": true,
-					"exitWhileAsking": 20000,
-					"output": "Wrote /tmp/pl-crash-probe.txt"
-				}
+				"parallel": [
+					[
+						{
+							"tool": {
+								"id": "toolu_01",
+								"title": "Write /tmp/pl-crash-probe.txt",
+								"kind": "edit",
+								"rawInput": {
+									"file_path": "/tmp/pl-crash-probe.txt",
+									"content": "probe"
+								},
+								"ask": true,
+								"exitWhileAsking": 45000,
+								"output": "Wrote /tmp/pl-crash-probe.txt"
+							}
+						}
+					],
+					[
+						{
+							"delayMs": 1000
+						},
+						{
+							"tool": {
+								"id": "toolu_02",
+								"title": "Write /tmp/pl-crash-probe-2.txt",
+								"kind": "edit",
+								"rawInput": {
+									"file_path": "/tmp/pl-crash-probe-2.txt",
+									"content": "probe"
+								},
+								"ask": true,
+								"output": "Wrote /tmp/pl-crash-probe-2.txt"
+							}
+						}
+					]
+				]
 			}
 		]
 	]

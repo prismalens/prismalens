@@ -89,6 +89,8 @@ export interface DispatcherOptions {
 	owner?: string;
 	/** Called when a job is claimed, before it starts. */
 	onClaim?: (job: ClaimedJob) => void;
+	/** Awaited between a job's claim and its start: a thread's rewind finishes first (#1193). */
+	beforeStart?: (job: ClaimedJob) => Promise<void>;
 	/** Called when a job reaches a terminal state. */
 	onSettled?: (job: ClaimedJob, outcome: RunOutcome) => void;
 	log?: {
@@ -207,7 +209,10 @@ export class Dispatcher {
 						await this.store.release(job.id, this.owner).catch(() => false);
 					break;
 				}
-				for (const job of claimed) this.startJob(job);
+				for (const job of claimed) {
+					await this.options.beforeStart?.(job).catch(() => {});
+					this.startJob(job);
+				}
 			} catch (error) {
 				this.log.error("Dispatch tick failed", error);
 			}

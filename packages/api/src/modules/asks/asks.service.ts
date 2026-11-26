@@ -183,7 +183,7 @@ export class AsksService implements AsksPort {
 			};
 		}
 		const ev = await this.prisma.investigationEvent.findFirst({
-			where: { event: { contains: askId } },
+			where: { foldedBy: null, event: { contains: askId } },
 			select: { investigationId: true },
 		});
 		if (!ev) return null;

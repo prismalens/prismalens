@@ -60,3 +60,21 @@ export const subagentsOnStop = define.setting({
 		{ value: "finish", label: "Let them finish" },
 	],
 });
+
+/** How an edited message's turn continues (#1193); an agent that can't cut its session replays. */
+export const rewindSession = define.setting({
+	id: "agent.rewindSession",
+	page: "agent",
+	anchor: "harness-rewind-session-row",
+	label: "When you edit a sent message",
+	sentence: "How the agent's session continues after an edit.",
+	also: "edit rewind fork replay session message",
+	key: "HARNESS.rewindSession",
+	options: [
+		{ value: "fork", label: "Keep the agent's session up to the message" },
+		{
+			value: "replay",
+			label: "Start a new session with the conversation so far",
+		},
+	],
+});

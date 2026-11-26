@@ -179,7 +179,11 @@ export class SessionLifecycleService implements OnModuleInit {
 		error: string,
 	): Promise<RunFailure | null> {
 		const last = await this.prisma.investigationEvent.findFirst({
-			where: { investigationId: id, event: { contains: '"kind":"error"' } },
+			where: {
+				foldedBy: null,
+				investigationId: id,
+				event: { contains: '"kind":"error"' },
+			},
 			orderBy: { seq: "desc" },
 			select: { event: true },
 		});
@@ -203,6 +207,7 @@ export class SessionLifecycleService implements OnModuleInit {
 	private async reportedReset(id: string, now: Date): Promise<Date | null> {
 		const last = await this.prisma.investigationEvent.findFirst({
 			where: {
+				foldedBy: null,
 				investigationId: id,
 				event: { contains: '"kind":"agent_quota"' },
 			},
@@ -995,6 +1000,7 @@ export class SessionLifecycleService implements OnModuleInit {
 		const settings = await this.harness.getSettings();
 		const compacted = await this.prisma.investigationEvent.findFirst({
 			where: {
+				foldedBy: null,
 				investigationId: row.id,
 				event: { contains: '"kind":"compaction"' },
 				AND: { event: { contains: '"phase":"completed"' } },

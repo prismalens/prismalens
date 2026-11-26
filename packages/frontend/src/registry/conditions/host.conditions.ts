@@ -71,3 +71,30 @@ export const hostRestart = define.condition({
 		order: "first",
 	},
 });
+
+export const hostRewindInterrupted = define.condition({
+	id: "host.rewind-interrupted",
+	group: "real-life",
+	said: {
+		date: "2026-11-20",
+		quote:
+			'a fake crash before the DB commit shows "Rewind interrupted", and Restore brings the backup back',
+		where: "#1193 rewind spec, bar 16.12",
+	},
+	appliesTo: { walks: [], categories: ["16"] },
+	simulator: "host.rewind-crash",
+	profile: { threads: 1 },
+	measure: [
+		{
+			state:
+				"after a restart, an uncommitted rewind reads Rewind interrupted with Restore, and Restore brings the backup back",
+		},
+	],
+	verdict: "both",
+	ci: { debt: "climb" },
+	status: "active",
+	stage: {
+		run: "node scripts/fakes/conditions/rewind-interrupted.mjs --url {url}",
+		live: "the thread Raise the checkout retries, with a rewind cut off by a restart: Rewind interrupted, 1 file may have changed, Restore",
+	},
+});
