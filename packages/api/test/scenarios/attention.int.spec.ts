@@ -109,6 +109,18 @@ describe("attention: read state, presence and the away view (#1101 categories 3 
 		expect(after.newCount).toBe(0);
 	}, 30_000);
 
+	it("the unread count counts threads with an unread event, as the list draws one row per thread (#1193)", async () => {
+		const prisma = await pl.prisma();
+		const { id } = await prisma.investigation.create({ data: { kind: "chat", status: "completed", title: "two unread events" } });
+		const event = (kind: string, ordinal: number) => ({ investigationId: id, kind, ordinal, generation: 0, notify: false });
+		await prisma.attentionEvent.createMany({ data: [event("failed", 1), event("finished", 2)] });
+
+		const page = await unread();
+
+		expect(page.events.filter((e) => e.threadId === id).length).toBe(2);
+		expect(page.unread).toBe(new Set(page.events.map((e) => e.threadId)).size);
+	});
+
 	it("a visible tab after a long gap opens a long away view since the last visit", async () => {
 		const prisma = await pl.prisma();
 		const lastSeen = new Date(Date.now() - 3 * 60 * 60_000);
