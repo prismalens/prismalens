@@ -139,6 +139,7 @@ import { iconOf, PaneMenu } from "./panel/PaneMenu";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
+	afterClose,
 	arrangeTabs,
 	movedOrder,
 	PANE_VIEW,
@@ -1091,20 +1092,22 @@ export function ThreadPage({ id }: { id: string }) {
 
 	/** Closes tabs from their menu; the shown one hands over to the next kept, or the panel closes. */
 	function closeTabs(ids: PanelId[]) {
-		const kept = tabs.filter((t) => !ids.includes(t.id));
+		const { panel: next, split } = afterClose({
+			tabs: tabs.map((t) => t.id),
+			shown: tab,
+			split: search.split,
+			closing: ids,
+		});
 		panes.setLayout((l) => ({
 			...l,
 			closed: [...l.closed, ...ids.filter((c) => !l.closed.includes(c))],
-			split: l.split && ids.includes(l.split) ? null : l.split,
+			split:
+				l.split && (ids.includes(l.split) || l.split === next) ? null : l.split,
 		}));
-		const next = tab && !ids.includes(tab) ? tab : kept[0]?.id;
-		const splitGone = !!search.split && ids.includes(search.split);
 		if (!next) closePanel();
-		else if (next !== tab || splitGone)
-			openPanel({
-				panel: next,
-				...(search.split && !splitGone ? { split: search.split } : {}),
-			});
+		// `split` is passed even when undefined: the URL keeps a split the search leaves out.
+		else if (next !== tab || split !== search.split)
+			openPanel({ panel: next, split });
 	}
 
 	function tilePane(t: PanelId | "terminal") {
