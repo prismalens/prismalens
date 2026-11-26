@@ -1216,14 +1216,20 @@ export function Composer({
 	const clear = (sent: ComposerDoc, sentKeys: Set<string>) => {
 		// A deferred send that lands after more editing clears only the files it carried.
 		// A phone keyboard commits its word or a space as Send is tapped: that is still the sent text (#1193).
-		const fileKeys = (d: ComposerDoc) =>
-			docParts(d)
-				.files.map((f) => f.key)
-				.join("\n");
+		// Quotes and references compare whole: their chip text is only a first line.
+		const chipsOf = (d: ComposerDoc) => {
+			const parts = docParts(d);
+			return JSON.stringify([
+				parts.command,
+				parts.references,
+				parts.quotes,
+				parts.files.map((f) => f.key),
+			]);
+		};
 		if (
 			sameDoc(docNow.current, sent) ||
 			(docText(docNow.current).trim() === docText(sent).trim() &&
-				fileKeys(docNow.current) === fileKeys(sent))
+				chipsOf(docNow.current) === chipsOf(sent))
 		)
 			setContent(emptyDoc());
 		else

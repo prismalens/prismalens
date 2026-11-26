@@ -104,16 +104,27 @@ describe("the Quote in another thread picker (#1195)", () => {
 	});
 
 	it("shows no failure while the list loads or when it loaded", async () => {
+		const picker = (
+			loading: boolean,
+			threads: { id: string; title: string; kind: string }[],
+		) => (
+			<QuotePicker
+				threads={threads}
+				loading={loading}
+				query=""
+				onQuery={vi.fn()}
+				onNew={vi.fn()}
+				onPick={vi.fn()}
+			/>
+		);
+		await act(async () => root.render(picker(true, [])));
+		expect(q("state-problem")).toBeNull();
+		expect(q("quote-in-thread")).toBeNull();
+		expect(q("quote-in-new")?.textContent).toBe("New thread");
+
 		await act(async () =>
 			root.render(
-				<QuotePicker
-					threads={[{ id: "t1", title: "Pool size review", kind: "chat" }]}
-					loading={false}
-					query=""
-					onQuery={vi.fn()}
-					onNew={vi.fn()}
-					onPick={vi.fn()}
-				/>,
+				picker(false, [{ id: "t1", title: "Pool size review", kind: "chat" }]),
 			),
 		);
 		expect(q("state-problem")).toBeNull();

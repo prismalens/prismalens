@@ -1095,6 +1095,97 @@ describe("deriveTranscript: a provider stop is Limited or Blocked, never Failed 
 		});
 		expect(items.filter((i) => i.kind === "end")).toEqual([]);
 	});
+
+	describe("a stop event says the stop once, for its own turn", () => {
+		const at = (seq: number) => `2026-11-13T02:0${seq}:00.000Z`;
+		const limit = (seq: number): CanonicalEvent =>
+			({
+				kind: "usage_limit",
+				runId: RUN_ID,
+				branchId: "main",
+				path: [],
+				seq,
+				ts: at(seq),
+				agent: "Claude Code",
+				text: "Claude Code reached its session limit",
+				raw: "You've hit your session limit",
+			}) as CanonicalEvent;
+		const error = (seq: number, message: string): CanonicalEvent => ({
+			kind: "error",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq,
+			ts: at(seq),
+			message,
+		});
+		const resume = (seq: number): CanonicalEvent => ({
+			kind: "operator_message",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq,
+			label: null,
+			ts: at(seq),
+			text: "Try again",
+			mode: "queue",
+			delivered: true,
+		});
+		const ends = (events: CanonicalEvent[], endReason: "limited" | "blocked") =>
+			deriveTranscript(events, {
+				run: { ...ended, endReason, error: "provider refused the request" },
+			})
+				.filter((i) => i.kind === "end")
+				.map((i) => [i.key, i.tone, i.text]);
+
+		it("a stop event in the same turn as the error adds no end beside it", () => {
+			expect(
+				ends(
+					[
+						agentStep("main", 1, "Checking."),
+						limit(2),
+						error(3, "provider refused the request"),
+					],
+					"limited",
+				),
+			).toEqual([]);
+		});
+
+		it("an earlier turn's stop event does not hide a later turn's classified failure", () => {
+			const failed: CanonicalEvent = {
+				...error(5, "429 Too Many Requests"),
+				failure: { mode: "rate_limited" },
+			} as CanonicalEvent;
+			const items = deriveTranscript(
+				[
+					agentStep("main", 1, "Checking."),
+					limit(2),
+					resume(3),
+					agentStep("main", 4, "Retrying."),
+					failed,
+				],
+				{ run: { id: RUN_ID, status: "completed", live: false } },
+			);
+			expect(
+				items.filter((i) => i.kind === "end").map((i) => [i.key, i.tone, i.text]),
+			).toEqual([["main-5", "failed", "Failed: 429 Too Many Requests"]]);
+		});
+
+		it("an earlier turn's stop event does not hide the end of a later turn that was blocked", () => {
+			expect(
+				ends(
+					[
+						agentStep("main", 1, "Checking."),
+						limit(2),
+						resume(3),
+						agentStep("main", 4, "Retrying."),
+						error(5, "provider refused the request"),
+					],
+					"blocked",
+				),
+			).toEqual([["main-5", "stale", `Blocked at ${formatClock(ended.completedAt)}`]]);
+		});
+	});
 });
 
 describe("deriveTranscript: an answered question collapses to the choice (#1101)", () => {
