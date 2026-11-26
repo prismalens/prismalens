@@ -75,6 +75,57 @@ export const gemini = defineAgent({
 		vendor: "google",
 		usageReports: [],
 		settingsFile: "~/.gemini/settings.json",
+		// gemini-cli docs/reference/configuration.md, cli/trusted-folders.md (#1180).
+		configLayout: {
+			instructions: [
+				{ path: "{$GEMINI_CLI_HOME|~}/.gemini/GEMINI.md", scope: "global" },
+				{ path: "<ancestors>/GEMINI.md", scope: "repo" },
+			],
+			skills: [
+				{ path: "{$GEMINI_CLI_HOME|~}/.gemini/skills", scope: "global" },
+				{ path: "~/.agents/skills", scope: "global" },
+				{ path: "<repo>/.gemini/skills", scope: "repo" },
+			],
+			mcp: [
+				{
+					path: "{$GEMINI_CLI_HOME|~}/.gemini/settings.json",
+					scope: "global",
+					format: "json",
+					key: "mcpServers",
+				},
+				{
+					path: "<repo>/.gemini/settings.json",
+					scope: "repo",
+					format: "json",
+					key: "mcpServers",
+				},
+			],
+			hooks: [
+				{
+					path: "{$GEMINI_CLI_HOME|~}/.gemini/settings.json",
+					scope: "global",
+					format: "json",
+					key: "hooks",
+				},
+				{
+					path: "<repo>/.gemini/settings.json",
+					scope: "repo",
+					format: "json",
+					key: "hooks",
+				},
+			],
+			plugins: [
+				{
+					path: "{$GEMINI_CLI_HOME|~}/.gemini/extensions",
+					scope: "global",
+					format: "dir",
+				},
+			],
+			trust: {
+				path: "{$GEMINI_CLI_HOME|~}/.gemini/trustedFolders.json",
+				gate: "agent",
+			},
+		},
 		ownSettingsNote: () =>
 			"Gemini CLI's own folder trust and settings apply, as in your terminal.",
 		channel: channelOf(pin),

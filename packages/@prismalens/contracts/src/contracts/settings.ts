@@ -8,6 +8,17 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
+	AgentLoadoutInputSchema,
+	AgentLoadoutSchema,
+	ApproveSharedServerInputSchema,
+	RevealSharedRowInputSchema,
+	SetSharedMembershipInputSchema,
+	SharedServerPreviewSchema,
+	SharedSetSchema,
+	SharedSourceSchema,
+	UpdateSharedSetInputSchema,
+} from "../schemas/agent-setup.js";
+import {
 	AboutSchema,
 	CheckHarnessInputSchema,
 	DangerOperationResultSchema,
@@ -348,5 +359,101 @@ export const settingsContract = {
 			})
 			.input(PersonSettingsSchema)
 			.output(PersonSettingsSchema),
+	},
+	/** What loads into each agent, and the one PrismaLens set beside its own (#1180 §3.1, §3.3). */
+	agentSetup: {
+		loadout: oc
+			.route({
+				method: "GET",
+				path: "/settings/harness/loadout",
+				summary:
+					"What an agent loads for a project and profile: on disk, and as its last matching session reported",
+				tags: ["settings"],
+			})
+			.input(AgentLoadoutInputSchema)
+			.output(AgentLoadoutSchema),
+		sharedSet: oc
+			.route({
+				method: "GET",
+				path: "/settings/agents/shared-set",
+				summary:
+					"The PrismaLens set: instructions and a view of each shared server",
+				tags: ["settings"],
+			})
+			.output(SharedSetSchema),
+		updateSharedSet: oc
+			.route({
+				method: "PATCH",
+				path: "/settings/agents/shared-set",
+				summary:
+					"Change the set's instructions, who gets them, or the first-run choice",
+				tags: ["settings"],
+			})
+			.input(UpdateSharedSetInputSchema)
+			.output(SharedSetSchema),
+		approveSharedServer: oc
+			.route({
+				method: "PUT",
+				path: "/settings/agents/shared-set/servers",
+				summary:
+					"Approve one shared MCP server whole: definition, values and recipients",
+				tags: ["settings"],
+			})
+			.input(ApproveSharedServerInputSchema)
+			.output(SharedSetSchema),
+		removeSharedServer: oc
+			.route({
+				method: "POST",
+				path: "/settings/agents/shared-set/servers/remove",
+				summary: "Remove one shared MCP server and its values",
+				tags: ["settings"],
+			})
+			.input(z.object({ name: z.string().min(1).max(40) }))
+			.output(SharedSetSchema),
+		setSharedMembership: oc
+			.route({
+				method: "PUT",
+				path: "/settings/agents/shared-set/member",
+				summary:
+					"Add an agent to, or take it out of, every shared server and the instructions",
+				tags: ["settings"],
+			})
+			.input(SetSharedMembershipInputSchema)
+			.output(SharedSetSchema),
+		sharedSources: oc
+			.route({
+				method: "GET",
+				path: "/settings/agents/shared-set/sources",
+				summary:
+					"User-scope MCP servers in installed agents' own config a share can start from",
+				tags: ["settings"],
+			})
+			.output(
+				z.array(
+					SharedSourceSchema.extend({
+						transport: z.enum(["stdio", "http", "sse"]).nullable(),
+					}),
+				),
+			),
+		previewSharedServer: oc
+			.route({
+				method: "POST",
+				path: "/settings/agents/shared-set/preview",
+				summary:
+					"A source server with every argument and the URL path masked (this computer only)",
+				tags: ["settings"],
+			})
+			.input(SharedSourceSchema)
+			.output(SharedServerPreviewSchema),
+		revealSharedServerRow: oc
+			.route({
+				method: "POST",
+				path: "/settings/agents/shared-set/reveal",
+				summary:
+					"One argument or the URL path of a source server (this computer only)",
+				tags: ["settings"],
+			})
+			.input(RevealSharedRowInputSchema)
+			.output(z.object({ value: z.string() })),
 	},
 };

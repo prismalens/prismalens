@@ -1,0 +1,359 @@
+// @vitest-environment happy-dom
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
+import type {
+	SharedMcpServerView,
+	SharedServerPreview,
+	SharedSet,
+	SharedSource,
+} from "@prismalens/contracts";
+import type React from "react";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SharedSetView, ShareServerForm } from "./SharedSetSettings";
+
+vi.mock("@/components/ui/select", async () => {
+	const R = await import("react");
+	const Ctx = R.createContext<{
+		value?: string;
+		onValueChange?: (v: string) => void;
+	}>({});
+	return {
+		Select: ({
+			value,
+			onValueChange,
+			children,
+		}: {
+			value?: string;
+			onValueChange?: (v: string) => void;
+			children: React.ReactNode;
+		}) => (
+			<Ctx.Provider value={{ value, onValueChange }}>{children}</Ctx.Provider>
+		),
+		SelectTrigger: () => null,
+		SelectValue: () => null,
+		SelectContent: ({ children }: { children: React.ReactNode }) => (
+			<div data-testid="stub-select">{children}</div>
+		),
+		SelectItem: ({
+			value,
+			children,
+		}: {
+			value: string;
+			children: React.ReactNode;
+		}) => {
+			const c = R.useContext(Ctx);
+			return (
+				<button
+					type="button"
+					aria-pressed={c.value === value}
+					data-testid={`stub-option-${value}`}
+					onClick={() => c.onValueChange?.(value)}
+				>
+					{children}
+				</button>
+			);
+		},
+	};
+});
+
+(
+	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
+
+const AGENTS = [
+	{ id: "claude-code", label: "Claude Code" },
+	{ id: "codex", label: "Codex" },
+];
+const labelOf = (id: string) => AGENTS.find((a) => a.id === id)?.label ?? id;
+
+const stdioSource: SharedSource = {
+	agent: "codex",
+	path: "~/.codex/config.toml",
+	key: "Docs Search",
+};
+const stdioPreview: SharedServerPreview = {
+	source: stdioSource,
+	transport: "stdio",
+	command: "/usr/bin/node",
+	args: [null, null],
+	origin: null,
+	hasPath: false,
+	removed: [],
+	env: ["DOCS_TOKEN"],
+	headers: [],
+};
+const httpSource: SharedSource = {
+	agent: "claude-code",
+	path: "~/.claude.json",
+	key: "tickets",
+};
+const httpPreview: SharedServerPreview = {
+	source: httpSource,
+	transport: "http",
+	command: null,
+	args: [],
+	origin: "https://mcp.example.com",
+	hasPath: true,
+	removed: ["sign-in", "query"],
+	env: [],
+	headers: ["Authorization"],
+};
+const REVEALED: Record<string, string> = {
+	"0": "server.js",
+	"1": "--key=abc",
+	path: "/v1/mcp",
+};
+
+const onPick = vi.fn();
+const onReveal = vi.fn(async (row: number | "path") => REVEALED[String(row)]);
+const onApprove = vi.fn();
+
+let container: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+	container = document.createElement("div");
+	document.body.appendChild(container);
+	root = createRoot(container);
+	onPick.mockClear();
+	onReveal.mockClear();
+	onApprove.mockClear();
+});
+
+afterEach(async () => {
+	await act(async () => root.unmount());
+	container.remove();
+});
+
+const byId = (id: string) =>
+	container.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+const text = (id: string) => byId(id)?.textContent ?? null;
+const click = async (id: string) => {
+	await act(async () => byId(id)?.click());
+};
+const type = async (id: string, value: string) => {
+	const el = byId(id) as HTMLInputElement;
+	const set = Object.getOwnPropertyDescriptor(
+		HTMLInputElement.prototype,
+		"value",
+	)?.set;
+	await act(async () => {
+		set?.call(el, value);
+		el.dispatchEvent(new Event("input", { bubbles: true }));
+	});
+};
+const approveDisabled = () =>
+	(byId("share-approve") as HTMLButtonElement).disabled;
+
+const renderForm = async (
+	source: SharedSource,
+	preview: SharedServerPreview,
+) => {
+	await act(async () =>
+		root.render(
+			<ShareServerForm
+				sources={[
+					{ ...stdioSource, transport: "stdio" },
+					{ ...httpSource, transport: "http" },
+				]}
+				agents={AGENTS}
+				labelOf={labelOf}
+				initial={source}
+				preview={preview}
+				previewing={false}
+				onPick={onPick}
+				onReveal={onReveal}
+				onApprove={onApprove}
+				pending={false}
+				error={null}
+			/>,
+		),
+	);
+};
+
+describe("ShareServerForm", () => {
+	it("shows every argument as dots until that row's Reveal, and Confirm waits for it", async () => {
+		await renderForm(stdioSource, stdioPreview);
+		expect(onPick).toHaveBeenCalledWith(stdioSource);
+		expect(text("share-arg-0-value")).toBe("••••••");
+		expect(text("share-arg-1-value")).toBe("••••••");
+		expect((byId("share-arg-0-confirm") as HTMLButtonElement).disabled).toBe(
+			true,
+		);
+		await click("share-arg-0-reveal");
+		expect(onReveal).toHaveBeenCalledTimes(1);
+		expect(onReveal).toHaveBeenCalledWith(0);
+		expect(text("share-arg-0-value")).toBe("server.js");
+		expect(text("share-arg-1-value")).toBe("••••••");
+		expect((byId("share-arg-0-confirm") as HTMLButtonElement).disabled).toBe(
+			false,
+		);
+	});
+
+	it("keeps Approve disabled until every argument is confirmed or typed as Secret, then approves exactly what was shown", async () => {
+		await renderForm(stdioSource, stdioPreview);
+		expect(approveDisabled()).toBe(true);
+		await click("share-arg-0-reveal");
+		await click("share-arg-0-confirm");
+		expect(approveDisabled()).toBe(true);
+		await click("share-arg-1-secret");
+		expect(approveDisabled()).toBe(true);
+		await type("share-arg-1-secret-input", "s3cret");
+		expect(approveDisabled()).toBe(false);
+		await click("share-approve");
+		expect(onApprove).toHaveBeenCalledTimes(1);
+		expect(onApprove).toHaveBeenCalledWith({
+			name: "docs-search",
+			def: {
+				type: "stdio",
+				command: "/usr/bin/node",
+				args: ["server.js", { value: "ARG_2" }],
+				env: ["DOCS_TOKEN"],
+			},
+			values: { ARG_2: "s3cret" },
+			recipients: ["claude-code", "codex"],
+			from: stdioSource,
+		});
+		expect(text("share-form")).toContain(
+			"Starts in each thread's folder and may read config there.",
+		);
+		expect(text("share-form")).toContain(
+			"Shared as shown to every agent you pick.",
+		);
+	});
+
+	it("names what parsing took off the URL and approves only once the revealed path is confirmed", async () => {
+		await renderForm(httpSource, httpPreview);
+		expect(text("share-removed")).toBe("Removed from the URL: sign-in, query");
+		expect(text("share-path-value")).toBe("••••••");
+		expect(byId("share-path-secret")).toBeNull();
+		expect(approveDisabled()).toBe(true);
+		await click("share-path-reveal");
+		expect(onReveal).toHaveBeenCalledWith("path");
+		await click("share-path-confirm");
+		await click("share-recipient-codex");
+		expect(approveDisabled()).toBe(false);
+		await click("share-approve");
+		expect(onApprove).toHaveBeenCalledWith({
+			name: "tickets",
+			def: {
+				type: "http",
+				url: "https://mcp.example.com/v1/mcp",
+				query: [],
+				headers: ["Authorization"],
+			},
+			values: {},
+			recipients: ["claude-code"],
+			from: httpSource,
+		});
+		expect(text("share-form")).not.toContain("Starts in each thread's folder");
+	});
+});
+
+const server = (over: Partial<SharedMcpServerView>): SharedMcpServerView => ({
+	name: "docs",
+	transport: "stdio",
+	command: "node",
+	argCount: 2,
+	host: null,
+	valueNames: [],
+	missingValues: [],
+	recipients: ["claude-code"],
+	changedInSource: false,
+	fromAgent: null,
+	...over,
+});
+
+describe("SharedSetView", () => {
+	const set: SharedSet = {
+		decided: "shared",
+		instructions: "Prefer read-only commands.",
+		instructionsFor: ["claude-code"],
+		revision: "r1",
+		servers: [
+			server({ missingValues: ["DOCS_TOKEN"], valueNames: ["DOCS_TOKEN"] }),
+			server({
+				name: "tickets",
+				transport: "http",
+				command: null,
+				argCount: 0,
+				host: "mcp.example.com",
+				recipients: ["claude-code", "codex"],
+				changedInSource: true,
+				fromAgent: "codex",
+			}),
+		],
+	};
+	const onCopyAgain = vi.fn();
+	const onMember = vi.fn();
+	const renderView = () =>
+		act(async () =>
+			root.render(
+				<SharedSetView
+					set={set}
+					agents={[...AGENTS, { id: "gemini", label: "Gemini CLI" }]}
+					labelOf={labelOf}
+					canEdit
+					saving={false}
+					onSaveInstructions={vi.fn()}
+					onShare={vi.fn()}
+					onCopyAgain={onCopyAgain}
+					onRemove={vi.fn()}
+					onMember={onMember}
+				/>,
+			),
+		);
+
+	it("lists each server's transport, command and argument count or host, its recipients, Needs values and Changed in its agent with Copy again", async () => {
+		await renderView();
+		const docs = byId("shared-server-docs");
+		const tickets = byId("shared-server-tickets");
+		const inRow = (row: HTMLElement | null, id: string) =>
+			row?.querySelector(`[data-testid="${id}"]`)?.textContent ?? null;
+		expect(inRow(docs, "shared-server-line")).toBe(
+			"stdio · node · 2 arguments",
+		);
+		expect(inRow(docs, "shared-server-recipients")).toBe("To Claude Code");
+		expect(inRow(docs, "shared-server-needs-values")).toBe("Needs values");
+		expect(inRow(docs, "shared-server-changed")).toBeNull();
+		expect(inRow(tickets, "shared-server-line")).toBe("http · mcp.example.com");
+		expect(inRow(tickets, "shared-server-recipients")).toBe(
+			"To Claude Code, Codex",
+		);
+		expect(inRow(tickets, "shared-server-needs-values")).toBeNull();
+		expect(inRow(tickets, "shared-server-changed")).toBe("Changed in Codex");
+		await act(async () =>
+			tickets
+				?.querySelector<HTMLElement>('[data-testid="shared-server-copy-again"]')
+				?.click(),
+		);
+		expect(onCopyAgain).toHaveBeenCalledWith(set.servers[1]);
+	});
+
+	it("shows the instructions hint and the saved text", async () => {
+		await renderView();
+		expect(
+			byId("shared-set-instructions")?.textContent?.startsWith(
+				"InstructionsSent to agents and kept with each thread.",
+			),
+		).toBe(true);
+		expect(
+			(byId("shared-set-instructions-input") as HTMLTextAreaElement).value,
+		).toBe("Prefer read-only commands.");
+	});
+
+	it("shows an agent that is in no server or the instructions unticked, and its switch adds it", async () => {
+		await renderView();
+		expect(
+			byId("shared-set-agent-claude-code-switch")?.getAttribute("aria-checked"),
+		).toBe("true");
+		expect(
+			byId("shared-set-agent-gemini-switch")?.getAttribute("aria-checked"),
+		).toBe("false");
+		await click("shared-set-agent-gemini-switch");
+		expect(onMember).toHaveBeenCalledWith("gemini", true);
+	});
+});

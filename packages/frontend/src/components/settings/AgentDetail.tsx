@@ -56,6 +56,7 @@ import {
 } from "@/lib/api/hooks";
 import { notSignedIn, signInNext } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
+import { AgentLoadout } from "./AgentLoadout";
 import { CheckTimes, safeCheck, UNSAFE_CHECK_HINT } from "./agent-checks";
 import { EnvVarNotes, envStateWord } from "./agent-env";
 import { SignInButton } from "./SignInButton";
@@ -283,6 +284,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 						)}
 					</div>
 					<UseGroup agent={agent} />
+					{agent.installed && <AgentLoadout agent={agent} />}
 					{agent.modelVia === "acp" && <ModelsSection agent={agent} />}
 					<SettingGroup title="Runtime" testId="agent-runtime">
 						<RuntimeFields id={id} />

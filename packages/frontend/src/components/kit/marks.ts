@@ -41,6 +41,7 @@ import {
 	GitPullRequestClosed,
 	GitPullRequestDraft,
 	Globe,
+	HardDrive,
 	History,
 	Hourglass,
 	Inbox,
@@ -682,6 +683,50 @@ export const MARKS = {
 			"large-context": "Large context",
 		},
 		tones: { "no-reasoning": "muted", fast: "muted", "large-context": "muted" },
+	}),
+	/** How PrismaLens knows an agent loads an item: read on disk, or reported by a matching run (#1180 §3.1). */
+	loadedVia: defineMark({
+		id: "loadedVia",
+		icon: HardDrive,
+		icons: { reported: MessageSquare },
+		label: "Known from",
+		words: { disk: "On disk", reported: "Reported" },
+		tones: { disk: "muted", reported: "muted" },
+	}),
+	/** What becomes of one item an agent could load (#1180 §3.1); `not-sent` reads the item's own note. */
+	loadedState: defineMark({
+		id: "loadedState",
+		icon: Circle,
+		icons: {
+			loads: CircleCheck,
+			"in-project": FolderGit2,
+			off: CircleOff,
+			untrusted: ShieldAlert,
+			failed: TriangleAlert,
+			unknown: CircleHelp,
+			"not-sent": CircleSlash,
+		},
+		label: "Loads",
+		words: {
+			found: "Found",
+			loads: "Loads",
+			"in-project": "In this project",
+			off: "Off",
+			untrusted: "Untrusted folder",
+			failed: "Could not read",
+			unknown: "Unknown",
+			"not-sent": "Not sent",
+		},
+		tones: {
+			found: "muted",
+			loads: "ok",
+			"in-project": "info",
+			off: "muted",
+			untrusted: "warn",
+			failed: "danger",
+			unknown: "muted",
+			"not-sent": "warn",
+		},
 	}),
 } as const satisfies Readonly<Record<string, MarkDef>>;
 

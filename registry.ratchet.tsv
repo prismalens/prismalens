@@ -81,7 +81,6 @@ packages/@prismalens/engine/src/run/redact.test.ts	T2	2
 packages/@prismalens/engine/src/run/redact.test.ts	as-never	1
 packages/@prismalens/engine/src/run/report.test.ts	T2	6
 packages/@prismalens/engine/src/run/report.test.ts	as-never	1
-packages/@prismalens/engine/src/run/reserved-name.ts	agent-id-handmade	4
 packages/@prismalens/engine/src/run/sandbox-check.ts	agent-id-handmade	6
 packages/@prismalens/engine/src/runner/acp-client.test.ts	T1	1
 packages/@prismalens/engine/src/runner/acp-client.test.ts	T2	4

@@ -9,6 +9,7 @@ import { SettingsController } from "./settings.controller.js";
 import { ActiveRunsError, type SettingsService } from "./settings.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
 import type { HarnessRefreshService } from "../harness/harness-refresh.service.js";
+import type { AgentSetupService } from "../harness/agent-setup.service.js";
 import type { DiagnosticsService } from "./diagnostics.service.js";
 import type { UpdateService } from "./update.service.js";
 
@@ -43,6 +44,7 @@ function dangerHandlers(settings: Partial<SettingsService>) {
 		{} as UpdateService,
 		{} as DiagnosticsService,
 		{} as HarnessRefreshService,
+		{} as AgentSetupService,
 	);
 	const procedures = controller.danger() as unknown as Record<
 		string,
@@ -148,6 +150,7 @@ describe("SettingsController usage data (#673 w45)", () => {
 			{} as UpdateService,
 			{} as DiagnosticsService,
 			{} as HarnessRefreshService,
+		{} as AgentSetupService,
 		);
 		const update = (
 			controller.telemetry() as unknown as Record<
@@ -171,6 +174,7 @@ describe("SettingsController usage data (#673 w45)", () => {
 			{} as UpdateService,
 			{} as DiagnosticsService,
 			{} as HarnessRefreshService,
+		{} as AgentSetupService,
 		);
 		const update = (
 			controller.telemetry() as unknown as Record<
@@ -202,6 +206,7 @@ describe("SettingsController host-only update routes (#724)", () => {
 			update as UpdateService,
 			diagnostics as DiagnosticsService,
 			{} as HarnessRefreshService,
+		{} as AgentSetupService,
 		);
 	}
 

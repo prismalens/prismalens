@@ -56,3 +56,22 @@ export const agentOnlyPassNamedVariables = define.setting({
 	sentence: "Agents get named variables only, not your environment.",
 	also: "environment env secrets",
 });
+
+export const agentSharedSet = define.setting({
+	id: "agent.sharedSet",
+	page: "agent",
+	anchor: "agent-shared-set",
+	label: "PrismaLens set",
+	sentence:
+		"Instructions and MCP servers PrismaLens sends to the agents you pick.",
+	also: "shared mcp server instructions setup",
+});
+
+/** Drawn on each agent's own page, so search opens the Agents page's top. */
+export const agentUseSharedSet = define.setting({
+	id: "agent.useSharedSet",
+	page: "agent",
+	label: "Use PrismaLens set",
+	sentence: "This agent gets the PrismaLens set's instructions and servers.",
+	also: "shared mcp server instructions",
+});
