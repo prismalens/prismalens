@@ -2023,11 +2023,7 @@ ${about}`
 						locked={run.isActive}
 						nextSession={nextLine?.line ?? null}
 						nextSessionDetail={nextLine?.detail ?? null}
-						sharedSetFrom={
-							run.isActive || nextLine
-								? null
-								: { events: run.events, harness: inv?.harness }
-						}
+						sharedEvents={run.isActive || nextLine ? null : run.events}
 						accessHint="Kept from the first message"
 						dock={dock}
 						strip={slots.strip}
