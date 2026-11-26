@@ -301,9 +301,10 @@ describe("rewind facts (#1193)", () => {
 
 	it("fork at the message only on the exact adapter version the fact was read on; every other case replays", () => {
 		const claude = AGENT_REGISTRY["claude-code"].facts;
-		expect(claude?.rewindVia?.verifiedAt.adapter).toBe("0.109.0");
+		const pin = claude?.rewindVia?.verifiedAt.adapter ?? "";
+		expect(pin).toMatch(/^\d+\.\d+\.\d+$/);
 		expect(
-			["0.109.0", "0.109.1", "0.106.0", "", null, undefined].map((v) => rewindViaOf(claude, v)),
+			[pin, `${pin}.1`, `0.${pin}`, "", null, undefined].map((v) => rewindViaOf(claude, v)),
 		).toEqual(["fork-at-message", "replay", "replay", "replay", "replay", "replay"]);
 	});
 

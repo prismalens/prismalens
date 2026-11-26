@@ -86,7 +86,7 @@ export const opencode = {
 		rewindVia: {
 			value: "replay",
 			via: "source",
-			verifiedAt: { cli: "1.19.5", adapter: null },
+			verifiedAt: { cli: "1.19.6", adapter: null },
 			where:
 				"packages/opencode/src/acp/service.ts forkSession: session.fork has no point",
 		},

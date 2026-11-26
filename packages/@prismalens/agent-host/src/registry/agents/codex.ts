@@ -68,7 +68,7 @@ export const codex = {
 		rewindVia: {
 			value: "replay",
 			via: "source",
-			verifiedAt: { cli: "0.169.0", adapter: "2.6.0" },
+			verifiedAt: { cli: "0.171.0", adapter: "2.8.0" },
 			where: "dist/index.js resolveForkTurnId, readAirForkPoint",
 		},
 	},
