@@ -38,6 +38,7 @@ import { getErrorMessage } from "@/lib/get-error-message";
 import { lazyPart } from "@/lib/lazy";
 import { settleEndsLine } from "@/lib/settle-holds";
 import { threadLink } from "@/lib/thread-rows";
+import { rowSettleable, rowSettled } from "@/lib/thread-status";
 import type {
 	PageState,
 	ThreadCtx,
@@ -71,7 +72,10 @@ export type MenuThread = Pick<
 	| "settledAt"
 	| "pinnedAt"
 	| "archivedAt"
->;
+> &
+	Partial<
+		Pick<ThreadRow, "section" | "state" | "waitingAsk" | "awaitingApprovalAt">
+	>;
 
 /** Why an item cannot run now, or null when it can. */
 export function disabledWhy(
@@ -140,7 +144,10 @@ export function useThreadCtx(
 		onUnsettled,
 		onDone,
 		scheduleFrom,
+		row = false,
 	}: {
+		/** A row's menu offers Settle by the row's own rule, never on an ask. */
+		row?: boolean;
 		/** The row renames in place; without it the menu asks in a dialog. */
 		onRename?: () => void;
 		onSettle?: () => void;
@@ -227,6 +234,22 @@ export function useThreadCtx(
 		}),
 		toggleArchive: done(doArchive),
 		settle: done(() => onSettle?.()),
+		unsettle: done(() => {
+			// The reader moved this row back to Threads: the list applies it now (#1247 D25).
+			userMovedThreads([thread.id]);
+			onUnsettled?.(null);
+			void threadMenuMutations
+				.settle(queryClient)
+				.mutate({ id: thread.id, settled: false })
+				.catch((e: unknown) => {
+					onUnsettled?.(undefined);
+					toast({
+						title: "Not unsettled",
+						description: getErrorMessage(e),
+						variant: "destructive",
+					});
+				});
+		}),
 		open: done(() => void navigate(threadLink(thread))),
 		openWithPanel: done(
 			() =>
@@ -263,8 +286,8 @@ export function useThreadCtx(
 				pinned: !!thread.pinnedAt,
 				archived: !!thread.archivedAt,
 				live: isWorkflowLive(thread.status),
-				settleable: !!onSettle,
-				settled: !!thread.settledAt,
+				settleable: !!onSettle && (!row || rowSettleable(thread)),
+				settled: rowSettled(thread),
 				standalone,
 				naming,
 				project: standalone && !!thread.repositoryId,
@@ -340,6 +363,7 @@ export function ThreadMenu({
 		onSettle,
 		scheduleFrom,
 		onUnsettled,
+		row: where === "row",
 	});
 	const { dialog } = base;
 	const ctx: ThreadCtx = page
@@ -395,7 +419,11 @@ export function ThreadContextMenu({
 	onSettle?: () => void;
 	children: ReactElement;
 }) {
-	const { ctx, dialog } = useThreadCtx(thread, { onRename, onSettle });
+	const { ctx, dialog } = useThreadCtx(thread, {
+		onRename,
+		onSettle,
+		row: true,
+	});
 	return (
 		<>
 			<Surface id="thread.row" ctx={ctx}>
