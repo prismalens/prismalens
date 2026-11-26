@@ -85,6 +85,12 @@ describe("statusReason (#1101 category 2)", () => {
 		expect(reason).toBe("Working, quiet for 12 min");
 	});
 
+	it("a row failed by its PR's checks names the PR, over the run's own error (#1193)", () => {
+		const reason = (number: number | null) =>
+			statusReason({ error: "harness exceeded its wall clock (1800 s)" } as ThreadRow, { status: "failed", checks: { number } }, 0, fixedClock);
+		expect([reason(77), reason(null)]).toEqual(["Checks failing on PR #77", "Checks failing on its PR"]);
+	});
+
 	it("words a failed row's raw error, never quoting it", () => {
 		const reason = (error: string | null) =>
 			statusReason({ error } as ThreadRow, { status: "failed" }, 0, fixedClock);

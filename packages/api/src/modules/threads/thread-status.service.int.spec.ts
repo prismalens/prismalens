@@ -156,6 +156,35 @@ describe("ThreadStatusService (#1101)", () => {
 		});
 	});
 
+	it("a done thread whose newest PR is open with failing checks reads failed with that PR's number, and a merged one with failing checks stays done (#1193)", async () => {
+		const prisma = await pl.prisma();
+		const failing = await createThread("pr with failing checks", "completed");
+		const merged = await createThread("merged pr with failing checks", "completed");
+		const checks = JSON.stringify({ state: "failing", total: 3, failed: 1, pending: 0 });
+		const pr = (investigationId: string, number: number, state: string) =>
+			prisma.pullRequest.create({
+				data: {
+					investigationId,
+					host: "github",
+					url: `https://github.com/acme/repo/pull/${number}`,
+					repo: "acme/repo",
+					number,
+					source: "branch",
+					state,
+					headSha: "head123",
+					checks,
+				},
+			});
+		await pr(failing, 77, "open");
+		await pr(merged, 78, "merged");
+		const now = new Date();
+		const row = (id: string) => ({ id, status: "completed", awaitingApprovalAt: null, autoPause: null, lastActivityAt: now });
+
+		const statuses = await pl.resolve<ThreadStatusService>(ThreadStatusService)!.statuses([row(failing), row(merged)], now);
+
+		expect([statuses.get(failing), statuses.get(merged)?.status]).toEqual([{ status: "failed", checks: { number: 77 } }, "done"]);
+	});
+
 	it("a migrated watch keeps the wait condition it was set with", async () => {
 		const prisma = await pl.prisma();
 		const threadId = await createThread("migrated pr watch", "completed");
