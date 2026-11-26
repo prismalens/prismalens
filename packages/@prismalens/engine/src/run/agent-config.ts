@@ -17,6 +17,7 @@ import {
 	resolve,
 	sep,
 } from "node:path";
+import { AGENT_REGISTRY } from "@prismalens/agent-host";
 import {
 	type ConfigLayout,
 	HARNESS_REGISTRY,
@@ -335,13 +336,17 @@ export function foundMcpNames(
 	];
 }
 
-/** MCP servers defined only in the launch env's inline config; unparseable config names none. */
+/**
+ * MCP servers defined only in the launch env's inline config: the JSON env var the agent's check
+ * isolation merges into, under the key its config files keep servers in. Unparseable names none.
+ */
 function inlineMcpNames(agent: string, env: Env): string[] {
-	const inline = layoutOf(agent)?.inlineMcp;
-	const raw = inline ? env[inline.env] : undefined;
-	if (!raw || !inline) return [];
+	const name = AGENT_REGISTRY[agent as HarnessId]?.probeIsolation?.config?.key;
+	const key = layoutOf(agent)?.mcp[0]?.key;
+	const raw = name ? env[name] : undefined;
+	if (!raw || !key) return [];
 	try {
-		const servers = (JSON.parse(raw) as Record<string, unknown>)?.[inline.key];
+		const servers = (JSON.parse(raw) as Record<string, unknown>)?.[key];
 		return isRecord(servers) ? Object.keys(servers) : [];
 	} catch {
 		return [];

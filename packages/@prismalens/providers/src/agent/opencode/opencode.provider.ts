@@ -79,7 +79,6 @@ export const opencode = defineAgent({
 		settingsFile: "~/.config/opencode/opencode.json",
 		// opencode.ai/docs/{rules,skills,plugins,config}; Claude's files only where no AGENTS.md (#1180).
 		configLayout: {
-			inlineMcp: { env: "OPENCODE_CONFIG_CONTENT", key: "mcp" },
 			instructions: [
 				{
 					path: "{$XDG_CONFIG_HOME|~/.config}/opencode/AGENTS.md",
