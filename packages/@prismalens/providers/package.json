@@ -30,7 +30,7 @@
 	"devDependencies": {
 		"@prismalens/registry": "workspace:*",
 		"@types/node": "catalog:",
-		"@vitest/coverage-v8": "^5.1.0",
+		"@vitest/coverage-v8": "^5.1.1",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	},

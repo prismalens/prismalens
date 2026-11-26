@@ -3,6 +3,7 @@
 
 import {
 	channelOf,
+	codingPlan,
 	defineAgent,
 	installCommand,
 	noModeLines,
@@ -28,11 +29,24 @@ export const deepagents = defineAgent({
 	],
 	auth: {
 		methods: [
+			codingPlan(["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]),
 			{
 				id: "api-key",
 				label: "ANTHROPIC_API_KEY or OPENAI_API_KEY",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "ANTHROPIC_API_KEY" }, { name: "OPENAI_API_KEY" }],
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://www.anthropic.com/legal/consumer-terms",
+						clause:
+							"Except when you are accessing our Services via an Anthropic API Key or where we otherwise explicitly permit it, to access the Services through automated or non-human means, whether through a bot, script, or otherwise.",
+						readOn: "2026-11-26",
+					},
+					gaps: [
+						"OpenAI's terms for an OPENAI_API_KEY, read for Codex and not for this agent",
+					],
+				},
 			},
 		],
 	},

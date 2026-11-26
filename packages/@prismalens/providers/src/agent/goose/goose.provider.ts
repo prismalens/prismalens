@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineAgent, modeNamed } from "../family.ts";
+import { codingPlan, defineAgent, modeNamed } from "../family.ts";
 
 export const goose = defineAgent({
 	id: "agent.goose",
@@ -32,13 +32,40 @@ export const goose = defineAgent({
 				id: "login",
 				label: "goose configure",
 				steps: ["terminal"],
-				unattended: true,
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/goose-cli-commands.md",
+						clause: "Create a new scheduled job.",
+						readOn: "2026-11-26",
+					},
+					gaps: ["the terms of the provider goose is configured to use"],
+				},
 			},
+			codingPlan([
+				{
+					name: "ANTHROPIC_API_KEY",
+					when: { name: "GOOSE_PROVIDER", is: "anthropic" },
+				},
+				{
+					name: "OPENAI_API_KEY",
+					when: { name: "GOOSE_PROVIDER", is: "openai" },
+				},
+			]),
 			{
 				id: "api-key",
 				label: "GOOSE_PROVIDER and that provider's key",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "GOOSE_PROVIDER" }],
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/goose-cli-commands.md",
+						clause: "Create a new scheduled job.",
+						readOn: "2026-11-26",
+					},
+					gaps: ["the terms of the provider goose is configured to use"],
+				},
 			},
 		],
 	},

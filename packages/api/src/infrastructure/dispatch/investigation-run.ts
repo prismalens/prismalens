@@ -34,6 +34,7 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
+	harnessTermsGate,
 	type ModelSource,
 	reopens,
 	resolveAccess,
@@ -418,6 +419,9 @@ async function runJobInternal(
 		});
 		const { selection, model, modelSource, effort, customModel } = resolved;
 		if (!selection.runnable) throw new Error(selection.reason);
+		const runtime = await ports.agentRuntime(selection.harness);
+		const secrets = await secretOptions(ports, data.investigationId, runtime);
+		refuseByTerms(selection.harness, runtime, secrets, startedByOf(data));
 		// Off the run's path: a slow or failing title never delays it (#1101).
 		const alert = data.alerts?.[0];
 		const firstText =
@@ -544,7 +548,6 @@ async function runJobInternal(
 		// A chat run's message is its whole first turn, with its own files (#673).
 		const brief = data.chat?.text ?? data.brief;
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
-		const runtime = await ports.agentRuntime(selection.harness);
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
 		// A side question gets no PrismaLens tools: it answers from what it was given.
 		const gateway = await (data.toolFree ? undefined : ports.gateway)
@@ -589,7 +592,7 @@ async function runJobInternal(
 				...(data.chat ? { kind: "chat" as const } : {}),
 				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
 				...runOptionsOf(runtime, data),
-				...(await secretOptions(ports, runId, runtime)),
+				...secrets,
 				...turnInputPort(ports, runId),
 				...deliveredPort(ports, runId, harness),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
@@ -1118,6 +1121,14 @@ async function runFollowUp(
 				`${row.label} can't reopen a finished session, so a new run starts from the report.`,
 			);
 		const runtime = await ports.agentRuntime(harness);
+		const secrets = await secretOptions(ports, id, runtime);
+		// A follow-up is a person's message; an alert run, or any run a restart recovers, is its starter's.
+		refuseByTerms(
+			harness,
+			runtime,
+			secrets,
+			data.unattended || resume.restart ? startedByOf(data) : "person",
+		);
 		if (!harnessLaunch(row, launchProbeOfRuntime(runtime)))
 			throw new Error(`${row.label} is no longer installed.`);
 		const recorded = RunWorkspaceSchema.parse(JSON.parse(inv.workspace));
@@ -1343,7 +1354,7 @@ async function runFollowUp(
 				...(data.unattended ? { unattended: true } : {}),
 				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...runOptionsOf(runtime, data),
-				...(await secretOptions(ports, id, runtime)),
+				...secrets,
 				...turnInputPort(ports, id),
 				...deliveredPort(ports, id, harness),
 				sessionCause: resume.restart
@@ -1793,6 +1804,21 @@ export function followUpModelSource(
 		...agentEnv,
 	});
 	return now.model === model ? now.source : "operator";
+}
+
+/** Throws, before the agent starts, when the sign-in the run's env (secrets included) uses bars this starter (#1252). */
+function refuseByTerms(
+	harness: HarnessId,
+	runtime: AgentRuntime,
+	secrets: Pick<RunInvestigationOptions, "env">,
+	startedBy: StartedBy,
+): void {
+	const gate = harnessTermsGate(
+		harness,
+		{ ...process.env, ...runtime.env, ...secrets.env },
+		startedBy,
+	);
+	if (gate) throw new Error(gate.refuse);
 }
 
 /** A run's spawn inputs from Settings → Agent (#907). */

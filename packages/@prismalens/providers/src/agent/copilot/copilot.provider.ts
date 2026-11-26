@@ -43,13 +43,39 @@ export const copilot = defineAgent({
 				id: "login",
 				label: "GitHub account",
 				steps: ["terminal", "browser"],
-				unattended: true,
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically",
+						clause:
+							"This allows you to use Copilot directly from the terminal, but also allows you to use the CLI programmatically in scripts, CI/CD pipelines, and automation workflows.",
+						readOn: "2026-11-26",
+					},
+					against: {
+						url: "https://docs.github.com/en/site-policy/acceptable-use-policies/github-acceptable-use-policies",
+						clause:
+							"using our servers for any form of excessive automated bulk activity",
+						readOn: "2026-11-26",
+					},
+					gaps: [
+						"GitHub's Generative AI Services Terms, for Copilot Business and Enterprise",
+					],
+				},
 			},
 			{
 				id: "api-key",
 				label: "COPILOT_GITHUB_TOKEN",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "COPILOT_GITHUB_TOKEN" }],
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli",
+						clause:
+							"Recommended for CI/CD pipelines, containers, and non-interactive environments.",
+						readOn: "2026-11-26",
+					},
+				},
 			},
 		],
 	},

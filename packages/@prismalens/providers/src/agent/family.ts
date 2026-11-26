@@ -5,6 +5,17 @@ import {
 	defineProvider,
 	type ProviderDef,
 	type ProviderSpec,
+	type SignInEnv,
+	type SignInMethod,
+} from "../descriptor.ts";
+
+export {
+	type SignInEnv,
+	type SignInMethod,
+	TERMS_RUNS,
+	type Terms,
+	type TermsRuns,
+	type TermsSource,
 } from "../descriptor.ts";
 
 /** agent-host's permission levels; config's derivation fails to type-check if they part. */
@@ -190,6 +201,44 @@ export function channelOf(pin: AgentPin): InstallChannel {
 	throw new Error(
 		`${pin.cli.package}: channel ${pin.cli.channel} is not npm or pypi`,
 	);
+}
+
+/**
+ * Alibaba's Coding Plan key, in whichever agent's env carries it: the plan's own terms bar
+ * non-interactive use in any tool, so it is its own sign-in path ahead of the agent's key.
+ */
+export function codingPlan(
+	keys: readonly (string | Omit<SignInEnv, "prefix">)[],
+	baseUrl?: string,
+): SignInMethod {
+	return {
+		id: "coding-plan",
+		label: "Alibaba Coding Plan key (sk-sp-)",
+		steps: ["credentials"],
+		env: [
+			...keys.map((k) => ({
+				...(typeof k === "string" ? { name: k } : k),
+				prefix: "sk-sp-",
+			})),
+			...(baseUrl
+				? [
+						{
+							name: baseUrl,
+							prefix: "https://coding-intl.dashscope.aliyuncs.com",
+						},
+					]
+				: []),
+		],
+		terms: {
+			runs: "interactive-only",
+			source: {
+				url: "https://www.alibabacloud.com/help/en/model-studio/coding-plan",
+				clause:
+					"Do not use the plan's API key for automated scripts, application backends, or other non-interactive scenarios.",
+				readOn: "2026-11-26",
+			},
+		},
+	};
 }
 
 /** The pin's `tested`, spread into the facts only when a compatibility run recorded one. */
