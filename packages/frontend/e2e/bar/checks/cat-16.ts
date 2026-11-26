@@ -734,10 +734,23 @@ export default defineChecks([
 				await expect(page.getByTestId("rewind-restore-preview")).toBeVisible({
 					timeout: 30_000,
 				});
+				// The server's answer first: a refusal or a slow write then reads as itself, not as a missing row.
+				const answered = page.waitForResponse(
+					(r) =>
+						r.url().includes("/rewind/restore") &&
+						r.request().method() === "POST",
+					{ timeout: 60_000 },
+				);
 				await page.getByRole("button", { name: "Restore" }).last().click();
-				await expect(page.getByTestId("rewind-restored").first()).toBeVisible({
-					timeout: 30_000,
-				});
+				const answer = await (await answered).json().catch(() => null);
+				if (answer?.state !== "done")
+					fails.push(`Restore answered ${JSON.stringify(answer)}`);
+				else
+					await expect(page.getByTestId("rewind-restored").first()).toBeVisible(
+						{
+							timeout: 30_000,
+						},
+					);
 			}
 
 			// A folded ask closing as superseded is covered in rewind.service.int.spec.ts and
