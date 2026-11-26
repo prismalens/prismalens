@@ -1729,6 +1729,32 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(promptText).not.toContain("METHOD (work iteratively");
 	});
 
+	it("a Claude Code clean-profile run sends the clean profile's options in session/new (#1180 §3.4)", async () => {
+		const configDir = tmp("claude-config");
+		const { runDir } = await collect("ok", {
+			harness: "claude-code",
+			env: { ...process.env, FAKE_ACP_MODE: "ok", CLAUDE_CONFIG_DIR: configDir },
+			cleanProfile: { mcp: ["user-srv"] },
+			descriptor: {
+				...opts("ok").descriptor,
+				facts: HARNESS_REGISTRY["claude-code"].facts,
+				sessionMeta: HARNESS_REGISTRY["claude-code"].sessionMeta,
+			},
+		});
+		const sessionNew = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((e) => e.d === "out")
+			.map((e) => JSON.parse(e.m) as { method?: string; params?: any })
+			.find((m) => m.method === "session/new");
+		const options = sessionNew?.params?._meta?.claudeCode?.options;
+		expect(options.settingSources).toEqual(["project", "local"]);
+		expect(options.strictMcpConfig).toBe(true);
+		expect(options.settings).toEqual({ disableAllHooks: true, enabledPlugins: {} });
+		expect(options.disallowedTools).toEqual(["EnterPlanMode", "ExitPlanMode"]);
+	});
+
 	it("session/new does not carry systemPrompt when kind is chat or descriptor lacks claude-meta (#817)", async () => {
 		const chatRun = await collect("ok", {
 			kind: "chat",

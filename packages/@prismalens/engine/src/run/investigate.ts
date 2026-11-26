@@ -789,6 +789,8 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	args: string[];
 	runEnv: HarnessRunEnv;
 	launch: HarnessLaunch;
+	/** The clean profile's session `_meta`, merged over the row's; absent without one. */
+	sessionMeta?: Record<string, unknown>;
 } {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const companionPath = descriptor.companionBinary
@@ -849,7 +851,15 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		descriptor: { ...AGENT_REGISTRY[opts.harness], ...descriptor },
 	});
 	writeLaunchFiles(plan);
-	return { env: plan.env, args: plan.args, runEnv: plan.runEnv, launch };
+	return {
+		env: plan.env,
+		args: plan.args,
+		runEnv: plan.runEnv,
+		launch,
+		...(opts.cleanProfile && plan.sessionMeta
+			? { sessionMeta: plan.sessionMeta }
+			: {}),
+	};
 }
 
 /** A return waits this long for work the reopened agent starts on its own, before it sends anything. */
@@ -964,7 +974,12 @@ async function* runSession(
 		access.mechanism,
 		opts.runtimeNote,
 	);
-	const { env, args, launch } = prepareRunEnv({
+	const {
+		env,
+		args,
+		launch,
+		sessionMeta: cleanMeta,
+	} = prepareRunEnv({
 		...opts,
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
@@ -1098,7 +1113,14 @@ async function* runSession(
 				Date.now() - spawnedAt,
 			),
 		sessionMeta: sessionMetaOf(
-			descriptor.sessionMeta?.(),
+			cleanMeta
+				? mergeConfigPatch(
+						(descriptor.sessionMeta?.() ?? {}) as Parameters<
+							typeof mergeConfigPatch
+						>[0],
+						cleanMeta as Parameters<typeof mergeConfigPatch>[1],
+					)
+				: descriptor.sessionMeta?.(),
 			[brief, inSystemPrompt ? sharedText : null].filter(
 				(t): t is string => !!t,
 			),
