@@ -36,10 +36,18 @@ export const deepagents = {
 	modeNames: {},
 	modeMechanism: "none",
 	modelVia: "unsupported",
-	facts: probed({
-		loadSession: true,
-		images: true,
-		embeddedContext: false,
-		directories: false,
-	}),
+	facts: {
+		...probed({
+			loadSession: true,
+			images: true,
+			embeddedContext: false,
+			directories: false,
+		}),
+		rewindVia: {
+			value: "replay",
+			via: "source",
+			verifiedAt: { cli: "0.2.1", adapter: null },
+			where: "libs/acp/deepagents_acp/server.py initialize: load_session only",
+		},
+	},
 } satisfies AgentDescriptor;

@@ -48,6 +48,23 @@ export interface AgentFacts {
 	regroupsLinks?: AgentFact<true, "source">;
 	/** What a stop does to its sub-agents; absent, unknown. */
 	subagentsOnStop?: AgentFact<SubagentStopFacts, "source">;
+	/**
+	 * How a rewind continues the agent's session (#1193); absent means `replay`. A
+	 * `fork-at-message` fact holds only on the adapter version in its `verifiedAt` (R1).
+	 */
+	rewindVia?: AgentFact<"fork-at-message" | "replay", "source">;
+}
+
+/** The rewind path an agent's facts allow on the adapter version `initialize` reported. */
+export function rewindViaOf(
+	facts: AgentFacts | undefined,
+	adapterVersion: string | null | undefined,
+): "fork-at-message" | "replay" {
+	const f = facts?.rewindVia;
+	if (f?.value !== "fork-at-message") return "replay";
+	return adapterVersion && adapterVersion === f.verifiedAt.adapter
+		? "fork-at-message"
+		: "replay";
 }
 
 /** As much of an `initialize` answer as the probed facts read. */
@@ -61,6 +78,7 @@ export interface InitializeAnswer {
 		sessionCapabilities?: {
 			resume?: unknown;
 			additionalDirectories?: unknown;
+			fork?: unknown;
 		} | null;
 	} | null;
 }
@@ -91,12 +109,19 @@ export function factMismatches(
 	init: InitializeAnswer,
 ): string[] {
 	if (!facts) return [];
-	return (Object.keys(PROBED_FACTS) as Probed[]).flatMap((name) => {
+	const probed = (Object.keys(PROBED_FACTS) as Probed[]).flatMap((name) => {
 		const seen = PROBED_FACTS[name](init);
 		return seen === facts[name].value
 			? []
 			: [`${name}: registry ${facts[name].value}, agent ${seen}`];
 	});
+	// A source fact the probe can still refute: a fork-at-message agent must offer session/fork (#1193).
+	const fork =
+		facts.rewindVia?.value === "fork-at-message" &&
+		init.agentCapabilities?.sessionCapabilities?.fork == null
+			? ["rewindVia: registry fork-at-message, agent offers no session/fork"]
+			: [];
+	return [...probed, ...fork];
 }
 
 /** Each source-read fact not read on `at`, as `name (source, cli X, adapter Y)`; probed facts are asserted live. */

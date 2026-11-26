@@ -29,6 +29,7 @@ const { actionReason } = await import("../threads/threads.service.js");
 const { nodeState, threadLink } = await import("./thread-tree.service.js");
 const { FollowUpRefused } = await import("../../infrastructure/dispatch/dispatch.service.js");
 const { InboxService } = await import("../wakes/inbox.service.js");
+type RewindService = import("../threads/rewind.service.js").RewindService;
 
 type Prisma = InstanceType<typeof PrismaService>;
 let prisma: Prisma;
@@ -159,12 +160,12 @@ let actions: InstanceType<typeof PendingActionsService>;
 let tree: InstanceType<typeof ThreadTreeService>;
 let settings: InstanceType<typeof TreeSettings>;
 
-function build() {
+function build(rewinds?: RewindService) {
 	settings = new TreeSettings(prisma);
 	const io = new TreeIo(prisma, dispatch as never, investigations as never, relay as never);
 	actions = new PendingActionsService(prisma, settings, io, asks);
 	(globalThis as { __actions?: unknown }).__actions = actions;
-	tree = new ThreadTreeService(prisma, threads as never, dispatch as never, investigations as never, settings, actions, io);
+	tree = new ThreadTreeService(prisma, threads as never, dispatch as never, investigations as never, settings, actions, io, undefined, undefined, rewinds);
 	return { io };
 }
 
@@ -230,6 +231,68 @@ beforeEach(async () => {
 	vi.clearAllMocks();
 	asks = new FakeAsks();
 	build();
+});
+
+describe("pl_thread_rewind's result (#1193)", () => {
+	it("Given an approved edit its thread did not send, Then the caller hears why instead of that the thread continues", async () => {
+		const why = "PrismaLens could not tell whether the edited message was sent. Check the thread before sending it again.";
+		const fake: Pick<RewindService, "preview" | "rewind"> = {
+			preview: async () => ({ block: null }) as Awaited<ReturnType<RewindService["preview"]>>,
+			rewind: async () => ({ state: "done", rewindId: randomUUID(), reverted: [], kept: [], sent: false, why }),
+		};
+		build(fake as unknown as RewindService);
+		tree.canRead = async () => true;
+		const caller = await thread();
+		const target = await thread({ status: "completed", title: "db" });
+		live.add(caller.id);
+		const args = { threadId: target.id, seq: 3, messageOrdinal: 3, revision: 0, repos: {}, include: [], text: "Use port 8080", turns: 1, card: "Folds 1 turn." };
+		value(await actions.gate({ callerId: caller.id, rootId: caller.id, tool: "pl_thread_rewind", args, requestId: "rw1" }));
+		const [open] = await asks.pending(caller.id);
+
+		await asks.decide(open?.askId as string, "approve");
+
+		expect(sent.find((m) => m.id === caller.id)?.text).toContain(
+			`Rewound ${threadLink(target)}: 1 turn folded, 0 files set back, 0 kept. ${why}`,
+		);
+	});
+});
+
+describe("pl_thread_rewind after a restart (#1193)", () => {
+	it("Given an approved edit whose rewind committed before a restart, Then boot delivers the stored rewind with its reason, once, without checking it again", async () => {
+		const why = "PrismaLens restarted during this edit, so the edited message may already have been sent. Check the thread before sending it again, or Undo.";
+		const rewound: { rewindId?: string }[] = [];
+		const fake: Pick<RewindService, "preview" | "rewind"> = {
+			preview: vi.fn(async () => ({ block: null }) as Awaited<ReturnType<RewindService["preview"]>>),
+			rewind: async (input) => {
+				rewound.push({ rewindId: input.rewindId });
+				return { state: "done", rewindId: input.rewindId as string, reverted: [], kept: [], sent: false, why };
+			},
+		};
+		build(fake as unknown as RewindService);
+		tree.canRead = async () => true;
+		const caller = await thread();
+		const target = await thread({ status: "completed", title: "db" });
+		live.add(caller.id);
+		const args = { threadId: target.id, seq: 3, messageOrdinal: 3, revision: 0, repos: {}, include: [], text: "Use port 8080", turns: 1, card: "Folds 1 turn." };
+		value(await actions.gate({ callerId: caller.id, rootId: caller.id, tool: "pl_thread_rewind", args, requestId: "rw2" }));
+		const row = await prisma.pendingAction.findFirstOrThrow();
+		await prisma.pendingAction.update({ where: { id: row.id }, data: { state: "executing", decidedAt: new Date() } });
+		// The rewind's marker committed, keyed by the action's id, before PrismaLens stopped.
+		await prisma.investigationEvent.create({
+			data: { investigationId: target.id, seq: 9, branchId: "rewinds", event: JSON.stringify({ kind: "thread_rewound", rewindId: row.id }) },
+		});
+		build(fake as unknown as RewindService);
+		tree.canRead = async () => true;
+		vi.mocked(fake.preview).mockClear();
+
+		await actions.resume();
+		await actions.resume();
+
+		expect(rewound).toEqual([{ rewindId: row.id }]);
+		expect(fake.preview).not.toHaveBeenCalled();
+		expect(sent.filter((m) => m.id === caller.id).map((m) => m.text.includes(`Rewound ${threadLink(target)}: 1 turn folded, 0 files set back, 0 kept. ${why}`))).toEqual([true]);
+		expect((await prisma.pendingAction.findUniqueOrThrow({ where: { id: row.id } })).state).toBe("done");
+	});
 });
 
 describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {

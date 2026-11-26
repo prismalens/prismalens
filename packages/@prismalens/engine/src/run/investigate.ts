@@ -80,6 +80,7 @@ import { prismalensLaunchPolicy } from "../launch/policy.js";
 import type { RunLimits } from "../launch/types.js";
 import {
 	AcpSession,
+	type AcpSessionConfig,
 	type AcpStreamItem,
 	isKnownUpdate,
 	type PromptPart,
@@ -299,6 +300,10 @@ export interface RunInvestigationOptions {
 	 */
 	resume?: {
 		sessionId?: string;
+		/** A rewind's native fork of its source session (#1193); `fresh` seeds the fallback. */
+		fork?: NonNullable<AcpSessionConfig["resume"]>["fork"];
+		/** A rewind that replays: why it is no fork, for the divider (#1193). */
+		rewindWhy?: string;
 		handoff?: string;
 		/** The tool call ids the stored run holds; a reopened load drops any update carrying one (#942). */
 		known?: () => Promise<Iterable<string>>;
@@ -994,7 +999,9 @@ async function* runSession(
 						fallback: !!opts.resume.back?.returning,
 					},
 				}
-			: {}),
+			: opts.resume?.fork
+				? { resume: { fork: opts.resume.fork, fresh: !!opts.resume.fresh } }
+				: {}),
 		...(offer ? { mcpServers: offer.pick } : {}),
 		onDrift: (drift) => {
 			wire("in", JSON.stringify({ drift }));
@@ -1518,6 +1525,9 @@ async function* runSession(
 							returnFailed: session.reopenFailed,
 						}
 					: null,
+				forkFailed: opts.resume?.fork
+					? session.reopenFailed
+					: (opts.resume?.rewindWhy ?? null),
 				modelFrom:
 					switchedFrom !== null && opts.resume && "modelFrom" in opts.resume
 						? (opts.resume.modelFrom ?? switchedFrom)

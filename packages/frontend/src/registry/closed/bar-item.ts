@@ -112,6 +112,7 @@ export const barItems = defineClosed(
 		"10.3",
 		"10.4",
 		"10.5",
+		"10.6",
 		"11.1",
 		"11.2",
 		"11.3",
@@ -151,6 +152,11 @@ export const barItems = defineClosed(
 		"16.6",
 		"16.7",
 		"16.8",
+		"16.9",
+		"16.10",
+		"16.11",
+		"16.12",
+		"16.13",
 		"17.1",
 		"17.2",
 		"17.3",
@@ -637,6 +643,11 @@ export const barItems = defineClosed(
 			mark: "checked",
 			text: "Starting obeys Settings: ask, allow or never; the at-once caps; the daily budget. A message loop stops at the pair cap with a visible notice.",
 		},
+		"10.6": {
+			category: "10",
+			mark: "checked",
+			text: "An agent can rewind a thread it can read through `pl_thread_rewind`. It runs under 'Agents may start threads': ask shows the bound preview on a card, allow runs at once, and never refuses with what to do. A running thread is refused until stopped, and a changed thread refuses the approval as stale.",
+		},
 		"11.1": {
 			category: "11",
 			mark: "checked",
@@ -831,6 +842,31 @@ export const barItems = defineClosed(
 			category: "16",
 			mark: "checked",
 			text: "A diff line's right-click and Shift+F10 open its menu: Comment, Quote, Copy line, View file and Open in editor.",
+		},
+		"16.9": {
+			category: "16",
+			mark: "checked",
+			text: "A sent message offers Edit. While its thread runs, Edit is shown disabled with the reason; it works once the thread stops.",
+		},
+		"16.10": {
+			category: "16",
+			mark: "checked",
+			text: "Before anything changes, Edit shows what will be undone: the turns that fold, the files set back, the files kept and why, the files changed during a turn, what stays, and how the session continues. Cancel changes nothing.",
+		},
+		"16.11": {
+			category: "16",
+			mark: "checked",
+			text: "Confirming sets the agent's files back to the message, keeps the user's edits, and folds the later turns into one row that expands. Nothing is deleted.",
+		},
+		"16.12": {
+			category: "16",
+			mark: "checked",
+			text: "The rewind can be undone: files, turns and session come back, and the edited branch folds.",
+		},
+		"16.13": {
+			category: "16",
+			mark: "checked",
+			text: "The edited message runs on a session that holds only the history before it, and the turn's divider says how and why.",
 		},
 		"17.1": {
 			category: "17",

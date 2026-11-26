@@ -31,6 +31,10 @@ import {
 import { modelName, useAgentChoice } from "@/components/agent/agent-choice";
 import { useThreadFollow } from "@/components/attention/thread-follow";
 import { Transcript } from "@/components/investigation/Transcript";
+import {
+	RewindRowsProvider,
+	rewindRowsOf,
+} from "@/components/investigation/transcript/nodes.rewind";
 import { hasTranscriptNode } from "@/components/investigation/transcript/registry";
 import { unseenLabel } from "@/components/investigation/unseen.surface";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
@@ -163,7 +167,15 @@ import {
 import { usePageSlots } from "./slots";
 import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
 import { threadLanding } from "./thread-landing";
+import { useRewind } from "./use-rewind";
 import { useTranscriptJumps } from "./use-transcript-jumps";
+
+/** The confirm loads when an edit, undo or restore opens it, not with the thread's first paint. */
+const RewindDialog = lazyPart(
+	() => import("./RewindDialog").then((m) => m.RewindDialog),
+	null,
+	{ now: true },
+);
 
 // The thread's first frame is its header, the folded transcript and a stand-in box; the
 // composer, docks, rail and menus load after it (#1101 category 12).
@@ -344,6 +356,8 @@ export function ThreadPage({ id }: { id: string }) {
 		windowed: landing,
 	});
 	const openingRead = useOpeningRead(id);
+	const rewind = useRewind();
+	const rewindRows = useMemo(() => rewindRowsOf(run.events), [run.events]);
 	const win = run.window;
 	const { harnesses, effective } = useAgentChoice();
 	const resume = useResumeInvestigation();
@@ -362,6 +376,16 @@ export function ThreadPage({ id }: { id: string }) {
 	const [openSteps, setOpenSteps] = useState<ReadonlySet<number>>(new Set());
 	const [subagentId, setSubagentId] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
+	// Why a rewind kept its edited text in the box unsent; it goes when the box empties.
+	const [keptWhy, setKeptWhy] = useState<string | null>(null);
+	const [keptText, setKeptText] = useState<{
+		id: number;
+		text: string;
+	} | null>(null);
+	const onDraft = useCallback((t: string) => {
+		setDraft(t);
+		if (!t.trim()) setKeptWhy(null);
+	}, []);
 	const [focusSignal, setFocusSignal] = useState(0);
 	// "Ask the agent to fix" on a PR check or review thread drafts here; you still press Send.
 	useEffect(
@@ -1846,33 +1870,45 @@ export function ThreadPage({ id }: { id: string }) {
 							onRetry={() => void win.reopen()}
 						/>
 					) : shownItems.length ? (
-						<Transcript
-							items={shownItems}
-							incidentId={null}
-							cwd={workspace?.cwd}
-							agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
-							runName={title}
-							chat={inv.kind === "chat"}
-							// A thread an agent started opens on its starter's words, never "You" (#1101 cat 10).
-							briefBy={
-								startLinks.data?.startedBy?.via === "agent"
-									? (startLinks.data.startedBy.title ?? "Its starter")
-									: undefined
-							}
-							briefFrom={
-								startLinks.data?.startedBy?.via === "agent"
-									? startLinks.data.startedBy.id
-									: undefined
-							}
-							steps={steps}
-							runId={inv.id}
-							foldTurns={{ live: run.isActive }}
-							onOpenSubagent={openSubagent}
-							links={links}
-							window={transcriptWindow}
-							onFork={forkable ? forkFrom : undefined}
-							status={statusInfo?.status}
-						/>
+						<RewindRowsProvider
+							value={{ threadId: inv.id, ...rewindRows, open: rewind.open }}
+						>
+							<Transcript
+								items={shownItems}
+								incidentId={null}
+								cwd={workspace?.cwd}
+								agent={[agentLabel, inv.model].filter(Boolean).join(", ")}
+								runName={title}
+								chat={inv.kind === "chat"}
+								// A thread an agent started opens on its starter's words, never "You" (#1101 cat 10).
+								briefBy={
+									startLinks.data?.startedBy?.via === "agent"
+										? (startLinks.data.startedBy.title ?? "Its starter")
+										: undefined
+								}
+								briefFrom={
+									startLinks.data?.startedBy?.via === "agent"
+										? startLinks.data.startedBy.id
+										: undefined
+								}
+								steps={steps}
+								runId={inv.id}
+								foldTurns={{ live: run.isActive }}
+								onOpenSubagent={openSubagent}
+								links={links}
+								window={transcriptWindow}
+								onFork={forkable ? forkFrom : undefined}
+								status={statusInfo?.status}
+								edit={{
+									block: run.isActive
+										? "running"
+										: run.queued.length
+											? "queued"
+											: null,
+									send: (seq, text) => rewind.open({ mode: "edit", seq, text }),
+								}}
+							/>
+						</RewindRowsProvider>
 					) : (
 						<p className="px-5 pt-6 text-body text-text-3">
 							{run.isActive ? "Starting the agent" : "Nothing yet"}
@@ -1883,6 +1919,18 @@ export function ThreadPage({ id }: { id: string }) {
 			<div className="shrink-0 px-4 pt-2 pb-3 max-md:pb-[calc(0.75rem+var(--kb-inset,0px))]">
 				<div className="relative mx-auto w-full max-w-(--lane-w)">
 					<AsideHost threadId={inv.id} />
+					{rewind.target && (
+						<RewindDialog
+							threadId={inv.id}
+							target={rewind.target}
+							onClose={rewind.close}
+							onKept={(kept) => {
+								setKeptText((k) => ({ id: (k?.id ?? 0) + 1, text: kept.text }));
+								setKeptWhy(kept.why);
+								setFocusSignal((n) => n + 1);
+							}}
+						/>
+					)}
 					<Composer
 						state={state}
 						onSend={(env, now) => {
@@ -1981,7 +2029,9 @@ ${about}`
 						blockedReason={blocked ?? switchBlocked}
 						blockedQuiet={!!failedDock}
 						text={draft}
-						onText={setDraft}
+						onText={onDraft}
+						append={keptText}
+						notice={keptWhy ?? undefined}
 						focusSignal={focusSignal}
 						footer={slots.composerFooter}
 						usageRing

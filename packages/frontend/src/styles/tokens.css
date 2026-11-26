@@ -129,7 +129,13 @@
 			[data-testid="alert-band"],
 			[data-testid="service-band"]
 		) {
-		padding-left: calc(var(--header-h) + 0.5rem + var(--controls-left));
+		/* Show, then the Needs you badge while something waits (Sidebar.tsx). */
+		padding-left: calc(
+			var(--header-h) +
+			0.5rem +
+			var(--needs-badge-w, 0px) +
+			var(--controls-left)
+		);
 	}
 }
 

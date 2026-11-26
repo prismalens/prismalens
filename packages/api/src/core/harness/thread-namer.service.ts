@@ -80,6 +80,7 @@ export class ThreadNamerService {
 	private async firstMessage(runId: string): Promise<string | null> {
 		const events = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId: runId,
 				event: { contains: '"operator_message"' },
 			},

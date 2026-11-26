@@ -13,6 +13,7 @@ import {
 } from "../../core/auth/owner.js";
 import { ThreadNamerService } from "../../core/harness/thread-namer.service.js";
 import { sharedRead } from "../../core/live/shared-read.js";
+import { FollowUpRefused } from "../../infrastructure/dispatch/dispatch.service.js";
 import { CronService } from "../cron/cron.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
 import { ThreadSearchService } from "../investigations/thread-window/thread-search.service.js";
@@ -20,6 +21,7 @@ import { FixThreadsService } from "./fix-threads.service.js";
 import { LinksService } from "./links.service.js";
 import { PrFeedService } from "./pr-feed.service.js";
 import { PullRequestsService } from "./pull-requests.service.js";
+import { RewindService } from "./rewind.service.js";
 import { ThreadContextService } from "./thread-context.service.js";
 import { ThreadLifecycleService } from "./thread-lifecycle.service.js";
 import { ThreadMenuService } from "./thread-menu.service.js";
@@ -49,6 +51,7 @@ export class ThreadsController {
 		@Optional() private readonly status?: ThreadStatusService,
 		@Optional() private readonly namer?: ThreadNamerService,
 		@Optional() private readonly fixes?: FixThreadsService,
+		@Optional() private readonly rewinds?: RewindService,
 	) {}
 
 	private need<T>(service: T | undefined): T {
@@ -59,7 +62,67 @@ export class ThreadsController {
 
 	@Implement(threadsContract)
 	routes() {
+		const refusedAs = (e: unknown) => {
+			if (e instanceof FollowUpRefused)
+				throw new ORPCError("NOT_FOUND", { message: e.message });
+			throw e;
+		};
 		return {
+			// GET /threads/:id/rewind - What editing a sent message would undo (#1193); a view-only device sees its block
+			rewindPreview: implement(threadsContract.rewindPreview).handler(
+				({ input, context }) =>
+					this.need(this.rewinds)
+						.preview(input.id, input.seq, canOperate(context.request))
+						.catch(refusedAs),
+			),
+
+			// POST /threads/:id/rewind - Edit a sent message and run it again (#1193)
+			rewind: implement(threadsContract.rewind).handler(
+				({ input, context }) => {
+					requireOperate(context.request);
+					return this.need(this.rewinds)
+						.rewind(input, { kind: "you" }, true)
+						.catch(refusedAs);
+				},
+			),
+
+			// POST /threads/:id/rewind/:rewindId/undo (#1193)
+			rewindUndo: implement(threadsContract.rewindUndo).handler(
+				({ input, context }) => {
+					requireOperate(context.request);
+					return this.need(this.rewinds).undo(input.id, input.rewindId, true);
+				},
+			),
+
+			// GET /threads/:id/rewind/:rewindId/folded - The fold row's Show (#1193)
+			rewindFolded: implement(threadsContract.rewindFolded).handler(
+				async ({ input }) => ({
+					events: await this.need(this.rewinds).folded(
+						input.id,
+						input.rewindId,
+					),
+				}),
+			),
+
+			// GET /threads/:id/rewind/restore?op= - An interrupted rewind's restore, previewed fresh (#1193)
+			rewindRestorePreview: implement(
+				threadsContract.rewindRestorePreview,
+			).handler(({ input, context }) =>
+				this.need(this.rewinds).restorePreview(
+					input.id,
+					input.op,
+					canOperate(context.request),
+				),
+			),
+
+			// POST /threads/:id/rewind/restore (#1193)
+			rewindRestore: implement(threadsContract.rewindRestore).handler(
+				({ input, context }) => {
+					requireOperate(context.request);
+					return this.need(this.rewinds).restore(input, true);
+				},
+			),
+
 			// POST /threads - The first message starts a project, service or no-subject thread (#1020)
 			start: implement(threadsContract.start).handler(({ input, context }) => {
 				requireOperate(context.request);

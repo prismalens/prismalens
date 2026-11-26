@@ -45,7 +45,14 @@ let capturedProps: {
 	placeholder?: string;
 	sendLabel?: string;
 	nextSession?: string | null;
+	append?: { id: number; text: string } | null;
+	notice?: string | null;
 } = {};
+/** The page's transcript edit and its rewind dialog's handback, as the page wired them. */
+const rewindState = vi.hoisted(() => ({
+	edit: null as null | { send: (seq: number, text: string) => void },
+	onKept: null as null | ((kept: { text: string; why: string }) => void),
+}));
 
 vi.mock("./Composer", () => ({
 	Composer: (props: {
@@ -65,8 +72,12 @@ vi.mock("./Composer", () => ({
 		placeholder?: string;
 		sendLabel?: string;
 		nextSession?: string | null;
+		append?: { id: number; text: string } | null;
+		notice?: string;
 	}) => {
 		capturedProps = {
+			append: props.append ?? null,
+			notice: props.notice ?? null,
 			blockedReason: props.blockedReason ?? null,
 			...(props.placeholder ? { placeholder: props.placeholder } : {}),
 			...(props.sendLabel ? { sendLabel: props.sendLabel } : {}),
@@ -263,7 +274,21 @@ vi.mock("@/components/shared/Hint", () => ({
 }));
 
 vi.mock("@/components/investigation/Transcript", () => ({
-	Transcript: () => <div data-testid="transcript" />,
+	Transcript: (props: {
+		edit?: { send: (seq: number, text: string) => void };
+	}) => {
+		rewindState.edit = props.edit ?? null;
+		return <div data-testid="transcript" />;
+	},
+}));
+
+vi.mock("./RewindDialog", () => ({
+	RewindDialog: (props: {
+		onKept: (kept: { text: string; why: string }) => void;
+	}) => {
+		rewindState.onKept = props.onKept;
+		return null;
+	},
 }));
 
 // The parent line reads the thread tree; it sits outside the transcript since #1101.
@@ -349,6 +374,9 @@ beforeAll(async () => {
 
 beforeEach(() => {
 	capturedProps = {};
+	invState.events = [];
+	rewindState.edit = null;
+	rewindState.onKept = null;
 	slotState.slots.interceptors = [];
 	sendMessage.mockClear();
 	forkThread.mockClear();
@@ -654,5 +682,40 @@ describe("ThreadPage pane tabs (#1199)", () => {
 			closed: ["files"],
 			split: null,
 		});
+	});
+});
+
+describe("ThreadPage keeps an edit a rewind did not send (#1193)", () => {
+	it("hands the edited text to the composer to add to its draft, and shows why it was not sent", async () => {
+		invState.events = [
+			{
+				kind: "operator_message",
+				runId: "inv-1",
+				branchId: "run",
+				path: [],
+				seq: 3,
+				ts: "2026-11-26T05:00:00.000Z",
+				text: "Use port 80",
+				mode: "queue",
+				delivered: true,
+			} as CanonicalEvent,
+		];
+		await act(async () => {
+			root.render(<ThreadPage id="inv-1" />);
+		});
+		const edit = rewindState.edit;
+		if (!edit)
+			throw new Error("ThreadPage did not hand the transcript an edit");
+		await act(async () => edit.send(3, "Use port 8080"));
+		await vi.waitFor(() => expect(rewindState.onKept).not.toBeNull());
+		await act(async () =>
+			rewindState.onKept?.({
+				text: "Use port 8080",
+				why: "The agent is out of credit.",
+			}),
+		);
+
+		expect(capturedProps.append).toEqual({ id: 1, text: "Use port 8080" });
+		expect(capturedProps.notice).toBe("The agent is out of credit.");
 	});
 });

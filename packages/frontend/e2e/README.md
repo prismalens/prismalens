@@ -65,7 +65,7 @@ On Linux where Chromium will not start for missing system libraries and you have
 | `Pixel 7`, `iPad (gen 7)` | `@responsive` features, nightly |
 | `pl-up` | Only under `PL_UP_E2E=1` |
 
-CI runs `chromium` and `journeys` in four shards, then the reset and quarantine projects.
+CI runs `chromium` and `journeys` in four shards, and the reset and quarantine projects in a job of their own.
 
 ### One stack per worker
 

@@ -32,7 +32,8 @@ const fsHooks = vi.hoisted(() => ({
 	opened: 0,
 	envs: [] as Record<string, string>[],
 	argv: [] as string[][],
-	slowLstat: null as null | { match: string; ms: number },
+	/** Moves the clock `skewMs` ahead once `reads` lstats matching `match` have finished. */
+	passDeadlineAfter: null as null | { match: RegExp; reads: number; skewMs: number },
 	beforeSpawn: null as null | ((args: string[]) => void),
 	failSpawn: null as null | ((args: string[]) => Error | null),
 }));
@@ -49,12 +50,19 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 			return real.readFile(...args);
 		},
 		lstat: async (...args: Parameters<typeof real.lstat>) => {
-			const slow = fsHooks.slowLstat;
-			if (slow && String(args[0]).includes(slow.match))
-				await new Promise((r) => setTimeout(r, slow.ms));
-			return real.lstat(...args);
+			const st = await real.lstat(...args);
+			const past = fsHooks.passDeadlineAfter;
+			if (past && past.match.test(String(args[0]).replaceAll("\\", "/")) && --past.reads === 0)
+				clockHooks.skew = past.skewMs;
+			return st;
 		},
 	};
+});
+// The reader's deadline runs on `core/clock`; a test moves it past the deadline at a chosen read.
+const clockHooks = vi.hoisted(() => ({ skew: 0 }));
+vi.mock("../../core/clock.js", async (importOriginal) => {
+	const real = await importOriginal<typeof import("../../core/clock.js")>();
+	return { ...real, now: () => real.now() + clockHooks.skew };
 });
 vi.mock("../../core/harness/git-spawn.js", async (importOriginal) => {
 	const real = await importOriginal<typeof import("../../core/harness/git-spawn.js")>();
@@ -142,7 +150,8 @@ beforeEach(() => {
 
 afterEach(() => {
 	fsHooks.opened = 0;
-	fsHooks.slowLstat = null;
+	fsHooks.passDeadlineAfter = null;
+	clockHooks.skew = 0;
 	fsHooks.beforeSpawn = null;
 	fsHooks.failSpawn = null;
 	rmSync(root, { recursive: true, force: true });
@@ -434,25 +443,17 @@ describe("readWorktreeChanges (#1020)", () => {
 	});
 
 	it("stops the untracked metadata pass at the deadline and says truncated", async () => {
-		// Read 16 at a time: 250 files at 250 ms each run well past the 1 s deadline.
+		// Reads go 16 at a time; the clock passes the deadline as the first 16 finish, so no later read starts.
 		const many: Record<string, string> = {};
 		for (let i = 0; i < 250; i++) many[`slowgen/f${i}.txt`] = "x\n";
 		write(run, many);
-		fsHooks.slowLstat = { match: "slowgen", ms: 250 };
-		const started = Date.now();
-		try {
-			const out = await read(ws(), { deadlineMs: 1_000 });
-			const repo = out.repos[0];
-			expect(Date.now() - started).toBeLessThan(1_800);
-			expect(repo).toMatchObject({ state: "ok", truncated: true });
-			const files = repo?.state === "ok" ? repo.files : [];
-			const listed = files.filter((f) => f.path.startsWith("slowgen/")).length;
-			// A pass that skipped the delayed reads would list none; one that ignored the deadline, all 250.
-			expect(listed).toBeGreaterThan(0);
-			expect(listed).toBeLessThan(250);
-		} finally {
-			fsHooks.slowLstat = null;
-		}
+		fsHooks.passDeadlineAfter = { match: /\/slowgen\/f\d+\.txt$/, reads: 16, skewMs: 120_000 };
+
+		const repo = (await read(ws(), { deadlineMs: 60_000 })).repos[0];
+
+		expect(repo).toMatchObject({ state: "ok", truncated: true });
+		const files = repo?.state === "ok" ? repo.files : [];
+		expect(files.filter((f) => f.path.startsWith("slowgen/")).length).toBe(16);
 	});
 
 	it("never diffs a tracked file swapped for a hard link: it shows as a link", async () => {

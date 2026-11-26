@@ -12,6 +12,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
+	ArrowUp,
 	Check,
 	ChevronRight,
 	MessageSquareReply,
@@ -23,6 +24,8 @@ import {
 	memo,
 	type ReactElement,
 	type ReactNode,
+	type Ref,
+	type RefObject,
 	useCallback,
 	useContext,
 	useDeferredValue,
@@ -69,6 +72,7 @@ import { formatDateTimeUtc } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import { lazyPart, useAfterFirstContent } from "@/lib/lazy";
 import { settleEndsLine } from "@/lib/settle-holds";
+import type { Destination } from "@/lib/thread-hold";
 import {
 	type ListNode,
 	recedes,
@@ -239,6 +243,13 @@ export interface TreeProps {
 	filter?: (n: ListNode) => boolean;
 	/** A control on the Threads heading: the sidebar's started-by toggle. */
 	threadsAction?: ReactNode;
+	/** Rows held where the reader saw them though the live list moved them (#1247 D25). */
+	moving?: ReadonlyMap<string, Destination>;
+	/** Needs you unfiltered while a filter narrows the rest, and the control that asks for it. */
+	needsAll?: boolean;
+	onShowAllNeeds?: () => void;
+	/** Needs-you rows past what loaded: they come first in the feed, so the next page brings them. */
+	onMoreNeeds?: () => void;
 	children?: ReactNode;
 }
 
@@ -259,9 +270,17 @@ export function ThreadTreeView({
 	expandAll = false,
 	filter,
 	threadsAction,
+	moving,
+	needsAll = false,
+	onShowAllNeeds,
+	onMoreNeeds,
 	children,
 }: TreeProps) {
-	const [settledOpen, setSettledOpen] = useState(expandAll);
+	const [settledOpen, setSettledOpen] = useStoredOpen(
+		SETTLED_OPEN_KEY,
+		expandAll,
+	);
+	const needsHead = useRef<HTMLHeadingElement>(null);
 	const [rowsShown, setRowsShown] = useState(ROWS_SHOWN);
 	const [settledShown, setSettledShown] = useState(SETTLED_SHOWN);
 	// Rows are memoised (`sameRow`); Settle reaches them through one stable callback.
@@ -274,8 +293,8 @@ export function ThreadTreeView({
 		useAfterFirstContent() || expandAll
 			? Number.POSITIVE_INFINITY
 			: FIRST_FRAME_ROWS;
-	const rows = (n: ListNode, inNeeds = false): ReactNode[] =>
-		keep(n) && budget-- > 0
+	const rows = (n: ListNode, inNeeds = false, all = false): ReactNode[] =>
+		(all || keep(n)) && budget-- > 0
 			? [
 					<ListRow
 						key={n.id}
@@ -285,10 +304,14 @@ export function ThreadTreeView({
 						asks={asks.get(n.id) ?? NO_ASKS}
 						onSettle={onSettle ? settle : undefined}
 						inNeeds={inNeeds}
+						moving={moving?.get(n.id)}
 					/>,
 				]
 			: [];
-	const needs = model.needs.filter(keep);
+	// A filter never strands Needs you: it says how many match, and Show all lists the rest (#1247 D25).
+	const needsFiltered = !!filter && !needsAll;
+	const needs = needsFiltered ? model.needs.filter(keep) : model.needs;
+	const needsLeft = needsFiltered ? 0 : model.needsCount - model.needs.length;
 	const active = model.active.filter(keep);
 	const settledRows = model.settled.filter(keep);
 	// Rows past the loaded pages count too, so "Show N more" stays until the last (#1101 cat 1.5).
@@ -308,15 +331,46 @@ export function ThreadTreeView({
 	);
 	return (
 		<div className="flex flex-col gap-3" data-testid="thread-tree">
+			{model.needs.length > 0 && (
+				<NeedsBar
+					head={needsHead}
+					count={model.needsCount}
+					first={model.needs[0]?.info.status ?? null}
+					onGo={() => {
+						if (!needs.length) onShowAllNeeds?.();
+					}}
+				/>
+			)}
 			{children}
-			{needs.length > 0 && (
+			{model.needs.length > 0 && (
 				<Section
 					label="Needs you"
-					count={filter ? needs.length : model.needsCount}
+					count={model.needsCount}
+					matched={needsFiltered ? needs.length : undefined}
 					tone="font-medium text-text-1"
 					testId="thread-section-needs"
+					headRef={needsHead}
+					action={
+						needsFiltered && onShowAllNeeds ? (
+							<button
+								type="button"
+								onClick={onShowAllNeeds}
+								className="ml-1.5 rounded-control px-1 font-medium text-accent hover:bg-surface-3"
+								data-testid="needs-show-all"
+							>
+								Show all
+							</button>
+						) : undefined
+					}
 				>
-					{needs.flatMap((n) => rows(n, true))}
+					{needs.flatMap((n) => rows(n, true, true))}
+					{!expandAll && needsLeft > 0 && onMoreNeeds && (
+						<MoreButton
+							n={needsLeft}
+							onClick={onMoreNeeds}
+							testId="needs-show-more"
+						/>
+					)}
 				</Section>
 			)}
 			{model.pinned.filter(keep).length > 0 && (
@@ -352,7 +406,8 @@ export function ThreadTreeView({
 					/>
 				)}
 			</Section>
-			{model.settledCount > 0 && (
+			{/* A held list can keep a row here that the live list has moved out (#1247 D25). */}
+			{(model.settledCount > 0 || model.settled.length > 0) && (
 				<section
 					aria-label="Settled"
 					className="flex flex-col gap-px"
@@ -399,17 +454,22 @@ export function ThreadTreeView({
 function Section({
 	label,
 	count,
+	matched,
 	tone,
 	testId,
 	action,
+	headRef,
 	children,
 }: {
 	label: string;
 	count?: number;
+	/** With a filter on, how many of `count` match it. */
+	matched?: number;
 	tone?: string;
 	testId: string;
 	/** One control at the heading's end, such as the started-by toggle. */
 	action?: ReactNode;
+	headRef?: Ref<HTMLHeadingElement>;
 	children: ReactNode;
 }) {
 	return (
@@ -418,14 +478,17 @@ function Section({
 			className="flex flex-col gap-px"
 			data-testid={testId}
 		>
-			<h2 className="flex h-7 items-center px-2.5 text-meta text-text-3">
+			<h2
+				ref={headRef}
+				className="flex h-7 items-center px-2.5 text-meta text-text-3"
+			>
 				{label}
 				{count !== undefined && (
 					<span
 						className={cn("ml-auto tabular-nums", tone)}
 						data-testid={`${testId}-count`}
 					>
-						{count}
+						{matched === undefined ? count : `${matched} of ${count}`}
 					</span>
 				)}
 				{action && (
@@ -471,6 +534,7 @@ function sameRow(a: RowProps, b: RowProps): boolean {
 		a.now !== b.now ||
 		a.on !== b.on ||
 		a.inNeeds !== b.inNeeds ||
+		a.moving !== b.moving ||
 		!a.onSettle !== !b.onSettle ||
 		a.asks.length !== b.asks.length ||
 		a.asks.some((e, i) => e !== b.asks[i])
@@ -493,6 +557,8 @@ type RowProps = {
 	onSettle?: (t: ThreadRow) => void;
 	/** In the Needs you group, which already says why: the icon is enough. */
 	inNeeds?: boolean;
+	/** Held where the reader saw it; where it goes once they leave the list. */
+	moving?: Destination;
 };
 
 const ListRow = memo(ListRowView, sameRow);
@@ -505,6 +571,7 @@ function ListRowView({
 	onSettle,
 	inNeeds = false,
 	askOpenAtStart = false,
+	moving,
 }: RowProps) {
 	const unread = useContext(RowUnread)(node.thread);
 	const navigate = useNavigate();
@@ -666,8 +733,16 @@ function ListRowView({
 					<StartedByMark by={by} />
 				</span>
 			)}
-			{/* A row that needs you says why on its second line (#1101 cat 1). */}
-			{cause ? (
+			{/* A held row says where it goes once the reader leaves the list (#1247 D25). */}
+			{moving ? (
+				<span
+					className="min-w-0 flex-1 truncate text-meta text-accent"
+					data-testid="row-moving"
+				>
+					{MOVES[moving]}
+				</span>
+			) : /* A row that needs you says why on its second line (#1101 cat 1). */
+			cause ? (
 				<span className="flex min-w-0 flex-1 items-center gap-1.5">
 					{t.git && <GitStateMark git={t.git} />}
 					<span
@@ -709,6 +784,9 @@ function ListRowView({
 			<div
 				className="group/row relative"
 				data-testid="thread-row-wrap"
+				// An open card keeps the list still (use-list-hold).
+				data-card-open={cardOpen || undefined}
+				data-moving={moving}
 				onKeyDown={onKey}
 				// The card's code loads as the row is reached, so Space opens it at once (#1101 cat 1).
 				onPointerEnter={() => void RowCard.preload(true)}
@@ -755,10 +833,12 @@ function ListRowView({
 						aria-description={more ?? undefined}
 						aria-keyshortcuts={entry ? "Y N Space" : "Space"}
 						className={cn(
-							"flex min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-2.5 text-text-2 max-sm:min-h-11 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3",
+							// The scroll margin keeps a focused row clear of the Needs you bar.
+							"flex min-w-0 flex-1 scroll-mt-8 flex-col justify-center gap-0.5 rounded-control py-1.5 pr-2 pl-2.5 text-text-2 max-sm:min-h-11 transition-colors duration-(--dur-instant) hover:bg-surface-2 focus-visible:bg-surface-3",
 							on && "bg-surface-3 hover:bg-surface-3",
 						)}
 						data-testid="thread-row"
+						data-list-row
 						data-id={t.id}
 						// The slow-link census reads how stale the row is (#1181).
 						data-activity={Date.parse(t.lastActivityAt)}
@@ -815,7 +895,8 @@ function ListRowView({
 						{metaLine}
 					</Link>
 				</div>
-				{more && (
+				{/* Reserved from the row's own mark: asks that load later fill it without moving the list. */}
+				{(more || (inNeeds && asking)) && (
 					<p
 						aria-hidden
 						className="-mt-1 h-4 truncate pr-2 pl-[30px] text-meta text-text-3"
@@ -884,7 +965,12 @@ function ListRowView({
 						{...(onSettle ? { onSettle: () => onSettle(t) } : {})}
 					/>
 				</div>
-				{inNeeds && !asking && fixId && <RowFix node={node} id={fixId} />}
+				{inNeeds && !asking && fixId && (
+					// A held row's fix may no longer apply: it keeps its room, out of reach.
+					<div className={cn(moving && "invisible")}>
+						<RowFix node={node} id={fixId} />
+					</div>
+				)}
 				{!entry && answerNote && (
 					<p
 						className="pb-1.5 text-meta text-text-2"
@@ -898,6 +984,119 @@ function ListRowView({
 				)}
 			</div>
 		</ThreadContextMenu>
+	);
+}
+
+const MOVES: Record<Destination, string> = {
+	needs: "Moves to Needs you",
+	pinned: "Moves to Pinned",
+	active: "Moves to Threads",
+	settled: "Moves to Settled",
+	gone: "Leaves the list",
+};
+
+const SETTLED_OPEN_KEY = "pl.threads.settledOpen";
+
+/** A fold this device remembers; a browser that refuses storage keeps it for the visit. */
+function useStoredOpen(
+	key: string,
+	initial: boolean,
+): [boolean, (next: (open: boolean) => boolean) => void] {
+	const [open, setOpen] = useState(initial);
+	useEffect(() => {
+		if (initial) return;
+		try {
+			setOpen(localStorage.getItem(key) === "1");
+		} catch {
+			// No storage: the fold starts closed.
+		}
+	}, [key, initial]);
+	const set = (next: (open: boolean) => boolean) =>
+		setOpen((o) => {
+			const v = next(o);
+			try {
+				localStorage.setItem(key, v ? "1" : "0");
+			} catch {
+				// No storage: the fold lasts this visit.
+			}
+			return v;
+		});
+	return [open, set];
+}
+
+const scrollParent = (el: HTMLElement): HTMLElement | null => {
+	for (let p = el.parentElement; p; p = p.parentElement)
+		if (/auto|scroll/.test(getComputedStyle(p).overflowY)) return p;
+	return null;
+};
+
+/**
+ * Needs you's heading, kept at the top of the list once the real one scrolls away (#1247 D25):
+ * the full count stays on screen, and a click goes back to the first waiting row. It takes
+ * no room, so nothing shifts as it appears; rows keep clear of it by their scroll margin.
+ */
+function NeedsBar({
+	head,
+	count,
+	first,
+	onGo,
+}: {
+	head: RefObject<HTMLHeadingElement | null>;
+	count: number;
+	first: ThreadStatus | null;
+	/** Runs before the jump: Show all, when a filter left no row to go to. */
+	onGo: () => void;
+}) {
+	const [off, setOff] = useState(false);
+	useEffect(() => {
+		const h = head.current;
+		const scroller = h && scrollParent(h);
+		if (!h || !scroller) return;
+		const check = () =>
+			setOff(
+				h.getBoundingClientRect().bottom <=
+					scroller.getBoundingClientRect().top + 1,
+			);
+		check();
+		scroller.addEventListener("scroll", check, { passive: true });
+		window.addEventListener("resize", check);
+		return () => {
+			scroller.removeEventListener("scroll", check);
+			window.removeEventListener("resize", check);
+		};
+	}, [head]);
+	const go = () => {
+		onGo();
+		requestAnimationFrame(() => {
+			const h = head.current;
+			h?.scrollIntoView({ block: "start" });
+			h?.parentElement
+				?.querySelector<HTMLElement>('[data-testid="thread-row"]')
+				?.focus({ preventScroll: true });
+		});
+	};
+	return (
+		<div className="sticky top-0 z-[5] h-0">
+			{off && (
+				<button
+					type="button"
+					onClick={go}
+					aria-label={`Needs you, ${count}. Go to the first`}
+					className="absolute inset-x-0 top-0 flex h-7 items-center gap-1.5 rounded-control bg-surface-1 px-2.5 text-meta text-text-3 hover:bg-surface-2 hover:text-text-1"
+					data-testid="needs-bar"
+				>
+					{first && <StatusMark status={first} />}
+					Needs you
+					<span
+						className="ml-auto font-medium text-text-1 tabular-nums"
+						data-testid="needs-bar-count"
+					>
+						{count}
+					</span>
+					<ArrowUp aria-hidden className="size-3" />
+				</button>
+			)}
+		</div>
 	);
 }
 

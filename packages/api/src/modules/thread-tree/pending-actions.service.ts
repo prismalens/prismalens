@@ -23,6 +23,7 @@ import {
 	type AsksPort,
 	type ClosedAsk,
 } from "../asks/asks.contract.js";
+import { withShared } from "../threads/thread-gate.js";
 import { PutOff } from "./put-off.js";
 import { type Delivery, isDuplicate, TreeIo } from "./tree-io.service.js";
 import { TreeSettings } from "./tree-settings.service.js";
@@ -213,7 +214,12 @@ export class PendingActionsService {
 	}
 
 	/** An allowed call, inside its tree's lane: check, record and run, answered in the call itself. */
-	private async runNow(
+	private runNow(call: GateCall, executor: ActExecutor): Promise<ToolOutcome> {
+		// Held shared on the caller until the action ends: a rewind of it waits or refuses (#1193 R15).
+		return withShared(call.callerId, () => this.runNowHeld(call, executor));
+	}
+
+	private async runNowHeld(
 		call: GateCall,
 		executor: ActExecutor,
 	): Promise<ToolOutcome> {
@@ -266,6 +272,15 @@ export class PendingActionsService {
 		}
 	}
 
+	/** The answer a call already got for this requestId, or null when it is unseen. */
+	async recorded(
+		callerId: string,
+		requestId: string,
+	): Promise<ToolOutcome | null> {
+		const seen = await this.byRequest(callerId, requestId);
+		return seen ? this.answerFor(seen) : null;
+	}
+
 	private byRequest(callerId: string, requestId: string) {
 		return this.prisma.pendingAction.findUnique({
 			where: { callerId_requestId: { callerId, requestId } },
@@ -296,6 +311,10 @@ export class PendingActionsService {
 			where: { askId: closed.ask.askId },
 		});
 		if (row?.state !== "pending") return;
+		await withShared(row.callerId, () => this.decide(row, closed));
+	}
+
+	private async decide(row: PendingAction, closed: ClosedAsk): Promise<void> {
 		const answer: AskAnswer | undefined = closed.answer;
 		const approved =
 			answer?.kind === "permission" && answer.decision === "approve";
@@ -333,7 +352,9 @@ export class PendingActionsService {
 		const row = await this.prisma.pendingAction.findUnique({ where: { id } });
 		if (!row)
 			return fail("not_found", "No such action.", "Continue without it.");
-		return this.serial(laneOf(row.tool, row.rootId), () => this.executeNow(id));
+		return this.serial(laneOf(row.tool, row.rootId), () =>
+			withShared(row.callerId, () => this.executeNow(id)),
+		);
 	}
 
 	private async executeNow(id: string): Promise<ToolOutcome> {

@@ -484,9 +484,54 @@ describe("Dispatcher", () => {
 			expect(started).toEqual([]);
 			expect(store.released).toEqual(["job-1"]);
 		});
+
+		it("a stop() during beforeStart hands back that claim and every one after it, starting none", async () => {
+			const { runner, started } = controllableRunner();
+			let ready!: () => void;
+			const prepared = new Promise<void>((r) => {
+				ready = r;
+			});
+			store.pending = [job(1), job(2)];
+			const dispatcher = new Dispatcher(store, bus, runner, {
+				...OPTS,
+				beforeStart: () => prepared,
+			});
+
+			const ticking = dispatcher.tick();
+			await vi.waitFor(() => expect(store.claimed.size).toBe(2));
+			const stopping = dispatcher.stop(1_000);
+			ready();
+			await Promise.all([ticking, stopping]);
+
+			expect(started).toEqual([]);
+			expect(store.released).toEqual(["job-1", "job-2"]);
+		});
 	});
 
 	describe("draining for an update install (#724)", () => {
+		it("a drain during beforeStart hands back that claim and every one after it, starting none", async () => {
+			const { runner, started } = controllableRunner();
+			let ready!: () => void;
+			const prepared = new Promise<void>((r) => {
+				ready = r;
+			});
+			store.pending = [job(1), job(2)];
+			const dispatcher = new Dispatcher(store, bus, runner, {
+				...OPTS,
+				beforeStart: () => prepared,
+			});
+
+			const ticking = dispatcher.tick();
+			await vi.waitFor(() => expect(store.claimed.size).toBe(2));
+			dispatcher.drain(true);
+			ready();
+			await ticking;
+
+			expect(started).toEqual([]);
+			expect(store.released).toEqual(["job-1", "job-2"]);
+			await dispatcher.stop();
+		});
+
 		it("claims nothing while draining, and the queued work starts once restored", async () => {
 			const { runner, started } = controllableRunner();
 			const dispatcher = new Dispatcher(store, bus, runner, OPTS);

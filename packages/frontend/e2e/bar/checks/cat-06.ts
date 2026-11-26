@@ -9,6 +9,22 @@ import {
 	settledRows,
 	visitComposer,
 } from "./help-L3";
+import { idle } from "./help-rewind";
+
+/** A thread of the check's own to cite into: the seed threads stay as later checks expect them. */
+async function citingThread(page: Page): Promise<string> {
+	const r = await page.request.post("/api/threads", {
+		data: {
+			subject: { kind: "none" },
+			text: "fake-session:echo A thread to cite into",
+			harness: "claude-code",
+		},
+	});
+	expect(r.ok(), await r.text()).toBe(true);
+	const { investigationId } = (await r.json()) as { investigationId: string };
+	await idle(page, investigationId);
+	return investigationId;
+}
 
 /** The first agent message of a thread with words, as a citation names it (#1195). */
 async function firstAgentMessage(
@@ -26,6 +42,25 @@ async function firstAgentMessage(
 	return e?.text
 		? { key: `${e.branchId}:${e.seq}`, seq: e.seq, text: e.text.slice(0, 400) }
 		: null;
+}
+
+/** The picker's row for `target`, searched by its title when the first page does not hold it. */
+async function pickerRow(page: Page, target: string) {
+	const dialog = page.getByTestId("quote-in");
+	const row = dialog.locator(`[data-thread="${target}"]`);
+	await expect(dialog.getByTestId("quote-in-thread").first()).toBeVisible();
+	if ((await row.count()) > 0) return row;
+	const res = await page.request.get(`/api/investigations/${target}`);
+	const title = res.ok()
+		? ((await res.json()) as { title?: string }).title
+		: undefined;
+	if (!title) return row;
+	await dialog.getByTestId("quote-in-input").fill(title);
+	await row
+		.first()
+		.waitFor({ timeout: 15_000 })
+		.catch(() => undefined);
+	return row;
 }
 
 /** Sends a follow-up into `to` quoting `from`'s message; true once the API took it. */
@@ -535,10 +570,10 @@ export default defineChecks([
 			const listed = await rows.count();
 			if ((await dialog.locator(`[data-thread="${idOf(source)}"]`).count()) > 0)
 				fails.push("the picker lists the open thread");
-			const pick = dialog.locator(`[data-thread="${target}"]`);
+			const pick = await pickerRow(page, target);
 			if ((await pick.count()) === 0)
 				return notSetUp(
-					`the target thread ${target} is not in the picker's first ${listed}`,
+					`the target thread ${target} is not in the picker's first ${listed}, nor found by its title`,
 				);
 			await pick.click();
 			await page.getByTestId("quote-in-open").click();
@@ -602,7 +637,7 @@ export default defineChecks([
 		async run({ page, open, sim }) {
 			const fails: string[] = [];
 			const from = idOf(sim.thread("seed: long-thread"));
-			const to = idOf(sim.thread("huge.diff", 2));
+			const to = await citingThread(page);
 			const msg = await firstAgentMessage(page, from);
 			if (!msg) return notSetUp("the long-thread seed has no agent message");
 			if (!(await sendCitation(page, to, from, msg)))
@@ -649,11 +684,11 @@ export default defineChecks([
 			const target = idOf(sim.thread("huge.diff", 2));
 			for (const n of [0, 1]) {
 				await quoteInFromMessage(page, open, sim.thread("huge.diff", n));
-				const pick = page
-					.getByTestId("quote-in")
-					.locator(`[data-thread="${target}"]`);
+				const pick = await pickerRow(page, target);
 				if ((await pick.count()) === 0)
-					return notSetUp(`the target thread ${target} is not in the picker`);
+					return notSetUp(
+						`the target thread ${target} is not in the picker, nor found by its title`,
+					);
 				await pick.click();
 			}
 			await open(`/threads/${target}`);
@@ -672,7 +707,7 @@ export default defineChecks([
 		async run({ page, sim }) {
 			const fails: string[] = [];
 			const from = idOf(sim.thread("seed: long-thread"));
-			const to = idOf(sim.thread("huge.diff", 1));
+			const to = await citingThread(page);
 			const msg = await firstAgentMessage(page, from);
 			if (!msg) return notSetUp("the long-thread seed has no agent message");
 			if (!(await sendCitation(page, to, from, msg)))

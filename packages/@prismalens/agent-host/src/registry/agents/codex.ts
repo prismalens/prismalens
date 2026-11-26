@@ -64,5 +64,12 @@ export const codex = {
 			where:
 				"src/CodexAcpServer.ts cancel(), interruptSessionTurn, interruptStandardChildren",
 		},
+		// A turn-level fork, but no tail PrismaLens can check: a load auto-starts a goal turn (#1193).
+		rewindVia: {
+			value: "replay",
+			via: "source",
+			verifiedAt: { cli: "0.171.0", adapter: "2.8.0" },
+			where: "dist/index.js resolveForkTurnId, readAirForkPoint",
+		},
 	},
 } satisfies AgentDescriptor;

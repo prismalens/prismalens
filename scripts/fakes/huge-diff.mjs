@@ -38,6 +38,9 @@ function ready(url, id) {
 			"--thread",
 			id,
 			"--stamp",
+			// The stamp reads the Changes pane only; this thread has no turn card to wait 3 min for.
+			"--surface",
+			"changes",
 		],
 		{ stdio: "inherit", env: process.env },
 	);
