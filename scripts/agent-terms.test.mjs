@@ -84,15 +84,21 @@ test("check calls a failed fetch or a script-filled shell unreadable, never chan
 	});
 	const shell = await checkSources(
 		[one],
-		async () => '<div id="root"></div><script>render("No bots.")</script>',
+		async () =>
+			'<title>Acme</title><div id="root"></div><script>render("No bots.")</script>',
+	);
+	const notice = await checkSources(
+		[one],
+		async () =>
+			'<noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div>',
 	);
 	assert.deepEqual(
-		[failed[0].state, shell[0].state],
-		["unreadable", "unreadable"],
+		[failed[0].state, shell[0].state, notice[0].state],
+		["unreadable", "unreadable", "unreadable"],
 	);
 });
 
-test("check calls a short page with no script changed when its clause is gone", async () => {
+test("check calls a short page changed when its clause is gone, with or without an analytics script", async () => {
 	const one = {
 		id: "a",
 		auth: {
@@ -101,11 +107,16 @@ test("check calls a short page with no script changed when its clause is gone", 
 			],
 		},
 	};
-	const short = await checkSources(
-		[one],
-		async () => "<h1>Terms.</h1><p>Automation is prohibited.</p>",
+	const page = "<h1>Terms.</h1><p>Automation is prohibited.</p>";
+	const states = await Promise.all(
+		[
+			page,
+			`${page}<script async src="https://analytics.test/a.js"></script><script>track("view")</script>`,
+		].map(
+			async (html) => (await checkSources([one], async () => html))[0].state,
+		),
 	);
-	assert.equal(short[0].state, "changed");
+	assert.deepEqual(states, ["changed", "changed"]);
 });
 
 test("plain makes markup, Markdown links, entities, curly quotes and code marks comparable", () => {

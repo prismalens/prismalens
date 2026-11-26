@@ -75,12 +75,14 @@ export const rawUrl = (url) =>
 		"https://raw.githubusercontent.com/$1/",
 	);
 
-/** A page with a script and fewer words than this is a shell its script fills in, so it can't be judged. */
-const MIN_WORDS = 200;
+/** Visible text of at most a title, or only a no-JavaScript notice: a shell its script fills in, so it can't be judged. */
+const SHELL_WORDS = 3;
+const NO_JS =
+	/^[^.]*\b(enable|turn on|requires?)\b[^.]*\bjavascript\b[^.]*\.?$/i;
 const pageOf = (raw) => {
-	const text = plain(raw);
-	const shell = /<script\b/i.test(raw) && text.split(" ").length < MIN_WORDS;
-	return { text, shell };
+	const text = plain(raw).trim();
+	const words = text ? text.split(" ").length : 0;
+	return { text, shell: words < SHELL_WORDS || NO_JS.test(text) };
 };
 
 /** Each distinct source: `present`, `changed` (its clause is gone), or `unreadable`. */
