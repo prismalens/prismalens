@@ -4,6 +4,7 @@
 import type { UsageModel } from "@prismalens/contracts";
 import { useState } from "react";
 import { type FactId, fact } from "@/components/kit/fact";
+import { Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -115,7 +116,7 @@ export function ModelCardBody({
 /** An unpriced model's offer of a price, prefilled with its agent and model (#1180). */
 function SetPrice({ agent, model }: { agent: string; model: string }) {
 	const [open, setOpen] = useState(false);
-	const { add, saving } = useAddPrice();
+	const { add, blocked, failed, retry } = useAddPrice();
 	if (!open)
 		return (
 			<Button
@@ -128,13 +129,16 @@ function SetPrice({ agent, model }: { agent: string; model: string }) {
 			</Button>
 		);
 	return (
-		<PriceForm
-			agents={[agent]}
-			initial={{ agent, model: model === "unknown" ? "" : model }}
-			saving={saving}
-			onSave={(p) => add(p, () => setOpen(false))}
-			onCancel={() => setOpen(false)}
-		/>
+		<div className="grid min-w-0">
+			{failed && <Problem text="Your prices did not load." onRetry={retry} />}
+			<PriceForm
+				agents={[agent]}
+				initial={{ agent, model: model === "unknown" ? "" : model }}
+				saving={blocked}
+				onSave={(p) => add(p, () => setOpen(false))}
+				onCancel={() => setOpen(false)}
+			/>
+		</div>
 	);
 }
 
