@@ -47,6 +47,7 @@ import {
 	offeredModes,
 	selectedModel,
 } from "../runner/acp-client.js";
+import { foundMcpNames } from "./agent-config.js";
 import { prepareRunEnv } from "./investigate.js";
 import { checkSandbox, type SandboxChecks } from "./sandbox-check.js";
 
@@ -304,7 +305,7 @@ export async function isolateCheck<
 	try {
 		const out = isolateLaunch(
 			{ ...prepared, files: {} as Record<string, string> },
-			[{ use, mcp: o.mcp ?? [] }],
+			[{ use, mcp: o.mcp ?? foundMcpNames(harness, prepared.env, null) }],
 			{ runDir: o.runDir, version },
 		);
 		const { files, ...plan } = out;

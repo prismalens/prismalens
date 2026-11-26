@@ -56,8 +56,11 @@ export {
 export {
 	type CatalogueSource,
 	type CheckedModes,
+	type ConfigLayout,
 	type InstallChannel,
 	installCommand,
+	type LayoutKey,
+	type LayoutPath,
 } from "@prismalens/providers/agents";
 
 export const HARNESS_IDS = AGENT_IDS;

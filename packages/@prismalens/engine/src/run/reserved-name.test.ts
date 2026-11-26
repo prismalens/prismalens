@@ -1,161 +1,88 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { join } from "node:path";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { memoryFs } from "./__fixtures__/memory-fs.js";
 import { userServerByOurName } from "./reserved-name.js";
 
 describe("userServerByOurName (#1101)", () => {
-	const cwd = "/workspace/project";
-	const home = "/home/user";
+	const home = resolve("/home/user");
+	const cwd = resolve(home, "project");
 	const env = { HOME: home, USERPROFILE: home };
+	const ours = JSON.stringify({ mcpServers: { prismalens: { command: "node" } } });
 
-	it("finds reserved prismalens server in claude-code top-level mcpServers", () => {
-		const configPath = join(home, ".claude.json");
-		const read = {
-			json: (path: string) => {
-				if (path === configPath) {
-					return {
-						mcpServers: {
-							prismalens: { command: "node", args: ["server.js"] },
-						},
-					};
-				}
-				return null;
-			},
-			toml: () => null,
-		};
-		const result = userServerByOurName("claude-code", env, cwd, read);
-		expect(result).toBe(configPath);
+	it("finds a prismalens server in Claude Code's top-level mcpServers", () => {
+		const path = resolve(home, ".claude.json");
+		expect(
+			userServerByOurName("claude-code", env, cwd, memoryFs({ [path]: ours })),
+		).toBe(path);
 	});
 
-	it("finds reserved prismalens server in claude-code projects[cwd].mcpServers", () => {
-		const configPath = join(home, ".claude.json");
-		const read = {
-			json: (path: string) => {
-				if (path === configPath) {
-					return {
-						projects: {
-							[cwd]: {
-								mcpServers: {
-									prismalens: { command: "node" },
-								},
-							},
-						},
-					};
-				}
-				return null;
-			},
-			toml: () => null,
-		};
-		const result = userServerByOurName("claude-code", env, cwd, read);
-		expect(result).toBe(configPath);
+	it("finds a prismalens server in Claude Code's projects[cwd].mcpServers", () => {
+		const path = resolve(home, ".claude.json");
+		const fs = memoryFs({
+			[path]: JSON.stringify({
+				projects: { [cwd]: { mcpServers: { prismalens: { command: "node" } } } },
+			}),
+		});
+		expect(userServerByOurName("claude-code", env, cwd, fs)).toBe(path);
 	});
 
-	it("finds reserved prismalens server in claude-code .mcp.json in cwd", () => {
-		const mcpJsonPath = join(cwd, ".mcp.json");
-		const read = {
-			json: (path: string) => {
-				if (path === mcpJsonPath) {
-					return {
-						mcpServers: {
-							prismalens: { command: "node" },
-						},
-					};
-				}
-				return null;
-			},
-			toml: () => null,
-		};
-		const result = userServerByOurName("claude-code", env, cwd, read);
-		expect(result).toBe(mcpJsonPath);
+	it("reads .claude.json from CLAUDE_CONFIG_DIR when it is set", () => {
+		const dir = resolve(home, "claude-alt");
+		const path = resolve(dir, ".claude.json");
+		const fs = memoryFs({ [path]: ours, [resolve(home, ".claude.json")]: "{}" });
+		expect(
+			userServerByOurName("claude-code", { ...env, CLAUDE_CONFIG_DIR: dir }, cwd, fs),
+		).toBe(path);
 	});
 
-	it("finds reserved prismalens server in codex config.toml mcp_servers", () => {
-		const codexConfigPath = join(home, ".codex", "config.toml");
-		const read = {
-			json: () => null,
-			toml: (path: string) => {
-				if (path === codexConfigPath) {
-					return {
-						mcp_servers: {
-							prismalens: { command: "python" },
-						},
-					};
-				}
-				return null;
-			},
-		};
-		const result = userServerByOurName("codex", env, cwd, read);
-		expect(result).toBe(codexConfigPath);
+	it("finds a prismalens server in the project's .mcp.json", () => {
+		const path = resolve(cwd, ".mcp.json");
+		expect(
+			userServerByOurName("claude-code", env, cwd, memoryFs({ [path]: ours })),
+		).toBe(path);
 	});
 
-	it("finds reserved prismalens server in gemini settings.json", () => {
-		const geminiPath = join(cwd, ".gemini", "settings.json");
-		const read = {
-			json: (path: string) => {
-				if (path === geminiPath) {
-					return {
-						mcpServers: {
-							prismalens: { command: "gemini-mcp" },
-						},
-					};
-				}
-				return null;
-			},
-			toml: () => null,
-		};
-		const result = userServerByOurName("gemini", env, cwd, read);
-		expect(result).toBe(geminiPath);
+	it("finds a prismalens server in Codex's config.toml mcp_servers", () => {
+		const path = resolve(home, ".codex", "config.toml");
+		const fs = memoryFs({ [path]: '[mcp_servers.prismalens]\ncommand = "python"\n' });
+		expect(userServerByOurName("codex", env, cwd, fs)).toBe(path);
 	});
 
-	it("finds reserved prismalens server in opencode mcp key", () => {
-		const opencodePath = join(cwd, "opencode.json");
-		const read = {
-			json: (path: string) => {
-				if (path === opencodePath) {
-					return {
-						mcp: {
-							prismalens: { command: "opencode-mcp" },
-						},
-					};
-				}
-				return null;
-			},
-			toml: () => null,
-		};
-		const result = userServerByOurName("opencode", env, cwd, read);
-		expect(result).toBe(opencodePath);
+	it("finds a prismalens server in the project's Gemini settings.json", () => {
+		const path = resolve(cwd, ".gemini", "settings.json");
+		expect(
+			userServerByOurName("gemini", env, cwd, memoryFs({ [path]: ours })),
+		).toBe(path);
 	});
 
-	it("returns null for unknown harness", () => {
-		const read = {
-			json: () => ({ mcpServers: { prismalens: {} } }),
-			toml: () => ({ mcp_servers: { prismalens: {} } }),
-		};
-		const result = userServerByOurName("unknown-harness", env, cwd, read);
-		expect(result).toBeNull();
+	it("finds a prismalens server under OpenCode's mcp key", () => {
+		const path = resolve(cwd, "opencode.json");
+		const fs = memoryFs({
+			[path]: JSON.stringify({ mcp: { prismalens: { type: "local" } } }),
+		});
+		expect(userServerByOurName("opencode", env, cwd, fs)).toBe(path);
+	});
+
+	it("returns null for an agent with no config layout", () => {
+		const fs = memoryFs({ [resolve(cwd, ".mcp.json")]: ours });
+		expect(userServerByOurName("unknown-harness", env, cwd, fs)).toBeNull();
 	});
 
 	it("returns null when cwd is undefined", () => {
-		const read = {
-			json: () => ({ mcpServers: { prismalens: {} } }),
-			toml: () => ({ mcp_servers: { prismalens: {} } }),
-		};
-		const result = userServerByOurName("claude-code", env, undefined, read);
-		expect(result).toBeNull();
+		const fs = memoryFs({ [resolve(home, ".claude.json")]: ours });
+		expect(userServerByOurName("claude-code", env, undefined, fs)).toBeNull();
 	});
 
-	it("returns null when a reader throws", () => {
-		const read = {
-			json: () => {
+	it("returns null when a read throws", () => {
+		const fs = {
+			text: () => {
 				throw new Error("Disk read error");
 			},
-			toml: () => {
-				throw new Error("TOML parse error");
-			},
+			dirs: () => null,
 		};
-		const result = userServerByOurName("claude-code", env, cwd, read);
-		expect(result).toBeNull();
+		expect(userServerByOurName("claude-code", env, cwd, fs)).toBeNull();
 	});
 });

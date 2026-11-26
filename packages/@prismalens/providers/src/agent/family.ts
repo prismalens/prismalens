@@ -66,6 +66,37 @@ export interface CatalogueSource {
 	freeIsTraining?: boolean;
 }
 
+/**
+ * A config path: `~` the OS user profile, `{$VAR|fallback}` the env var or the fallback,
+ * `<repo>` the project root, `<ancestors>` each folder from the project root up to `~` (#1180 §3.1).
+ */
+export type LayoutPath = {
+	path: string;
+	scope: "global" | "repo";
+	/** The agent whose file this is, when another agent reads it (OpenCode reading Claude's). */
+	via?: string;
+	/** Read only when this path, resolved in the same folder, does not exist. */
+	onlyIfMissing?: string;
+};
+
+/** A key inside a config file; dot-separated, `<repo>` one segment for the project root. */
+export type LayoutKey = LayoutPath & {
+	format: "json" | "jsonc" | "toml";
+	key: string;
+};
+
+/** Where an agent's own instructions, skills, MCP servers, hooks and plugins live on disk. */
+export interface ConfigLayout {
+	instructions: readonly LayoutPath[];
+	/** Folders; each child holding SKILL.md is one skill. */
+	skills: readonly LayoutPath[];
+	mcp: readonly LayoutKey[];
+	hooks: readonly LayoutKey[];
+	/** A `dir` entry is a folder whose each child folder is one plugin (Gemini extensions). */
+	plugins: readonly (LayoutKey | (LayoutPath & { format: "dir" }))[];
+	trust?: { path: string; gate: "host" | "agent" };
+}
+
 /** What PrismaLens alone says and pins about an agent (#916); its launch facts are agent-host's row. */
 export interface AgentFacts {
 	/** One line the readiness check shows when the binary is missing; it names `channel`'s command. */
@@ -133,6 +164,8 @@ export interface AgentFacts {
 	commandSetByUser?: true;
 	/** The file its own default permission is read from, as a Settings line names it. */
 	settingsFile?: string;
+	/** Where its own config lives, so What loads reads it from disk (#1180 §3.1); absent, not readable. */
+	configLayout?: ConfigLayout;
 	/** Why it has no single permission level, where it has modes but they are not levels. */
 	noLevelReason?: string;
 	/** What its own settings still decide, under the Settings rows (#673 w21); null, nothing to say. */

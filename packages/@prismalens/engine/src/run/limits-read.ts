@@ -27,7 +27,7 @@ import {
 } from "@prismalens/agent-host";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import type { LimitWindow } from "@prismalens/contracts";
-import { parse as parseToml } from "smol-toml";
+import { foundMcpNames } from "./agent-config.js";
 import { removeRunDir } from "./harness-doctor.js";
 import { prepareRunEnv } from "./investigate.js";
 
@@ -141,23 +141,6 @@ export function codexAppServerArgs(mcp: readonly string[]): string[] {
 	return ["app-server", ...codexConfigArgs(mcp)];
 }
 
-/** The MCP server names in the user's own `config.toml`, under the planned `CODEX_HOME`. */
-export function codexUserMcpNames(
-	env: Record<string, string>,
-	home: string = homedir(),
-): string[] {
-	const dir = env.CODEX_HOME || join(home, ".codex");
-	try {
-		const config = parseToml(readFileSync(join(dir, "config.toml"), "utf8"));
-		const servers = config.mcp_servers;
-		return servers && typeof servers === "object" && !Array.isArray(servers)
-			? Object.keys(servers)
-			: [];
-	} catch {
-		return [];
-	}
-}
-
 async function readCodex(
 	plan: LimitReadPlan,
 	budget: number,
@@ -167,7 +150,13 @@ async function readCodex(
 		command: plan.command,
 		args: [
 			...(plan.args ?? []),
-			...codexAppServerArgs(codexUserMcpNames(plan.env, deps.home)),
+			...codexAppServerArgs(
+				foundMcpNames(
+					"codex",
+					{ ...plan.env, ...(deps.home ? { HOME: deps.home } : {}) },
+					null,
+				),
+			),
 		],
 		cwd: plan.cwd,
 		env: plan.env,

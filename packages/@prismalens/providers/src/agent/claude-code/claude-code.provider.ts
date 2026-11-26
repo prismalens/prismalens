@@ -57,6 +57,71 @@ export const claudeCode = defineAgent({
 		usageReports: ["cache", "cost", "limits"],
 		modelWindow: { alias: "[1m]", base: "200k", large: "1M" },
 		settingsFile: "~/.claude/settings.json",
+		// code.claude.com/docs/en/{memory,settings,mcp,skills}; AGENTS.md only beside no CLAUDE.md (#1180).
+		configLayout: {
+			instructions: [
+				{ path: "{$CLAUDE_CONFIG_DIR|~/.claude}/CLAUDE.md", scope: "global" },
+				{ path: "<ancestors>/CLAUDE.md", scope: "repo" },
+				{
+					path: "<ancestors>/AGENTS.md",
+					scope: "repo",
+					onlyIfMissing: "<ancestors>/CLAUDE.md",
+				},
+				{ path: "<repo>/CLAUDE.local.md", scope: "repo" },
+			],
+			skills: [
+				{ path: "{$CLAUDE_CONFIG_DIR|~/.claude}/skills", scope: "global" },
+				{ path: "<repo>/.claude/skills", scope: "repo" },
+			],
+			mcp: [
+				{
+					path: "{$CLAUDE_CONFIG_DIR|~}/.claude.json",
+					scope: "global",
+					format: "json",
+					key: "mcpServers",
+				},
+				{
+					path: "{$CLAUDE_CONFIG_DIR|~}/.claude.json",
+					scope: "repo",
+					format: "json",
+					key: "projects.<repo>.mcpServers",
+				},
+				{
+					path: "<repo>/.mcp.json",
+					scope: "repo",
+					format: "json",
+					key: "mcpServers",
+				},
+			],
+			hooks: [
+				{
+					path: "{$CLAUDE_CONFIG_DIR|~/.claude}/settings.json",
+					scope: "global",
+					format: "json",
+					key: "hooks",
+				},
+				{
+					path: "<repo>/.claude/settings.json",
+					scope: "repo",
+					format: "json",
+					key: "hooks",
+				},
+				{
+					path: "<repo>/.claude/settings.local.json",
+					scope: "repo",
+					format: "json",
+					key: "hooks",
+				},
+			],
+			plugins: [
+				{
+					path: "{$CLAUDE_CONFIG_DIR|~/.claude}/settings.json",
+					scope: "global",
+					format: "json",
+					key: "enabledPlugins",
+				},
+			],
+		},
 		ownSettingsNote: () =>
 			"Your ~/.claude/settings.json allow and deny rules, hooks and sandbox apply, as in your terminal. The terminal's own default may be Auto on Claude Code 2.1.228 and later; PrismaLens reads the key, not that default.",
 		channel: channelOf(pin),
