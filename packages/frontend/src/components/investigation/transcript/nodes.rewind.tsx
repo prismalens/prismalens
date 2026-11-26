@@ -7,6 +7,7 @@ import { History, TriangleAlert, Undo2 } from "lucide-react";
 import {
 	createContext,
 	type ReactNode,
+	useCallback,
 	useContext,
 	useEffect,
 	useState,
@@ -89,18 +90,12 @@ function FoldedTurns({
 		}),
 	);
 	const ready = useThreadSchemasReady();
-	const [schemaTry, setSchemaTry] = useState(0);
 	const [schemaFailed, setSchemaFailed] = useState(false);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: each Retry loads again.
-	useEffect(() => {
-		let live = true;
-		loadThreadSchemas().catch(() => {
-			if (live) setSchemaFailed(true);
-		});
-		return () => {
-			live = false;
-		};
-	}, [schemaTry]);
+	const loadSchemas = useCallback(() => {
+		setSchemaFailed(false);
+		loadThreadSchemas().catch(() => setSchemaFailed(true));
+	}, []);
+	useEffect(loadSchemas, [loadSchemas]);
 	const schemas = ready ? threadSchemas() : null;
 	if (q.isError || (schemaFailed && !schemas))
 		return (
@@ -113,8 +108,7 @@ function FoldedTurns({
 					variant="text"
 					size="xs"
 					onClick={() => {
-						setSchemaFailed(false);
-						setSchemaTry((n) => n + 1);
+						loadSchemas();
 						if (q.isError) void q.refetch();
 					}}
 					data-testid="rewind-folded-retry"

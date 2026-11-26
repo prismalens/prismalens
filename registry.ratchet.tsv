@@ -375,7 +375,7 @@ packages/api/test/scenarios/thread-tree.int.spec.ts	T1	1
 packages/api/test/scenarios/thread-tree.int.spec.ts	T2	4
 packages/api/test/scenarios/thread-tree.int.spec.ts	as-never	2
 packages/api/test/scenarios/tools-follow-the-thread.int.spec.ts	T1	1
-packages/api/test/scenarios/tools-follow-the-thread.int.spec.ts	T2	4
+packages/api/test/scenarios/tools-follow-the-thread.int.spec.ts	T2	1
 packages/api/test/scenarios/update-draining.int.spec.ts	T2	2
 packages/api/test/scenarios/vendor-alert-sources.int.spec.ts	T2	1
 packages/api/test/scenarios/wakeup.int.spec.ts	T2	2

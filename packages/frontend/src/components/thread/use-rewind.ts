@@ -91,7 +91,7 @@ export function rewindRefusalWords(
 		case "already-undone":
 			return "This edit was already undone.";
 		case "interrupted":
-			return "It stopped partway. Restore puts the files back.";
+			return "It stopped partway, so some files may have changed. The thread offers Restore, which puts them back as they were before.";
 		default:
 			return "It did not run.";
 	}

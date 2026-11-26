@@ -272,8 +272,9 @@ describe("Tools follow the thread (#1020): no offered tool always fails", () => 
 		expect(JSON.stringify(r)).toContain(project?.other);
 	});
 
-	for (const subject of ["incident", "project", "service", "schedule", "none"] as const)
-		it(`Given a seeded ${subject} thread, Then every tool its view offers answers something other than not_found`, async () => {
+	it.each(["incident", "project", "service", "schedule", "none"] as const)(
+		"Given a seeded %s thread, Then every tool its view offers answers something other than not_found",
+		async (subject) => {
 			const g = await pl.gateway();
 			const run = runs.get(subject);
 			if (!run) throw new Error(`no ${subject} run was seeded`);
@@ -335,5 +336,6 @@ describe("Tools follow the thread (#1020): no offered tool always fails", () => 
 				where: { callerId: run.id, tool: "pl_thread_rewind" },
 			});
 			expect(asked.map((a) => (JSON.parse(a.args) as { card: string }).card)).toEqual(REWIND[subject].cards);
-		});
+		},
+	);
 });

@@ -57,6 +57,9 @@ describe("the gateway's thread port (#1101 cat 10, 2cc93e1ad)", () => {
 	});
 });
 
+type RewindAsk = Parameters<TreePort["tree"]["rewind"]>[1];
+const ask = (requestId: string): RewindAsk => ({ id: "t2", back: 1, text: "Use port 8080", requestId });
+
 describe("the gateway's rewind tool (#1193)", () => {
 	it("answers a retried requestId with its recorded result, without binding a new preview", async () => {
 		const { port, tree, actions } = bound({ root: "r1" });
@@ -64,7 +67,7 @@ describe("the gateway's rewind tool (#1193)", () => {
 		tree.bindRewind.mockResolvedValueOnce(
 			fail("invalid_input", "That thread is running.", "Stop it first with pl_thread_cancel."),
 		);
-		const r = await port.tree.rewind("run", { requestId: "q1", other: "t2" } as never);
+		const r = await port.tree.rewind("run", ask("q1"));
 		expect(r).toEqual({ value: { rewound: "first answer" } });
 		expect(actions.recorded).toHaveBeenCalledWith("run", "q1");
 		expect(tree.bindRewind).not.toHaveBeenCalled();
@@ -73,9 +76,9 @@ describe("the gateway's rewind tool (#1193)", () => {
 
 	it("binds a preview for an unseen requestId and gates the bound call", async () => {
 		const { port, tree, actions } = bound({ root: "r1" });
-		const r = await port.tree.rewind("run", { requestId: "q2", other: "t2" } as never);
+		const r = await port.tree.rewind("run", ask("q2"));
 		expect(r).toEqual({ value: "gated" });
-		expect(tree.bindRewind).toHaveBeenCalledWith("run", { requestId: "q2", other: "t2" });
+		expect(tree.bindRewind).toHaveBeenCalledWith("run", ask("q2"));
 		expect(actions.gate).toHaveBeenCalledWith({
 			callerId: "run",
 			rootId: "r1",
