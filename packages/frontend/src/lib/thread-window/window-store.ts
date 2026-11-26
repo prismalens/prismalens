@@ -203,8 +203,7 @@ export class ThreadWindowStore {
 
 	applyPage(page: ThreadPage, mode: "replace" | "before" | "after"): void {
 		this.takePage(page, mode);
-		if (mode === "before") this.edges.before = "idle";
-		if (mode === "after") this.edges.after = "idle";
+		if (mode !== "replace") this.edges = { ...this.edges, [mode]: "idle" };
 		this.emit(
 			mode === "before" ? "prepend" : mode === "after" ? "append" : "replace",
 		);
