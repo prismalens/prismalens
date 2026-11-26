@@ -18,6 +18,7 @@ vi.mock("./clipboard-toast", () => {
 });
 
 let saved: string[];
+let blobs: Blob[];
 let shown: () => string[];
 let unmount: () => Promise<void>;
 
@@ -33,7 +34,11 @@ beforeEach(async () => {
 		configurable: true,
 		value: () => false,
 	});
-	vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:copy");
+	blobs = [];
+	vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+		blobs.push(blob as Blob);
+		return "blob:copy";
+	});
 	saved = [];
 	vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
 		function (this: HTMLAnchorElement) {
@@ -65,9 +70,11 @@ describe("a blocked copy whose toast code cannot load", () => {
 		await act(async () => {
 			ok = await copyText("pods restarted", "note.txt");
 		});
-		expect([ok, saved, shown()]).toEqual([
+		const texts = await Promise.all(blobs.map((b) => b.text()));
+		expect([ok, saved, texts, shown()]).toEqual([
 			false,
 			["note.txt blob:copy"],
+			["pods restarted"],
 			[
 				"Not copied: The browser kept the clipboard closed, so PrismaLens saved the text as a file.",
 			],
