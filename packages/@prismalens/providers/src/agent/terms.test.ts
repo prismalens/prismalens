@@ -68,6 +68,31 @@ describe("authPathOf", () => {
 				'Alert and scheduled runs can\'t use Acme on Acme account: its terms say "No bots." (https://acme.test/terms). Acme may use Acme account even with ACME_KEY set, and its docs don\'t say which wins, so the stricter terms hold. Start it yourself, or sign out of Acme\'s own sign-in and use ACME_KEY.',
 		});
 	});
+
+	it("lets a key with an ACP method win over a stricter stored sign-in only when the run sends that method", () => {
+		const methods: SignInMethod[] = [
+			{ id: "login", label: "Acme account", steps: ["browser"], terms: { runs: "interactive-only", source: { url: "https://acme.test/terms", clause: "No bots.", readOn: "2026-11-26" } } },
+			{ id: "api-key", label: "ACME_KEY", steps: ["credentials"], env: [{ name: "ACME_KEY" }], acp: "acme-key", terms: { runs: "allowed", source: { url: "https://acme.test/api", clause: "Keys are for programs.", readOn: "2026-11-26" } } },
+		];
+		const path = (sent?: string) => {
+			const p = authPathOf({ methods }, { ACME_KEY: "k" }, sent);
+			return [p?.method.id, p?.other?.id];
+		};
+		expect([path(), path("oauth"), path("acme-key")]).toEqual([
+			["login", "api-key"],
+			["login", "api-key"],
+			["api-key", undefined],
+		]);
+	});
+
+	it("counts goose's Coding Plan key only when GOOSE_PROVIDER is unset or picks the provider that reads it", () => {
+		expect([
+			pathOf("goose", { GOOSE_PROVIDER: "ollama", ANTHROPIC_API_KEY: "sk-sp-1" }),
+			pathOf("goose", { GOOSE_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "sk-sp-1" }),
+			pathOf("goose", { GOOSE_PROVIDER: "openai", OPENAI_API_KEY: "sk-sp-1" }),
+			pathOf("goose", { ANTHROPIC_API_KEY: "sk-sp-1" }),
+		]).toEqual(["api-key", "coding-plan", "coding-plan", "coding-plan"]);
+	});
 });
 
 describe("termsGate", () => {
@@ -78,10 +103,19 @@ describe("termsGate", () => {
 		expect(termsGate(agent("qwen"), {}, "person")).toBeNull();
 	});
 
-	it("refuses a scheduled Claude Code run on a Coding Plan key and says to use a key from outside the plan", () => {
-		expect(termsGate(agent("claude-code"), { ANTHROPIC_AUTH_TOKEN: "sk-sp-1" }, "schedule")).toEqual({
-			refuse: `Alert and scheduled runs can't use Claude Code on Alibaba Coding Plan key (sk-sp-): ${CODING_PLAN} Start it yourself, or put a key from outside the plan in ANTHROPIC_API_KEY.`,
-		});
+	it("refuses a scheduled Claude Code run on a Coding Plan key and names each plan setting to replace or clear", () => {
+		const lead = `Alert and scheduled runs can't use Claude Code on Alibaba Coding Plan key (sk-sp-): ${CODING_PLAN} Start it yourself, or`;
+		expect([
+			termsGate(agent("claude-code"), { ANTHROPIC_AUTH_TOKEN: "sk-sp-1" }, "schedule"),
+			termsGate(
+				agent("claude-code"),
+				{ ANTHROPIC_API_KEY: "sk-sp-2", ANTHROPIC_BASE_URL: "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic" },
+				"alert",
+			),
+		]).toEqual([
+			{ refuse: `${lead} replace the plan key in ANTHROPIC_AUTH_TOKEN with a key from outside the plan.` },
+			{ refuse: `${lead} replace the plan key in ANTHROPIC_API_KEY with a key from outside the plan, and clear ANTHROPIC_BASE_URL.` },
+		]);
 	});
 
 	it("passes alert runs on every allowed path: Grok's own sign-in, Antigravity's Google sign-in, a Claude subscription", () => {
@@ -95,12 +129,11 @@ describe("termsGate", () => {
 	it("refuses every run on a never path and lets every run use an unknown one", () => {
 		const never: SignInMethod = { id: "login", label: "Acme account", steps: ["browser"], terms: { runs: "never", source: { url: "https://acme.test/terms", clause: "You must not run it in other apps.", readOn: "2026-11-26" } } };
 		const unknown: SignInMethod = { ...never, terms: { runs: "unknown", source: never.terms.source, gaps: ["acme.test/aup: needs JavaScript"] } };
-		expect(termsGate({ name: "Acme", auth: { methods: [never] } }, {}, "person")).toEqual({
+		const starters = ["person", "alert", "schedule"] as const;
+		const refused = {
 			refuse: 'PrismaLens doesn\'t run Acme on Acme account: its terms say "You must not run it in other apps." (https://acme.test/terms).',
-		});
-		expect([
-			termsGate({ name: "Acme", auth: { methods: [unknown] } }, {}, "alert"),
-			termsGate({ name: "Acme", auth: { methods: [unknown] } }, {}, "person"),
-		]).toEqual([null, null]);
+		};
+		expect(starters.map((s) => termsGate({ name: "Acme", auth: { methods: [never] } }, {}, s))).toEqual([refused, refused, refused]);
+		expect(starters.map((s) => termsGate({ name: "Acme", auth: { methods: [unknown] } }, {}, s))).toEqual([null, null, null]);
 	});
 });

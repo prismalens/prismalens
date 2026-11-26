@@ -106,7 +106,15 @@ export const provider = defineKind({
 								.min(1),
 							env: z.optional(
 								z.array(
-									z.object({ name: text, prefix: z.optional(text) }).strict(),
+									z
+										.object({
+											name: text,
+											prefix: z.optional(text),
+											when: z.optional(
+												z.object({ name: text, is: text }).strict(),
+											),
+										})
+										.strict(),
 								),
 							),
 							acp: z.optional(text),

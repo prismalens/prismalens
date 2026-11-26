@@ -75,8 +75,13 @@ export const rawUrl = (url) =>
 		"https://raw.githubusercontent.com/$1/",
 	);
 
-/** Fewer words than this and the page is a shell its script fills in, so it can't be judged. */
+/** A page with a script and fewer words than this is a shell its script fills in, so it can't be judged. */
 const MIN_WORDS = 200;
+const pageOf = (raw) => {
+	const text = plain(raw);
+	const shell = /<script\b/i.test(raw) && text.split(" ").length < MIN_WORDS;
+	return { text, shell };
+};
 
 /** Each distinct source: `present`, `changed` (its clause is gone), or `unreadable`. */
 export async function checkSources(agents, fetchText) {
@@ -93,19 +98,18 @@ export async function checkSources(agents, fetchText) {
 		if (!pages.has(s.url))
 			pages.set(
 				s.url,
-				fetchText(rawUrl(s.url)).then(plain, (e) => ({ error: String(e) })),
+				fetchText(rawUrl(s.url)).then(pageOf, (e) => ({ error: String(e) })),
 			);
 		const page = await pages.get(s.url);
 		results.push({
 			...s,
-			state:
-				typeof page !== "string"
-					? "unreadable"
-					: page.includes(plain(s.clause))
-						? "present"
-						: page.split(" ").length < MIN_WORDS
-							? "unreadable"
-							: "changed",
+			state: page.error
+				? "unreadable"
+				: page.text.includes(plain(s.clause))
+					? "present"
+					: page.shell
+						? "unreadable"
+						: "changed",
 		});
 	}
 	return results;

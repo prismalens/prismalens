@@ -229,7 +229,7 @@ describe("agentNote variants (the four agent notes)", () => {
 		expect(agentNote(mockHarness("deepagents"))).toBeNull();
 	});
 
-	it("Antigravity and Cursor have no agent note: their sign-ins' terms are under Sign-in (#1252)", () => {
+	it("Antigravity and Cursor have no agent note (#1252)", () => {
 		expect([agentNote(mockHarness("antigravity")), agentNote(mockHarness("cursor"))]).toEqual([null, null]);
 	});
 });

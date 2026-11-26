@@ -42,7 +42,16 @@ export const goose = defineAgent({
 					gaps: ["the terms of the provider goose is configured to use"],
 				},
 			},
-			codingPlan(["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]),
+			codingPlan([
+				{
+					name: "ANTHROPIC_API_KEY",
+					when: { name: "GOOSE_PROVIDER", is: "anthropic" },
+				},
+				{
+					name: "OPENAI_API_KEY",
+					when: { name: "GOOSE_PROVIDER", is: "openai" },
+				},
+			]),
 			{
 				id: "api-key",
 				label: "GOOSE_PROVIDER and that provider's key",

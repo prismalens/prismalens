@@ -3,13 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-	checkSources,
-	loadAgents,
-	plain,
-	rawUrl,
-	termsLines,
-} from "./agent-terms.mjs";
+import { checkSources, loadAgents, plain, termsLines } from "./agent-terms.mjs";
 
 const source = (url, clause) => ({ url, clause, readOn: "2026-11-26" });
 const method = (id, runs, s, extra = {}) => ({
@@ -98,6 +92,22 @@ test("check calls a failed fetch or a script-filled shell unreadable, never chan
 	);
 });
 
+test("check calls a short page with no script changed when its clause is gone", async () => {
+	const one = {
+		id: "a",
+		auth: {
+			methods: [
+				method("login", "allowed", source("https://a.test/t", "No bots.")),
+			],
+		},
+	};
+	const short = await checkSources(
+		[one],
+		async () => "<h1>Terms.</h1><p>Automation is prohibited.</p>",
+	);
+	assert.equal(short[0].state, "changed");
+});
+
 test("plain makes markup, Markdown links, entities, curly quotes and code marks comparable", () => {
 	assert.equal(
 		plain(
@@ -107,11 +117,27 @@ test("plain makes markup, Markdown links, entities, curly quotes and code marks 
 	);
 });
 
-test("check fetches a GitHub blob as its raw file", () => {
-	assert.equal(
-		rawUrl("https://github.com/o/r/blob/main/docs/a.md"),
+test("check fetches a GitHub blob as its raw file", async () => {
+	const fetched = [];
+	const blob = {
+		id: "a",
+		auth: {
+			methods: [
+				method(
+					"login",
+					"allowed",
+					source("https://github.com/o/r/blob/main/docs/a.md", "No bots."),
+				),
+			],
+		},
+	};
+	await checkSources([blob], async (url) => {
+		fetched.push(url);
+		return "No bots.";
+	});
+	assert.deepEqual(fetched, [
 		"https://raw.githubusercontent.com/o/r/main/docs/a.md",
-	);
+	]);
 });
 
 test("the shipped registry answers for Qwen Code's own sign-in", async () => {

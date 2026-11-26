@@ -93,6 +93,8 @@ export interface Terms {
 export interface SignInEnv {
 	readonly name: string;
 	readonly prefix?: string;
+	/** It counts only while `name` is unset or is `is`: a key read only by the provider that setting picks. */
+	readonly when?: { readonly name: string; readonly is: string };
 }
 
 /** A sign-in method an agent's own CLI offers, served as data with its vendor's terms. */

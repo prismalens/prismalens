@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ProviderSpec, SignInMethod, TermsRuns } from "../descriptor.ts";
+import type {
+	ProviderSpec,
+	SignInEnv,
+	SignInMethod,
+	TermsRuns,
+} from "../descriptor.ts";
 
 /** Who started a run: a person, or PrismaLens for an alert or a schedule. */
 export type RunStarter = "person" | "alert" | "schedule";
@@ -22,14 +27,20 @@ export interface AuthPath {
 	readonly other?: SignInMethod;
 }
 
+const isSet = (e: SignInEnv, env: Env) => {
+	const v = env[e.name]?.trim();
+	const picker = e.when && env[e.when.name]?.trim();
+	return (
+		!!v &&
+		(!e.prefix || v.startsWith(e.prefix)) &&
+		(!picker || picker === e.when?.is)
+	);
+};
 const hits = (m: SignInMethod, env: Env) =>
-	(m.env ?? []).some((e) => {
-		const v = env[e.name]?.trim();
-		return !!v && (!e.prefix || v.startsWith(e.prefix));
-	});
+	(m.env ?? []).some((e) => isSet(e, env));
 
-/** Does setting `m`'s env make the CLI use it: the run then sends its ACP method, or no stored sign-in competes? */
-const wins = (auth: Auth, m: SignInMethod) =>
+/** Would setting `m`'s env make a run use it: the host then sends its ACP method, or no stored sign-in competes? */
+const keyWins = (auth: Auth, m: SignInMethod) =>
 	!!m.acp || !(auth?.methods ?? []).some((s) => !s.env);
 
 /**
@@ -53,7 +64,8 @@ export function authPathOf(
 	const keyed = methods.find((m) => hits(m, env));
 	const stored = methods.find((m) => !m.env);
 	if (!keyed) return stored ? { method: stored } : null;
-	if (!stored || keyed.terms.runs === stored.terms.runs || wins(auth, keyed))
+	// A key's ACP method wins only when the run sends it, which `picked` already took.
+	if (!stored || keyed.terms.runs === stored.terms.runs)
 		return { method: keyed };
 	return STRICTNESS[keyed.terms.runs] >= STRICTNESS[stored.terms.runs]
 		? { method: keyed, other: stored }
@@ -91,17 +103,32 @@ export function termsGate(
 			: `Alert and scheduled runs can't use ${agent.name} on ${method.label}`;
 	const yourself = runs === "never" ? "" : " Start it yourself, or";
 	return {
-		refuse: `${lead}: ${said}${which}${switchTo(agent, method, startedBy, yourself)}`,
+		refuse: `${lead}: ${said}${which}${switchTo(agent, method, startedBy, yourself, env)}`,
 	};
 }
 
-/** How to reach a path this starter may use: a key that wins, else signing out first. */
+/** How to reach a path this starter may use: off the plan's settings, a key that wins, else signing out first. */
 function switchTo(
 	agent: { readonly name: string; readonly auth?: Auth },
 	from: SignInMethod,
 	startedBy: RunStarter,
 	yourself: string,
+	env: Env,
 ): string {
+	if (from.env?.some((e) => e.prefix)) {
+		const set = from.env.filter((e) => isSet(e, env));
+		const names = (url: boolean) =>
+			set
+				.filter((e) => e.prefix?.startsWith("https://") === url)
+				.map((e) => e.name)
+				.join(" and ");
+		const steps = [
+			names(false) &&
+				`replace the plan key in ${names(false)} with a key from outside the plan`,
+			names(true) && `clear ${names(true)}`,
+		].filter(Boolean);
+		return `${yourself} ${steps.join(", and ")}.`;
+	}
 	const to = (agent.auth?.methods ?? []).find(
 		(m) =>
 			m !== from &&
@@ -110,9 +137,8 @@ function switchTo(
 			runsUnder(m.terms.runs, startedBy),
 	);
 	if (!to) return yourself ? `${yourself.replace(/, or$/, ".")}` : "";
-	const step = from.env?.some((e) => e.prefix)
-		? `put a key from outside the plan in ${to.label}`
-		: !from.env && !wins(agent.auth, to)
+	const step =
+		!from.env && !keyWins(agent.auth, to)
 			? `sign out of ${agent.name}'s own sign-in and use ${to.label}`
 			: `use ${to.label} instead`;
 	return `${yourself || " To run it,"} ${step}.`;

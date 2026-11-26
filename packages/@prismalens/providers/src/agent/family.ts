@@ -5,6 +5,7 @@ import {
 	defineProvider,
 	type ProviderDef,
 	type ProviderSpec,
+	type SignInEnv,
 	type SignInMethod,
 } from "../descriptor.ts";
 
@@ -191,7 +192,7 @@ export function channelOf(pin: AgentPin): InstallChannel {
  * non-interactive use in any tool, so it is its own sign-in path ahead of the agent's key.
  */
 export function codingPlan(
-	keys: readonly string[],
+	keys: readonly (string | Omit<SignInEnv, "prefix">)[],
 	baseUrl?: string,
 ): SignInMethod {
 	return {
@@ -199,7 +200,10 @@ export function codingPlan(
 		label: "Alibaba Coding Plan key (sk-sp-)",
 		steps: ["credentials"],
 		env: [
-			...keys.map((name) => ({ name, prefix: "sk-sp-" })),
+			...keys.map((k) => ({
+				...(typeof k === "string" ? { name: k } : k),
+				prefix: "sk-sp-",
+			})),
 			...(baseUrl
 				? [
 						{
