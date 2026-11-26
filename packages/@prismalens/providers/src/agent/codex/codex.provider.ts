@@ -79,6 +79,7 @@ export const codex = defineAgent({
 		settingsFile: "~/.codex/config.toml",
 		// Codex docs agents-md, config-advanced, hooks, build-skills; project config only when trusted (#1180).
 		configLayout: {
+			inlineMcp: { env: "CODEX_CONFIG", key: "mcp_servers" },
 			instructions: [
 				{ path: "{$CODEX_HOME|~/.codex}/AGENTS.override.md", scope: "global" },
 				{

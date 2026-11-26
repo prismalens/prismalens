@@ -106,6 +106,8 @@ export interface ConfigLayout {
 	/** A `dir` entry is a folder whose each child folder is one plugin (Gemini extensions). */
 	plugins: readonly (LayoutKey | (LayoutPath & { format: "dir" }))[];
 	trust?: { path: string; gate: "host" | "agent" };
+	/** An env var holding the agent's inline JSON config, and the key its MCP servers sit under. */
+	inlineMcp?: { env: string; key: string };
 }
 
 /** What PrismaLens alone says and pins about an agent (#916); its launch facts are agent-host's row. */

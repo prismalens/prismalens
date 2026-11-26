@@ -335,19 +335,13 @@ export function foundMcpNames(
 	];
 }
 
-/** The env var holding an agent's inline JSON config, and the key its MCP servers sit under. */
-const INLINE_MCP: Record<string, [env: string, key: string]> = {
-	codex: ["CODEX_CONFIG", "mcp_servers"],
-	opencode: ["OPENCODE_CONFIG_CONTENT", "mcp"],
-};
-
 /** MCP servers defined only in the launch env's inline config; unparseable config names none. */
 function inlineMcpNames(agent: string, env: Env): string[] {
-	const [name, key] = INLINE_MCP[agent] ?? [];
-	const raw = name ? env[name] : undefined;
-	if (!raw || !key) return [];
+	const inline = layoutOf(agent)?.inlineMcp;
+	const raw = inline ? env[inline.env] : undefined;
+	if (!raw || !inline) return [];
 	try {
-		const servers = (JSON.parse(raw) as Record<string, unknown>)?.[key];
+		const servers = (JSON.parse(raw) as Record<string, unknown>)?.[inline.key];
 		return isRecord(servers) ? Object.keys(servers) : [];
 	} catch {
 		return [];
