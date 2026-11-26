@@ -71,6 +71,9 @@ export class TreeGateway implements OnModuleInit {
 				rewind: async (runId, input) => {
 					const rootId = await this.rootOf(runId);
 					if (!rootId) return GONE();
+					// A retry answers as recorded: its message may since be folded or running.
+					const seen = await this.actions.recorded(runId, input.requestId);
+					if (seen) return seen;
 					const bound = await this.tree.bindRewind(runId, input);
 					if (isFailure(bound)) return bound;
 					return this.actions.gate({

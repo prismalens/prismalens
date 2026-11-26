@@ -205,9 +205,9 @@ export class SessionLifecycleService implements OnModuleInit {
 	 * `agent_quota`, when the limit's own words name no time.
 	 */
 	private async reportedReset(id: string, now: Date): Promise<Date | null> {
+		// Folded rows count: a rewind hides conversation, not the account's usage window (#1193).
 		const last = await this.prisma.investigationEvent.findFirst({
 			where: {
-				foldedBy: null,
 				investigationId: id,
 				event: { contains: '"kind":"agent_quota"' },
 			},

@@ -204,15 +204,26 @@ export class Dispatcher {
 
 				const claimed = await this.store.claim(this.owner, slots);
 				// A claim that lands after stop() or a drain is handed back, never started (#981 OBJ-017).
-				if (this.stopped || this.draining) {
-					for (const job of claimed)
+				const handBack = async (jobs: ClaimedJob[]) => {
+					for (const job of jobs)
 						await this.store.release(job.id, this.owner).catch(() => false);
+				};
+				if (this.stopped || this.draining) {
+					await handBack(claimed);
 					break;
 				}
-				for (const job of claimed) {
+				let halted = false;
+				for (const [i, job] of claimed.entries()) {
 					await this.options.beforeStart?.(job).catch(() => {});
+					// stop() already snapshotted inFlight, so a run started now could never be killed.
+					if (this.stopped || this.draining) {
+						await handBack(claimed.slice(i));
+						halted = true;
+						break;
+					}
 					this.startJob(job);
 				}
+				if (halted) break;
 			} catch (error) {
 				this.log.error("Dispatch tick failed", error);
 			}

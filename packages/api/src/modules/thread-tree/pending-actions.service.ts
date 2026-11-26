@@ -272,6 +272,15 @@ export class PendingActionsService {
 		}
 	}
 
+	/** The answer a call already got for this requestId, or null when it is unseen. */
+	async recorded(
+		callerId: string,
+		requestId: string,
+	): Promise<ToolOutcome | null> {
+		const seen = await this.byRequest(callerId, requestId);
+		return seen ? this.answerFor(seen) : null;
+	}
+
 	private byRequest(callerId: string, requestId: string) {
 		return this.prisma.pendingAction.findUnique({
 			where: { callerId_requestId: { callerId, requestId } },

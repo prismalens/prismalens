@@ -31,14 +31,31 @@ const TASK =
 const log = (/** @type {string} */ m) => console.log(`[real-agent] ${m}`);
 
 /** The message the rewind folds, and its edit (#1193). */
-const FOLDED =
+export const FOLDED =
 	"Also add a comment above the loop in src/sum.js that says why it starts at 0.";
-const EDITED = "Instead, add a one-line JSDoc to sum() in src/sum.js.";
+export const EDITED = "Instead, add a one-line JSDoc to sum() in src/sum.js.";
+const REFOLDED = "the edited prompt carried the folded message";
 /** How each agent must open the edited message: its own fork, or a replay handoff. */
 const REWIND_OPENING = /** @type {Record<string, string>} */ ({
 	"claude-code": "fork",
 	codex: "handoff",
 });
+
+/**
+ * What the rewind case found wrong with the edited message's opening and recorded prompt.
+ * @param {{ opening: string | null, want: string | undefined, input: unknown, body: { parts?: { text?: string }[] } | null }} seen
+ */
+export function rewindFailures({ opening, want, input, body }) {
+	const sentText = (body?.parts ?? []).map((p) => p.text ?? "").join("\n");
+	const fails = [];
+	if (opening !== want) fails.push(`opened ${opening}, not ${want}`);
+	if (!input) fails.push("no prompt was recorded after the rewind");
+	else if (!body) fails.push("the edited prompt's body was not stored");
+	else if (!sentText.includes(EDITED))
+		fails.push("the edited prompt did not carry the edited message");
+	if (sentText.includes(FOLDED)) fails.push(REFOLDED);
+	return fails;
+}
 
 /** @param {string[]} argv @param {string} name */
 const opt = (argv, name) => {
@@ -344,17 +361,10 @@ async function rewindCase(api, id, agentId, settle) {
 				ok: [404],
 			})
 		: null;
-	const sentText = (body?.parts ?? [])
-		.map((/** @type {{ text?: string }} */ p) => p.text ?? "")
-		.join("\n");
-	const refolded = sentText.includes(FOLDED);
 	const want = REWIND_OPENING[agentId];
 	const opening = opened?.how ?? null;
-	const fails = [];
-	if (opening !== want) fails.push(`opened ${opening}, not ${want}`);
-	if (!input) fails.push("no prompt was recorded after the rewind");
-	else if (!body) fails.push("the edited prompt's body was not stored");
-	if (refolded) fails.push("the edited prompt carried the folded message");
+	const fails = rewindFailures({ opening, want, input, body });
+	const refolded = fails.includes(REFOLDED);
 	return {
 		pass: fails.length === 0,
 		opening,

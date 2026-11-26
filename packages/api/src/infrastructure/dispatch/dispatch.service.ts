@@ -317,7 +317,13 @@ export function recoveryPayload(
 				error: RESTART_REASON,
 			},
 			to: { ...(prev?.to ?? {}), harness: plan.harness },
-			...(plan.route === "handoff" ? { handoff: true } : {}),
+			// A replayed rewind or fresh start must not resume the saved session it abandoned (#1193).
+			...(plan.route === "handoff" ||
+			prev?.handoff ||
+			(prev?.rewind && !prev.rewind.fork)
+				? { handoff: true }
+				: {}),
+			...(prev?.rewind ? { rewind: prev.rewind } : {}),
 			// The previous text keeps its identity, so its receipt names the wake it carried (#1179 D6).
 			...(turn === "answer" && prev
 				? {

@@ -157,6 +157,31 @@ describe("AcpAdapter.normalize", () => {
 		expect(CanonicalEventSchema.safeParse(step).success).toBe(true);
 	});
 
+	it("a new ACP messageId starts a new step, so each step's text is only its own message's (#1193)", () => {
+		const adapter = new AcpAdapter(ctx);
+		const said = (text: string, messageId: string): AcpUpdate => ({
+			sessionUpdate: "agent_message_chunk",
+			messageId,
+			content: { type: "text", text },
+		});
+		const steps = [
+			...adapter.events(said("Fir", "msg-a")),
+			...adapter.events(said("st.", "msg-a")),
+			...adapter.events(said("Last.", "msg-b")),
+			adapter.flushText(),
+		];
+		expect(
+			steps.map((s) =>
+				s?.kind === "agent_step"
+					? { text: s.text, acpMessageId: s.acpMessageId }
+					: s,
+			),
+		).toEqual([
+			{ text: "First.", acpMessageId: "msg-a" },
+			{ text: "Last.", acpMessageId: "msg-b" },
+		]);
+	});
+
 	it("carries rawInput into the agent_step toolCalls args", () => {
 		const adapter = new AcpAdapter(ctx);
 		const step = adapter.normalize(execToolCall);

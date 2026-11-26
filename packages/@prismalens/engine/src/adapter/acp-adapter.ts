@@ -267,9 +267,17 @@ export class AcpAdapter {
 				const entries = planEntries(u.entries);
 				return entries ? [{ kind: "plan", ...this.base(), entries }] : [];
 			}
-			case "agent_message_chunk":
-				if (u.messageId) this.lane.messageId = u.messageId.slice(0, 200);
-				return this.addText(flattenAcpContent(u.content));
+			case "agent_message_chunk": {
+				// A step's text must be its message's own: a fork point checks the pair (#1193).
+				const id = u.messageId?.slice(0, 200);
+				const prior =
+					id && this.lane.messageId && id !== this.lane.messageId
+						? this.flushLane(this.lane)
+						: null;
+				if (id) this.lane.messageId = id;
+				const out = this.addText(flattenAcpContent(u.content));
+				return prior ? [prior, ...out] : out;
+			}
 			case "tool_call": {
 				const step = this.toolCall(u);
 				const done = isTerminal(u.status) ? this.toolResult(u) : null;

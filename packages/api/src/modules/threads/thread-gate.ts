@@ -25,7 +25,13 @@ function gateOf(threadId: string): Gate {
 
 function settle(threadId: string, g: Gate): void {
 	if (!g.exclusive) for (const wake of g.waiting.splice(0)) wake();
-	if (!g.shared && !g.exclusive && !g.waiting.length) gates.delete(threadId);
+	if (
+		!g.shared &&
+		!g.exclusive &&
+		!g.waiting.length &&
+		gates.get(threadId) === g
+	)
+		gates.delete(threadId);
 }
 
 /** Runs `work` with the thread's gate held shared; waits only while it is held exclusively. */
@@ -33,8 +39,13 @@ export async function withShared<T>(
 	threadId: string,
 	work: () => Promise<T>,
 ): Promise<T> {
-	const g = gateOf(threadId);
-	while (g.exclusive) await new Promise<void>((r) => g.waiting.push(r));
+	// A woken caller re-reads the gate: settle may have dropped the one it waited on.
+	let g = gateOf(threadId);
+	while (g.exclusive) {
+		const waitedOn = g;
+		await new Promise<void>((r) => waitedOn.waiting.push(r));
+		g = gateOf(threadId);
+	}
 	g.shared += 1;
 	try {
 		return await work();
