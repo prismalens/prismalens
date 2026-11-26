@@ -11,7 +11,7 @@ import type { ThreadRow, ThreadUnit } from "@prismalens/contracts";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HomeNeeds } from "@/components/home/HomeHandover";
+import { NeedsList } from "@/components/shell/NeedsList";
 import { ThreadTreeView } from "@/components/shell/ThreadTree";
 import { threadList } from "@/lib/thread-list";
 
@@ -180,42 +180,20 @@ describe("threads never nest (lens threads.flat, #1101 decision 2026-11-13)", ()
 		expect(ids("threads")).toEqual(["0", "14", "13", "12", "11", "10", "9"]);
 	});
 
-	it("gives Home one Needs-you card per waiting thread, with no card standing for a starter's group", async () => {
+	it("gives the Needs you badge's list one row per waiting thread, with no row standing for a starter's group", async () => {
 		await draw(
-			createElement(HomeNeeds, {
+			createElement(NeedsList, {
 				needs: model.needs,
-				count: model.needsCount,
 				asks: new Map(),
 				now: NOW,
 			}),
 		);
-		// a27fab175: four cards, then one band per status; each band opens all of its kind.
-		const cards = () =>
-			Array.from(
-				container.querySelectorAll(
-					'[data-testid="home-needs-card"] [data-card-title]',
-				),
-			).map((a) => a.textContent);
-		const seen = new Set(cards());
-		expect(seen.size).toBe(4);
-		const bands = Array.from(
-			container.querySelectorAll(
-				'[data-testid="home-needs-more"] [data-testid="home-needs-band"]',
-			),
-		).map((b) => (b as HTMLElement).dataset.band);
-		expect(bands).toEqual(["blocked", "limited"]);
-		for (const band of bands) {
-			const button = container.querySelector(
-				`[data-testid="home-needs-more"] [data-band="${band}"]`,
-			) as HTMLButtonElement;
-			await act(async () => button.click());
-			for (const href of cards()) seen.add(href);
-			const clear = container.querySelector(
-				'h2 [data-testid="home-needs-band"]',
-			) as HTMLButtonElement;
-			await act(async () => clear.click());
-		}
-		expect(seen.size).toBe(8);
+		const rows = Array.from(
+			container.querySelectorAll('[data-testid="needs-row"]'),
+		).map((r) => r.getAttribute("data-id"));
+		const ids = model.needs.map((n) => n.id);
+		expect(ids).toHaveLength(8);
+		expect(rows.sort()).toEqual([...ids].sort());
 		expect(container.textContent).not.toMatch(/threads it started/);
 	});
 });

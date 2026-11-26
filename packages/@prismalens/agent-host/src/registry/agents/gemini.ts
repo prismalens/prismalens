@@ -51,5 +51,12 @@ export const gemini = {
 			where:
 				"packages/cli/src/acp/acpSession.ts pendingSend.signal into runTool",
 		},
+		rewindVia: {
+			value: "replay",
+			via: "source",
+			verifiedAt: { cli: "0.65.0", adapter: null },
+			where:
+				"packages/cli/src/acp/acpRpcDispatcher.ts initialize: loadSession only",
+		},
 	},
 } satisfies AgentDescriptor;

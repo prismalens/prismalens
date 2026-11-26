@@ -50,6 +50,14 @@ export const ThreadSendInput = z.object({
 	requestId: REQUEST_ID,
 });
 
+export const ThreadRewindInput = z.object({
+	id: THREAD,
+	/** Sent messages from the newest: 1 is the last. */
+	back: z.number().int().min(1).max(20).default(1),
+	text: z.string().trim().min(1).max(THREAD_MESSAGE_CHARS),
+	requestId: REQUEST_ID,
+});
+
 /** What the thread tools do; the api answers, gated by the host's approval. */
 export interface ThreadTreeData {
 	start(
@@ -65,6 +73,11 @@ export interface ThreadTreeData {
 		id: string,
 		reason: string,
 		requestId: string,
+	): Promise<ToolOutcome>;
+	/** Bound to the message and its preview before the gate (#1193). */
+	rewind(
+		runId: string,
+		input: z.output<typeof ThreadRewindInput>,
 	): Promise<ToolOutcome>;
 }
 
@@ -96,6 +109,13 @@ export function threadTreeTools(data: ThreadTreeData): HarnessTool[] {
 			}),
 			run: ({ id, reason, requestId }, ctx) =>
 				data.cancel(ctx.runId, id, reason, requestId),
+		}),
+		defineHarnessTool({
+			...registered("pl_thread_rewind"),
+			group: "core",
+			serves: ANYWHERE,
+			input: ThreadRewindInput,
+			run: (input, ctx) => data.rewind(ctx.runId, input),
 		}),
 	];
 }

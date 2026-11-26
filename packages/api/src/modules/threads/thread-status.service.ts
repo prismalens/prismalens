@@ -159,6 +159,7 @@ export class ThreadStatusService {
 	private async askEvents(ids: string[]) {
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId: { in: ids },
 				OR: [
 					{ event: { contains: '"kind":"permission_' } },

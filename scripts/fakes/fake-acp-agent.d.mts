@@ -72,6 +72,8 @@ export interface Step {
 	respond?: Record<string, unknown>;
 	/** Plays `steps` up to `times` times, `{{i}}` filled with the pass; a cancel stops it (#1101). */
 	repeat?: { times: number; steps: Step[] };
+	/** Step lists played at once, as parallel tool calls (#1193). */
+	parallel?: Step[][];
 	/** Leaves a process running in the agent's cwd and says `say` with its pid (#1101). */
 	spawn?: { say: string };
 }
@@ -110,6 +112,8 @@ export interface FakeSession {
 	refuseConfig?: boolean;
 	/** Advertised as `sessionCapabilities.additionalDirectories` at initialize (#1024). */
 	additionalDirectories?: boolean;
+	/** Offers `session/fork` and stamps agent messages with ids, for a rewind's fork (#1193). */
+	fork?: boolean;
 }
 
 export const SESSIONS_DIR: string;
@@ -128,10 +132,30 @@ export function setFakeCapability(
 		| "resume"
 		| "replayComplete"
 		| "brokenLoad"
-		| "noLoad",
+		| "noLoad"
+		| "emptyReload"
+		| "staleReload"
+		| "loadFails"
+		| "autoTurn"
+		| "refuseEffort"
+		| "holdSetMode"
+		| "fork"
+		| "ignoreForkPoint",
 	on: boolean,
 	stateDir?: string,
 ): void;
+export function setFakeAgentVersion(
+	version: string | null,
+	stateDir?: string,
+): void;
+export function fakeForks(stateDir?: string): {
+	from: string;
+	to: string;
+	messageId: string | null;
+	ignored: boolean;
+	kept: number;
+	at: number;
+}[];
 export function installFakeAgent(
 	binDir: string,
 	opts?: {

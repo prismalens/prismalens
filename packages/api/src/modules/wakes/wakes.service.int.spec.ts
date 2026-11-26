@@ -308,6 +308,48 @@ describe("WakesService and SessionLifecycleService (#1024)", () => {
 			expect(row.limitResetsAt).toEqual(futureReset);
 		});
 
+		it("a folded agent_quota whose reset is still ahead keeps driving usage-limit recovery: a fold hides conversation, not account state (#1193)", async () => {
+			const text = "You've hit your session limit. Upgrade for more usage.";
+			const t = await thread({ harness: "claude-code", error: text });
+			const now = new Date(2026, 10, 7, 13, 0);
+			const futureReset = new Date(now.getTime() + 60 * 60_000);
+			await say(t.id, [
+				{ kind: "agent_quota", status: "rejected", resetsAt: futureReset.toISOString(), usedPercent: 100 },
+			]);
+			await prisma.investigationEvent.updateMany({
+				where: { investigationId: t.id },
+				data: { foldedBy: "6f1c2a4e-1b7d-4c3e-9a2f-0d5e8b7c6a10" },
+			});
+			const s = lifecycle(now);
+			await s.onSettled(t.id, { outcome: "failed", error: text });
+			const wake = await wakes.latest(t.id, "limit");
+			expect(wake).toMatchObject({ state: "pending", attempts: 1 });
+			expect(wake?.at).toEqual(new Date(futureReset.getTime() + 2 * 60_000));
+			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
+			expect(row.limitResetsAt).toEqual(futureReset);
+		});
+
+		it("a folded agent_quota whose reset has passed leaves a usage limit on the no-time path (#1193)", async () => {
+			const text = "You've hit your session limit. Upgrade for more usage.";
+			const t = await thread({ harness: "claude-code", error: text });
+			const now = new Date(2026, 10, 7, 13, 0);
+			const pastReset = new Date(now.getTime() - 60 * 60_000);
+			await say(t.id, [
+				{ kind: "agent_quota", status: "rejected", resetsAt: pastReset.toISOString(), usedPercent: 100 },
+			]);
+			await prisma.investigationEvent.updateMany({
+				where: { investigationId: t.id },
+				data: { foldedBy: "6f1c2a4e-1b7d-4c3e-9a2f-0d5e8b7c6a10" },
+			});
+			const s = lifecycle(now);
+			await s.onSettled(t.id, { outcome: "failed", error: text });
+			const wake = await wakes.latest(t.id, "limit");
+			expect(wake).toMatchObject({ state: "pending", attempts: 1 });
+			expect(wake?.at).toEqual(new Date(now.getTime() + 30 * 60_000));
+			const row = await prisma.investigation.findUniqueOrThrow({ where: { id: t.id } });
+			expect(row.limitResetsAt).toBeNull();
+		});
+
 		it("an agent_quota with status allowed and 40% used leaves a usage limit on the no-time path", async () => {
 			const text = "You've hit your session limit. Upgrade for more usage.";
 			const t = await thread({ harness: "claude-code", error: text });

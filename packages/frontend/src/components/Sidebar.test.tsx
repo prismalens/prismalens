@@ -92,11 +92,18 @@ vi.mock("@/components/shared/Hint", () => ({
 
 const unmapped = { n: 0 };
 const waiting = { n: 0 };
+const needs: { list: { id: string; info: { status: "approval" } }[] } = {
+	list: [],
+};
 const media = { full: true };
 vi.mock("@/components/shell/ThreadList", () => ({
 	ThreadList: () => null,
 	useWaitingCount: () => waiting.n,
 	useUnmappedAlerts: () => unmapped.n,
+	useThreadListModel: () => ({
+		model: { needs: needs.list, needsCount: needs.list.length },
+	}),
+	useAsksByThread: () => new Map(),
 }));
 
 vi.mock("@/components/shell/SearchHost", () => ({
@@ -116,6 +123,7 @@ beforeEach(() => {
 	unmapped.n = 0;
 	waiting.n = 0;
 	media.full = true;
+	needs.list = [];
 	state.pathname = "/incidents";
 	state.hydrated = true;
 	state.sidebarHidden = false;
@@ -218,13 +226,21 @@ describe("Sidebar doors (#1101 navigation)", () => {
 		).toBe("30");
 	});
 
-	it("names the Threads door by its visible word and count first: Threads 3 waiting for you", async () => {
+	it("names the Threads door by its word alone and puts the 3 waiting on the rail's badge", async () => {
 		waiting.n = 3;
+		needs.list = ["a", "b", "c"].map((id) => ({
+			id,
+			info: { status: "approval" },
+		}));
 		media.full = false;
 		await act(async () => root.render(createElement(Sidebar)));
 		const door = container.querySelector('[data-testid="nav-threads"]');
-		expect(door?.getAttribute("aria-label")).toBe("Threads 3 waiting for you");
-		expect(door?.textContent).toBe("Threads3");
+		expect(door?.getAttribute("aria-label")).toBe("Threads");
+		expect(door?.textContent).toBe("Threads");
+		const badge = container.querySelector('[data-testid="rail-needs"]');
+		expect(badge?.getAttribute("aria-label")).toBe("3 waiting for you");
+		expect(badge?.getAttribute("data-urgent")).toBe("approval");
+		expect(badge?.textContent).toBe("3");
 	});
 });
 

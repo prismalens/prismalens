@@ -6,7 +6,9 @@
 // answers, gives it the fixture repo's off-by-one bug, approves its asks as the user would,
 // then checks the fix with `node --test` in the thread's worktree and shoots the thread.
 // No agent answers: it prints why and skips (exit 0).
-//   pnpm sim real-agent [--agent claude-code|codex] [--out <dir>] [--minutes 10]
+// `--case rewind` (#1193) then sends a second message, edits it, and fails unless claude-code
+// opened the edit on its own fork and codex on a replay, with no folded prompt sent again.
+//   pnpm sim real-agent [--agent claude-code|codex] [--case rewind] [--out <dir>] [--minutes 10]
 import { execFileSync, execSync } from "node:child_process";
 import {
 	cpSync,
@@ -27,6 +29,33 @@ const TASK =
 	"The test in test/sum.test.js fails. Fix src/sum.js so `node --test` passes, and change nothing else.";
 
 const log = (/** @type {string} */ m) => console.log(`[real-agent] ${m}`);
+
+/** The message the rewind folds, and its edit (#1193). */
+export const FOLDED =
+	"Also add a comment above the loop in src/sum.js that says why it starts at 0.";
+export const EDITED = "Instead, add a one-line JSDoc to sum() in src/sum.js.";
+const REFOLDED = "the edited prompt carried the folded message";
+/** How each agent must open the edited message: its own fork, or a replay handoff. */
+const REWIND_OPENING = /** @type {Record<string, string>} */ ({
+	"claude-code": "fork",
+	codex: "handoff",
+});
+
+/**
+ * What the rewind case found wrong with the edited message's opening and recorded prompt.
+ * @param {{ opening: string | null, want: string | undefined, input: unknown, body: { parts?: { text?: string }[] } | null }} seen
+ */
+export function rewindFailures({ opening, want, input, body }) {
+	const sentText = (body?.parts ?? []).map((p) => p.text ?? "").join("\n");
+	const fails = [];
+	if (opening !== want) fails.push(`opened ${opening}, not ${want}`);
+	if (!input) fails.push("no prompt was recorded after the rewind");
+	else if (!body) fails.push("the edited prompt's body was not stored");
+	else if (!sentText.includes(EDITED))
+		fails.push("the edited prompt did not carry the edited message");
+	if (sentText.includes(FOLDED)) fails.push(REFOLDED);
+	return fails;
+}
 
 /** @param {string[]} argv @param {string} name */
 const opt = (argv, name) => {
@@ -88,6 +117,8 @@ export async function main(argv) {
 	const out = resolve(opt(argv, "--out") ?? join(sim, "walk"));
 	const minutes = Number(opt(argv, "--minutes") ?? 10);
 	const wanted = opt(argv, "--agent");
+	const kase = opt(argv, "--case");
+	if (kase && kase !== "rewind") throw new Error(`no case ${kase}`);
 	const candidates = wanted ? [wanted] : AGENTS;
 	const built = existsSync(
 		join(ROOT, "packages/frontend/dist/client/index.html"),
@@ -164,21 +195,27 @@ export async function main(argv) {
 		let approved = 0;
 		let run = null;
 		const until = started + minutes * 60_000;
-		while (Date.now() < until) {
-			const { asks } = await api("/threads/asks");
-			for (const { ask, ended } of asks)
-				if (!ended && ask.threadId === id && ask.kind === "permission") {
-					await api(`/investigations/${id}/asks/${ask.askId}`, {
-						method: "POST",
-						body: { askId: ask.askId, decision: "approve" },
-						ok: [404, 409],
-					});
-					approved++;
-				}
-			run = await api(`/investigations/${id}`);
-			if (!ACTIVE.includes(run.status)) break;
-			await sleep(2000);
-		}
+		const settle = async () => {
+			while (Date.now() < until) {
+				const { asks } = await api("/threads/asks");
+				for (const { ask, ended } of asks)
+					if (!ended && ask.threadId === id && ask.kind === "permission") {
+						await api(`/investigations/${id}/asks/${ask.askId}`, {
+							method: "POST",
+							body: { askId: ask.askId, decision: "approve" },
+							ok: [404, 409],
+						});
+						approved++;
+					}
+				run = await api(`/investigations/${id}`);
+				if (!ACTIVE.includes(run.status)) return;
+				await sleep(2000);
+			}
+		};
+		await settle();
+		/** @type {null | { pass: boolean, opening: string | null, forkFailed: string | null, refolded: boolean, why: string }} */
+		let rewind = null;
+		if (kase === "rewind") rewind = await rewindCase(api, id, agent.id, settle);
 		const ms = Date.now() - started;
 		const cwd = run?.workspace?.cwd ?? null;
 		const test =
@@ -204,6 +241,7 @@ export async function main(argv) {
 			testsPass: test.pass,
 			testTail: test.tail,
 			timedOut: Date.now() >= until,
+			...(rewind ? { rewind } : {}),
 		};
 
 		const token = execSync(
@@ -245,8 +283,95 @@ export async function main(argv) {
 		log(
 			`${report.testsPass ? "passed" : "FAILED"}: ${agent.id} ran ${report.minutes} min, ${approved} ask(s) approved, changed ${changed.join(", ") || "nothing"}, status ${report.status}; ${out}`,
 		);
-		return report.testsPass ? 0 : 1;
+		if (rewind)
+			log(
+				`rewind ${rewind.pass ? "passed" : "FAILED"}: opened ${rewind.opening ?? "nothing"}${rewind.forkFailed ? ` (${rewind.forkFailed})` : ""}; ${rewind.why}`,
+			);
+		return report.testsPass && (!rewind || rewind.pass) ? 0 : 1;
 	} finally {
 		simCmd(["down"]);
 	}
+}
+
+/**
+ * Sends FOLDED, edits it to EDITED and reads how the edited message opened: claude-code must
+ * keep its fork, codex replay, and the edited prompt must not carry the folded one (#1193).
+ * @param {(p: string, init?: { method?: string, body?: unknown, ok?: number[] }) => Promise<any>} api
+ * @param {string} id @param {string} agentId @param {() => Promise<void>} settle
+ */
+async function rewindCase(api, id, agentId, settle) {
+	await api(`/investigations/${id}/messages`, {
+		method: "POST",
+		body: { text: FOLDED },
+	});
+	await settle();
+	const before = await events(api, id);
+	const sent = before.find(
+		(e) => e.kind === "operator_message" && e.text === FOLDED,
+	);
+	if (!sent)
+		return {
+			pass: false,
+			opening: null,
+			forkFailed: null,
+			refolded: false,
+			why: "the second message is not in the record",
+		};
+	const preview = await api(`/threads/${id}/rewind?seq=${sent.seq}`);
+	const repos = Object.fromEntries(
+		preview.repos
+			.filter((/** @type {{ state: string }} */ r) => r.state === "ok")
+			.map((/** @type {{ repo: string, head: string, tree: string }} */ r) => [
+				r.repo,
+				{ head: r.head, tree: r.tree },
+			]),
+	);
+	const result = await api(`/threads/${id}/rewind`, {
+		method: "POST",
+		body: {
+			id,
+			seq: sent.seq,
+			text: EDITED,
+			expect: {
+				messageOrdinal: preview.messageOrdinal,
+				revision: preview.revision,
+				repos,
+			},
+			include: [],
+		},
+	});
+	if (result.state !== "done" || !result.sent)
+		return {
+			pass: false,
+			opening: null,
+			forkFailed: null,
+			refolded: false,
+			why: `the rewind answered ${result.state}${result.reason ? ` (${result.reason})` : ""}${result.why ? `: ${result.why}` : ""}`,
+		};
+	await settle();
+	const after = await events(api, id);
+	const marker = after.findIndex(
+		(e) => e.kind === "thread_rewound" && e.rewindId === result.rewindId,
+	);
+	const tail = marker < 0 ? [] : after.slice(marker);
+	const opened = tail.find((e) => e.kind === "session_opened");
+	const input = tail.find((e) => e.kind === "turn_input");
+	const body = input
+		? await api(`/investigations/${id}/turn-inputs/${input.inputId}`, {
+				ok: [404],
+			})
+		: null;
+	const want = REWIND_OPENING[agentId];
+	const opening = opened?.how ?? null;
+	const fails = rewindFailures({ opening, want, input, body });
+	const refolded = fails.includes(REFOLDED);
+	return {
+		pass: fails.length === 0,
+		opening,
+		forkFailed: opened?.forkFailed ?? null,
+		refolded,
+		why: fails.length
+			? fails.join("; ")
+			: `opened ${opening} with no folded prompt`,
+	};
 }

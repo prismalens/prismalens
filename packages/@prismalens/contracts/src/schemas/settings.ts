@@ -431,6 +431,8 @@ export const HarnessSettingsSchema = /* @__PURE__ */ lazySchema(() =>
 		subagentConcurrency: SubagentLimitSchema.optional(),
 		/** When the user stops a turn: its running sub-agents stop too, or finish; absent is stop. */
 		subagentsOnStop: SubagentsOnStopSchema.optional(),
+		/** When the user edits a sent message: keep the agent's session up to it, or replay; absent is fork (#1193). */
+		rewindSession: z.enum(["fork", "replay"]).optional(),
 		/** Per-use defaults; an absent use follows a new thread (alert) or the parent thread (delegate). */
 		useDefaults: z.partialRecord(ModelUseSchema, UseDefaultSchema).optional(),
 		threadTitles: ThreadTitleSettingsSchema.optional(),
@@ -509,6 +511,7 @@ export const UpdateHarnessSettingsSchema = /* @__PURE__ */ lazySchema(() =>
 			subagentConcurrency: SubagentLimitSchema.nullable().optional(),
 			/** Host only. */
 			subagentsOnStop: SubagentsOnStopSchema.optional(),
+			rewindSession: z.enum(["fork", "replay"]).optional(),
 			/** Merges per use; `null` goes back to the use's fallback. Host only. */
 			useDefaults: z
 				.partialRecord(ModelUseSchema, UseDefaultSchema.nullable())

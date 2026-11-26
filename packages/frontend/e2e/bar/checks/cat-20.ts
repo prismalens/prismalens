@@ -202,10 +202,17 @@ export default defineChecks([
 			await page.getByTestId("header-more").click();
 			const header = await menuRows(page);
 			await page.keyboard.press("Escape");
-			// A run's own rows stay on its page.
+			// A run's own rows stay on its page, and so does the open thread's section that leads its menu.
+			await open("/", "home");
+			await page.getByTestId("thread-row").first().click({ button: "right" });
+			const threadRows = await menuRows(page);
+			await page.keyboard.press("Escape");
 			const pageOnly = ["details", "runs", "export", "investigateAgain"];
 			const missing = header.filter(
-				(id) => !pageOnly.includes(id) && !incidentRows.includes(id),
+				(id) =>
+					!pageOnly.includes(id) &&
+					!threadRows.includes(id) &&
+					!incidentRows.includes(id),
 			);
 			if (missing.length)
 				fails.push(`incident row lacks its page's ${missing.join(", ")}`);

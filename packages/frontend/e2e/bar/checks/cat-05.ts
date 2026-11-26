@@ -75,26 +75,46 @@ export default defineChecks([
 			await expect(phone.getByTestId("new-thread-page")).toBeVisible();
 			const fails: string[] = [];
 
-			const needsSection = phone.getByTestId("home-needs");
+			// The strip's count opens what waits, grouped by urgency, each with its fix (#1247 D25).
+			const badge = phone.getByTestId("strip-waiting");
+			await expect(badge).toBeVisible({ timeout: 30_000 });
+			const badgeCount = Number.parseInt((await badge.textContent()) ?? "", 10);
+			await badge.click();
+			const needsSection = phone.getByTestId("needs-popover");
 			await expect(needsSection).toBeVisible();
+			const tiers = await needsSection
+				.getByTestId("needs-tier")
+				.evaluateAll((els) =>
+					els.map((e) => Number(e.getAttribute("data-urgency"))),
+				);
+			if (tiers.join() !== [...tiers].sort((a, b) => a - b).join())
+				fails.push(`urgency tiers out of order: ${tiers.join(", ")}`);
 
-			const cards = phone.getByTestId("home-needs-card");
-			await expect(cards.first()).toBeVisible({ timeout: 30_000 });
-			// A card offers Answer once its ask has loaded, which the slow link delays (#1101).
+			const rows = needsSection.getByTestId("needs-row");
+			await expect(rows.first()).toBeVisible({ timeout: 30_000 });
+			// A row offers Answer once its ask has loaded, which the slow link delays (#1101).
 			await phone
-				.locator('[data-testid="home-fix"][data-fix="answer"]')
+				.locator('[data-testid="needs-fix"][data-fix="answer"]')
 				.first()
 				.waitFor({ timeout: 30_000 })
 				.catch(() => undefined);
-			const count = await cards.count();
+			const count = await rows.count();
 			if (count === 0) {
-				fails.push("no needs-you cards on Phone Home");
+				fails.push("no needs-you rows in the strip's list");
 			}
+			if (count !== badgeCount)
+				fails.push(`the strip counts ${badgeCount}, its list holds ${count}`);
+			const onHome = await phone
+				.getByTestId("home-handover")
+				.getByTestId("needs-row")
+				.count();
+			if (onHome)
+				fails.push(`Phone Home still lists ${onHome} waiting threads`);
 
-			// Every card links to its thread; an answerable one opens its ask on a tap.
+			// Every row links to its thread; an answerable one opens its ask on a tap.
 			let unlinked = 0;
 			for (let i = 0; i < count; i++) {
-				const href = await cards
+				const href = await rows
 					.nth(i)
 					.locator("a")
 					.first()
@@ -106,27 +126,26 @@ export default defineChecks([
 					unlinked++;
 				}
 			}
-			if (unlinked > 0)
-				fails.push(`${unlinked} of ${count} cards link nowhere`);
-			const fixes = await cards
-				.getByTestId("home-fix")
+			if (unlinked > 0) fails.push(`${unlinked} of ${count} rows link nowhere`);
+			const fixes = await rows
+				.getByTestId("needs-fix")
 				.evaluateAll((els) => els.map((e) => e.getAttribute("data-fix")));
 			const answer = phone.locator(
-				'[data-testid="home-fix"][data-fix="answer"]',
+				'[data-testid="needs-fix"][data-fix="answer"]',
 			);
 			const answerable = await answer.count();
 			if (answerable === 0) {
 				fails.push(
-					`no card offers Answer; the cards' fixes are ${fixes.join(", ")}`,
+					`no row offers Answer; the rows' fixes are ${fixes.join(", ")}`,
 				);
 			} else {
 				await answer.first().click();
-				await expect(phone.getByTestId("home-ask-card")).toBeVisible();
+				await expect(phone.getByTestId("needs-ask-card")).toBeVisible();
 			}
 
 			return verdict(
 				fails,
-				`${count} attention cards on Phone Home, ${count - unlinked} link to their thread; ${answerable} offer Answer and the first opened its ask`,
+				`the strip counts ${badgeCount} and opens ${count} rows in ${tiers.length} urgency tiers; ${count - unlinked} link to their thread; ${answerable} offer Answer and the first opened its ask; Home lists none`,
 			);
 		},
 	},
@@ -246,14 +265,15 @@ export default defineChecks([
 			await expect(phone.getByTestId("new-thread-page")).toBeVisible();
 			const fails: string[] = [];
 
-			// Open ask from needs card
-			const cards = phone.getByTestId("home-needs-card");
-			await expect(cards.first()).toBeVisible();
-			const cardCount = await cards.count();
+			// Open each ask from its row in the strip's list (#1247 D25)
+			await phone.getByTestId("strip-waiting").click();
+			const rows = phone.getByTestId("needs-popover").getByTestId("needs-row");
+			await expect(rows.first()).toBeVisible();
+			const rowCount = await rows.count();
 
 			const seen: string[] = [];
-			for (let i = 0; i < cardCount; i++) {
-				const fix = cards.nth(i).getByTestId("home-fix");
+			for (let i = 0; i < rowCount; i++) {
+				const fix = rows.nth(i).getByTestId("needs-fix");
 				if (
 					(await fix
 						.getAttribute("data-fix", { timeout: 2000 })
@@ -261,7 +281,7 @@ export default defineChecks([
 				)
 					continue;
 				await fix.click();
-				const askCard = phone.getByTestId("home-ask-card");
+				const askCard = phone.getByTestId("needs-ask-card");
 				await expect(askCard).toBeVisible();
 				if (await askCard.getByTestId("row-ask-approve").isVisible()) {
 					const denyReason = askCard.getByTestId("row-ask-deny-reason");
@@ -274,12 +294,12 @@ export default defineChecks([
 				} else if ((await askCard.getByTestId("row-ask-option").count()) > 0) {
 					seen.push("answer options");
 				} else {
-					fails.push(`card ${i + 1}: ask opened with no Approve or option`);
+					fails.push(`row ${i + 1}: ask opened with no Approve or option`);
 				}
 				await phone.keyboard.press("Escape");
 			}
 			if (seen.length === 0)
-				fails.push(`none of ${cardCount} cards offers Answer`);
+				fails.push(`none of ${rowCount} rows offers Answer`);
 			if (!seen.some((x) => x.startsWith("approve"))) {
 				fails.push("no approval ask on Home showed Approve, Decline and Deny");
 			}
@@ -304,7 +324,7 @@ export default defineChecks([
 
 			return verdict(
 				fails,
-				`${seen.length} asks opened from cards (${Array.from(new Set(seen)).join(", ")}); the refusal function says "${refusalText}"`,
+				`${seen.length} asks opened from rows (${Array.from(new Set(seen)).join(", ")}); the refusal function says "${refusalText}"`,
 			);
 		},
 	},

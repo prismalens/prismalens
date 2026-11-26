@@ -146,6 +146,24 @@ export function recordedFindings(
  */
 export const INVESTIGATION_REPORT_BRANCH = "__report__";
 
+/** The branch a thread's rewind markers are written on (#1193); it never folds. */
+export const REWIND_BRANCH = "rewinds";
+
+/** Why a rewind, undo or restore left a path as it was (#1193). */
+export const KEEP_WHYS = [
+	"yours",
+	"both",
+	"during-turn",
+	"linked",
+	"filtered",
+	"changed-while-rewinding",
+	"damaged",
+] as const;
+export type KeepWhy = (typeof KEEP_WHYS)[number];
+
+/** A rewind's paths: every list names the repo, as a thread may hold several (#1193). */
+export const REWIND_PATHS_MAX = 200;
+
 /** The report's top-level fields, for telling a report-shaped block without the schema. */
 export const MODEL_REPORT_KEYS = [
 	"summary",

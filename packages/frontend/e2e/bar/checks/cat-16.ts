@@ -1,8 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
-import { defineChecks, verdict } from "../bar";
+import { defineChecks, notSetUp, verdict } from "../bar";
+import {
+	APP_TURN_1,
+	apiGet,
+	apiPost,
+	eventsOf,
+	fakeFork,
+	fileAt,
+	HAND_EDIT,
+	idle,
+	MESSAGE_2,
+	MESSAGE_3,
+	rewindFixture,
+	rewindVia,
+	sendMessage,
+	seqOf,
+	stateOf,
+} from "./help-rewind";
 
 /** The open menu's row ids (`menu-<id>` less its keys and why parts), from the kit menu (#1127). */
 async function menuRows(page: Page): Promise<string[]> {
@@ -470,6 +489,335 @@ export default defineChecks([
 			return verdict(
 				fails,
 				`a diff line's right-click lists ${rows.join(", ")}; Copy line copied "${copied.trim().slice(0, 40)}"; Shift+F10 opens ${keyed.length} rows`,
+			);
+		},
+	},
+	{
+		item: "16.9",
+		async run({ page, open, sim }) {
+			const fx = await rewindFixture(page, sim, { messages: [] });
+			if (typeof fx === "string") return notSetUp(fx);
+			const fails: string[] = [];
+			// A slow follow-up keeps the thread running while Edit is tried.
+			await sendMessage(page, fx.id, "Check the retries again, take your time");
+			await open(fx.path, "thread-page");
+			await expect(page.getByTestId("composer-stop")).toBeVisible({
+				timeout: 30_000,
+			});
+			// In the transcript: the rail's screen-reader links carry the same text.
+			const sent = page
+				.getByTestId("transcript")
+				.getByText("Check the retries again, take your time")
+				.first();
+			await sent.click({ button: "right" });
+			const rows = await menuRows(page);
+			if (!rows.includes("edit"))
+				fails.push(`the message menu lacks edit (${rows})`);
+			const disabled = await page
+				.getByTestId("menu-edit")
+				.getAttribute("data-disabled");
+			const why = (
+				(await page.getByTestId("menu-edit-why").textContent()) ?? ""
+			).trim();
+			if (disabled === null)
+				fails.push("Edit is enabled while the thread runs");
+			if (!/Stop the thread/.test(why))
+				fails.push(`the running hint reads "${why}"`);
+			await page.keyboard.press("Escape");
+
+			await page.getByTestId("composer-stop").click();
+			await idle(page, fx.id);
+			await sent.click({ button: "right" });
+			await page.getByTestId("menu-edit").click();
+			const editor = page.getByTestId("message-edit");
+			await expect(editor).toBeVisible({ timeout: 15_000 });
+			await page.getByTestId("message-edit-text").press("Escape");
+			await expect(editor).toBeHidden();
+			return verdict(
+				fails,
+				`while running Edit is disabled with "${why}"; after Stop it opens the editor, and Esc closes it`,
+			);
+		},
+	},
+	{
+		item: "16.10",
+		async run({ page, open, sim }) {
+			const fx = await rewindFixture(page, sim);
+			if (typeof fx === "string") return notSetUp(fx);
+			const fails: string[] = [];
+			// A rewind keeps only what changed after the edited message; the fixture's edit came before it.
+			writeFileSync(
+				join(fx.cwd, "README.md"),
+				`${HAND_EDIT}Edited again.
+`,
+			);
+			const before = await stateOf(page, fx.id, fx.cwd);
+			await open(fx.path, "thread-page");
+			await page
+				.getByTestId("transcript")
+				.getByText(MESSAGE_2, { exact: true })
+				.first()
+				.click({ button: "right" });
+			await page.getByTestId("menu-edit").click();
+			await page.getByTestId("message-edit-text").fill("Set the retries to 5");
+			await page.getByTestId("message-edit-send").click();
+			const dialog = page.getByTestId("rewind-confirm");
+			await expect(dialog).toBeVisible({ timeout: 15_000 });
+			await expect(page.getByTestId("rewind-turns")).toBeVisible({
+				timeout: 30_000,
+			});
+			// A line the dialog leaves out reads empty instead of waiting out the test.
+			const read = async (id: string) =>
+				(await page.getByTestId(id).count())
+					? ((await page.getByTestId(id).textContent()) ?? "").trim()
+					: "";
+			const turns = await read("rewind-turns");
+			const revert = await read("rewind-revert");
+			const kept = await read("rewind-kept");
+			const session = await read("rewind-session");
+			if (!/Folds 2 turns/.test(turns))
+				fails.push(`turns line reads "${turns}"`);
+			if (!/src\/app\.txt/.test(revert))
+				fails.push(`set-back line reads "${revert}"`);
+			if (!/README\.md \(you changed it\)/.test(kept))
+				fails.push(`kept line reads "${kept}"`);
+			if (!session) fails.push("no session line");
+			const print = await read("rewind-small-print");
+			if (
+				!/may not be in the backup/.test(print) ||
+				!/byte-for-byte/.test(print)
+			)
+				fails.push("the small print lacks R4 or R5");
+			await page.getByRole("button", { name: "Cancel" }).last().click();
+			await expect(dialog).toBeHidden();
+			const after = await stateOf(page, fx.id, fx.cwd);
+			if (after !== before)
+				fails.push(`Cancel changed the thread: ${before} -> ${after}`);
+			return verdict(
+				fails,
+				`the dialog reads "${turns}", "${revert}", "${kept}", "${session}"; Cancel left events, files and session columns as they were`,
+			);
+		},
+	},
+	{
+		item: "16.11",
+		async run({ page, open, sim }) {
+			const fx = await rewindFixture(page, sim);
+			if (typeof fx === "string") return notSetUp(fx);
+			const fails: string[] = [];
+			const rowsBefore = (await eventsOf(page, fx.id)).length;
+			await open(fx.path, "thread-page");
+			await page
+				.getByTestId("transcript")
+				.getByText(MESSAGE_2, { exact: true })
+				.first()
+				.click({ button: "right" });
+			await page.getByTestId("menu-edit").click();
+			await page.getByTestId("message-edit-text").fill("Set the retries to 5");
+			await page.getByTestId("message-edit-send").click();
+			await expect(page.getByTestId("rewind-turns")).toBeVisible({
+				timeout: 30_000,
+			});
+			await page.getByRole("button", { name: "Rewind and send" }).click();
+			await expect(page.getByTestId("rewind-confirm")).toBeHidden({
+				timeout: 30_000,
+			});
+			await idle(page, fx.id);
+			const app = fileAt(fx.cwd, "src/app.txt");
+			const readme = fileAt(fx.cwd, "README.md");
+			if (app !== APP_TURN_1)
+				fails.push(`src/app.txt is ${JSON.stringify(app)}`);
+			if (readme !== HAND_EDIT)
+				fails.push("the hand edit to README.md was lost");
+			const fold = page.getByTestId("rewind-fold").first();
+			await expect(fold).toBeVisible({ timeout: 30_000 });
+			const foldText = ((await fold.textContent()) ?? "").trim();
+			if (!/2 turns folded/.test(foldText))
+				fails.push(`the fold row reads "${foldText}"`);
+			await page.getByTestId("rewind-fold-show").first().click();
+			const folded = page.getByTestId("rewind-folded").first();
+			await expect(folded).toBeVisible({ timeout: 15_000 });
+			if (!((await folded.textContent()) ?? "").includes(MESSAGE_3))
+				fails.push("Show does not list the folded message");
+			// Folded rows leave the visible record; the edit adds its own, so the store only grows.
+			const all = await apiGet<{ events: unknown[] }>(
+				page,
+				`/threads/${fx.id}/rewind/${(await eventsOf(page, fx.id)).find((e) => e.kind === "thread_rewound")?.rewindId}/folded`,
+			);
+			if (all.events.length === 0) fails.push("the folded rows were not kept");
+			const rowsAfter =
+				(await eventsOf(page, fx.id)).length + all.events.length;
+			if (rowsAfter < rowsBefore)
+				fails.push(`rows dropped from ${rowsBefore} to ${rowsAfter}`);
+			return verdict(
+				fails,
+				`src/app.txt is back at turn 1, README.md keeps the hand edit, the fold row reads "${foldText}" and Show lists the folded turns; ${all.events.length} rows folded, none deleted`,
+			);
+		},
+	},
+	{
+		item: "16.12",
+		async run({ page, open, sim }) {
+			const fails: string[] = [];
+			const roundTrip = async (waitForReply: boolean) => {
+				const fx = await rewindFixture(page, sim);
+				if (typeof fx === "string") return fx;
+				const before = await stateOf(page, fx.id, fx.cwd);
+				const seq = await seqOf(page, fx.id, MESSAGE_2);
+				if (seq === null) return "message 2 is not in the record";
+				const r = await rewindVia(page, fx.id, seq, "Set the retries to 5");
+				if (r.state !== "done" || !r.rewindId)
+					return `the rewind answered ${r.state} ${r.reason ?? ""}`;
+				if (waitForReply) await idle(page, fx.id);
+				else
+					await apiPost(page, `/investigations/${fx.id}/cancel`, {}).catch(
+						() => undefined,
+					);
+				await idle(page, fx.id);
+				const u = await apiPost<{ state: string; reason?: string }>(
+					page,
+					`/threads/${fx.id}/rewind/${r.rewindId}/undo`,
+					{ id: fx.id, rewindId: r.rewindId },
+				);
+				if (u.state !== "done")
+					return `Undo answered ${u.state} ${u.reason ?? ""}`;
+				const after = await stateOf(page, fx.id, fx.cwd);
+				const b = JSON.parse(before) as {
+					app: string;
+					readme: string;
+					session: unknown;
+				};
+				const a = JSON.parse(after) as {
+					app: string;
+					readme: string;
+					session: unknown;
+				};
+				const visible = (await eventsOf(page, fx.id)).filter(
+					(e) => e.kind === "operator_message",
+				);
+				// Undo may write the checkout's line endings, as the operator ruled (#1193 R5).
+				const eol = (t: string) => t.replace(/\r\n/g, "\n");
+				if (eol(a.app) !== eol(b.app) || eol(a.readme) !== eol(b.readme))
+					fails.push(
+						`${waitForReply ? "after the reply" : "before admission"}: files differ after Undo (app ${JSON.stringify(b.app)} -> ${JSON.stringify(a.app)}, readme ${JSON.stringify(b.readme)} -> ${JSON.stringify(a.readme)})`,
+					);
+				if (JSON.stringify(a.session) !== JSON.stringify(b.session))
+					fails.push(
+						`${waitForReply ? "after the reply" : "before admission"}: session columns differ`,
+					);
+				if (!visible.some((e) => e.text === MESSAGE_3))
+					fails.push("Undo did not bring the folded turns back");
+				if (visible.some((e) => e.text === "Set the retries to 5"))
+					fails.push("the edited branch is still visible after Undo");
+				await open(`/threads/${fx.id}`, "thread-page");
+				await expect(page.getByTestId("rewind-undone").first()).toBeVisible({
+					timeout: 15_000,
+				});
+				return null;
+			};
+			for (const wait of [true, false]) {
+				const why = await roundTrip(wait);
+				if (why) return notSetUp(why);
+			}
+
+			// The crash fixture: an uncommitted rewind, flagged at boot, then Restore.
+			let interrupted = "not checked";
+			const crash = sim.thread("host.rewind-interrupted");
+			if (crash) {
+				await open(crash, "thread-page");
+				const row = page.getByTestId("rewind-interrupted").first();
+				await expect(row).toBeVisible({ timeout: 30_000 });
+				interrupted = ((await row.textContent()) ?? "").trim();
+				if (!/Rewind interrupted/.test(interrupted))
+					fails.push(`the interrupted row reads "${interrupted}"`);
+				await page.getByTestId("rewind-interrupted-restore").first().click();
+				await expect(page.getByTestId("rewind-restore-preview")).toBeVisible({
+					timeout: 30_000,
+				});
+				await page.getByRole("button", { name: "Restore" }).last().click();
+				await expect(page.getByTestId("rewind-restored").first()).toBeVisible({
+					timeout: 30_000,
+				});
+			}
+
+			// A folded ask closing as superseded is covered in rewind.service.int.spec.ts and
+			// Transcript.test.tsx: no agent that forks is served pl_ask_user (#1193).
+
+			return verdict(
+				fails,
+				`Undo after the reply and before admission both restore files, turns and session columns and fold the edited branch; the crash row read "${interrupted}" and Restore ran`,
+			);
+		},
+	},
+	{
+		item: "16.13",
+		async run({ page, sim }) {
+			const fails: string[] = [];
+			const opened = async (
+				label: string,
+				fake: Parameters<typeof fakeFork>[0],
+				setting: "fork" | "replay",
+				expectHow: string,
+			) => {
+				fakeFork(fake);
+				await page.request.patch("/api/settings/harness", {
+					data: { rewindSession: setting },
+				});
+				const fx = await rewindFixture(page, sim);
+				if (typeof fx === "string") return fx;
+				const seq = await seqOf(page, fx.id, MESSAGE_3);
+				if (seq === null) return "message 3 is not in the record";
+				const r = await rewindVia(page, fx.id, seq, "Set the retries to 6");
+				if (r.state !== "done")
+					return `${label}: the rewind answered ${r.state}`;
+				await idle(page, fx.id);
+				const events = await eventsOf(page, fx.id);
+				const at = events.findIndex((e) => e.kind === "thread_rewound");
+				const tail = events.slice(at);
+				const session = tail.find((e) => e.kind === "session_opened");
+				const input = tail.find((e) => e.kind === "turn_input");
+				const how = String(session?.how ?? "none");
+				if (how !== expectHow)
+					fails.push(`${label}: opened ${how}, not ${expectHow}`);
+				if (expectHow !== "fork" && setting === "fork" && !session?.forkFailed)
+					fails.push(`${label}: the divider names no reason`);
+				if (!input) fails.push(`${label}: no prompt recorded after the edit`);
+				else {
+					const body = await apiGet<{ parts: { text?: string }[] }>(
+						page,
+						`/investigations/${fx.id}/turn-inputs/${String(input.inputId)}`,
+					).catch(() => null);
+					const sent = (body?.parts ?? []).map((p) => p.text ?? "").join("\n");
+					if (sent.includes(MESSAGE_3))
+						fails.push(`${label}: the prompt carried the folded message`);
+				}
+				return null;
+			};
+			const cases: [
+				string,
+				Parameters<typeof fakeFork>[0],
+				"fork" | "replay",
+				string,
+			][] = [
+				["fork", {}, "fork", "fork"],
+				["ignoreForkPoint", { ignoreForkPoint: true }, "fork", "handoff"],
+				["another adapter", { version: "0.107.0" }, "fork", "handoff"],
+				["setting replay", {}, "replay", "handoff"],
+			];
+			try {
+				for (const [label, fake, setting, how] of cases) {
+					const why = await opened(label, fake, setting, how);
+					if (why) return notSetUp(why);
+				}
+			} finally {
+				fakeFork(null);
+				await page.request.patch("/api/settings/harness", {
+					data: { rewindSession: "fork" },
+				});
+			}
+			return verdict(
+				fails,
+				"the edit opened on a fork at the pinned adapter; ignoreForkPoint, another adapter version and the replay setting each replayed with the reason on the divider; no prompt carried the folded message",
 			);
 		},
 	},

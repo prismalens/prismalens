@@ -155,6 +155,7 @@ export class ThreadWindowService {
 			if (signal?.aborted) throw new ORPCError("CLIENT_CLOSED_REQUEST");
 			const rows = await this.prisma.investigationEvent.findMany({
 				where: {
+					foldedBy: null,
 					investigationId: threadId,
 					ordinal: { gt: lo, lte: Math.min(lo + SCAN_ROWS, through) },
 				},
@@ -561,7 +562,11 @@ export class ThreadWindowService {
 		if (indexes.length === 0) return [];
 		const ordinals = indexes.map((i) => (p.entries[i] as LightEntry).ordinal);
 		const rows = await this.prisma.investigationEvent.findMany({
-			where: { investigationId: threadId, ordinal: { in: ordinals } },
+			where: {
+				foldedBy: null,
+				investigationId: threadId,
+				ordinal: { in: ordinals },
+			},
 			select: { ordinal: true, event: true },
 		});
 		const byOrdinal = new Map(rows.map((r) => [r.ordinal, r.event]));
@@ -593,7 +598,11 @@ export class ThreadWindowService {
 		const e = i === undefined ? undefined : p.entries[i];
 		const row = e
 			? await this.prisma.investigationEvent.findFirst({
-					where: { investigationId: threadId, ordinal: e.ordinal },
+					where: {
+						foldedBy: null,
+						investigationId: threadId,
+						ordinal: e.ordinal,
+					},
 					select: { event: true },
 				})
 			: null;
@@ -614,6 +623,7 @@ export class ThreadWindowService {
 		for (let k = 0; k < ordinals.length; k += SCAN_ROWS) {
 			const rows = await this.prisma.investigationEvent.findMany({
 				where: {
+					foldedBy: null,
 					investigationId: threadId,
 					ordinal: { in: ordinals.slice(k, k + SCAN_ROWS) },
 				},

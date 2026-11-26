@@ -105,11 +105,11 @@ const DIGEST_LINES = 5;
  * words and age, each opening its thread; the heading's Since link and "N more"
  * open the full list.
  */
-export function AwayDigest({ skip }: { skip?: ReadonlySet<string> } = {}) {
+export function AwayDigest() {
 	const away = useAwayView();
 	const now = useNow(30_000);
 	if (!away.data) return null;
-	const lines = digestLines(away.data, skip);
+	const lines = digestLines(away.data);
 	if (lines.length === 0) return null;
 	return <AwayDigestCard since={away.data.since} lines={lines} now={now} />;
 }
@@ -154,13 +154,9 @@ export function onePerIncident(data: AwayData): AwayData {
 }
 
 /** Each changed thread once, at the event matching its status now; newest first. */
-export function digestLines(
-	data: AwayData,
-	skip?: ReadonlySet<string>,
-): DigestLine[] {
+export function digestLines(data: AwayData): DigestLine[] {
 	return onePerIncident(data)
 		.groups.flatMap((g) => g.threads)
-		.filter(({ thread }) => !skip?.has(thread.id))
 		.flatMap(({ thread, events }) => {
 			const lead = currentEvent(events, thread.status);
 			if (!lead) return [];
@@ -200,8 +196,8 @@ export function AwayDigestCard({
 			data-testid="away-digest"
 		>
 			<span className="flex min-w-0 items-center gap-3">
-				<h2 className="text-heading text-text-1">What changed</h2>
-				<span className="flex items-center gap-2.5">
+				<h2 className="shrink-0 text-heading text-text-1">What changed</h2>
+				<span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
 					{bands.map(([status, n]) => (
 						<span
 							key={status}

@@ -409,6 +409,52 @@ describe("the one composer (#1020)", () => {
 		expect(chips[0]?.textContent).toContain("the quoted slice");
 	});
 
+	it("adds a handed-back text after a blank line, keeping the draft's text and quote (#1193)", async () => {
+		mockServerDraft = {
+			scope: "new:home",
+			rev: 2,
+			generation: 0,
+			version: 2,
+			doc: textDoc("earlier words"),
+			text: "earlier words",
+			quotes: [],
+			references: [],
+			choice: {},
+			updatedAt: "2026-11-11T10:00:00.000Z",
+			attachments: [],
+		};
+		const quote: Quote = {
+			source: {
+				threadId: "11111111-1111-4111-8111-111111111111",
+				kind: "transcript",
+			},
+			text: "the quoted slice",
+		};
+		const props = await render({
+			scope: "new:home",
+			seed: {
+				quotes: [{ key: "seed-1", quote, cut: false }],
+				references: [],
+			},
+		});
+		await settleEditor();
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 10));
+		});
+		await act(async () =>
+			root.render(
+				<Composer {...props} append={{ id: 1, text: "Use port 8080" }} />,
+			),
+		);
+		const parts = docParts(
+			getJSON(q("composer-input") as HTMLElement) as unknown as Parameters<
+				typeof docParts
+			>[0],
+		);
+		expect(parts.text.trim()).toBe("earlier words\n\nUse port 8080");
+		expect(parts.quotes.map((c) => c.text)).toEqual(["the quoted slice"]);
+	});
+
 	it("a restored draft keeps the line break and the spaces typed while it loaded", async () => {
 		mockServerDraft = {
 			scope: "new:home",

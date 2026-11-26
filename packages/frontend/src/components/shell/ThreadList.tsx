@@ -16,6 +16,7 @@ import {
 	useRouter,
 } from "@tanstack/react-router";
 import {
+	ArrowDownUp,
 	Bell,
 	CalendarClock,
 	Check,
@@ -46,6 +47,7 @@ import {
 import { ThreadTreeView } from "@/components/shell/ThreadTree";
 import { gitWord } from "@/components/thread/git/git-state";
 import { Input } from "@/components/ui/input";
+import { useListHold } from "@/hooks/use-list-hold";
 import { useNow } from "@/hooks/use-now";
 import { useRowKeys } from "@/hooks/use-row-keys";
 import { useSettleUndo } from "@/hooks/use-settle-undo";
@@ -362,6 +364,8 @@ export function ThreadList() {
 	const said = useAnnouncer(units);
 	const listRef = useRef<HTMLDivElement>(null);
 	useRowKeys(listRef, 'a[data-testid="thread-row"]');
+	// Nothing in the list moves while the reader is in it (#1247 D25).
+	const held = useListHold(listRef, model);
 	const [storedHide, storeHide] = useStoredFlag(HIDE_AGENTS_KEY);
 	// The URL holds the filter so a reload or a shared link keeps it; the device's last pick fills in (#1101 cat 1.7).
 	const started = useLocation({
@@ -389,6 +393,9 @@ export function ThreadList() {
 		},
 	});
 	const [stateParam, prParam] = filterParams.split("|");
+	// Show all lifts the filter off Needs you until the filter changes (#1247 D25).
+	const filterKey = `${filterParams}|${by ?? ""}`;
+	const [needsAllFor, setNeedsAllFor] = useState<string | null>(null);
 	// The filter's code loads only when the URL holds one: the shell stays lean (#1130).
 	const [filterLib, setFilterLib] = useState<
 		typeof import("@/lib/thread-filter") | null
@@ -427,6 +434,8 @@ export function ThreadList() {
 		);
 	const hidden = undo?.id;
 	const more = () => {
+		// The rows the reader asked for show though the list is held.
+		held.expectMore();
 		if (feed.hasNextPage && !feed.isFetchingNextPage) void feed.fetchNextPage();
 	};
 	// Pinned threads list apart from Threads; hidden agent rows have no server count.
@@ -436,15 +445,16 @@ export function ThreadList() {
 	// Agent-started rows that need nothing can be hidden; Needs you always shows them.
 	const keep = (n: ListNode) =>
 		n.id !== hidden && (!hideAgents || STARTED_BY_FILTERS.people.keep(n));
+	const base = held.model;
 	const shown: ThreadListModel =
 		hidden || hideAgents
 			? {
-					...model,
-					active: model.active.filter(keep),
-					settled: model.settled.filter(keep),
-					needs: model.needs.filter((n) => n.id !== hidden),
+					...base,
+					active: base.active.filter(keep),
+					settled: base.settled.filter(keep),
+					needs: base.needs.filter((n) => n.id !== hidden),
 				}
-			: model;
+			: base;
 	return (
 		<div
 			ref={listRef}
@@ -519,9 +529,29 @@ export function ThreadList() {
 					onSettle={onSettle}
 					onMoreSettled={more}
 					onMoreActive={more}
+					onMoreNeeds={more}
 					activeTotal={activeTotal}
+					moving={held.moving}
+					needsAll={needsAllFor === filterKey}
+					onShowAllNeeds={() => setNeedsAllFor(filterKey)}
 				/>
 			</DefaultAgent.Provider>
+			{held.pending > 0 && (
+				// Takes no room at the list's foot; the moves it holds apply on a click (#1247 D25).
+				<div className="pointer-events-none sticky bottom-2 z-10 h-0">
+					<button
+						type="button"
+						onClick={held.update}
+						aria-label={`${held.pending} ${held.pending === 1 ? "row" : "rows"} moved. Update the list`}
+						className="pointer-events-auto absolute bottom-0 left-1/2 flex h-7 -translate-x-1/2 items-center gap-1.5 rounded-full bg-accent-solid px-3 text-meta font-medium text-accent-fg"
+						data-testid="list-update"
+					>
+						<ArrowDownUp aria-hidden className="size-3" />
+						Update
+						<span className="tabular-nums">{held.pending}</span>
+					</button>
+				</div>
+			)}
 		</div>
 	);
 }

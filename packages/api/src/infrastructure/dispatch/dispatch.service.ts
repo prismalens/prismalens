@@ -212,6 +212,8 @@ export interface FollowUpSession {
 	claims?: string[];
 	/** Why PrismaLens itself resumes the session; its divider says so (#1166). */
 	cause?: ResumeCause;
+	/** A rewind's edited message (#1193): never the saved session; a fork names its source. */
+	rewind?: NonNullable<NonNullable<InvestigationJobData["resume"]>["rewind"]>;
 }
 
 /** A wake's admission found it already consumed; its transaction rolls back. */
@@ -315,7 +317,13 @@ export function recoveryPayload(
 				error: RESTART_REASON,
 			},
 			to: { ...(prev?.to ?? {}), harness: plan.harness },
-			...(plan.route === "handoff" ? { handoff: true } : {}),
+			// A replayed rewind or fresh start must not resume the saved session it abandoned (#1193).
+			...(plan.route === "handoff" ||
+			prev?.handoff ||
+			(prev?.rewind && !prev.rewind.fork)
+				? { handoff: true }
+				: {}),
+			...(prev?.rewind ? { rewind: prev.rewind } : {}),
 			// The previous text keeps its identity, so its receipt names the wake it carried (#1179 D6).
 			...(turn === "answer" && prev
 				? {
@@ -833,6 +841,9 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				// attaching the relay here (before the run's first event) stays
 				// correct even though there is no reclaim any more to re-attach for.
 				onClaim: (job) => this.streamRelay.attach(job.investigationId),
+				// A claimed job waits out a rewind of its thread before it starts (#1193 R8).
+				beforeStart: (job) =>
+					this.withAdmission(job.investigationId, async () => {}),
 				onSettled: (job, outcome) => {
 					this.logger.log(`Job ${job.id} settled (${job.investigationId})`);
 					for (const listener of this.settledListeners)
@@ -935,7 +946,33 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		this.settledListeners.push(listener);
 	}
 
+	private readonly bootHooks: (() => Promise<void>)[] = [];
+	/** Per-thread admission (#1193 R8): a rewind, an admission and a re-arm never interleave. */
+	private readonly admissions = new Map<string, Promise<unknown>>();
+
+	/** Runs before anything else at boot, before any run can start: a rewind marks what a stop cut off (#1193). */
+	onBoot(hook: () => Promise<void>): void {
+		this.bootHooks.push(hook);
+	}
+
+	/** One admission at a time per thread; in-process, as the event bus is (single process). */
+	withAdmission<T>(id: string, work: () => Promise<T>): Promise<T> {
+		const next = (this.admissions.get(id) ?? Promise.resolve())
+			.catch(() => {})
+			.then(work);
+		const tail = next.catch(() => {});
+		this.admissions.set(id, tail);
+		void tail.then(() => {
+			if (this.admissions.get(id) === tail) this.admissions.delete(id);
+		});
+		return next;
+	}
+
 	async onModuleInit(): Promise<void> {
+		for (const hook of this.bootHooks)
+			await hook().catch((e) =>
+				this.logger.warn(`A boot hook failed: ${(e as Error).message}`),
+			);
 		// Read before any boot write: what each cut-off run last did, and whether its agent is gone (#981).
 		const boot = await this.bootContext().catch((e) => {
 			this.logger.warn(
@@ -1188,6 +1225,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 			const events = await this.prisma.investigationEvent.findMany({
 				where: {
 					investigationId: id,
+					foldedBy: null,
 					OR: [
 						{ event: { contains: '"kind":"permission_' } },
 						{ event: { contains: '"kind":"ask_' } },
@@ -1245,7 +1283,11 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		});
 		for (const { id } of rows) {
 			const events = await this.prisma.investigationEvent.findMany({
-				where: { investigationId: id, event: { contains: '"messageId"' } },
+				where: {
+					investigationId: id,
+					foldedBy: null,
+					event: { contains: '"messageId"' },
+				},
 				orderBy: { seq: "asc" },
 				select: { event: true },
 			});
@@ -1322,7 +1364,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	/** The rail's "Interrupted by restart" mark (#1101): once, even when a boot is cut off and runs again. */
 	private async markInterrupted(id: string): Promise<void> {
 		const last = await this.prisma.investigationEvent.findFirst({
-			where: { investigationId: id },
+			where: { investigationId: id, foldedBy: null },
 			orderBy: { seq: "desc" },
 			select: { event: true },
 		});
@@ -1400,6 +1442,22 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * Returns false when a follow-up already holds it.
 	 */
 	async resumeInvestigation(
+		id: string,
+		text: string,
+		mode: OperatorMessageMode,
+		kind: FollowUpKind = "chat",
+		attachments: JobAttachment[] = [],
+		to: RunChoice = {},
+		context?: JobMessageContext,
+		session: FollowUpSession = {},
+	): Promise<boolean> {
+		return this.withAdmission(id, () =>
+			this.admitHeld(id, text, mode, kind, attachments, to, context, session),
+		);
+	}
+
+	/** {@link resumeInvestigation}'s body, for a caller already inside `withAdmission` (a rewind). */
+	async admitHeld(
 		id: string,
 		text: string,
 		mode: OperatorMessageMode,
@@ -1499,7 +1557,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 				...(attachments.length ? { attachments } : {}),
 				...(context ? { context } : {}),
 				to: { ...to, harness: plan.harness },
-				...(plan.route === "handoff" || session.fresh ? { handoff: true } : {}),
+				...(plan.route === "handoff" ||
+				session.fresh ||
+				(session.rewind && !session.rewind.fork)
+					? { handoff: true }
+					: {}),
+				...(session.rewind ? { rewind: session.rewind } : {}),
 				...(session.fresh ? { fresh: true } : {}),
 				...(session.compact && !session.fresh
 					? { compact: session.compact }
@@ -2101,6 +2164,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		const last = await this.prisma.investigationEvent.findFirst({
 			where: {
 				investigationId: id,
+				foldedBy: null,
 				OR: AGENT_KINDS.map((k) => ({ event: { contains: `"kind":"${k}"` } })),
 			},
 			orderBy: { createdAt: "desc" },
@@ -2247,6 +2311,19 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 	 * between them leaves either the cut-off run or a pending recovery, never neither.
 	 */
 	private async rearm(
+		id: string,
+		incidentId: EnqueueJobInput["incidentId"],
+		turn: "report" | "answer",
+		data: InvestigationJobData,
+		runAt: Date,
+		from: "live" | "interrupted",
+	): Promise<boolean> {
+		return this.withAdmission(id, () =>
+			this.rearmHeld(id, incidentId, turn, data, runAt, from),
+		);
+	}
+
+	private async rearmHeld(
 		id: string,
 		incidentId: EnqueueJobInput["incidentId"],
 		turn: "report" | "answer",

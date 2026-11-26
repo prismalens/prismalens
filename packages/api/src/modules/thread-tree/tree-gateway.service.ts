@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Injectable, type OnModuleInit } from "@nestjs/common";
-import { fail } from "@prismalens/integrations/harness";
+import { fail, isFailure } from "@prismalens/integrations/harness";
 import { GatewayService } from "../gateway/gateway.service.js";
 import { PendingActionsService } from "./pending-actions.service.js";
 import { ProposalsService } from "./proposals.service.js";
@@ -68,6 +68,22 @@ export class TreeGateway implements OnModuleInit {
 					});
 				},
 				send: (runId, input) => this.tree.send(runId, input),
+				rewind: async (runId, input) => {
+					const rootId = await this.rootOf(runId);
+					if (!rootId) return GONE();
+					// A retry answers as recorded: its message may since be folded or running.
+					const seen = await this.actions.recorded(runId, input.requestId);
+					if (seen) return seen;
+					const bound = await this.tree.bindRewind(runId, input);
+					if (isFailure(bound)) return bound;
+					return this.actions.gate({
+						callerId: runId,
+						rootId,
+						tool: "pl_thread_rewind",
+						args: bound,
+						requestId: input.requestId,
+					});
+				},
 			},
 		});
 	}

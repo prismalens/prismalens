@@ -251,4 +251,66 @@ describe("recoveryPayload (#1179 D6)", () => {
 		expect(recoveredNoWake.resume?.messageId).toBeUndefined();
 		expect(recoveredNoWake.resume?.delivers).toBeUndefined();
 	});
+
+	const rewound = (
+		rewind: NonNullable<InvestigationJobData["resume"]>["rewind"],
+		handoff: boolean,
+	): InvestigationJobData => ({
+		investigationId: "inv-1",
+		incidentId: "inc-1",
+		resume: {
+			text: "EDITED question",
+			mode: "queue",
+			kind: "chat",
+			restore: { status: "completed", completedAt: null, error: null },
+			...(handoff ? { handoff } : {}),
+			...(rewind ? { rewind } : {}),
+		},
+	});
+
+	it("keeps a replayed rewind and its handoff on the recovered answer turn (#1193)", () => {
+		const rewind = {
+			rewindId: "6f1c2a4e-1b7d-4c3e-9a2f-0d5e8b7c6a10",
+			fork: null,
+			why: "The agent cannot fork its session.",
+		};
+		const recovered = recoveryPayload(
+			rewound(rewind, true),
+			plan,
+			"answer",
+			restart,
+		);
+		expect(recovered.resume?.rewind).toEqual(rewind);
+		expect(recovered.resume?.handoff).toBe(true);
+	});
+
+	it("keeps a forked rewind on the recovered turn without forcing a handoff (#1193)", () => {
+		const rewind = {
+			rewindId: "6f1c2a4e-1b7d-4c3e-9a2f-0d5e8b7c6a10",
+			fork: {
+				from: "session-1",
+				messageId: "msg-9",
+				adapter: "codex",
+				tail: { prompts: 1, text: "Last." },
+			},
+		};
+		const recovered = recoveryPayload(
+			rewound(rewind, false),
+			plan,
+			"report",
+			restart,
+		);
+		expect(recovered.resume?.rewind).toEqual(rewind);
+		expect(recovered.resume?.handoff).toBeUndefined();
+	});
+
+	it("keeps a fresh follow-up's handoff on the recovered turn (#1193)", () => {
+		const recovered = recoveryPayload(
+			rewound(undefined, true),
+			plan,
+			"answer",
+			restart,
+		);
+		expect(recovered.resume?.handoff).toBe(true);
+	});
 });

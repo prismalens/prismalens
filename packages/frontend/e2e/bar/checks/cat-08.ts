@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { expect, type Locator, type Page } from "@playwright/test";
-import { defineChecks, notSetUp, verdict } from "../bar";
+import { defineChecks, verdict } from "../bar";
 import {
 	cancelThreads,
 	createChatThread,
@@ -423,12 +423,20 @@ export default defineChecks([
 		item: "8.5",
 		run: tracked(async ({ page, open }, made) => {
 			const fails: string[] = [];
-			// Its agent dies 20 s into the ask: the run ends by itself, not by Stop.
+			// Its agent opens two asks a second apart and dies 45 s in: the run ends by itself, not by Stop.
 			const id = await askingThread(page, "ask-then-crash", "test-8-5", made);
 
-			// Only one ask waits per thread in every staged condition, so paging cannot be reached.
 			await open(`/threads/${id}`);
-			const pages = await page.getByTestId("ask-dock-page").count();
+			const paging = page.getByTestId("ask-dock-page");
+			await expect(paging).toHaveText("1/2", { timeout: 30_000 });
+			const pages = (await paging.textContent())?.trim() ?? "";
+			const first = (
+				(await page.getByTestId("ask-dock").textContent()) ?? ""
+			).includes("pl-crash-probe.txt");
+			if (!first)
+				fails.push(
+					"the dock's first page is not the oldest ask (the first file)",
+				);
 
 			// An ask from a run that ended shows as ended and offers no Approve.
 			// The server's status for the thread, from the list feed (first page holds needs-you threads).
@@ -472,13 +480,9 @@ export default defineChecks([
 					fails.push("the ended ask still offers Approve");
 			}
 
-			if (!fails.length && pages === 0)
-				return notSetUp(
-					`an ended ask reads "${ended}" with no Approve, but no sim thread holds two asks, so paging oldest first is unshown`,
-				);
 			return verdict(
 				fails,
-				`paging pages ${pages}; the agent died 20 s into the ask, the thread then read "${status}", and its ask: ${ended}`,
+				`two asks page ${pages}, oldest first; the agent died 45 s into them, the thread then read "${status}", and its ask: ${ended}`,
 			);
 		}),
 	},

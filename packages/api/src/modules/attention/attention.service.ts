@@ -432,6 +432,7 @@ export class AttentionService
 		}
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId: id,
 				OR: [
 					{ event: { contains: '"kind":"permission_' } },
@@ -623,6 +624,7 @@ export class AttentionService
 			ids.map((id) =>
 				this.prisma.investigationEvent.findFirst({
 					where: {
+						foldedBy: null,
 						investigationId: id,
 						AND: [
 							{ event: { contains: '"kind":"agent_step"' } },
@@ -694,7 +696,12 @@ export class AttentionService
 				select: { eventGeneration: true, eventOrdinal: true },
 			}),
 			this.prisma.investigationEvent.findFirst({
-				where: { investigationId: id, branchId: at.branchId, seq: at.seq },
+				where: {
+					foldedBy: null,
+					investigationId: id,
+					branchId: at.branchId,
+					seq: at.seq,
+				},
 				select: { ordinal: true },
 			}),
 		]);

@@ -803,8 +803,13 @@ test("design coverage matrix", async ({
 	// With the panel closed, as the acceptance test asks: the panel shot above leaves it open.
 	await shoot("failed", `/incidents/${failed.id}/conversation`, async (p) => {
 		await expect(p.getByTestId("run-page")).toBeVisible();
+		// The remembered panel renders deferred (#1130), so it can show after the page does.
 		const close = p.getByTestId("run-details-close");
-		if (await close.isVisible()) await close.click();
+		await close.waitFor({ timeout: 3000 }).then(
+			() => close.click(),
+			() => {},
+		);
+		await expect(p.getByTestId("run-details-incident")).toBeHidden();
 	});
 	// A provider stop on a real run (#1101): the dock above the box, Limited or Blocked.
 	for (const [session, state, name] of [

@@ -3,7 +3,7 @@
 
 import { defineSurface } from "@/components/kit/actions";
 
-/** A Home card that needs you: its status's fix is the card's one button; right-click lists every fix. */
+/** A Home row that needs you: its status's fix is the row's one button; right-click lists every fix. */
 export const needsCard = defineSurface({
 	id: "needs.card",
 	label: "Fix actions",
@@ -22,5 +22,5 @@ export const needsCard = defineSurface({
 		],
 	},
 	states: { default: "home-needs-fixes", phone: "home-needs-fixes" },
-	marks: ["status", "agent", "startedBy", "changeRequest", "branch"],
+	marks: ["status", "agent", "startedBy"],
 });

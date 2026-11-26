@@ -278,7 +278,7 @@ describe("InvestigationsService — durable event record", () => {
 			// First page: no cursor filter applied.
 			expect(
 				mockPrisma.investigationEvent.findMany.mock.calls[0][0].where,
-			).toEqual({ investigationId: INV_ID });
+			).toEqual({ foldedBy: null, investigationId: INV_ID });
 		});
 
 		it("applies the exclusive seq cursor and reports nextCursor when more rows exist", async () => {
@@ -304,7 +304,7 @@ describe("InvestigationsService — durable event record", () => {
 			expect(page.events[0]).toMatchObject({ seq: 2 });
 			expect(page.nextCursor).toBe(2);
 			const query = mockPrisma.investigationEvent.findMany.mock.calls[0][0];
-			expect(query.where).toEqual({ investigationId: INV_ID, seq: { gt: 1 } });
+			expect(query.where).toEqual({ foldedBy: null, investigationId: INV_ID, seq: { gt: 1 } });
 			expect(query.take).toBe(2);
 		});
 
@@ -364,7 +364,7 @@ describe("InvestigationsService — durable event record", () => {
 			expect(page.nextCursor).toBe(5);
 			expect(
 				mockPrisma.investigationEvent.findMany.mock.calls[1][0].where,
-			).toEqual({ investigationId: INV_ID, seq: 5 });
+			).toEqual({ foldedBy: null, investigationId: INV_ID, seq: 5 });
 		});
 
 		it("drops a corrupt row rather than surfacing it", async () => {

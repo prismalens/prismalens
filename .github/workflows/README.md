@@ -33,7 +33,7 @@ The `changes` job runs `scripts/ci-plan.mjs`, whose header lists the tiers (`ski
 
 ## `e2e-browser.yml`
 
-The suite runs as 4 shards, each on its own runner with its own stacks, within a 15-minute limit. A test tagged `@quarantine` leaves the `chromium` and `journeys` projects and runs on shard 1 under `continue-on-error`. `e2e-browser-mobile.yml` runs the `@responsive` journeys nightly and by hand, never on a PR.
+The suite runs as 4 shards plus one `apart` job, each on its own runner with its own stacks, within a 15-minute limit. `apart` runs the `@reset-data` tests, then those tagged `@quarantine`, which leave the `chromium` and `journeys` projects and run under `continue-on-error`. `e2e-browser-mobile.yml` runs the `@responsive` journeys nightly and by hand, never on a PR.
 
 ## `nightly.yml`
 
