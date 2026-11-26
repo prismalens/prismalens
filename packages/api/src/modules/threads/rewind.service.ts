@@ -121,6 +121,9 @@ const keptOf = (
 	ks: readonly { path: string; why: KeepWhy }[],
 ): RewindKept[] => ks.map((k) => ({ repo, ...k }));
 
+const UNKNOWN_SENT =
+	"PrismaLens could not tell whether the edited message was sent. Check the thread before sending it again.";
+
 /**
  * Edit a sent message and run it again (#1193, the #1128 items). Later turns fold (never
  * deleted), the agent's files go back with a full backup first, the user's edits stay, the
@@ -664,14 +667,14 @@ export class RewindService {
 			where: { investigationId: t.id },
 			select: { payload: true },
 		});
-		// The message carries no rewind id: the first one after the marker is the edit only if its text is.
+		if (job?.payload.includes(event.rewindId))
+			return { ...stored, sent: true, why: null };
+		// A message carries no rewind id: a later one with the edit's text may or may not be it.
 		const next = rows.find(
 			(r) => r.ordinal > row.ordinal && r.event.kind === "operator_message",
 		);
-		const went =
-			job?.payload.includes(event.rewindId) ||
-			(next?.event.kind === "operator_message" && next.event.text === text);
-		if (went) return { ...stored, sent: true, why: null };
+		if (next?.event.kind === "operator_message" && next.event.text === text)
+			return { ...stored, sent: false, why: UNKNOWN_SENT };
 		const later = this.rewinds(rows).some(
 			(r) => r.row.ordinal > row.ordinal && !r.undone,
 		);
@@ -749,7 +752,7 @@ export class RewindService {
 			logger.warn(
 				`Sending the edit of ${t.id} failed: ${(e as Error).message}`,
 			);
-			return "PrismaLens could not tell whether the edited message was sent. Check the thread before sending it again.";
+			return UNKNOWN_SENT;
 		}
 	}
 
