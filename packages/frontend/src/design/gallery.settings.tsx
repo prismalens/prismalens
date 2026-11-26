@@ -11,6 +11,7 @@ import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { GallerySection } from "./gallery";
+import { agentsGallery } from "./gallery.agents";
 
 const noop = () => {};
 
@@ -158,4 +159,5 @@ export const settingsGallery: GallerySection[] = [
 			</div>
 		),
 	},
+	...agentsGallery,
 ];
