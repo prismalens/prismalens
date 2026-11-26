@@ -233,5 +233,5 @@ export function fakeFork(
 ) {
 	setFakeCapability("fork", on !== null, FAKE_STATE);
 	setFakeCapability("ignoreForkPoint", !!on?.ignoreForkPoint, FAKE_STATE);
-	setFakeAgentVersion(on ? (on.version ?? "0.106.0") : null, FAKE_STATE);
+	setFakeAgentVersion(on ? (on.version ?? "0.109.0") : null, FAKE_STATE);
 }

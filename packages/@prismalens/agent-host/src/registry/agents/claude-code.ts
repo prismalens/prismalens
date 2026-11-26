@@ -59,7 +59,7 @@ export const claudeCode = {
 		rewindVia: {
 			value: "fork-at-message",
 			via: "source",
-			verifiedAt: { cli: "2.1.323", adapter: "0.106.0" },
+			verifiedAt: { cli: "2.1.329", adapter: "0.109.0" },
 			where:
 				"dist/fork-session.js forkPoint, forkTranscript; dist/sdk-to-acp.js applyMessageId",
 		},
