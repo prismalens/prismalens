@@ -24,6 +24,8 @@ export interface IsolationContext {
 	read: (path: string) => string | null;
 	/** The agent CLI's version, when the caller read it; null when it could not. */
 	version?: string | null;
+	/** The keys under `key` in each of these session-folder JSON files; none without a folder. */
+	repoKeys?: (files: readonly string[], key: string) => string[];
 }
 
 export interface Isolation {
@@ -212,7 +214,18 @@ export const claudeCleanIsolation: Isolation = {
 			options: {
 				settingSources: ["project", "local"],
 				...(claudeManagedMcpParses(ctx) ? {} : { strictMcpConfig: true }),
-				settings: { disableAllHooks: true, enabledPlugins: {} },
+				settings: {
+					disableAllHooks: true,
+					// Flag settings outrank project and local, so this turns off what those enable.
+					enabledPlugins: Object.fromEntries(
+						(
+							ctx.repoKeys?.(
+								[".claude/settings.json", ".claude/settings.local.json"],
+								"enabledPlugins",
+							) ?? []
+						).map((k) => [k, false]),
+					),
+				},
 			},
 		},
 	}),

@@ -39,6 +39,7 @@ import {
 	mergeIsolation,
 	resolveIsolation,
 } from "./registry/isolation.js";
+import { GATEWAY_RUN_FILE } from "./registry/row.js";
 
 export interface SubagentLimits {
 	depth?: number;
@@ -259,18 +260,48 @@ export function isolationContext(
 		mcp?: readonly string[];
 		ours?: readonly string[];
 		version?: string | null;
+		cwd?: string;
 	} & IsolationHost,
 ): IsolationContext {
+	const read = o.read ?? readIfThere;
+	const platform = o.platform ?? process.platform;
 	return {
 		mcp: o.mcp ?? [],
 		ours: o.ours ?? [],
 		env: o.env,
 		runPath: (rel) => join(o.runDir, rel),
-		platform: o.platform ?? process.platform,
+		platform,
 		home: o.home ?? homedir(),
-		read: o.read ?? readIfThere,
+		read,
 		version: o.version ?? null,
+		...(o.cwd
+			? {
+					repoKeys: (files, key) =>
+						repoKeys(o.cwd as string, platform, files, key, read),
+				}
+			: {}),
 	};
+}
+
+/** The keys under `key` in each JSON file; a file that is missing or does not parse adds none. */
+function repoKeys(
+	cwd: string,
+	platform: string,
+	files: readonly string[],
+	key: string,
+	read: (path: string) => string | null,
+): string[] {
+	const sep = platform === "win32" ? "\\" : "/";
+	return files.flatMap((f) => {
+		try {
+			const path = [cwd, ...f.split("/")].join(sep);
+			const parsed: unknown = JSON.parse(read(path) ?? "{}");
+			const at = isJsonObject(parsed) ? parsed[key] : null;
+			return isJsonObject(at) ? Object.keys(at) : [];
+		} catch {
+			return [];
+		}
+	});
 }
 
 /**
@@ -286,6 +317,7 @@ export function isolateLaunch<
 		runDir: string;
 		version?: string | null;
 		ours?: readonly string[];
+		cwd?: string;
 	} & IsolationHost,
 ): P {
 	let out = plan;
@@ -569,6 +601,16 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 			},
 		),
 	);
+	// The run file holds each shared server as env references; dcode expands them (#1180 §3.3).
+	if (runFile) {
+		const own = planned[GATEWAY_RUN_FILE];
+		const servers = own
+			? (JSON.parse(own) as { mcpServers: JsonObject }).mcpServers
+			: {};
+		planned[GATEWAY_RUN_FILE] = JSON.stringify({
+			mcpServers: { ...runFile.servers, ...servers },
+		});
+	}
 	if (row.configEnv && planned[row.configEnv.file] !== undefined) {
 		const { file, key } = row.configEnv;
 		const run = JSON.parse(planned[file] as string) as JsonObject;
@@ -604,6 +646,7 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 	if (!input.isolation?.length) return built;
 	return isolateLaunch(built, input.isolation, {
 		runDir: input.runDir,
+		cwd: input.cwd,
 		version: input.agentVersion ?? null,
 		ours: runEnv.gateway ? [runEnv.gateway.name] : [],
 		...input.isolationHost,

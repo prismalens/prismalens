@@ -2,9 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 /** What loads and the PrismaLens set (#1180 §3.1, §3.3) over a temp SQLite database and scratch agent homes. */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { mcpSourceHash, readMcpSource } from "@prismalens/engine";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const env = await vi.hoisted(async () => {
 	const fs = await import("node:fs");
@@ -21,7 +23,7 @@ const { PrismaService } = await import("../prisma/prisma.service.js");
 const { CredentialsService } = await import(
 	"../../modules/integrations/crypto/credentials.service.js"
 );
-const { AgentSetupService, SHARED_SERVERS_KEY } = await import(
+const { AgentSetupService, AgentSetupError, SHARED_SERVERS_KEY, SHARED_SET_KEY } = await import(
 	"./agent-setup.service.js"
 );
 import type { HarnessModelsService } from "./harness-models.service.js";
@@ -40,6 +42,7 @@ const httpById: Record<string, boolean> = {};
 const home = join(env.root, "home");
 const bin = join(env.root, "bin");
 const command = join(bin, "docs-mcp");
+const claudeJson = join(home, ".claude.json");
 
 beforeAll(async () => {
 	const { resolveMigrationsDir, runMigrations } = await import(
@@ -64,7 +67,7 @@ beforeAll(async () => {
 	writeFileSync(command, "marker-A");
 	mkdirSync(home, { recursive: true });
 	writeFileSync(
-		join(home, ".claude.json"),
+		claudeJson,
 		JSON.stringify({
 			mcpServers: {
 				docs: { command, args: ["--root", ARG], env: { TOKEN: SECRET } },
@@ -79,29 +82,36 @@ afterAll(async () => {
 	rmSync(env.root, { recursive: true, force: true });
 });
 
+/** Each case starts from no set and no recorded sessions. */
+beforeEach(async () => {
+	installed = ["claude-code", "codex"];
+	await prisma.setting.deleteMany({ where: { key: { in: [SHARED_SERVERS_KEY, SHARED_SET_KEY] } } });
+	await prisma.investigationEvent.deleteMany({});
+});
+
 const docsDef = {
 	type: "stdio" as const,
 	command,
 	args: ["--root", ARG, { value: "DB" }],
 	env: ["TOKEN"],
 };
+const approveDocs = (recipients = ["claude-code", "codex"]) =>
+	service.approveSharedServer({ name: "docs", def: docsDef, values: { TOKEN: SECRET, DB: SECRET }, recipients, from: null });
+const approveWeb = (path: string, values: Record<string, string>, recipients = ["claude-code"], query = ["key"]) =>
+	service.approveSharedServer({
+		name: "web",
+		def: { type: "http", url: `https://mcp.example${path}`, query, headers: [] },
+		values,
+		recipients,
+		from: null,
+	});
+const names = async () => (await service.sharedSet()).servers.map((s) => s.name);
+const refused = (message: string) => new AgentSetupError("BAD_REQUEST", message);
 
 describe("the PrismaLens set (#1180 §3.3)", () => {
 	it("stores the server only encrypted, and no view returns an argument, a URL path or a value", async () => {
-		await service.approveSharedServer({
-			name: "docs",
-			def: docsDef,
-			values: { TOKEN: SECRET, DB: SECRET },
-			recipients: ["claude-code", "codex"],
-			from: null,
-		});
-		await service.approveSharedServer({
-			name: "web",
-			def: { type: "http", url: `https://mcp.example/v1/${ARG}`, query: ["key"], headers: [] },
-			values: { key: SECRET },
-			recipients: ["claude-code"],
-			from: null,
-		});
+		await approveDocs();
+		await approveWeb(`/v1/${ARG}`, { key: SECRET });
 		const row = await prisma.setting.findUnique({ where: { key: SHARED_SERVERS_KEY } });
 		expect([row?.type, row?.value.includes(SECRET), row?.value.includes(ARG)]).toEqual(["encrypted", false, false]);
 		const set = await service.sharedSet();
@@ -114,13 +124,11 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 	});
 
 	it("approving a changed URL without values leaves it Needs values and undelivered", async () => {
-		await service.approveSharedServer({
-			name: "web",
-			def: { type: "http", url: "https://mcp.example/v2", query: ["key"], headers: [] },
-			values: {},
-			recipients: ["claude-code"],
-			from: null,
-		});
+		await approveDocs();
+		await approveWeb("/v1", { key: SECRET });
+		const first = await service.loadout({ id: "claude-code" });
+		expect(first.items.find((i) => i.name === "pl-web")).toMatchObject({ state: "loads", scope: "prismalens" });
+		await approveWeb("/v2", {});
 		const web = (await service.sharedSet()).servers.find((s) => s.name === "web");
 		expect(web?.missingValues).toEqual(["key"]);
 		const loadout = await service.loadout({ id: "claude-code" });
@@ -129,6 +137,7 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 	});
 
 	it("an HTTP server shows Not sent: no HTTP, and is not delivered, to an agent whose check said it takes none", async () => {
+		await approveDocs();
 		await service.approveSharedServer({
 			name: "web",
 			def: { type: "http", url: "https://mcp.example/v3", query: [], headers: [] },
@@ -153,6 +162,7 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 	});
 
 	it("an agent installed after approval is not a recipient until the person adds it", async () => {
+		await approveDocs();
 		installed = ["claude-code", "codex", "gemini"];
 		const before = await service.loadout({ id: "gemini" });
 		expect(before.items.find((i) => i.name === "pl-docs")?.note).toBe("Not a recipient");
@@ -161,15 +171,73 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 		expect(docs?.recipients).toEqual(["claude-code", "codex", "gemini"]);
 	});
 
+	it("refuses an approved URL that carries sign-in, a query or a fragment", async () => {
+		const urls = ["https://u:p@mcp.example/v1", "https://mcp.example/v1?key=x", "https://mcp.example/v1#f"];
+		const outcomes = await Promise.all(
+			urls.map((url) =>
+				service
+					.approveSharedServer({ name: "web", def: { type: "http", url, query: [], headers: [] }, values: {}, recipients: [], from: null })
+					.then(() => "approved", (e: unknown) => e),
+			),
+		);
+		const no = refused("The URL holds only its origin and path; a query part is a value");
+		expect([outcomes, await names()]).toEqual([[no, no, no], []]);
+	});
+
+	it("an approval running beside a removal does not bring the removed server back", async () => {
+		await approveDocs();
+		await Promise.all([approveWeb("/v1", { key: SECRET }), service.removeSharedServer("docs")]);
+		expect(await names()).toEqual(["web"]);
+	});
+
+	it("two approvals at once keep both servers", async () => {
+		await Promise.all([approveDocs(), approveWeb("/v1", { key: SECRET })]);
+		expect((await names()).sort()).toEqual(["docs", "web"]);
+	});
+
+	it("a membership change whose second write fails leaves servers and instructions as they were", async () => {
+		await approveDocs(["claude-code"]);
+		type Interactive = (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>;
+		const real = prisma.$transaction.bind(prisma) as Interactive;
+		const failing: Interactive = (fn) =>
+			real(async (tx) => {
+				const t = tx as { setting: { upsert: (a: unknown) => Promise<unknown> } };
+				let writes = 0;
+				const setting = new Proxy(t.setting, {
+					get: (target, k) =>
+						k === "upsert"
+							? (a: unknown) => (++writes === 2 ? Promise.reject(new Error("disk full")) : target.upsert(a))
+							: Reflect.get(target, k),
+				});
+				return fn({ setting });
+			});
+		vi.spyOn(prisma, "$transaction").mockImplementationOnce(failing as typeof prisma.$transaction);
+		await expect(service.setMembership("codex", true)).rejects.toThrow("disk full");
+		const set = await service.sharedSet();
+		expect([set.servers[0]?.recipients, set.instructionsFor]).toEqual([["claude-code"], []]);
+	});
+
+	it("refuses a 33rd server, and still replaces one of 32", async () => {
+		for (let i = 0; i < 32; i++)
+			await service.approveSharedServer({ name: `s${i}`, def: docsDef, values: {}, recipients: [], from: null });
+		await expect(
+			service.approveSharedServer({ name: "s32", def: docsDef, values: {}, recipients: [], from: null }),
+		).rejects.toEqual(refused("The PrismaLens set holds at most 32 servers"));
+		await service.approveSharedServer({ name: "s0", def: docsDef, values: {}, recipients: ["codex"], from: null });
+		const set = await service.sharedSet();
+		expect([set.servers.length, set.servers.find((s) => s.name === "s0")?.recipients]).toEqual([32, ["codex"]]);
+	});
+
 	it("the preview masks every argument and the URL path, and never returns sign-in, query or fragment", async () => {
 		const sources = await service.sharedSources();
 		expect(sources.filter((s) => s.agent === "claude-code").map((s) => [s.key, s.transport])).toEqual([
 			["docs", "stdio"],
 			["web", "http"],
 		]);
-		const web = await service.preview({ agent: "claude-code", path: join(home, ".claude.json"), key: "web" });
+		const sourceEnv = { ...process.env, HOME: home, USERPROFILE: home } as Record<string, string>;
+		const web = await service.preview({ agent: "claude-code", path: claudeJson, key: "web" });
 		expect(web).toEqual({
-			source: { agent: "claude-code", path: join(home, ".claude.json"), key: "web" },
+			source: { agent: "claude-code", path: claudeJson, key: "web" },
 			transport: "http",
 			command: null,
 			args: [],
@@ -178,11 +246,48 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 			removed: ["sign-in", "query", "fragment"],
 			env: [],
 			headers: [],
+			revision: mcpSourceHash(readMcpSource("claude-code", sourceEnv, claudeJson, "web")),
 		});
-		const docs = await service.preview({ agent: "claude-code", path: join(home, ".claude.json"), key: "docs" });
+		const docs = await service.preview({ agent: "claude-code", path: claudeJson, key: "docs" });
 		expect([docs.args, docs.env, JSON.stringify(docs).includes(ARG)]).toEqual([[null, null], ["TOKEN"], false]);
-		expect(await service.reveal({ source: docs.source, row: 1 })).toEqual({ value: ARG });
-		expect(await service.reveal({ source: web.source, row: "path" })).toEqual({ value: `/v1/${ARG}` });
+		expect(await service.reveal({ source: docs.source, row: 1, revision: docs.revision })).toEqual({ value: ARG });
+		expect(await service.reveal({ source: web.source, row: "path", revision: web.revision })).toEqual({ value: `/v1/${ARG}` });
+	});
+
+	it("refuses a reveal or an approval of a source that changed since its preview", async () => {
+		const docs = await service.preview({ agent: "claude-code", path: claudeJson, key: "docs" });
+		await expect(service.reveal({ source: docs.source, row: 1, revision: "older" })).rejects.toEqual(
+			refused("The source changed since it was shown; open it again"),
+		);
+		await expect(
+			service.approveSharedServer({
+				name: "docs",
+				def: docsDef,
+				values: {},
+				recipients: [],
+				from: { ...docs.source, revision: "older" },
+			}),
+		).rejects.toEqual(refused("The source changed since it was shown; open it again"));
+		expect(await names()).toEqual([]);
+	});
+
+	it("What loads uses the run's delivery: deepagents gets a server with values and a value-free one, both in its run file", async () => {
+		await approveDocs(["deepagents"]);
+		await approveWeb("/v1", {}, ["deepagents"], []);
+		const view = await service.loadout({ id: "deepagents" });
+		const run = await service.forRun("deepagents", env.root);
+		expect([
+			view.items.filter((i) => i.scope === "prismalens").map((i) => [i.name, i.state, i.note ?? null]),
+			run?.servers,
+			Object.keys(run?.runFile?.servers ?? {}),
+		]).toEqual([
+			[
+				["pl-docs", "loads", null],
+				["pl-web", "loads", null],
+			],
+			[],
+			["pl-docs", "pl-web"],
+		]);
 	});
 });
 
@@ -190,8 +295,18 @@ describe("What loads merges only a matching session's report (#1180 §3.1)", () 
 	const project = join(env.root, "project");
 	let repositoryId = "";
 	let n = 0;
+	const at = (minutes: number) => new Date(Date.UTC(2026, 0, 1, 0, minutes));
 
-	async function reportOn(fingerprint: string, profile: "own" | "clean") {
+	async function reportOn(
+		fingerprint: string,
+		profile: "own" | "clean",
+		createdAt = at(0),
+		items: Record<string, unknown>[] = [
+			{ kind: "mcp", name: "db", scope: "repo", path: join(project, ".mcp.json"), disk: true, reported: null, state: "failed" },
+			{ kind: "plugin", name: "lint@m", scope: "plugin", path: null, disk: true, reported: null, state: "loads" },
+			{ kind: "mcp", name: "docs", scope: "global", path: null, disk: true, reported: null, state: "loads" },
+		],
+	) {
 		const inv = await prisma.investigation.create({
 			data: { harness: "claude-code", repositoryId },
 		});
@@ -200,58 +315,77 @@ describe("What loads merges only a matching session's report (#1180 §3.1)", () 
 				investigationId: inv.id,
 				seq: n++,
 				branchId: "main",
-				event: JSON.stringify({
-					kind: "agent_loadout",
-					profile,
-					cwd: project,
-					fingerprint,
-					items: [
-						{ kind: "mcp", name: "db", scope: "repo", path: join(project, ".mcp.json"), disk: true, reported: null, state: "failed" },
-						{ kind: "plugin", name: "lint@m", scope: "plugin", path: null, disk: true, reported: null, state: "loads" },
-						{ kind: "mcp", name: "docs", scope: "global", path: null, disk: true, reported: null, state: "loads" },
-					],
-				}),
+				createdAt,
+				event: JSON.stringify({ kind: "agent_loadout", profile, cwd: project, fingerprint, items }),
 			},
 		});
 		return inv.id;
 	}
+	const ownFingerprint = async () => (await service.forRun("claude-code", project)).fingerprint;
 
 	beforeAll(async () => {
 		mkdirSync(project, { recursive: true });
-		writeFileSync(join(project, ".mcp.json"), JSON.stringify({ mcpServers: { db: { command: "db" } } }));
 		repositoryId = (await prisma.repository.create({ data: { fullName: "local/project", url: project } })).id;
+	});
+	beforeEach(() => {
+		writeFileSync(join(project, ".mcp.json"), JSON.stringify({ mcpServers: { db: { command: "db" } } }));
 	});
 
 	it("merges the newest own-profile report whose fingerprint matches; a clean-profile view ignores it", async () => {
-		const view = await service.loadout({ id: "claude-code", repositoryId });
-		const { configFingerprint } = await import("@prismalens/engine");
-		expect(view.report).toBeNull();
-		const set = await service.sharedSet();
-		const fp = configFingerprint("claude-code", { ...process.env, HOME: home, USERPROFILE: home }, project, {
-			profile: "own",
-			isolation: null,
-			sharedRevision: set.revision,
-			member: set.instructionsFor.includes("claude-code"),
-		});
-		const thread = await reportOn(fp, "own");
+		expect((await service.loadout({ id: "claude-code", repositoryId })).report).toBeNull();
+		const fp = await ownFingerprint();
+		await reportOn(fp, "own", at(1));
+		const newer = await reportOn(fp, "own", at(2));
 		const merged = await service.loadout({ id: "claude-code", repositoryId });
-		expect(merged.report?.threadId).toBe(thread);
+		expect(merged.report?.threadId).toBe(newer);
 		expect(merged.items.find((i) => i.name === "db")).toMatchObject({ disk: true, state: "failed", scope: "repo" });
 		expect(merged.items.find((i) => i.name === "lint@m")).toMatchObject({ disk: false, state: "loads" });
-		// Claude's init gives no path: its row merges into the disk row by kind and name.
+		// Claude's init gives no path: its row merges into the disk row by kind, name and scope.
 		expect(merged.items.filter((i) => i.name === "docs").map((i) => [i.disk, i.state, i.path])).toEqual([
-			[true, "loads", join(home, ".claude.json")],
+			[true, "loads", claudeJson],
 		]);
 		const clean = await service.loadout({ id: "claude-code", repositoryId, profile: "clean" });
 		expect([clean.report, clean.staleReport, clean.items.some((i) => i.name === "lint@m")]).toEqual([null, null, false]);
 	});
 
 	it("a config edit after the last run drops the merge and points at that run as a different setup", async () => {
-		const last = await service.loadout({ id: "claude-code", repositoryId });
+		const thread = await reportOn(await ownFingerprint(), "own");
 		writeFileSync(join(project, ".mcp.json"), JSON.stringify({ mcpServers: { db: { command: "db2" } } }));
 		const after = await service.loadout({ id: "claude-code", repositoryId });
-		expect(after.report).toBeNull();
-		expect(after.staleReport?.threadId).toBe(last.report?.threadId);
+		expect([after.report, after.staleReport?.threadId]).toEqual([null, thread]);
 		expect(after.items.find((i) => i.name === "db")).toMatchObject({ state: "in-project", reported: null });
+	});
+
+	it("removing the agent from a shared server's recipients makes its report a different setup", async () => {
+		await approveWeb("/v1", {}, ["claude-code"], []);
+		const thread = await reportOn(await ownFingerprint(), "own", at(1), [
+			{ kind: "mcp", name: "pl-web", scope: "prismalens", path: null, disk: false, reported: null, state: "loads" },
+		]);
+		expect((await service.loadout({ id: "claude-code", repositoryId })).report?.threadId).toBe(thread);
+		await approveWeb("/v1", {}, [], []);
+		const after = await service.loadout({ id: "claude-code", repositoryId });
+		expect([after.report, after.staleReport?.threadId, after.items.find((i) => i.name === "pl-web")?.state]).toEqual([
+			null,
+			thread,
+			"not-sent",
+		]);
+	});
+
+	it("finds a matching report behind 20 newer reports of other setups", async () => {
+		const match = await reportOn(await ownFingerprint(), "own", at(1));
+		for (let i = 0; i < 20; i++) await reportOn(`other-${i}`, "own", at(2 + i));
+		expect((await service.loadout({ id: "claude-code", repositoryId })).report?.threadId).toBe(match);
+	});
+
+	it("a pathless project-scope report marks the project row, not a global row of the same name", async () => {
+		writeFileSync(join(project, ".mcp.json"), JSON.stringify({ mcpServers: { docs: { command: "d" } } }));
+		await reportOn(await ownFingerprint(), "own", at(1), [
+			{ kind: "mcp", name: "docs", scope: "repo", path: null, disk: true, reported: null, state: "loads" },
+		]);
+		const view = await service.loadout({ id: "claude-code", repositoryId });
+		expect(view.items.filter((i) => i.name === "docs").map((i) => [i.scope, i.state])).toEqual([
+			["global", "found"],
+			["repo", "loads"],
+		]);
 	});
 });

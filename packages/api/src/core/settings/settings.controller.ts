@@ -242,7 +242,7 @@ export class SettingsController {
 			),
 			approveSharedServer: implement(c.approveSharedServer).handler(
 				({ input, context }) => {
-					requireOwner(context.request);
+					requireHostOwner(context.request);
 					return guard(() => s.approveSharedServer(input));
 				},
 			),

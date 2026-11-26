@@ -3,8 +3,8 @@
 
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import type { SharedRevisionEvent } from "@prismalens/contracts/schemas";
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { QueryClientContext } from "@tanstack/react-query";
+import { useContext, useEffect, useState } from "react";
 
 export type Agent = HarnessId | string | null | undefined;
 
@@ -22,13 +22,13 @@ export function useSharedSetLine(
 	events: readonly SharedRevisionEvent[],
 	harness: Agent,
 ) {
-	const keeps = keepsSystemPrompt(harness);
-	const client = useQueryClient();
+	const client = useContext(QueryClientContext);
+	const keeps = !!client && keepsSystemPrompt(harness);
 	const [line, setLine] = useState<{ line: string; detail: string } | null>(
 		null,
 	);
 	useEffect(() => {
-		if (!keeps) return setLine(null);
+		if (!keeps || !client) return setLine(null);
 		let live = true;
 		void import("./shared-set-line")
 			.then((m) => m.sharedSetLineFor(client, events, harness))

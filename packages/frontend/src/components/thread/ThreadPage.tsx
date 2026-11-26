@@ -168,7 +168,6 @@ import { usePageSlots } from "./slots";
 import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
 import { threadLanding } from "./thread-landing";
 import { useRewind } from "./use-rewind";
-import { useSharedSetLine } from "./use-shared-set-line";
 import { useTranscriptJumps } from "./use-transcript-jumps";
 
 /** The confirm loads when an edit, undo or restore opens it, not with the thread's first paint. */
@@ -843,10 +842,7 @@ export function ThreadPage({ id }: { id: string }) {
 					detail: `Next send switches ${lastModel ? (modelName(harness, lastModel) ?? lastModel) : "its default model"} to ${modelName(harness, nextChoice.model) ?? nextChoice.model}. A new model may not reuse the cached context.`,
 				}
 			: null;
-	const sharedLine = useSharedSetLine(run.events, inv?.harness);
-	const nextLine = run.isActive
-		? null
-		: (switchLine ?? modelLine ?? sharedLine);
+	const nextLine = run.isActive ? null : (switchLine ?? modelLine);
 	// The server refuses a preflight problem too; a failed preview leaves the send to it.
 	const switchBlocked = !previewing
 		? null
@@ -2027,6 +2023,11 @@ ${about}`
 						locked={run.isActive}
 						nextSession={nextLine?.line ?? null}
 						nextSessionDetail={nextLine?.detail ?? null}
+						sharedSetFrom={
+							run.isActive || nextLine
+								? null
+								: { events: run.events, harness: inv?.harness }
+						}
 						accessHint="Kept from the first message"
 						dock={dock}
 						strip={slots.strip}

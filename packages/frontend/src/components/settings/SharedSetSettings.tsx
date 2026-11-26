@@ -124,7 +124,14 @@ interface RowDraft {
 }
 const BLANK: RowDraft = { shown: null, confirmed: false, secret: null };
 const rowReady = (r: RowDraft) => r.confirmed || !!r.secret;
-const argName = (i: number) => `ARG_${i + 1}`;
+/** A value name for each secret argument, never one of the source's own env names. */
+function argNames(count: number, taken: readonly string[]): string[] {
+	const used = new Set(taken);
+	const out: string[] = [];
+	for (let n = 1; out.length < count; n++)
+		if (!used.has(`ARG_${n}`)) out.push(`ARG_${n}`);
+	return out;
+}
 
 function Recipients({
 	agents,
@@ -381,6 +388,8 @@ function PreviewServer({
 	const [values, setValues] = useState<Record<string, string>>({});
 	const [recipients, setRecipients] = useState(agents.map((a) => a.id));
 	const stdio = preview.transport === "stdio";
+	const argName = (i: number) =>
+		argNames(preview.args.length, preview.env)[i] ?? `ARG_${i + 1}`;
 	const ready =
 		NAME.test(name) &&
 		recipients.length > 0 &&
@@ -422,6 +431,7 @@ function PreviewServer({
 				agent: preview.source.agent,
 				path: preview.source.path,
 				key: preview.source.key,
+				revision: preview.revision,
 			},
 		});
 	};
@@ -702,6 +712,7 @@ export function ShareServerDialog({
 	const labelOf = (id: string) =>
 		harnesses.find((h) => h.id === id)?.label ?? id;
 	const source = preview.data?.source;
+	const revision = preview.data?.revision ?? "";
 	const { mutate: previewMutate } = preview;
 	return (
 		<Dialog
@@ -732,7 +743,7 @@ export function ShareServerDialog({
 						onPick={previewMutate}
 						onReveal={async (row) =>
 							source
-								? (await reveal.mutateAsync({ source, row })).value
+								? (await reveal.mutateAsync({ source, row, revision })).value
 								: Promise.reject(new Error("Pick a server first."))
 						}
 						onApprove={(input) =>
@@ -836,6 +847,7 @@ export function SharedSetView({
 	canEdit,
 	saving,
 	onSaveInstructions,
+	saveError,
 	onShare,
 	onCopyAgain,
 	onRemove,
@@ -846,8 +858,11 @@ export function SharedSetView({
 	labelOf: (id: string) => string;
 	canEdit: boolean;
 	saving: boolean;
-	onSaveInstructions: (text: string) => void;
+	/** Settles once the save does; the draft is kept until it succeeds. */
+	onSaveInstructions: (text: string) => Promise<unknown>;
+	saveError?: unknown;
 	onShare: () => void;
+	/** The entry the server was copied from, or null when none is known. */
 	onCopyAgain: (server: SharedMcpServerView) => void;
 	onRemove: (name: string) => void;
 	onMember: (id: string, member: boolean) => void;
@@ -898,14 +913,24 @@ export function SharedSetView({
 								disabled={
 									draft === null || draft === set.instructions || saving
 								}
-								onClick={() => {
-									onSaveInstructions(text);
-									setDraft(null);
-								}}
+								onClick={() =>
+									void onSaveInstructions(text).then(
+										() => setDraft(null),
+										() => undefined,
+									)
+								}
 								data-testid="shared-set-instructions-save"
 							>
 								Save
 							</Button>
+							{!!saveError && (
+								<p
+									className="text-meta text-danger"
+									data-testid="shared-set-instructions-error"
+								>
+									{errorText(saveError)}
+								</p>
+							)}
 						</div>
 					}
 				/>
@@ -955,10 +980,13 @@ export function SharedSetView({
 	);
 }
 
-/** The entry `Copy again` opens: `from` is its stable id (#1180); the agent and name only without it. */
+/**
+ * The source `Copy again` opens: the entry the server was copied from, by path and key; for a
+ * server that records none, its agent's entry of the same name.
+ */
 export function copySource(
 	sources: readonly SharedSource[],
-	{ from, fromAgent, name }: SharedMcpServerView,
+	{ fromSource: from, fromAgent, name }: SharedMcpServerView,
 ): SharedSource | undefined {
 	if (from)
 		return sources.find(
@@ -1005,7 +1033,10 @@ export function SharedSetSettings() {
 				labelOf={labelOf}
 				canEdit={canEdit}
 				saving={update.isPending}
-				onSaveInstructions={(instructions) => update.mutate({ instructions })}
+				onSaveInstructions={(instructions) =>
+					update.mutateAsync({ instructions })
+				}
+				saveError={update.error}
 				onShare={() => setSharing({})}
 				onCopyAgain={copyAgain}
 				onRemove={setRemoving}

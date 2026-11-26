@@ -49,6 +49,8 @@ export class HarnessRefreshService
 {
 	private timer: ReturnType<typeof clock.setInterval> | null = null;
 	private running: Promise<void> | null = null;
+	/** A pass and Check all take turns, so no agent is checked twice at once. */
+	private turn: Promise<unknown> = Promise.resolve();
 	private lastPassAt: number | null = null;
 
 	constructor(@Inject(REFRESH_PORT) private readonly port: RefreshPort) {}
@@ -90,13 +92,13 @@ export class HarnessRefreshService
 	pass(): Promise<void> {
 		if (this.running) return this.running;
 		this.lastPassAt = clock.now();
-		const work = (async () => {
+		const work = this.inTurn(async () => {
 			const ids = await this.port.targets();
 			await this.checkEach(ids);
 			for (const id of ids)
 				if (this.port.safeCheck(id))
 					await this.port.readLimits(id).catch(() => undefined);
-		})().finally(() => {
+		}).finally(() => {
 			this.running = null;
 		});
 		this.running = work;
@@ -104,8 +106,14 @@ export class HarnessRefreshService
 	}
 
 	/** Check all: one at a time in the start order; an agent with no safe check is not started. */
-	async checkAll(): Promise<HarnessProbeResult[]> {
-		return this.checkEach(await this.port.targets());
+	checkAll(): Promise<HarnessProbeResult[]> {
+		return this.inTurn(async () => this.checkEach(await this.port.targets()));
+	}
+
+	private inTurn<T>(fn: () => Promise<T>): Promise<T> {
+		const run = this.turn.then(fn, fn);
+		this.turn = run.catch(() => undefined);
+		return run;
 	}
 
 	private async checkEach(ids: HarnessId[]): Promise<HarnessProbeResult[]> {

@@ -130,6 +130,7 @@ import {
 	injectedSecrets,
 	RecordScrubber,
 	redactEvent,
+	redactLine,
 	requestedSecrets,
 	StreamScrubber,
 	scrub,
@@ -791,6 +792,8 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	args: string[];
 	runEnv: HarnessRunEnv;
 	launch: HarnessLaunch;
+	/** The clean profile's session `_meta`, merged over the row's; absent without one. */
+	sessionMeta?: Record<string, unknown>;
 } {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const companionPath = descriptor.companionBinary
@@ -852,7 +855,15 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 		descriptor: { ...AGENT_REGISTRY[opts.harness], ...descriptor },
 	});
 	writeLaunchFiles(plan);
-	return { env: plan.env, args: plan.args, runEnv: plan.runEnv, launch };
+	return {
+		env: plan.env,
+		args: plan.args,
+		runEnv: plan.runEnv,
+		launch,
+		...(opts.cleanProfile && plan.sessionMeta
+			? { sessionMeta: plan.sessionMeta }
+			: {}),
+	};
 }
 
 /** A return waits this long for work the reopened agent starts on its own, before it sends anything. */
@@ -1040,7 +1051,12 @@ async function* sessionRun(
 		access.mechanism,
 		opts.runtimeNote,
 	);
-	const { env, args, launch } = prepareRunEnv({
+	const {
+		env,
+		args,
+		launch,
+		sessionMeta: cleanMeta,
+	} = prepareRunEnv({
 		...opts,
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
@@ -1070,9 +1086,12 @@ async function* sessionRun(
 		for (const r of inbound.end()) write(r);
 	});
 	const wire = (direction: "in" | "out", line: string): void => {
-		let m = direction === "out" ? withoutSharedDefs(line) : line;
-		for (const s of hidden) m = m.replaceAll(s, "[redacted]");
-		const parsed = direction === "in" ? parseWire(line) : null;
+		const m = redactLine(
+			direction === "out" ? withoutSharedDefs(line) : line,
+			hidden,
+		);
+		// Parsed after redactLine, so the scrubber only has values split across records left.
+		const parsed = direction === "in" ? parseWire(m) : null;
 		for (const r of inbound.push({
 			t: Date.now(),
 			d: direction,
@@ -1104,13 +1123,13 @@ async function* sessionRun(
 	// A compaction rebuilds Claude's system prompt from the set this session was given (§3.3).
 	const compactedTo = () =>
 		inSystemPrompt && opts.shared ? { sharedRevision: sentRevision } : {};
-	let loadout: CanonicalEvent | null = null;
+	let loadout: Parameters<typeof adapter.agentLoadout>[0] | null = null;
 	let loadoutSent = false;
-	/** The session's `agent_loadout`, once, as soon as Claude's init has arrived. */
+	/** The session's `agent_loadout`, once, as soon as Claude's init has arrived; its seq is taken here. */
 	const loadoutDue = (): CanonicalEvent | null => {
 		if (!loadout || loadoutSent) return null;
 		loadoutSent = true;
-		return loadout;
+		return adapter.agentLoadout(loadout);
 	};
 	// The brief rides the session, new and load alike, so the first prompt carries only the turn (#817).
 	const brief =
@@ -1192,7 +1211,14 @@ async function* sessionRun(
 				Date.now() - spawnedAt,
 			),
 		sessionMeta: sessionMetaOf(
-			descriptor.sessionMeta?.(),
+			cleanMeta
+				? mergeConfigPatch(
+						(descriptor.sessionMeta?.() ?? {}) as Parameters<
+							typeof mergeConfigPatch
+						>[0],
+						cleanMeta as Parameters<typeof mergeConfigPatch>[1],
+					)
+				: descriptor.sessionMeta?.(),
 			[brief, inSystemPrompt ? sharedText : null].filter(
 				(t): t is string => !!t,
 			),
@@ -1223,12 +1249,12 @@ async function* sessionRun(
 						const init =
 							method === CLAUDE_SDK_MESSAGE && !loadout ? initOf(params) : null;
 						if (init && opts.shared)
-							loadout = adapter.agentLoadout({
+							loadout = {
 								profile: opts.shared.profile,
 								cwd: opts.cwd,
 								fingerprint: opts.shared.fingerprint,
 								items: initItems(init),
-							});
+							};
 					},
 				}
 			: {}),
@@ -1953,6 +1979,7 @@ async function* sessionRun(
 		};
 		const turn = async function* (
 			parts: PromptPart[],
+			command = false,
 		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			const receipt = carried;
 			carried = [];
@@ -1962,8 +1989,9 @@ async function* sessionRun(
 			yield* recordQueued();
 			if (turns++ > 0 && opts.effort && !(await sendEffort()))
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
-			// The set's instructions open the first prompt after the session opens (§3.3, `first-message`).
-			if (sharedTextOwed && sharedText) {
+			// The set's instructions open the first prompt after the session opens (§3.3, `first-message`);
+			// a command keeps its turn to itself.
+			if (sharedTextOwed && sharedText && !command) {
 				parts = [{ type: "text", text: sharedText }, ...parts];
 				sharedTextOwed = false;
 			}
@@ -2085,7 +2113,13 @@ async function* sessionRun(
 				...(context?.addendum ? [context.addendum] : []),
 				...after,
 			];
-			if (frame.wrap || before.length || extra.length || attachments?.length) {
+			if (
+				frame.wrap ||
+				before.length ||
+				extra.length ||
+				attachments?.length ||
+				sharedTextOwed
+			) {
 				const lead = yield* turn(
 					promptParts(
 						wrap([...before, COMMAND_LEAD, ...extra].join("\n\n")),
@@ -2098,7 +2132,7 @@ async function* sessionRun(
 			}
 			const record = frame.beforeCommand?.();
 			if (record) yield record;
-			return yield* turn([{ type: "text", text: command }]);
+			return yield* turn([{ type: "text", text: command }], true);
 		};
 
 		/** The agent's own compact command as a turn, between two boundary events (#1024). */
@@ -2117,12 +2151,15 @@ async function* sessionRun(
 			compacting = true;
 			let r: TurnEnd;
 			try {
-				r = yield* turn([
-					{
-						type: "text",
-						text: `/${c.command}${instructions ? ` ${instructions}` : ""}`,
-					},
-				]);
+				r = yield* turn(
+					[
+						{
+							type: "text",
+							text: `/${c.command}${instructions ? ` ${instructions}` : ""}`,
+						},
+					],
+					true,
+				);
 			} finally {
 				compacting = false;
 			}

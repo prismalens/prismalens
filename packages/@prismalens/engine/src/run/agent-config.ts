@@ -8,7 +8,16 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import {
+	basename,
+	dirname,
+	isAbsolute,
+	join,
+	relative,
+	resolve,
+	sep,
+} from "node:path";
+import { AGENT_REGISTRY } from "@prismalens/agent-host";
 import {
 	type ConfigLayout,
 	HARNESS_REGISTRY,
@@ -187,7 +196,7 @@ function item(
 ): LoadedItem {
 	return {
 		kind,
-		name: name.slice(0, 200) || "(unnamed)",
+		name: name || "(unnamed)",
 		scope: entry.scope,
 		path,
 		disk: true,
@@ -245,8 +254,21 @@ function keyed(
 	return out;
 }
 
-/** Everything the agent's own config holds on disk now; an agent with no layout has none. */
+/** Everything the agent's own config holds on disk now, bounded for display; an agent with no layout has none. */
 export function readOnDisk(
+	agent: string,
+	env: Env,
+	repoRoot: string | null,
+	fs: ConfigFs = nodeConfigFs,
+	layout: ConfigLayout | null = layoutOf(agent),
+): LoadedItem[] {
+	return allOnDisk(agent, env, repoRoot, fs, layout)
+		.slice(0, MAX_ITEMS)
+		.map((i) => ({ ...i, name: i.name.slice(0, 200) }));
+}
+
+/** Every item with its whole name and no count limit: what isolation and the reserved name read. */
+export function allOnDisk(
 	agent: string,
 	env: Env,
 	repoRoot: string | null,
@@ -283,14 +305,12 @@ export function readOnDisk(
 				out.push(item(entry, "plugin", child, join(path, child), "found"));
 	}
 	const seen = new Set<string>();
-	return out
-		.filter((i) => {
-			const k = `${i.kind}\0${i.name}\0${i.scope}\0${i.path}`;
-			if (seen.has(k)) return false;
-			seen.add(k);
-			return true;
-		})
-		.slice(0, MAX_ITEMS);
+	return out.filter((i) => {
+		const k = `${i.kind}\0${i.name}\0${i.scope}\0${i.path}`;
+		if (seen.has(k)) return false;
+		seen.add(k);
+		return true;
+	});
 }
 
 /**
@@ -306,16 +326,31 @@ export function foundMcpNames(
 ): string[] {
 	return [
 		...new Set(
-			readOnDisk(agent, env, repoRoot, fs)
-				.filter(
-					(i) =>
-						i.kind === "mcp" &&
-						i.state !== "failed" &&
-						!except.includes(i.name),
-				)
-				.map((i) => i.name),
+			[
+				...allOnDisk(agent, env, repoRoot, fs)
+					.filter((i) => i.kind === "mcp" && i.state !== "failed")
+					.map((i) => i.name),
+				...inlineMcpNames(agent, env),
+			].filter((n) => !except.includes(n)),
 		),
 	];
+}
+
+/**
+ * MCP servers defined only in the launch env's inline config: the JSON env var the agent's check
+ * isolation merges into, under the key its config files keep servers in. Unparseable names none.
+ */
+function inlineMcpNames(agent: string, env: Env): string[] {
+	const name = AGENT_REGISTRY[agent as HarnessId]?.probeIsolation?.config?.key;
+	const key = layoutOf(agent)?.mcp[0]?.key;
+	const raw = name ? env[name] : undefined;
+	if (!raw || !key) return [];
+	try {
+		const servers = (JSON.parse(raw) as Record<string, unknown>)?.[key];
+		return isRecord(servers) ? Object.keys(servers) : [];
+	} catch {
+		return [];
+	}
 }
 
 /** What a session's launch policy adds to its fingerprint. */
@@ -326,6 +361,8 @@ export interface LoadoutPolicy {
 	/** The PrismaLens set's revision, and whether this agent receives it. */
 	sharedRevision: string;
 	member: boolean;
+	/** Each PrismaLens server this launch delivers, as `name:hash`; no value or argument. */
+	sharedServers: readonly string[];
 }
 
 /**
@@ -346,11 +383,24 @@ export function configFingerprint(
 		const text = fs.text(path) ?? fs.text(join(path, "SKILL.md")) ?? "";
 		return createHash("sha256").update(text).digest("hex");
 	};
+	// A file inside the project is named from its root, so two checkouts of one project match.
+	const identity = (path: string | null) => {
+		if (!path || !repoRoot) return path ?? "";
+		const rel = relative(repoRoot, path);
+		return rel && !rel.startsWith("..") && !isAbsolute(rel)
+			? `<repo>/${rel.replaceAll("\\", "/")}`
+			: path;
+	};
 	const rows = items
 		.map((i) =>
-			[i.kind, i.name, i.scope, i.path ?? "", i.state, content(i.path)].join(
-				"\0",
-			),
+			[
+				i.kind,
+				i.name,
+				i.scope,
+				identity(i.path),
+				i.state,
+				content(i.path),
+			].join("\0"),
 		)
 		.sort();
 	return createHash("sha256")

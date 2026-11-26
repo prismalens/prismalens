@@ -275,4 +275,22 @@ describe("SettingsController PrismaLens set routes (#1180 §3.3)", () => {
 		expect(await call("previewSharedServer", { source: SOURCE }, local)).toEqual({ shown: "preview" });
 		expect(await call("revealSharedServerRow", { source: SOURCE, row: 0 }, local)).toEqual({ shown: "row" });
 	});
+
+	it("refuses approving a shared server to an owner session that is not the host's own", async () => {
+		const approveSharedServer = vi.fn(async () => ({}));
+		const routes = new SettingsController(
+			{} as SettingsService,
+			{} as HarnessService,
+			telemetryStub(),
+			{} as UpdateService,
+			{} as DiagnosticsService,
+			{} as HarnessRefreshService,
+			{ approveSharedServer } as unknown as AgentSetupService,
+		).agentSetupRoutes() as unknown as Record<string, Proc>;
+		const remoteOwner = { request: { ...host.request, socket: { remoteAddress: "192.168.1.20", localPort: 3000 }, headers: {} } };
+		await expect(
+			Promise.resolve().then(() => routes.approveSharedServer["~orpc"].handler({ input: {}, context: remoteOwner })),
+		).rejects.toMatchObject({ code: "FORBIDDEN", message: "This only works on the computer running PrismaLens." });
+		expect(approveSharedServer).not.toHaveBeenCalled();
+	});
 });

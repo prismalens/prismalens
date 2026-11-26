@@ -35,31 +35,69 @@ function forms(secrets: readonly string[]): string[] {
 	].sort((x, y) => y.length - x.length);
 }
 
+/** Event fields whose contents the agent wrote; a `kind` inside them is data, not a discriminator. */
+const FREE_FIELDS = new Set(["args", "input", "rawInput", "modelUsage"]);
+
 /**
- * The event with every exact secret value replaced inside its string values; keys and `kind`
- * fields are never touched, so redaction cannot change an event's shape (#1180 §3.3).
+ * The event with every exact secret value replaced inside its string values; keys and schema
+ * `kind` fields are never touched, so redaction cannot change an event's shape (#1180 §3.3).
  * The same object when none occurs.
  */
 export function redactEvent<T>(event: T, secrets: readonly string[]): T {
 	if (!secrets.length) return event;
 	const all = forms(secrets);
 	let changed = false;
-	const walk = (v: unknown, key?: string): unknown => {
+	const walk = (
+		v: unknown,
+		key: string | undefined,
+		free: boolean,
+	): unknown => {
 		if (typeof v === "string") {
-			if (key === "kind") return v;
+			if (key === "kind" && !free) return v;
 			const out = scrub(v, all);
 			if (out !== v) changed = true;
 			return out;
 		}
-		if (Array.isArray(v)) return v.map((x) => walk(x));
+		if (Array.isArray(v)) return v.map((x) => walk(x, undefined, free));
 		if (v && typeof v === "object")
 			return Object.fromEntries(
-				Object.entries(v).map(([k, x]) => [k, walk(x, k)]),
+				Object.entries(v).map(([k, x]) => [
+					k,
+					walk(x, k, free || FREE_FIELDS.has(k)),
+				]),
 			);
 		return v;
 	};
-	const out = walk(event);
+	const out = walk(event, undefined, false);
 	return changed ? (out as T) : event;
+}
+
+/** A wire line with each secret replaced inside its JSON string values, or as text when it does not parse. */
+export function redactLine(line: string, secrets: readonly string[]): string {
+	if (!secrets.length) return line;
+	const all = forms(secrets);
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(line);
+	} catch {
+		return scrub(line, all);
+	}
+	let changed = false;
+	const walk = (v: unknown): unknown => {
+		if (typeof v === "string") {
+			const out = scrub(v, all);
+			if (out !== v) changed = true;
+			return out;
+		}
+		if (Array.isArray(v)) return v.map(walk);
+		if (v && typeof v === "object")
+			return Object.fromEntries(
+				Object.entries(v).map(([k, x]) => [k, walk(x)]),
+			);
+		return v;
+	};
+	const out = walk(parsed);
+	return changed ? JSON.stringify(out) : line;
 }
 
 /**

@@ -75,8 +75,11 @@ describe("readOnDisk (#1180 §3.1)", () => {
 			[resolve(dir, ".claude.json")]: JSON.stringify({ mcpServers: { alt: { command: "a" } } }),
 			[h(".claude.json")]: JSON.stringify({ mcpServers: { ignored: { command: "b" } } }),
 			[resolve(dir, "settings.json")]: JSON.stringify({ hooks: { Stop: [] } }),
+			[resolve(dir, "skills", "moved", "SKILL.md")]: "x",
+			[h(".claude", "skills", "default", "SKILL.md")]: "x",
 		});
 		expect(rows(readOnDisk("claude-code", { ...env, CLAUDE_CONFIG_DIR: dir }, null, fs))).toEqual([
+			["skill", "moved", "global", "found", resolve(dir, "skills", "moved")],
 			["mcp", "alt", "global", "found", resolve(dir, ".claude.json"), "stdio"],
 			["hook", "Stop", "global", "found", resolve(dir, "settings.json")],
 		]);
@@ -138,6 +141,20 @@ describe("readOnDisk (#1180 §3.1)", () => {
 		expect(JSON.stringify(items)).not.toContain(SECRET);
 	});
 
+	it("OpenCode: plugins listed in opencode.jsonc, global and in the project", () => {
+		const fs = memoryFs({
+			[h(".config", "opencode", "opencode.jsonc")]: `{
+				// comments are allowed
+				"plugin": ["p-global"],
+			}`,
+			[r("opencode.jsonc")]: JSON.stringify({ plugin: ["p-repo"] }),
+		});
+		expect(rows(readOnDisk("opencode", env, repo, fs))).toEqual([
+			["plugin", "p-global", "global", "found", h(".config", "opencode", "opencode.jsonc")],
+			["plugin", "p-repo", "repo", "in-project", r("opencode.jsonc")],
+		]);
+	});
+
 	it("Gemini: GEMINI_CLI_HOME, extensions as folders, a settings file that does not parse is failed", () => {
 		const gh = h("gem");
 		const fs = memoryFs({
@@ -179,10 +196,30 @@ describe("foundMcpNames (#1180 R1)", () => {
 	it("leaves out the names the launch sends itself", () => {
 		expect(foundMcpNames("claude-code", env, null, fs, ["prismalens"])).toEqual(["docs"]);
 	});
+
+	it("keeps a name longer than the display limit whole, for turning it off and for except", () => {
+		const long = "m".repeat(201);
+		const longFs = memoryFs({ [h(".claude.json")]: JSON.stringify({ mcpServers: { [long]: {}, docs: {} } }) });
+		expect([foundMcpNames("claude-code", env, null, longFs), foundMcpNames("claude-code", env, null, longFs, [long])]).toEqual([
+			[long, "docs"],
+			["docs"],
+		]);
+	});
+
+	it("names a server that comes after 500 skills, which the bounded view leaves out", () => {
+		const skills = Object.fromEntries(
+			Array.from({ length: 500 }, (_, i) => [h(".claude", "skills", `s${i}`, "SKILL.md"), "x"]),
+		);
+		const many = memoryFs({ ...skills, [h(".claude.json")]: JSON.stringify({ mcpServers: { late: {} } }) });
+		expect([readOnDisk("claude-code", env, null, many).length, foundMcpNames("claude-code", env, null, many)]).toEqual([
+			500,
+			["late"],
+		]);
+	});
 });
 
 describe("configFingerprint (#1180 §3.1)", () => {
-	const policy = { profile: "own" as const, isolation: null, sharedRevision: "r1", member: true };
+	const policy = { profile: "own" as const, isolation: null, sharedRevision: "r1", member: true, sharedServers: [] as string[] };
 	const files = { [r(".mcp.json")]: JSON.stringify({ mcpServers: { a: {} } }) };
 
 	it("changes when a config file's content, the profile or the shared revision changes, and not otherwise", () => {
@@ -192,6 +229,24 @@ describe("configFingerprint (#1180 §3.1)", () => {
 		expect(configFingerprint("claude-code", env, repo, policy, edited)).not.toBe(base);
 		expect(configFingerprint("claude-code", env, repo, { ...policy, profile: "clean" }, memoryFs(files))).not.toBe(base);
 		expect(configFingerprint("claude-code", env, repo, { ...policy, sharedRevision: "r2" }, memoryFs(files))).not.toBe(base);
+	});
+
+	it("is the same for the same project files at two checkout paths", () => {
+		const snapshot = resolve(home, "snapshots", "app-1");
+		const fs = memoryFs({ ...files, [resolve(snapshot, ".mcp.json")]: files[r(".mcp.json")] as string });
+		expect(configFingerprint("claude-code", env, snapshot, policy, fs)).toBe(
+			configFingerprint("claude-code", env, repo, policy, fs),
+		);
+	});
+
+	it("changes when the PrismaLens servers delivered to the agent change", () => {
+		const fs = memoryFs(files);
+		const base = configFingerprint("claude-code", env, repo, { ...policy, sharedServers: ["web:h1"] }, fs);
+		expect([
+			configFingerprint("claude-code", env, repo, { ...policy, sharedServers: [] }, fs) === base,
+			configFingerprint("claude-code", env, repo, { ...policy, sharedServers: ["web:h2"] }, fs) === base,
+			configFingerprint("claude-code", env, repo, { ...policy, sharedServers: ["web:h1"] }, fs) === base,
+		]).toEqual([false, false, true]);
 	});
 
 	it("differs between two worktrees of one project whose .mcp.json differ", () => {

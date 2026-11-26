@@ -6,15 +6,27 @@ import type { HarnessStatus } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CheckAllButton, CheckTimes, safeCheck } from "./agent-checks";
+import {
+	CheckAllButton,
+	CheckEveryRow,
+	CheckTimes,
+	safeCheck,
+} from "./agent-checks";
 
 const mocks = vi.hoisted(() => ({
 	mutate: vi.fn(),
 	state: { isPending: false, isSuccess: false },
+	settings: { refreshMinutes: 30, canEditRuntime: true } as Record<
+		string,
+		unknown
+	>,
+	update: { mutate: vi.fn(), isPending: false },
 }));
 
 vi.mock("@/lib/api/hooks", () => ({
 	useCheckAllHarnesses: () => ({ mutate: mocks.mutate, ...mocks.state }),
+	useHarnessSettings: () => ({ data: mocks.settings }),
+	useUpdateHarnessSettings: () => mocks.update,
 }));
 
 vi.mock("@prismalens/config/harness", async (importOriginal) => {
@@ -120,6 +132,27 @@ describe("agent checks in Settings (#1180 §1.4)", () => {
 		expect(text("agent-check-all-skipped")).toBe(
 			"Not checked: no safe check: Cursor",
 		);
+	});
+
+	it("Check every offers Reset away from 15 minutes only to a caller who can edit it, and not while a save is pending", () => {
+		const shown = (settings: Record<string, unknown>, isPending: boolean) => {
+			mocks.settings = settings;
+			mocks.update = { mutate: vi.fn(), isPending };
+			render(<CheckEveryRow />);
+			return [
+				!!host.querySelector('[data-testid="harness-check-every-row-reset"]'),
+				text("host-only"),
+			];
+		};
+		expect([
+			shown({ refreshMinutes: 30, canEditRuntime: true }, false),
+			shown({ refreshMinutes: 30, canEditRuntime: false }, false),
+			shown({ refreshMinutes: 30, canEditRuntime: true }, true),
+		]).toEqual([
+			[true, null],
+			[false, "Only the owner can change what an agent runs."],
+			[false, null],
+		]);
 	});
 
 	it("Check all is off when no installed agent has a safe check", () => {

@@ -162,8 +162,8 @@ export const SharedMcpServerViewSchema = /* @__PURE__ */ lazySchema(() =>
 		changedInSource: z.boolean(),
 		/** The source agent, for `Changed in <agent>`. */
 		fromAgent: z.string().nullable(),
-		/** The config entry it was copied from, so `Copy again` opens that same source. */
-		from: SharedSourceSchema.nullable(),
+		/** The agent config entry it was copied from, so Copy again opens on that entry. */
+		fromSource: SharedSourceSchema.nullable(),
 	}),
 );
 export type SharedMcpServerView = z.infer<typeof SharedMcpServerViewSchema>;
@@ -194,6 +194,8 @@ export const ApproveSharedServerInputSchema = /* @__PURE__ */ lazySchema(() =>
 				agent: z.string().min(1).max(64),
 				path: z.string().max(1024),
 				key: z.string().max(200),
+				/** The preview's `revision`. */
+				revision: z.string().max(128),
 			})
 			.nullable()
 			.default(null),
@@ -241,6 +243,8 @@ export const SharedServerPreviewSchema = /* @__PURE__ */ lazySchema(() =>
 		removed: z.array(z.enum(["sign-in", "query", "fragment"])),
 		env: z.array(z.string()),
 		headers: z.array(z.string()),
+		/** The source entry's hash as previewed; reveal and approval refuse a source that changed since. */
+		revision: z.string().max(128),
 	}),
 );
 export type SharedServerPreview = z.infer<typeof SharedServerPreviewSchema>;
@@ -250,6 +254,7 @@ export const RevealSharedRowInputSchema = /* @__PURE__ */ lazySchema(() =>
 		source: SharedSourceSchema,
 		/** An argument's index, or `path` for the URL path. */
 		row: z.union([z.number().int().min(0).max(63), z.literal("path")]),
+		revision: z.string().max(128),
 	}),
 );
 export type RevealSharedRowInput = z.infer<typeof RevealSharedRowInputSchema>;

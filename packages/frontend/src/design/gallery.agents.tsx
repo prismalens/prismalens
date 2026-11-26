@@ -103,7 +103,11 @@ const set: SharedSet = {
 			recipients: [A, B],
 			changedInSource: false,
 			fromAgent: B,
-			from: { agent: B, path: "~/.config/agent/config.json", key: "docs" },
+			fromSource: {
+				agent: B,
+				path: "~/.config/agent/config.json",
+				key: "docs",
+			},
 		},
 		{
 			name: "tickets",
@@ -116,7 +120,11 @@ const set: SharedSet = {
 			recipients: [A],
 			changedInSource: true,
 			fromAgent: C,
-			from: { agent: C, path: "~/.config/agent/config.json", key: "tickets" },
+			fromSource: {
+				agent: C,
+				path: "~/.config/agent/config.json",
+				key: "tickets",
+			},
 		},
 	],
 };
@@ -131,6 +139,7 @@ const preview: SharedServerPreview = {
 	removed: [],
 	env: ["DOCS_TOKEN"],
 	headers: [],
+	revision: "r-docs",
 };
 
 /** Settings → Agents (#1180 §3.1-§3.3): What loads, the PrismaLens set, its share form and the first-run offer. */
@@ -176,7 +185,7 @@ export const agentsGallery: GallerySection[] = [
 					labelOf={labelOf}
 					canEdit
 					saving={false}
-					onSaveInstructions={noop}
+					onSaveInstructions={async () => undefined}
 					onShare={noop}
 					onCopyAgain={noop}
 					onRemove={noop}

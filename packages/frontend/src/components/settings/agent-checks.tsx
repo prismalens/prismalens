@@ -6,6 +6,7 @@
  * a newer failed try, Check all, and the note on a Check that runs un-isolated.
  */
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
+import { RUNTIME_HOST_ONLY } from "@prismalens/contracts";
 import type { HarnessStatus } from "@prismalens/contracts/schemas";
 import { runAction, settingOf } from "@/components/kit/registry";
 import { Surface } from "@/components/kit/Surface";
@@ -137,8 +138,9 @@ export function CheckEveryRow() {
 			label={s.label}
 			description={s.sentence}
 			testId={s.anchor}
-			changed={minutes !== 15}
+			changed={minutes !== 15 && !update.isPending}
 			onReset={() => update.mutate({ refreshMinutes: 15 })}
+			locked={data?.canEditRuntime === false ? RUNTIME_HOST_ONLY : undefined}
 		>
 			<AxisSelect<CheckEvery>
 				value={String(minutes) as CheckEvery}

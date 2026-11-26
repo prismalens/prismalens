@@ -8,6 +8,7 @@ import { HarnessModelsService } from "./harness-models.service.js";
 import { HarnessProbeService } from "./harness-probe.service.js";
 import {
 	HarnessRefreshService,
+	harnessRefreshPort,
 	type RefreshMinutes,
 	type RefreshPort,
 } from "./harness-refresh.service.js";
@@ -30,20 +31,24 @@ const answered = (id: HarnessId): HarnessProbeResult => ({
 function port(over: Partial<RefreshPort> & { minutes?: () => Promise<RefreshMinutes> } = {}) {
 	const checked: HarnessId[] = [];
 	const read: HarnessId[] = [];
+	/** Every port call in order, so a test can see checks run before limit reads. */
+	const order: string[] = [];
 	const p: RefreshPort = {
 		targets: async () => ["codex", "cursor"],
 		minutes: async () => 15,
 		check: async (id) => {
 			checked.push(id);
+			order.push(`check ${id}`);
 			return answered(id);
 		},
 		readLimits: async (id) => {
 			read.push(id);
+			order.push(`limits ${id}`);
 		},
 		safeCheck: (id) => id !== "cursor",
 		...over,
 	};
-	return { p, checked, read };
+	return { p, checked, read, order };
 }
 
 /** Lets a tick's awaited port calls settle under fake timers. */
@@ -75,7 +80,7 @@ describe("HarnessRefreshService (#1180 §1.4)", () => {
 	});
 
 	it("every 15 minutes runs a pass at 15 and at 30, checks first, then reads limits", async () => {
-		const { p, checked, read } = port();
+		const { p, checked, read, order } = port({ targets: async () => ["codex", "claude-code", "cursor"] });
 		svc = new HarnessRefreshService(p);
 		svc.start();
 		await vi.advanceTimersByTimeAsync(14 * MIN);
@@ -83,11 +88,42 @@ describe("HarnessRefreshService (#1180 §1.4)", () => {
 		expect(checked).toEqual([]);
 		await vi.advanceTimersByTimeAsync(MIN);
 		await settle();
-		expect(checked).toEqual(["codex"]);
-		expect(read).toEqual(["codex"]);
+		expect(order).toEqual(["check codex", "check claude-code", "limits codex", "limits claude-code"]);
 		await vi.advanceTimersByTimeAsync(15 * MIN);
 		await settle();
-		expect(checked).toEqual(["codex", "codex"]);
+		expect([checked, read]).toEqual([
+			["codex", "claude-code", "codex", "claude-code"],
+			["codex", "claude-code", "codex", "claude-code"],
+		]);
+	});
+
+	it("Check all waits for a running pass, so one agent never has two checks at once", async () => {
+		let release = () => {};
+		let open = 0;
+		let most = 0;
+		const { p, checked } = port({
+			check: (id) => {
+				checked.push(id);
+				most = Math.max(most, ++open);
+				return new Promise((r) => {
+					release = () => {
+						open--;
+						r(answered(id));
+					};
+				});
+			},
+		});
+		svc = new HarnessRefreshService(p);
+		const pass = svc.pass();
+		await settle();
+		const all = svc.checkAll();
+		await settle();
+		expect(checked).toEqual(["codex"]);
+		release();
+		await pass;
+		await settle();
+		release();
+		expect([(await all).map((r) => r.id), checked, most]).toEqual([["codex"], ["codex", "codex"], 1]);
 	});
 
 	it("never starts a pass while one is running", async () => {
@@ -132,9 +168,15 @@ describe("HarnessRefreshService (#1180 §1.4)", () => {
 		const before = models.checked("cursor");
 		mocks.probeHarness.mockReset();
 		mocks.probeHarness.mockImplementation(async (id: HarnessId) => answered(id));
-		const { p } = port({
-			check: (id) => probe.check(id, undefined, undefined, undefined, { requireIsolation: true }),
-		});
+		// The production port, so a launch that lost its isolation requirement would show here.
+		const p = harnessRefreshPort(
+			{
+				installedIds: async () => ["codex", "cursor"],
+				getSettings: async () => ({}),
+				check: (id, o) => probe.check(id, undefined, undefined, undefined, o),
+			} as Parameters<typeof harnessRefreshPort>[0],
+			{ readLimits: async () => null } as unknown as Parameters<typeof harnessRefreshPort>[1],
+		);
 		svc = new HarnessRefreshService(p);
 		await svc.pass();
 		const all = await svc.checkAll();

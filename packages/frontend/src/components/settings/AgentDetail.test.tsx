@@ -1105,6 +1105,25 @@ describe("AgentDetail Clean profile (#1180 §3.4)", () => {
 		});
 	});
 
+	it("is read-only with the reason for a caller who cannot change what agents run", async () => {
+		mockHarnesses[0].cleanProfile = { offered: true, on: false };
+		mockSettings = { ...mockSettings, canEditRuntime: false };
+		await act(async () => {
+			root.render(<AgentDetail id="claude-code" />);
+		});
+		const row = container.querySelector(
+			'[data-testid="agent-clean-profile-row"]',
+		);
+		expect([
+			(
+				container.querySelector(
+					'[data-testid="agent-clean-profile"]',
+				) as HTMLButtonElement
+			).disabled,
+			row?.querySelector('[data-testid="host-only"]')?.textContent,
+		]).toEqual([true, "Only the owner can change what an agent runs."]);
+	});
+
 	it("is absent where it is not offered", async () => {
 		mockHarnesses[0].cleanProfile = {
 			offered: false,

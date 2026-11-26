@@ -36,11 +36,17 @@ export function useSharedSources(enabled = true) {
 	});
 }
 
-/** Every set change answers with the whole set; a loadout may change with it. */
+/**
+ * Every set change answers with the whole set; a loadout may change with it. A set read already
+ * under way is cancelled first, so its older list never lands over this one.
+ */
 function useSetChange() {
 	const queryClient = useQueryClient();
-	return (set: SharedSet) => {
-		queryClient.setQueryData(agentSetupKeys.sharedSet(), set);
+	return async (set: SharedSet) => {
+		const queryKey = agentSetupKeys.sharedSet();
+		await queryClient.cancelQueries({ queryKey });
+		queryClient.setQueryData(queryKey, set);
+		void queryClient.invalidateQueries({ queryKey });
 		void queryClient.invalidateQueries({
 			queryKey: orpc.settings.agentSetup.loadout.key(),
 		});

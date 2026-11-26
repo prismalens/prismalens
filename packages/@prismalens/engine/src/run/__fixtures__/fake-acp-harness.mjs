@@ -785,6 +785,27 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 					workspace: readdirSync(cwd).sort(),
 				}),
 			);
+		// FAKE_SDK_INIT: Claude's init, sent the way claude-agent-acp forwards it when asked (#1180);
+		// FAKE_SDK_INIT_EARLY: before the session/new answer.
+		const sendInit = () => {
+			if (
+				process.env.FAKE_SDK_INIT &&
+				msg.params?._meta?.claudeCode?.emitRawSDKMessages
+			)
+				send({
+					jsonrpc: "2.0",
+					method: "_claude/sdkMessage",
+					params: {
+						sessionId: "s1",
+						message: {
+							type: "system",
+							subtype: "init",
+							...JSON.parse(process.env.FAKE_SDK_INIT),
+						},
+					},
+				});
+		};
+		if (process.env.FAKE_SDK_INIT_EARLY) sendInit();
 		// FAKE_SERVED_MODEL: report that model as selected, the way a real harness does.
 		const options = configOptions();
 		const modes = sessionModes();
@@ -797,23 +818,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				...(modes ? { modes } : {}),
 			},
 		});
-		// FAKE_SDK_INIT: Claude's init, sent the way claude-agent-acp forwards it when asked (#1180).
-		if (
-			process.env.FAKE_SDK_INIT &&
-			msg.params?._meta?.claudeCode?.emitRawSDKMessages
-		)
-			send({
-				jsonrpc: "2.0",
-				method: "_claude/sdkMessage",
-				params: {
-					sessionId: "s1",
-					message: {
-						type: "system",
-						subtype: "init",
-						...JSON.parse(process.env.FAKE_SDK_INIT),
-					},
-				},
-			});
+		if (!process.env.FAKE_SDK_INIT_EARLY) sendInit();
 	} else if (msg.method === "session/load" || msg.method === "session/resume") {
 		const sessionId = msg.params?.sessionId;
 		const history = [

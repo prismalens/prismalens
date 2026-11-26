@@ -1731,6 +1731,32 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(promptText).not.toContain("METHOD (work iteratively");
 	});
 
+	it("a Claude Code clean-profile run sends the clean profile's options in session/new (#1180 §3.4)", async () => {
+		const configDir = tmp("claude-config");
+		const { runDir } = await collect("ok", {
+			harness: "claude-code",
+			env: { ...process.env, FAKE_ACP_MODE: "ok", CLAUDE_CONFIG_DIR: configDir },
+			cleanProfile: { mcp: ["user-srv"] },
+			descriptor: {
+				...opts("ok").descriptor,
+				facts: HARNESS_REGISTRY["claude-code"].facts,
+				sessionMeta: HARNESS_REGISTRY["claude-code"].sessionMeta,
+			},
+		});
+		const sessionNew = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((e) => e.d === "out")
+			.map((e) => JSON.parse(e.m) as { method?: string; params?: any })
+			.find((m) => m.method === "session/new");
+		const options = sessionNew?.params?._meta?.claudeCode?.options;
+		expect(options.settingSources).toEqual(["project", "local"]);
+		expect(options.strictMcpConfig).toBe(true);
+		expect(options.settings).toEqual({ disableAllHooks: true, enabledPlugins: {} });
+		expect(options.disallowedTools).toEqual(["EnterPlanMode", "ExitPlanMode"]);
+	});
+
 	it("session/new does not carry systemPrompt when kind is chat or descriptor lacks claude-meta (#817)", async () => {
 		const chatRun = await collect("ok", {
 			kind: "chat",
@@ -2459,6 +2485,31 @@ describe("a command turn (#1024)", () => {
 		expect(prompts[1]).toEqual([{ type: "text", text: "/review fix the tests" }]);
 	});
 
+	const set = { servers: [], hidden: [], revision: "rev-1", instructions: "Always cite the runbook.", fingerprint: "fp", profile: "own" as const };
+	it("the PrismaLens set's instructions go in a lead turn before a first command, never beside it (#1180 §3.3)", async () => {
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "/review fix the tests", mode: "queue", heads: [] },
+			shared: set,
+		});
+		expect(promptsSent(runDir)).toEqual([
+			[
+				{ type: "text", text: "Always cite the runbook." },
+				{ type: "text", text: COMMAND_LEAD },
+			],
+			[{ type: "text", text: "/review fix the tests" }],
+		]);
+	});
+
+	it("a first compact turn goes alone; the PrismaLens set's instructions wait for a normal prompt (#1180 §3.3)", async () => {
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "/compact", mode: "queue", heads: [], compact: { command: "compact", only: true } },
+			shared: set,
+		});
+		expect(promptsSent(runDir)).toEqual([[{ type: "text", text: "/compact" }]]);
+	});
+
 	it("after a restart, the restart note goes in the turn before the command", async () => {
 		const { runDir } = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
@@ -2832,6 +2883,29 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		expect([wire.includes('{\\"name\\":\\"pl-docs\\",\\"type\\":\\"stdio\\"}'), wire.includes("secret-arg-path"), wire.includes(VALUE)]).toEqual([true, false, false]);
 	});
 
+	it("keeps a shared value with a quote and a backslash out of every inbound wire record, raw and JSON-escaped", async () => {
+		const quoted = 'sv-"quoted"\\path-0123456789';
+		const { runDir } = await collect("ok", {
+			harness: "claude-code",
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_MODES: "default=Default,acceptEdits=Accept edits",
+				FAKE_SDK_INIT: JSON.stringify({ mcp_servers: [{ name: quoted, status: "connected", source: "user" }] }),
+			},
+			shared: { ...shared, hidden: [quoted] },
+		});
+		const lines = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => (JSON.parse(l) as { m: string }).m);
+		const escaped = JSON.stringify(quoted).slice(1, -1);
+		expect([
+			lines.some((m) => m.includes("_claude/sdkMessage") && m.includes("[redacted]")),
+			lines.some((m) => m.includes(quoted) || m.includes(escaped)),
+		]).toEqual([true, false]);
+	});
+
 	it("puts the instructions at the start of the first prompt for an agent other than Claude Code, and only the first", async () => {
 		const prompts = join(tmp("rec"), "prompts.jsonl");
 		await collect("ok", { env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD_PROMPT: prompts }, shared });
@@ -2840,7 +2914,7 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		expect(sent.slice(1).includes("Always cite the runbook.")).toBe(false);
 	});
 
-	it("on Claude Code asks for the init, appends the instructions to the system prompt, and records one agent_loadout", async () => {
+	it("on Claude Code asks for the init, appends the instructions to the system prompt, and records one agent_loadout after session_opened, even when the init comes first", async () => {
 		const record = join(tmp("rec"), "record.json");
 		const { events } = await collect("ok", {
 			harness: "claude-code",
@@ -2850,6 +2924,7 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 				FAKE_RECORD: record,
 				FAKE_MODES: "default=Default,acceptEdits=Accept edits",
 				FAKE_SDK_INIT: JSON.stringify({ mcp_servers: [{ name: "docs", status: "connected", source: "user" }], skills: ["triage"] }),
+				FAKE_SDK_INIT_EARLY: "1",
 			},
 			shared,
 		});
@@ -2862,6 +2937,8 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		expect(loadouts.map((e) => (e.kind === "agent_loadout" ? [e.profile, e.fingerprint, e.items.map((i) => [i.kind, i.name, i.state])] : null))).toEqual([
 			["own", "fp-1", [["mcp", "docs", "loads"], ["skill", "triage", "loads"]]],
 		]);
+		const opened = events.find((e) => e.kind === "session_opened");
+		expect([events.indexOf(opened as CanonicalEvent) < events.indexOf(loadouts[0] as CanonicalEvent), (opened?.seq ?? 0) < (loadouts[0]?.seq ?? 0)]).toEqual([true, true]);
 	});
 
 	const reopen = (env: Record<string, string>) => ({

@@ -38,6 +38,16 @@ describe("userServerByOurName (#1101)", () => {
 		).toBe(path);
 	});
 
+	it("finds a prismalens server in the project's .mcp.json after 500 skills", () => {
+		const path = resolve(cwd, ".mcp.json");
+		const skills = Object.fromEntries(
+			Array.from({ length: 500 }, (_, i) => [resolve(home, ".claude", "skills", `s${i}`, "SKILL.md"), "x"]),
+		);
+		expect(
+			userServerByOurName("claude-code", env, cwd, memoryFs({ ...skills, [path]: ours })),
+		).toBe(path);
+	});
+
 	it("finds a prismalens server in the project's .mcp.json", () => {
 		const path = resolve(cwd, ".mcp.json");
 		expect(

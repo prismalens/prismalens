@@ -26,6 +26,7 @@ import {
 	shouldFoldPaste,
 	textDoc,
 } from "@prismalens/contracts";
+import type { SharedRevisionEvent } from "@prismalens/contracts/schemas";
 import { Link } from "@tanstack/react-router";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
@@ -161,6 +162,7 @@ import {
 	openNewThread,
 } from "./composer/quote";
 import { useComposerDraft } from "./composer/use-composer-draft";
+import { type Agent, useSharedSetLine } from "./use-shared-set-line";
 
 /** What the box holds now, for a page that reads it without sending (a handoff). */
 export interface ComposerSend {
@@ -286,6 +288,11 @@ export interface ComposerProps {
 	nextSession?: string | null;
 	/** The longer account of `nextSession`, on its hover. */
 	nextSessionDetail?: string | null;
+	/** The run's events and agent, for the PrismaLens set's line when `nextSession` is unset (#1180 §3.3). */
+	sharedSetFrom?: {
+		events: readonly SharedRevisionEvent[];
+		harness: Agent;
+	} | null;
 	/** Why nothing can be sent now. */
 	blockedReason?: string | null;
 	/** A dock above already says why and offers the fix: the box only greys out. */
@@ -558,6 +565,8 @@ function NextSessionLine({
 	);
 }
 
+const NO_EVENTS: readonly SharedRevisionEvent[] = [];
+
 export function Composer({
 	state,
 	onSend,
@@ -576,8 +585,9 @@ export function Composer({
 	branch,
 	dock,
 	strip,
-	nextSession,
-	nextSessionDetail,
+	nextSession: otherSession,
+	nextSessionDetail: otherDetail,
+	sharedSetFrom,
 	blockedReason,
 	blockedQuiet,
 	autoFocus,
@@ -612,6 +622,12 @@ export function Composer({
 	seed,
 	recallable,
 }: ComposerProps) {
+	const shared = useSharedSetLine(
+		sharedSetFrom?.events ?? NO_EVENTS,
+		sharedSetFrom?.harness,
+	);
+	const nextSession = otherSession ?? shared?.line ?? null;
+	const nextSessionDetail = otherSession ? otherDetail : shared?.detail;
 	// Only the thread page's follow-up box (locked) reads the address; a dialog's box keeps nothing.
 	const scope = givenScope ?? null;
 	const threadId = scope ? scopeThreadId(scope) : null;

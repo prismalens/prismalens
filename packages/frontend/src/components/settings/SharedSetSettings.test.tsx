@@ -113,6 +113,7 @@ const stdioPreview: SharedServerPreview = {
 	removed: [],
 	env: ["DOCS_TOKEN"],
 	headers: [],
+	revision: "rev-docs",
 };
 const httpSource: SharedSource = {
 	agent: "claude-code",
@@ -129,6 +130,7 @@ const httpPreview: SharedServerPreview = {
 	removed: ["sign-in", "query"],
 	env: [],
 	headers: ["Authorization"],
+	revision: "rev-tickets",
 };
 const REVEALED: Record<string, string> = {
 	"0": "server.js",
@@ -226,9 +228,13 @@ describe("ShareServerForm", () => {
 		await renderForm(stdioSource, stdioPreview);
 		expect(approveDisabled()).toBe(true);
 		await click("share-arg-0-reveal");
+		await click("share-arg-1-secret");
+		await type("share-arg-1-secret-input", "s3cret");
+		// Revealed but not confirmed: still not approvable.
+		expect(approveDisabled()).toBe(true);
+		await type("share-arg-1-secret-input", "");
 		await click("share-arg-0-confirm");
 		expect(approveDisabled()).toBe(true);
-		await click("share-arg-1-secret");
 		expect(approveDisabled()).toBe(true);
 		await type("share-arg-1-secret-input", "s3cret");
 		expect(approveDisabled()).toBe(false);
@@ -244,7 +250,7 @@ describe("ShareServerForm", () => {
 			},
 			values: { ARG_2: "s3cret" },
 			recipients: ["claude-code", "codex"],
-			from: stdioSource,
+			from: { ...stdioSource, revision: "rev-docs" },
 		});
 		expect(text("share-form")).toContain(
 			"Starts in each thread's folder and may read config there.",
@@ -262,6 +268,7 @@ describe("ShareServerForm", () => {
 		expect(approveDisabled()).toBe(true);
 		await click("share-path-reveal");
 		expect(onReveal).toHaveBeenCalledWith("path");
+		expect(approveDisabled()).toBe(true);
 		await click("share-path-confirm");
 		await click("share-recipient-codex");
 		expect(approveDisabled()).toBe(false);
@@ -276,9 +283,43 @@ describe("ShareServerForm", () => {
 			},
 			values: {},
 			recipients: ["claude-code"],
-			from: httpSource,
+			from: { ...httpSource, revision: "rev-tickets" },
 		});
 		expect(text("share-form")).not.toContain("Starts in each thread's folder");
+	});
+
+	it("names a secret argument's value apart from an env var the source already calls ARG_1", async () => {
+		await renderForm(stdioSource, {
+			...stdioPreview,
+			args: [null],
+			env: ["ARG_1"],
+		});
+		const envInput = container.querySelector<HTMLInputElement>(
+			'[data-testid="share-value-ARG_1"] input',
+		);
+		const set = Object.getOwnPropertyDescriptor(
+			HTMLInputElement.prototype,
+			"value",
+		)?.set;
+		await act(async () => {
+			set?.call(envInput, "env-value");
+			envInput?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		await click("share-arg-0-secret");
+		await type("share-arg-0-secret-input", "arg-value");
+		await click("share-approve");
+		expect(onApprove).toHaveBeenCalledWith({
+			name: "docs-search",
+			def: {
+				type: "stdio",
+				command: "/usr/bin/node",
+				args: [{ value: "ARG_2" }],
+				env: ["ARG_1"],
+			},
+			values: { ARG_1: "env-value", ARG_2: "arg-value" },
+			recipients: ["claude-code", "codex"],
+			from: { ...stdioSource, revision: "rev-docs" },
+		});
 	});
 });
 
@@ -293,7 +334,7 @@ const server = (over: Partial<SharedMcpServerView>): SharedMcpServerView => ({
 	recipients: ["claude-code"],
 	changedInSource: false,
 	fromAgent: null,
-	from: null,
+	fromSource: null,
 	...over,
 });
 
@@ -314,13 +355,21 @@ describe("SharedSetView", () => {
 				recipients: ["claude-code", "codex"],
 				changedInSource: true,
 				fromAgent: "codex",
-				from: { agent: "codex", path: "~/.codex/config.toml", key: "tickets" },
+				fromSource: {
+					agent: "codex",
+					path: "~/.codex/config.toml",
+					key: "knowledge",
+				},
 			}),
 		],
 	};
 	const onCopyAgain = vi.fn();
 	const onMember = vi.fn();
-	const renderView = () =>
+	const renderView = (
+		onSaveInstructions: (text: string) => Promise<unknown> = async () =>
+			undefined,
+		saveError: unknown = null,
+	) =>
 		act(async () =>
 			root.render(
 				<SharedSetView
@@ -329,7 +378,8 @@ describe("SharedSetView", () => {
 					labelOf={labelOf}
 					canEdit
 					saving={false}
-					onSaveInstructions={vi.fn()}
+					onSaveInstructions={onSaveInstructions}
+					saveError={saveError}
 					onShare={vi.fn()}
 					onCopyAgain={onCopyAgain}
 					onRemove={vi.fn()}
@@ -361,7 +411,34 @@ describe("SharedSetView", () => {
 				?.querySelector<HTMLElement>('[data-testid="shared-server-copy-again"]')
 				?.click(),
 		);
-		expect(onCopyAgain).toHaveBeenCalledWith(set.servers[1]);
+		// The entry it was copied from, whatever name it was shared under.
+		expect(onCopyAgain.mock.calls[0]?.[0]?.fromSource).toEqual({
+			agent: "codex",
+			path: "~/.codex/config.toml",
+			key: "knowledge",
+		});
+	});
+
+	it("keeps the typed instructions when saving fails, and shows why", async () => {
+		const save = vi.fn(async () => {
+			throw new Error("Save failed");
+		});
+		await renderView(save, new Error("Save failed"));
+		const area = byId("shared-set-instructions-input") as HTMLTextAreaElement;
+		const set = Object.getOwnPropertyDescriptor(
+			HTMLTextAreaElement.prototype,
+			"value",
+		)?.set;
+		await act(async () => {
+			set?.call(area, "Cite the runbook.");
+			area.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		await click("shared-set-instructions-save");
+		expect([
+			save.mock.calls,
+			(byId("shared-set-instructions-input") as HTMLTextAreaElement).value,
+			text("shared-set-instructions-error"),
+		]).toEqual([[["Cite the runbook."]], "Cite the runbook.", "Save failed"]);
 	});
 
 	it("shows the instructions hint and the saved text", async () => {
@@ -410,7 +487,7 @@ describe("SharedSetSettings Copy again", () => {
 					name: "tickets",
 					changedInSource: true,
 					fromAgent: "codex",
-					from,
+					fromSource: from,
 				}),
 			],
 		} satisfies SharedSet;
