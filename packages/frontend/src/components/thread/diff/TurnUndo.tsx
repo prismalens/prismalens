@@ -19,7 +19,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import {
 	REVERT_BLOCK_WORDS,
-	refusedWords,
+	revertToast,
 	useRevert,
 	useTurnChanges,
 } from "./use-scoped-changes";
@@ -61,16 +61,18 @@ export function TurnUndo({
 			target: { kind: "turn", seq: turnId },
 			expect: {},
 		});
-		if (r.state === "refused") {
-			toast({
-				title: "Turn not undone",
-				description: refusedWords(r),
-				variant: "destructive",
-			});
+		const said = revertToast(
+			r,
+			`Undid the turn's ${r.paths.length} ${r.paths.length === 1 ? "file" : "files"}`,
+			"Turn not undone",
+		);
+		// Redo is offered only for an undo that wrote something.
+		if (r.state === "refused" || !r.paths.length) {
+			toast(said);
 			return;
 		}
 		toast({
-			title: `Undid the turn's ${r.paths.length} ${r.paths.length === 1 ? "file" : "files"}`,
+			...said,
 			action: (
 				<ToastAction
 					altText="Redo the turn's changes"
@@ -85,15 +87,7 @@ export function TurnUndo({
 								expect: {},
 							})
 							.then((u) =>
-								toast(
-									u.state === "done"
-										? { title: "Turn's changes back" }
-										: {
-												title: "Not restored",
-												description: refusedWords(u),
-												variant: "destructive",
-											},
-								),
+								toast(revertToast(u, "Turn's changes back", "Not restored")),
 							)
 					}
 				>

@@ -72,7 +72,7 @@ import { type PatchHunk, patchLines } from "./patch-lines";
 import {
 	filePatchOptions,
 	REVERT_BLOCK_WORDS,
-	refusedWords,
+	revertToast,
 	useFilePatch,
 	useRevert,
 } from "./use-scoped-changes";
@@ -340,16 +340,14 @@ export function FileDiffPane({
 			target,
 			expect: { [path]: at ?? "absent" },
 		});
-		if (r.state === "refused") {
-			toast({
-				title: "Not reverted",
-				description: refusedWords(r),
-				variant: "destructive",
-			});
+		const said = revertToast(r, `Reverted ${label}`, "Not reverted");
+		// Undo is offered only for a revert that wrote something.
+		if (r.state === "refused" || !r.paths.length) {
+			toast(said);
 			return;
 		}
 		toast({
-			title: `Reverted ${label}`,
+			...said,
 			action: (
 				<ToastAction
 					altText="Undo the revert"
@@ -362,17 +360,7 @@ export function FileDiffPane({
 								target: { kind: "undo", revertId: r.revertId },
 								expect: {},
 							})
-							.then((u) =>
-								toast(
-									u.state === "done"
-										? { title: "Revert undone" }
-										: {
-												title: "Not undone",
-												description: refusedWords(u),
-												variant: "destructive",
-											},
-								),
-							)
+							.then((u) => toast(revertToast(u, "Revert undone", "Not undone")))
 					}
 					data-testid="diff-undo-revert"
 				>

@@ -372,13 +372,24 @@ export const RevertChangesInputSchema = /* @__PURE__ */ lazySchema(() =>
 );
 export type RevertChangesInput = z.infer<typeof RevertChangesInputSchema>;
 
+/** A path the writer left as the user saved it. An older server sends no list: read that as none. */
+export const RevertKeptSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		path: z.string(),
+		why: z.enum(["filtered", "changed-while-rewinding"]),
+	}),
+);
+export type RevertKept = z.infer<typeof RevertKeptSchema>;
+
 export const RevertChangesResultSchema = /* @__PURE__ */ lazySchema(() =>
 	z.discriminatedUnion("state", [
 		z.object({
 			state: z.literal("done"),
 			/** Undo it with `{kind: "undo", revertId}`. */
 			revertId: z.string(),
+			/** What was written; none when every path was kept. */
 			paths: z.array(z.string()),
+			kept: z.array(RevertKeptSchema).optional(),
 		}),
 		z.object({
 			state: z.literal("refused"),
@@ -396,6 +407,8 @@ export const RevertChangesResultSchema = /* @__PURE__ */ lazySchema(() =>
 			]),
 			paths: z.array(z.string()),
 			block: RevertBlockSchema.nullable(),
+			/** On `linked`: paths its rollback left as the user saved them; absent means none. */
+			kept: z.array(RevertKeptSchema).optional(),
 		}),
 	]),
 );
