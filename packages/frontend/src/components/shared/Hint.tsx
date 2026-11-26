@@ -69,6 +69,8 @@ export function Hint({
 	children: ReactNode;
 }) {
 	const [hovered, setHovered] = useState(false);
+	// The hover delay is pending: a scroll in that time cancels it before the hint opens.
+	const [waiting, setWaiting] = useState(false);
 	// Escape dismisses a hint the parent holds open, until `open` is let go.
 	const [dismissed, setDismissed] = useState(false);
 	const [Tip, setTip] = useState<Tip | null>(() => tip);
@@ -94,19 +96,21 @@ export function Hint({
 	useEffect(() => () => window.clearTimeout(timer.current), []);
 	// A scroll closes a hover hint, as native tips do: its placement is not redone per scroll frame (#1101 bar 1.8).
 	useEffect(() => {
-		if (!hovered) return;
+		if (!hovered && !waiting) return;
 		const off = () => {
 			window.clearTimeout(timer.current);
 			timer.current = undefined;
+			setWaiting(false);
 			setHovered(false);
 		};
 		window.addEventListener("scroll", off, { capture: true, passive: true });
 		return () => window.removeEventListener("scroll", off, { capture: true });
-	}, [hovered]);
+	}, [hovered, waiting]);
 	if (!when) return children;
 	const wait = () => {
 		window.clearTimeout(timer.current);
 		timer.current = undefined;
+		setWaiting(false);
 	};
 	const close = () => {
 		wait();
@@ -124,8 +128,10 @@ export function Hint({
 					if (e.pointerType === "touch" || hovered || timer.current) return;
 					if (skip?.()) return;
 					const delay = Date.now() - lastClosed < SKIP_MS ? 0 : DELAY_MS;
+					setWaiting(true);
 					timer.current = window.setTimeout(() => {
 						timer.current = undefined;
+						setWaiting(false);
 						setHovered(true);
 					}, delay);
 				}}
