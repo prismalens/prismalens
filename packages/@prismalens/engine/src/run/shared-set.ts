@@ -8,7 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import { createReadStream, statSync } from "node:fs";
-import { delimiter, isAbsolute, join } from "node:path";
+import { delimiter, isAbsolute, resolve } from "node:path";
 import type { McpServer } from "@agentclientprotocol/sdk/unstable";
 import type {
 	LoadedItem,
@@ -71,9 +71,26 @@ export function resolveCommand(
 			: [""];
 	for (const dir of path.split(delimiter).filter(Boolean))
 		for (const ext of exts) {
-			const p = join(dir, command + ext);
+			const p = resolve(dir, command + ext);
 			if (isFile(p)) return p;
 		}
+	return null;
+}
+
+const URL_LIKE = /^[a-z][a-z0-9+.-]*:\/\//i;
+const FILE_EXT = /\.(?:[cm]?[jt]s|py|rb|sh|ps1|bat|cmd|jar|json|toml|ya?ml)$/i;
+
+/**
+ * The absolute file a stdio argument names (the whole argument, or a flag's value after `=`), else
+ * null. One naming a file relative to the folder the server starts in, each thread's own, is
+ * refused; a scoped package name such as `@scope/pkg` names no file.
+ */
+export function fileArg(arg: string): string | null {
+	const value = /^--?[^=]+=/.test(arg) ? arg.slice(arg.indexOf("=") + 1) : arg;
+	if (!value || value.startsWith("@") || URL_LIKE.test(value)) return null;
+	if (isAbsolute(value)) return value;
+	if (/^~|[\\/]/.test(value) || FILE_EXT.test(value) || /^\.\.?$/.test(value))
+		throw new ShareRefused("relative-path", "Uses a relative path");
 	return null;
 }
 
@@ -114,17 +131,13 @@ export async function bindFiles(
 	env: Readonly<Record<string, string | undefined>>,
 ): Promise<{ def: SharedMcpDef; files: SharedMcpServerStored["files"] }> {
 	if (def.type !== "stdio") return { def, files: [] };
-	for (const a of def.args)
-		if (typeof a === "string" && /^\.\.?[\\/]/.test(a))
-			throw new ShareRefused("relative-path", "Uses a relative path");
+	const named = def.args.flatMap((a) => {
+		const file = typeof a === "string" ? fileArg(a) : null;
+		return file ? [file] : [];
+	});
 	const command = resolveCommand(def.command, env);
 	if (!command) throw new ShareRefused("not-found", "Command not found");
-	const paths = [
-		command,
-		...def.args.filter(
-			(a): a is string => typeof a === "string" && isAbsolute(a),
-		),
-	];
+	const paths = [command, ...named];
 	const files: SharedMcpServerStored["files"] = [];
 	for (const path of new Set(paths)) {
 		const sha256 = await hashFile(path);

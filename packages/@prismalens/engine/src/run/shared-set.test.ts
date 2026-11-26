@@ -3,13 +3,14 @@
 
 import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import type { SharedMcpServerStored } from "@prismalens/contracts/schemas";
 import { afterAll, describe, expect, it } from "vitest";
 import { gatewayOffer, type GatewayEntry } from "./gateway.js";
 import {
 	bindFiles,
 	deliverShared,
+	resolveCommand,
 	ShareRefused,
 	sharedServerHash,
 } from "./shared-set.js";
@@ -120,6 +121,36 @@ describe("deliverShared (#1180 §3.3)", () => {
 		await expect(
 			bindFiles({ type: "stdio", command: join(dir, "x"), args: ["./config.json"], env: [] }, {}),
 		).rejects.toEqual(new ShareRefused("relative-path", "Uses a relative path"));
+	});
+
+	it.each([["scripts/server.js"], ["server.js"], ["--config=conf/x.toml"], ["~/x.json"], ["..\\up.json"]])(
+		"refuses %s, an argument that names a file relative to the folder it starts in",
+		async (arg) => {
+			const command = join(dir, "rel-cmd");
+			writeFileSync(command, "x");
+			await expect(bindFiles({ type: "stdio", command, args: [arg], env: [] }, {})).rejects.toEqual(
+				new ShareRefused("relative-path", "Uses a relative path"),
+			);
+		},
+	);
+
+	it("keeps flags, words and URLs, and binds an absolute file named after a flag's =", async () => {
+		const command = join(dir, "abs-cmd");
+		const conf = join(dir, "conf.toml");
+		writeFileSync(command, "x");
+		writeFileSync(conf, "y");
+		const { files } = await bindFiles(
+			{ type: "stdio", command, args: ["--stdio", "serve", "https://h/x", `--config=${conf}`], env: [] },
+			{},
+		);
+		expect(files.map((f) => f.path)).toEqual([command, conf]);
+	});
+
+	it("resolves a relative PATH entry to an absolute command path", () => {
+		const bin = mkdtempSync(join(dir, "bin-"));
+		writeFileSync(join(bin, "docs"), "x");
+		const rel = relative(process.cwd(), bin);
+		expect(resolveCommand("docs", { PATH: rel }, "linux")).toBe(join(bin, "docs"));
 	});
 });
 
