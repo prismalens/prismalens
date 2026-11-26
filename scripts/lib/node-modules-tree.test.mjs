@@ -62,16 +62,7 @@ test("nativeCopies finds an agent native copy npm nested under another package",
 	}
 });
 
-test("agentSdkProblems is empty for the SDK alone, loading with its query export", () => {
-	const app = installedApp({ sdkSource: "export function query() {}" });
-	try {
-		assert.deepEqual(agentSdkProblems(app), []);
-	} finally {
-		rmSync(app, { recursive: true, force: true });
-	}
-});
-
-test("agentSdkProblems reports a native copy and an SDK engine cannot load", () => {
+test("agentSdkProblems reports a native copy and an SDK the probe cannot load", () => {
 	const app = installedApp({ sdkSource: undefined });
 	try {
 		writePackage(
@@ -91,20 +82,7 @@ test("agentSdkProblems reports a native copy and an SDK engine cannot load", () 
 		);
 		assert.match(
 			problems[1],
-			/^@anthropic-ai\/claude-agent-sdk does not load from engine: .*Cannot find module '@anthropic-ai\/claude-agent-sdk'/,
-		);
-	} finally {
-		rmSync(app, { recursive: true, force: true });
-	}
-});
-
-test("agentSdkProblems reports an SDK without its query export", () => {
-	const app = installedApp({ sdkSource: "export const other = 1;" });
-	try {
-		assert.equal(agentSdkProblems(app).length, 1);
-		assert.match(
-			agentSdkProblems(app)[0],
-			/does not load from engine: .*the SDK has no query export/,
+			/^@anthropic-ai\/claude-agent-sdk fails its probe: Cannot find module '@anthropic-ai\/claude-agent-sdk'/,
 		);
 	} finally {
 		rmSync(app, { recursive: true, force: true });

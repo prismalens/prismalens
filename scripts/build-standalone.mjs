@@ -497,8 +497,6 @@ async function main() {
 		if (hollow.length > 0) {
 			throw new Error(`npm left packages empty: ${hollow.join(", ")}`);
 		}
-		const sdk = agentSdkProblems(appDir);
-		if (sdk.length > 0) throw new Error(sdk.join("\n"));
 		const appModules = join(appDir, "node_modules");
 		// --allow-missing-licences: only for an already-published version rebuilt as an upgrade fixture,
 		// whose tree predates licences/ entries added for newer dependencies.
@@ -509,6 +507,8 @@ async function main() {
 			{ skipAbsent: oldRelease },
 		);
 		const pruned = prune(appModules);
+		const sdk = agentSdkProblems(appDir);
+		if (sdk.length > 0) throw new Error(sdk.join("\n"));
 		const missing = missingLicences(appDir);
 		if (missing.length > 0 && !oldRelease) {
 			throw new Error(

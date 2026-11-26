@@ -13,11 +13,17 @@ import {
 	rmSync,
 	statSync,
 } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	NATIVE_COPIES,
 	SDK,
 } from "../../packages/@prismalens/agent-adapters/scripts/pack.mjs";
+
+const PROBE = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"agent-sdk-probe.mjs",
+);
 
 const LICENCE = /^(licen[cs]e|copying)/i;
 
@@ -198,31 +204,24 @@ export function nativeCopies(root) {
 }
 
 /**
- * Why the SDK engine imports fails to load from where engine sits in an installed app,
- * or null when it loads or the app does not ship it (an older release, #1269).
+ * Why the SDK fails agent-sdk-probe.mjs in an installed app, or null when it passes or
+ * the app does not ship it (an older release, #1269).
  */
 export function sdkLoadError(appDir) {
 	const manifest = JSON.parse(
 		readFileSync(join(appDir, "package.json"), "utf8"),
 	);
 	if (!manifest.dependencies?.[SDK]) return null;
-	const engine = join(appDir, "node_modules", "@prismalens", "engine");
-	const probe =
-		'import{createRequire}from"node:module";import{pathToFileURL}from"node:url";' +
-		`const m=await import(pathToFileURL(createRequire(process.argv[1]).resolve(${JSON.stringify(SDK)})).href);` +
-		'if(typeof m.query!=="function")throw new Error("the SDK has no query export");';
 	try {
-		execFileSync(
-			process.execPath,
-			["--input-type=module", "-e", probe, join(engine, "package.json")],
-			{ stdio: "pipe" },
-		);
+		execFileSync(process.execPath, [PROBE, appDir], {
+			stdio: "pipe",
+			timeout: 120_000,
+		});
 		return null;
 	} catch (error) {
 		const text = String(error.stderr || error.message);
-		return (
-			text.split(/\r?\n/).find((l) => /^[A-Za-z]*Error\b/.test(l)) ?? text
-		).trim();
+		const fail = text.indexOf("AGENT SDK PROBE FAIL: ");
+		return (fail >= 0 ? text.slice(fail + 22) : text).trim();
 	}
 }
 
@@ -232,7 +231,7 @@ export function agentSdkProblems(appDir) {
 		(path) => `npm installed a native agent copy: ${path}`,
 	);
 	const load = sdkLoadError(appDir);
-	if (load) problems.push(`${SDK} does not load from engine: ${load}`);
+	if (load) problems.push(`${SDK} fails its probe: ${load}`);
 	return problems;
 }
 

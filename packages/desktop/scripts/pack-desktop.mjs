@@ -88,11 +88,11 @@ if (!pkg) throw new Error(`npm installed no prismalens under ${prefix}`);
 const hollow = hollowPackages(pkg);
 if (hollow.length > 0)
 	throw new Error(`npm left packages empty: ${hollow.join(", ")}`);
-const sdk = agentSdkProblems(pkg);
-if (sdk.length > 0) throw new Error(sdk.join("\n"));
 const licences = resolve(here, "../licences");
 addLicences(join(pkg, "node_modules"), licences);
 const pruned = prune(join(pkg, "node_modules"));
+const sdk = agentSdkProblems(pkg);
+if (sdk.length > 0) throw new Error(sdk.join("\n"));
 assertLicences(join(pkg, "node_modules"), licences);
 const missing = missingLicences(pkg);
 if (missing.length > 0)
