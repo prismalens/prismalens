@@ -965,9 +965,10 @@ export function Composer({
 			seeded.current = null;
 			// Letters typed while the draft loaded land after it, in order (#1101 bar 7.16).
 			const early = draft.loaded ? "" : typedText(docNow.current);
+			const typed = early.trim() !== "";
 			setContent(
-				withSeed(early ? appendText(c.doc, early) : c.doc, opened),
-				!!early,
+				withSeed(typed ? appendText(c.doc, early) : c.doc, opened),
+				typed,
 			);
 			setDraftKey(c.draftKey ?? null);
 			const inDoc = docParts(c.doc).files.map((f) => ({
@@ -1215,9 +1216,14 @@ export function Composer({
 	const clear = (sent: ComposerDoc, sentKeys: Set<string>) => {
 		// A deferred send that lands after more editing clears only the files it carried.
 		// A phone keyboard commits its word or a space as Send is tapped: that is still the sent text (#1193).
+		const fileKeys = (d: ComposerDoc) =>
+			docParts(d)
+				.files.map((f) => f.key)
+				.join("\n");
 		if (
 			sameDoc(docNow.current, sent) ||
-			docText(docNow.current).trim() === docText(sent).trim()
+			(docText(docNow.current).trim() === docText(sent).trim() &&
+				fileKeys(docNow.current) === fileKeys(sent))
 		)
 			setContent(emptyDoc());
 		else
@@ -2152,24 +2158,33 @@ function KitEditor(props: Parameters<EditorKit["EditorHost"]>[0]) {
 const docHasChips = (doc: ComposerDoc) =>
 	doc.content.some((p) => (p.content ?? []).some((n) => n.type === "chip"));
 
-/** The box's typed words alone, without its chips. */
+/** The box's typed words alone, without its chips; a line break stays one and spaces stay. */
 const typedText = (doc: ComposerDoc) =>
 	doc.content
 		.map((p) =>
-			(p.content ?? []).map((n) => (n.type === "text" ? n.text : "")).join(""),
+			(p.content ?? [])
+				.map((n) =>
+					n.type === "text" ? n.text : n.type === "hardBreak" ? "\n" : "",
+				)
+				.join(""),
 		)
-		.join("\n")
-		.trim();
+		.join("\n");
 
-/** Text added at the end of the document's last paragraph. */
+/** Text added at the end of the document's last paragraph, each `\n` a line break. */
 function appendText(doc: ComposerDoc, text: string): ComposerDoc {
 	const last = doc.content.at(-1);
 	if (!last) return textDoc(text);
+	const nodes = text
+		.split("\n")
+		.flatMap((line, i) => [
+			...(i ? [{ type: "hardBreak" as const }] : []),
+			...(line ? [{ type: "text" as const, text: line }] : []),
+		]);
 	return {
 		...doc,
 		content: [
 			...doc.content.slice(0, -1),
-			{ ...last, content: [...(last.content ?? []), { type: "text", text }] },
+			{ ...last, content: [...(last.content ?? []), ...nodes] },
 		],
 	};
 }

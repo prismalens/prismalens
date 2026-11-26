@@ -1056,6 +1056,10 @@ export class InvestigationsService {
 		const [{ count }] = await this.prisma.$transaction([
 			this.prisma.investigationEvent.deleteMany({ where: { investigationId } }),
 			this.prisma.turnInput.deleteMany({ where: { investigationId } }),
+			// Keys restart at the reset, so a kept citation would name whatever the rerun writes there (#1195).
+			this.prisma.messageCitation.deleteMany({
+				where: { sourceThreadId: investigationId },
+			}),
 			this.prisma.investigation.updateMany({
 				where: { id: investigationId },
 				data: { eventGeneration: { increment: 1 }, eventsLost: 0 },

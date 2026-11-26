@@ -988,10 +988,10 @@ function TurnToggle({
  */
 /** A resume message's line: PrismaLens sent it, so it never reads as the user's (#1193). */
 const RESUME_WORDS: Readonly<Record<ResumeCause, string>> = {
-	limit: "PrismaLens resumed after the usage limit",
+	limit: "PrismaLens resumed after limit",
 	wake: "PrismaLens woke the thread",
-	compact: "PrismaLens compacted the session and carried on",
-	idle_compact: "PrismaLens compacted the idle session and carried on",
+	compact: "PrismaLens compacted and resumed",
+	idle_compact: "PrismaLens resumed after idle compaction",
 	rewind: "PrismaLens sent the edited message",
 };
 
