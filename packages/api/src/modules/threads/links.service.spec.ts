@@ -60,7 +60,7 @@ const artifactEvent = {
 	}),
 };
 
-function service() {
+function service(extra: { id: string; workspace: string; title: string; status: string }[] = []) {
 	const db = fakeDb({
 		investigations: [
 			{ id: RUN, workspace: JSON.stringify(workspace), title: "Cart", status: "completed" },
@@ -71,6 +71,7 @@ function service() {
 				title: "Folder",
 				status: "completed",
 			},
+			...extra,
 		],
 		incidents: [{ id: "inc-7", number: 7 }],
 		events: [artifactEvent, { investigationId: RUN, event: "not json" }],
@@ -244,23 +245,19 @@ describe("LinksService.resolve of a bare file name (#1193)", () => {
 	});
 	const resolve = async (repos: WorktreeChanges["repos"], text: string) => {
 		vi.mocked(readWorktreeChanges).mockResolvedValueOnce({ repos });
-		const db = fakeDb({
-			investigations: [
-				{
-					id: TWO,
-					workspace: JSON.stringify({
-						layout: "single",
-						cwd: repoDir("first"),
-						repos: [record("first"), record("second")],
-					}),
-					title: "Two repos",
-					status: "completed",
-				},
-			],
-		});
-		const [out] = await new LinksService(db as never).resolve(TWO, [
-			{ kind: "path", text },
+		const { svc } = service([
+			{
+				id: TWO,
+				workspace: JSON.stringify({
+					layout: "single",
+					cwd: repoDir("first"),
+					repos: [record("first"), record("second")],
+				}),
+				title: "Two repos",
+				status: "completed",
+			},
 		]);
+		const [out] = await svc.resolve(TWO, [{ kind: "path", text }]);
 		return out;
 	};
 
