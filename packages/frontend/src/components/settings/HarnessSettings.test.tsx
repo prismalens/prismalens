@@ -89,6 +89,9 @@ const { stageSpy, checkHarnessSpy } = vi.hoisted(() => ({
 }));
 
 // Its rows have their own tests.
+// Each section has its own tests; this page's tests read only the page (#1180).
+vi.mock("./SharedSetOffer", () => ({ SharedSetOffer: () => null }));
+vi.mock("./SharedSetSettings", () => ({ SharedSetSettings: () => null }));
 vi.mock("./AgentThreadsSettings", () => ({
 	AgentThreadsGroup: () => null,
 	ThreadCapRows: () => null,
@@ -112,6 +115,11 @@ vi.mock("@/lib/api/hooks", () => ({
 		mutateAsync: mutateAsyncSpy,
 		isPending: false,
 		error: null,
+	}),
+	useCheckAllHarnesses: () => ({
+		mutate: vi.fn(),
+		isPending: false,
+		isSuccess: false,
 	}),
 	useCheckHarness: () => ({
 		mutate: vi.fn(),

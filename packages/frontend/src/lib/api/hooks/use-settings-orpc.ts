@@ -100,6 +100,18 @@ export function useCheckHarness() {
 	});
 }
 
+/** Check all (`POST /settings/harness/check-all`, #1180): every installed agent whose check runs isolated, in turn. */
+export function useCheckAllHarnesses() {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		...orpc.settings.harnesses.checkAllHarnesses.mutationOptions(),
+		meta: { notASave: true },
+		onSuccess: () =>
+			queryClient.invalidateQueries({ queryKey: harnessKeys.status() }),
+	});
+}
+
 export interface InvestigationReadiness {
 	/** Would an investigation start right now? */
 	isReady: boolean;

@@ -217,6 +217,8 @@ describe("the behaviour matrix is well formed (#914)", () => {
 				"gateway-secret-request",
 				"gateway-wakeup-schedule",
 				"gateway-pr-watch",
+				"probe-runs-no-user-code",
+				"clean-profile-skips-own-config",
 			].sort(),
 		);
 	});

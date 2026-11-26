@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { AGENT_REGISTRY, GATEWAY_RUN_FILE } from "@prismalens/agent-host";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
@@ -1729,6 +1730,32 @@ describe("the agent's own mode (#673 w21)", () => {
 		expect(promptText).not.toContain("METHOD (work iteratively");
 	});
 
+	it("a Claude Code clean-profile run sends the clean profile's options in session/new (#1180 §3.4)", async () => {
+		const configDir = tmp("claude-config");
+		const { runDir } = await collect("ok", {
+			harness: "claude-code",
+			env: { ...process.env, FAKE_ACP_MODE: "ok", CLAUDE_CONFIG_DIR: configDir },
+			cleanProfile: { mcp: ["user-srv"] },
+			descriptor: {
+				...opts("ok").descriptor,
+				facts: HARNESS_REGISTRY["claude-code"].facts,
+				sessionMeta: HARNESS_REGISTRY["claude-code"].sessionMeta,
+			},
+		});
+		const sessionNew = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((e) => e.d === "out")
+			.map((e) => JSON.parse(e.m) as { method?: string; params?: any })
+			.find((m) => m.method === "session/new");
+		const options = sessionNew?.params?._meta?.claudeCode?.options;
+		expect(options.settingSources).toEqual(["project", "local"]);
+		expect(options.strictMcpConfig).toBe(true);
+		expect(options.settings).toEqual({ disableAllHooks: true, enabledPlugins: {} });
+		expect(options.disallowedTools).toEqual(["EnterPlanMode", "ExitPlanMode"]);
+	});
+
 	it("session/new does not carry systemPrompt when kind is chat or descriptor lacks claude-meta (#817)", async () => {
 		const chatRun = await collect("ok", {
 			kind: "chat",
@@ -2457,6 +2484,61 @@ describe("a command turn (#1024)", () => {
 		expect(prompts[1]).toEqual([{ type: "text", text: "/review fix the tests" }]);
 	});
 
+	const set = { servers: [], hidden: [], revision: "rev-1", instructions: "Always cite the runbook.", fingerprint: "fp", profile: "own" as const };
+	it("the PrismaLens set's instructions go in a lead turn before a first command, never beside it (#1180 §3.3)", async () => {
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "/review fix the tests", mode: "queue", heads: [] },
+			shared: set,
+		});
+		expect(promptsSent(runDir)).toEqual([
+			[
+				{ type: "text", text: "Always cite the runbook." },
+				{ type: "text", text: COMMAND_LEAD },
+			],
+			[{ type: "text", text: "/review fix the tests" }],
+		]);
+	});
+
+	it("a first compact turn goes alone, and the PrismaLens set's instructions open the normal prompt after it (#1180 §3.3)", async () => {
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "Follow-up question", mode: "queue", heads: [], compact: { command: "compact" } },
+			shared: set,
+		});
+		expect(promptsSent(runDir)).toEqual([
+			[{ type: "text", text: "/compact" }],
+			[
+				{ type: "text", text: "Always cite the runbook." },
+				{ type: "text", text: "Follow-up question" },
+			],
+		]);
+	});
+
+	it("keeps the set's instructions owed past a turn that ended cancelled, so the Send now prompt after it carries them (#1180 §3.3)", async () => {
+		let deliver: ((line: { text: string }) => void) | undefined;
+		const o = opts("steerable", {
+			env: { ...process.env, FAKE_ACP_MODE: "steerable", FAKE_WAIT_CANCEL: "1" },
+			shared: set,
+			steer: {
+				next: () => null,
+				onNow: (d) => {
+					deliver = d;
+					return () => {
+						deliver = undefined;
+					};
+				},
+			},
+		});
+		for await (const ev of runInvestigation(o))
+			if (ev.kind === "tool_result" && ev.result.toolCallId === "t2") deliver?.({ text: "Stop and look at the TTL." });
+		const prompts = promptsSent(o.runDir);
+		expect(prompts.slice(0, 2).map((p) => [p[0]?.text, p.at(-1)?.text])).toEqual([
+			["Always cite the runbook.", prompts[0]?.at(-1)?.text],
+			["Always cite the runbook.", "Stop and look at the TTL."],
+		]);
+	});
+
 	it("after a restart, the restart note goes in the turn before the command", async () => {
 		const { runDir } = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
@@ -2803,5 +2885,140 @@ describe("message_received receipts (#1179)", () => {
 		});
 		for await (const ev of runInvestigation(earlyOpts)) earlyEvents.push(ev);
 		expect(earlyEvents.filter((e) => e.kind === "message_received")).toHaveLength(0);
+	});
+});
+
+describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () => {
+	const VALUE = "shared-value-0123456789";
+	const shared = {
+		servers: [{ name: "pl-docs", command: "/bin/docs-mcp", args: ["--root", "/srv/secret-arg-path"], env: [{ name: "TOKEN", value: VALUE }] }],
+		hidden: [VALUE],
+		revision: "rev-7",
+		instructions: "Always cite the runbook.",
+		fingerprint: "fp-1",
+		profile: "own" as const,
+	};
+
+	it("sends each shared server in session/new, records the set on session_opened, and the transcript keeps only its name and type", async () => {
+		const record = join(tmp("rec"), "record.json");
+		const { events, runDir } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD: record },
+			shared,
+		});
+		const seen = JSON.parse(readFileSync(record, "utf8")) as { mcpServers: unknown };
+		expect(seen.mcpServers).toEqual(shared.servers);
+		expect(events.find((e) => e.kind === "session_opened")).toMatchObject({ sharedSet: { revision: "rev-7", servers: ["pl-docs"] } });
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect([wire.includes('{\\"name\\":\\"pl-docs\\",\\"type\\":\\"stdio\\"}'), wire.includes("secret-arg-path"), wire.includes(VALUE)]).toEqual([true, false, false]);
+	});
+
+	it("records in session history only the shared servers the session was handed: an HTTP one only for an agent that takes HTTP", async () => {
+		const web = { type: "http" as const, name: "pl-web", url: "https://mcp.example/v1", headers: [] };
+		const opened = async (http: boolean) => {
+			const record = join(tmp("rec"), "record.json");
+			const { events } = await collect("ok", {
+				env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD: record, ...(http ? { FAKE_MCP_HTTP: "1" } : {}) },
+				shared: { ...shared, servers: [...shared.servers, web] },
+			});
+			const seen = JSON.parse(readFileSync(record, "utf8")) as { mcpServers: { name: string }[] };
+			const e = events.find((x) => x.kind === "session_opened");
+			return [seen.mcpServers.map((m) => m.name), e && "sharedSet" in e ? e.sharedSet?.servers : null];
+		};
+		expect([await opened(false), await opened(true)]).toEqual([
+			[["pl-docs"], ["pl-docs"]],
+			[["pl-docs", "pl-web"], ["pl-docs", "pl-web"]],
+		]);
+	});
+
+	it("writes the set's servers into a run-file agent's file beside no ACP server, and records them in session history", async () => {
+		const record = join(tmp("rec"), "record.json");
+		const web = { type: "http" as const, name: "pl-web", url: "https://mcp.example/v1", headers: [] };
+		const docs = { name: "pl-docs", command: "/bin/docs-mcp", args: ["--root", "/srv"], env: [] };
+		const { events, runDir } = await collect("ok", {
+			harness: "deepagents",
+			descriptor: {
+				binary: process.execPath,
+				acpArgs: () => [FAKE],
+				acpEnv: () => ({}),
+				configFiles: AGENT_REGISTRY.deepagents.configFiles,
+				gatewayDelivery: "mcp-config-file",
+			},
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD: record, FAKE_MCP_HTTP: "1" },
+			shared: { ...shared, hidden: [], servers: [docs, web] },
+		});
+		const file = JSON.parse(readFileSync(join(runDir, "config", GATEWAY_RUN_FILE), "utf8"));
+		const opened = events.find((e) => e.kind === "session_opened");
+		expect([
+			file,
+			(JSON.parse(readFileSync(record, "utf8")) as { mcpServers: unknown[] }).mcpServers,
+			opened && "sharedSet" in opened ? opened.sharedSet?.servers : null,
+		]).toEqual([
+			{
+				mcpServers: {
+					"pl-docs": { command: "/bin/docs-mcp", args: ["--root", "/srv"], env: {} },
+					"pl-web": { type: "http", url: "https://mcp.example/v1", headers: {} },
+				},
+			},
+			[],
+			["pl-docs", "pl-web"],
+		]);
+	});
+
+	it("keeps a shared value with a quote and a backslash out of every inbound wire record, raw and JSON-escaped", async () => {
+		const quoted = 'sv-"quoted"\\path-0123456789';
+		const { runDir } = await collect("ok", {
+			harness: "claude-code",
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_MODES: "default=Default,acceptEdits=Accept edits",
+				FAKE_SDK_INIT: JSON.stringify({ mcp_servers: [{ name: quoted, status: "connected", source: "user" }] }),
+			},
+			shared: { ...shared, hidden: [quoted] },
+		});
+		const lines = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => (JSON.parse(l) as { m: string }).m);
+		const escaped = JSON.stringify(quoted).slice(1, -1);
+		expect([
+			lines.some((m) => m.includes("_claude/sdkMessage") && m.includes("[redacted]")),
+			lines.some((m) => m.includes(quoted) || m.includes(escaped)),
+		]).toEqual([true, false]);
+	});
+
+	it("puts the instructions at the start of the first prompt for an agent other than Claude Code, and only the first", async () => {
+		const prompts = join(tmp("rec"), "prompts.jsonl");
+		await collect("ok", { env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD_PROMPT: prompts }, shared });
+		const sent = readFileSync(prompts, "utf8").trim().split("\n").map((l) => JSON.parse(l) as string);
+		expect(sent[0]).toBe("Always cite the runbook.");
+		expect(sent.slice(1).includes("Always cite the runbook.")).toBe(false);
+	});
+
+	it("on Claude Code asks for the init, appends the instructions to the system prompt, and records one agent_loadout after session_opened, even when the init comes first", async () => {
+		const record = join(tmp("rec"), "record.json");
+		const { events } = await collect("ok", {
+			harness: "claude-code",
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_RECORD: record,
+				FAKE_MODES: "default=Default,acceptEdits=Accept edits",
+				FAKE_SDK_INIT: JSON.stringify({ mcp_servers: [{ name: "docs", status: "connected", source: "user" }], skills: ["triage"] }),
+				FAKE_SDK_INIT_EARLY: "1",
+			},
+			shared,
+		});
+		const seen = JSON.parse(readFileSync(record, "utf8")) as { meta: Record<string, unknown> };
+		expect(seen.meta).toMatchObject({
+			claudeCode: { emitRawSDKMessages: [{ type: "system", subtype: "init" }] },
+			systemPrompt: { append: "Always cite the runbook." },
+		});
+		const loadouts = events.filter((e) => e.kind === "agent_loadout");
+		expect(loadouts.map((e) => (e.kind === "agent_loadout" ? [e.profile, e.fingerprint, e.items.map((i) => [i.kind, i.name, i.state])] : null))).toEqual([
+			["own", "fp-1", [["mcp", "docs", "loads"], ["skill", "triage", "loads"]]],
+		]);
+		const opened = events.find((e) => e.kind === "session_opened");
+		expect([events.indexOf(opened as CanonicalEvent) < events.indexOf(loadouts[0] as CanonicalEvent), (opened?.seq ?? 0) < (loadouts[0]?.seq ?? 0)]).toEqual([true, true]);
 	});
 });

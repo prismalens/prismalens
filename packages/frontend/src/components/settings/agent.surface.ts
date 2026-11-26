@@ -15,11 +15,14 @@ export const agentDetail = defineSurface({
 	marks: [],
 });
 
-/** The Agents list header: Update all once two or more agents show Update (#1180). */
+/** The Agents list header: Check all, and Update all once two or more agents show Update. */
 export const agentList = defineSurface({
 	id: "agent.list",
 	label: "Agents actions",
-	menus: { more: ["agent.updateAll"] },
-	states: { default: "agent-list-actions", phone: "agent-list-actions" },
+	menus: {
+		context: ["agent.checkAll", "agent.updateAll"],
+		more: ["agent.checkAll", "agent.updateAll"],
+	},
+	states: { default: "settings-agent-checks", phone: "settings-agent-checks" },
 	marks: [],
 });

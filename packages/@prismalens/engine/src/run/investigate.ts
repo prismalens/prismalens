@@ -14,8 +14,10 @@ import { pathToFileURL } from "node:url";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import {
 	AGENT_REGISTRY,
+	AgentHostError,
 	authenticateMethod,
 	type LaunchPolicy,
+	type PlanLaunchInput,
 	planLaunch,
 	writeLaunchFiles,
 } from "@prismalens/agent-host";
@@ -28,6 +30,7 @@ import {
 	type HarnessRunEnv,
 	levelOfAgentMode,
 	type ModelSource,
+	mergeConfigPatch,
 	modeFidelity,
 	NO_MODE_KEY,
 	resolveAccess,
@@ -126,7 +129,9 @@ import {
 import {
 	injectedSecrets,
 	redactEvent,
+	redactLine,
 	requestedSecrets,
+	StreamScrubber,
 	scrub,
 } from "./redact.js";
 import {
@@ -138,6 +143,13 @@ import {
 import { withCwdRelativeSources } from "./report-paths.js";
 import { userServerByOurName } from "./reserved-name.js";
 import { checkSandbox } from "./sandbox-check.js";
+import {
+	CLAUDE_INIT_META,
+	CLAUDE_SDK_MESSAGE,
+	initItems,
+	initOf,
+} from "./sdk-init.js";
+import type { RunShared } from "./shared-set.js";
 
 const authenticateOf = (
 	row: Parameters<typeof authenticateMethod>[0],
@@ -385,6 +397,11 @@ export interface RunInvestigationOptions {
 		concurrency?: number;
 		onStop?: "stop" | "finish";
 	};
+	/**
+	 * Settings → Agent → Clean profile (#1180 §3.4): the row's `cleanProfile` switches, each found
+	 * MCP server off by name; a clean profile that cannot hold refuses the run.
+	 */
+	cleanProfile?: { version?: string | null; mcp?: readonly string[] };
 	/** Stops one sub-agent the agent granted cancel for; the handler answers false otherwise (#1025). */
 	subagents?: {
 		onCancel(handler: (sessionId: string) => boolean): () => void;
@@ -394,6 +411,8 @@ export interface RunInvestigationOptions {
 	 * from every event, the transcript and stderr whatever their length or name.
 	 */
 	secrets?: readonly string[];
+	/** The PrismaLens set this run's session gets, resolved by the product (#1180 §3.3). */
+	shared?: RunShared;
 	signal?: AbortSignal;
 }
 
@@ -745,7 +764,44 @@ export type PrepareRunEnvOptions = Pick<
 	| "policy"
 	| "hostEnv"
 	| "subagentLimits"
+	| "cleanProfile"
+	| "shared"
 >;
+
+/** The shared servers in a run file's `mcpServers` shape, by name; the set sends such a row no value. */
+function runFileServers(
+	servers: NonNullable<PrepareRunEnvOptions["shared"]>["servers"],
+): Record<string, unknown> {
+	const pairs = (xs: { name: string; value: string }[]) =>
+		Object.fromEntries(xs.map((x) => [x.name, x.value]));
+	return Object.fromEntries(
+		servers.map((s) => [
+			s.name,
+			"type" in s && s.type === "http"
+				? { type: "http", url: s.url, headers: pairs(s.headers) }
+				: "command" in s
+					? { command: s.command, args: s.args, env: pairs(s.env) }
+					: s,
+		]),
+	);
+}
+
+/** The clean profile's isolation input to `planLaunch`; none unless asked for. */
+function cleanProfileInput(
+	opts: PrepareRunEnvOptions,
+): Pick<PlanLaunchInput, "isolation" | "agentVersion"> {
+	if (!opts.cleanProfile) return {};
+	const use = AGENT_REGISTRY[opts.harness]?.cleanProfile;
+	if (!use)
+		throw new AgentHostError(
+			"isolation-unavailable",
+			`${AGENT_REGISTRY[opts.harness]?.label ?? opts.harness} has no clean profile`,
+		);
+	return {
+		isolation: [{ use, mcp: opts.cleanProfile.mcp ?? [] }],
+		agentVersion: opts.cleanProfile.version ?? null,
+	};
+}
 
 /** Materialise the per-run config and data dirs, and the child's env, from the agent-host launch plan (#916). */
 export function prepareRunEnv(opts: PrepareRunEnvOptions): {
@@ -753,6 +809,8 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	args: string[];
 	runEnv: HarnessRunEnv;
 	launch: HarnessLaunch;
+	/** The clean profile's session `_meta`, merged over the row's; absent without one. */
+	sessionMeta?: Record<string, unknown>;
 } {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const companionPath = descriptor.companionBinary
@@ -809,10 +867,22 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 				}
 			: {}),
 		...(opts.subagentLimits ? { subagents: opts.subagentLimits } : {}),
+		...(opts.shared?.servers.length
+			? { runFile: runFileServers(opts.shared.servers) }
+			: {}),
+		...cleanProfileInput(opts),
 		descriptor: { ...AGENT_REGISTRY[opts.harness], ...descriptor },
 	});
 	writeLaunchFiles(plan);
-	return { env: plan.env, args: plan.args, runEnv: plan.runEnv, launch };
+	return {
+		env: plan.env,
+		args: plan.args,
+		runEnv: plan.runEnv,
+		launch,
+		...(opts.cleanProfile && plan.sessionMeta
+			? { sessionMeta: plan.sessionMeta }
+			: {}),
+	};
 }
 
 /** A return waits this long for work the reopened agent starts on its own, before it sends anything. */
@@ -827,21 +897,77 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** How long a run waits after `session/new` for the agent's first gateway request. */
 const GATEWAY_CONFIRM_MS = 5_000;
 
+/**
+ * The session `_meta`: the row's own, each system-prompt text appended, and, when the run
+ * records what loads, Claude's request for its init message (#1180 §3.1).
+ */
+function sessionMetaOf(
+	row: Record<string, unknown> | undefined,
+	append: readonly string[],
+	askInit: boolean,
+): Record<string, unknown> | undefined {
+	let meta = (row ?? {}) as Parameters<typeof mergeConfigPatch>[0];
+	if (append.length)
+		meta = { ...meta, systemPrompt: { append: append.join("\n\n") } };
+	if (askInit) meta = mergeConfigPatch(meta, CLAUDE_INIT_META);
+	return Object.keys(meta).length ? meta : row;
+}
+
+/** A session-opening request with each `pl-*` server reduced to its name and type (§3.3 sinks). */
+function withoutSharedDefs(line: string): string {
+	if (!line.includes('"pl-')) return line;
+	try {
+		const msg = JSON.parse(line) as { params?: { mcpServers?: unknown } };
+		const servers = msg.params?.mcpServers;
+		if (!Array.isArray(servers)) return line;
+		msg.params = {
+			...msg.params,
+			mcpServers: servers.map((s) =>
+				s &&
+				typeof s === "object" &&
+				String((s as { name?: unknown }).name).startsWith("pl-")
+					? {
+							name: (s as { name: string }).name,
+							type: (s as { type?: string }).type ?? "stdio",
+						}
+					: s,
+			),
+		};
+		return JSON.stringify(msg);
+	} catch {
+		return line;
+	}
+}
+
 export async function* runInvestigation(
 	opts: RunInvestigationOptions,
 ): AsyncGenerator<CanonicalEvent> {
-	const secrets = requestedSecrets(opts.secrets);
+	const secrets = requestedSecrets([
+		...(opts.secrets ?? []),
+		...(opts.shared?.hidden ?? []),
+	]);
 	if (!secrets.length) {
 		yield* runSession(opts);
 		return;
 	}
-	// A requested secret never reaches an event, even when the agent echoes it (#1024 spec B).
+	// A requested or shared secret never reaches an event or the host log, even split across chunks.
 	const stderr = opts.onHarnessStderr;
+	const chunks = new StreamScrubber(secrets);
 	const scrubbed: RunInvestigationOptions = {
 		...opts,
-		...(stderr ? { onHarnessStderr: (c) => stderr(scrub(c, secrets)) } : {}),
+		...(stderr
+			? {
+					onHarnessStderr: (c) => {
+						for (const [out] of chunks.push([c])) stderr(out ?? "");
+					},
+				}
+			: {}),
 	};
-	for await (const ev of runSession(scrubbed)) yield redactEvent(ev, secrets);
+	try {
+		for await (const ev of runSession(scrubbed)) yield redactEvent(ev, secrets);
+	} finally {
+		if (stderr) for (const [out] of chunks.end()) stderr(out ?? "");
+	}
 }
 
 async function* runSession(
@@ -871,7 +997,12 @@ async function* runSession(
 		access.mechanism,
 		opts.runtimeNote,
 	);
-	const { env, args, launch } = prepareRunEnv({
+	const {
+		env,
+		args,
+		launch,
+		sessionMeta: cleanMeta,
+	} = prepareRunEnv({
 		...opts,
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
@@ -882,13 +1013,16 @@ async function* runSession(
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	// session/new carries the gateway bearer; the transcript never stores it (#848).
 	// Nor the GitHub token values the agent's env holds (#1020).
-	const hidden = [
+	const hidden = requestedSecrets([
 		...injectedSecrets(env, [opts.gateway?.token]),
-		...requestedSecrets(opts.secrets),
-	];
+		...(opts.secrets ?? []),
+		...(opts.shared?.hidden ?? []),
+	]);
 	const wire = (direction: "in" | "out", line: string): void => {
-		let m = line;
-		for (const s of hidden) m = m.replaceAll(s, "[redacted]");
+		const m = redactLine(
+			direction === "out" ? withoutSharedDefs(line) : line,
+			hidden,
+		);
 		try {
 			appendFileSync(
 				transcript,
@@ -902,6 +1036,42 @@ async function* runSession(
 	const offer = opts.gateway
 		? gatewayOffer(opts.gateway, descriptor.gatewayDelivery)
 		: null;
+	const sharedServers = opts.shared?.servers ?? [];
+	const sharedNames = new Set(sharedServers.map((s) => s.name));
+	// A run-file row reads every shared server from its file (`prepareRunEnv`), never from ACP.
+	const fromFile = descriptor.gatewayDelivery === "mcp-config-file";
+	/** The shared servers the session was handed; history records these. */
+	let sharedSent: string[] | null = fromFile
+		? sharedServers.map((s) => s.name)
+		: null;
+	const sentOf = <T extends { name: string }>(picked: T[]): T[] => {
+		if (!fromFile)
+			sharedSent = picked.map((s) => s.name).filter((n) => sharedNames.has(n));
+		return picked;
+	};
+	const mcpServers = offer
+		? (caps: Parameters<typeof offer.pick>[0]) =>
+				sentOf(offer.pick(caps, sharedServers))
+		: sharedServers.length && !fromFile
+			? (caps: Parameters<ReturnType<typeof gatewayOffer>["pick"]>[0]) =>
+					sentOf(
+						sharedServers.filter((s) => caps?.http === true || !("type" in s)),
+					)
+			: null;
+	const row = HARNESS_REGISTRY[opts.harness];
+	const inSystemPrompt = row?.facts?.systemPromptVia?.value === "claude-meta";
+	const reportsInit = row?.loadoutReport === "claude-sdk-init";
+	// An agent with a system-prompt slot takes the set's instructions there; any other, in its first prompt.
+	const sharedText = opts.shared?.instructions ?? null;
+	let sharedTextOwed = !!sharedText && !inSystemPrompt;
+	let loadout: Parameters<typeof adapter.agentLoadout>[0] | null = null;
+	let loadoutSent = false;
+	/** The session's `agent_loadout`, once, as soon as Claude's init has arrived; its seq is taken here. */
+	const loadoutDue = (): CanonicalEvent | null => {
+		if (!loadout || loadoutSent) return null;
+		loadoutSent = true;
+		return adapter.agentLoadout(loadout);
+	};
 	// The brief rides the session, new and load alike, so the first prompt carries only the turn (#817).
 	const brief =
 		descriptor.facts?.systemPromptVia?.value === "claude-meta" &&
@@ -981,9 +1151,20 @@ async function* runSession(
 				opts.limits?.wallClockMs,
 				Date.now() - spawnedAt,
 			),
-		sessionMeta: brief
-			? { ...descriptor.sessionMeta?.(), systemPrompt: { append: brief } }
-			: descriptor.sessionMeta?.(),
+		sessionMeta: sessionMetaOf(
+			cleanMeta
+				? mergeConfigPatch(
+						(descriptor.sessionMeta?.() ?? {}) as Parameters<
+							typeof mergeConfigPatch
+						>[0],
+						cleanMeta as Parameters<typeof mergeConfigPatch>[1],
+					)
+				: descriptor.sessionMeta?.(),
+			[brief, inSystemPrompt ? sharedText : null].filter(
+				(t): t is string => !!t,
+			),
+			reportsInit && !!opts.shared,
+		),
 		...authenticateOf(descriptor, env),
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
@@ -1002,7 +1183,22 @@ async function* runSession(
 			: opts.resume?.fork
 				? { resume: { fork: opts.resume.fork, fresh: !!opts.resume.fresh } }
 				: {}),
-		...(offer ? { mcpServers: offer.pick } : {}),
+		...(mcpServers ? { mcpServers } : {}),
+		...(reportsInit && opts.shared
+			? {
+					onExtNotification: (method: string, params: unknown) => {
+						const init =
+							method === CLAUDE_SDK_MESSAGE && !loadout ? initOf(params) : null;
+						if (init && opts.shared)
+							loadout = {
+								profile: opts.shared.profile,
+								cwd: opts.cwd,
+								fingerprint: opts.shared.fingerprint,
+								items: initItems(init),
+							};
+					},
+				}
+			: {}),
 		onDrift: (drift) => {
 			wire("in", JSON.stringify({ drift }));
 			opts.onHarnessDrift?.(
@@ -1049,6 +1245,8 @@ async function* runSession(
 	): AsyncGenerator<CanonicalEvent, TurnEnd> {
 		for await (const item of items) {
 			if (opts.signal?.aborted) session.cancel(opts.signal.reason);
+			const due = loadoutDue();
+			if (due) yield due;
 			if (item.kind === "update") {
 				const u = item.update;
 				// A sub-agent's words and state are its own: never the report's text, the run's usage or mode (#1025).
@@ -1550,7 +1748,20 @@ async function* runSession(
 		)
 			? "message"
 			: "event";
-		yield adapter.sessionOpened(opening, carrier);
+		yield adapter.sessionOpened(
+			opts.shared
+				? {
+						...opening,
+						sharedSet: {
+							revision: opts.shared.revision,
+							servers: sharedSent ?? sharedServers.map((s) => s.name),
+						},
+					}
+				: opening,
+			carrier,
+		);
+		const loadoutAtOpen = loadoutDue();
+		if (loadoutAtOpen) yield loadoutAtOpen;
 		// A return must not run work the agent started before PrismaLens set its level (#1168).
 		// Watched until its first prompt goes out: the turn's awaited setup is no blind spot.
 		let watching = !!back?.returning && session.reopen !== "fresh";
@@ -1700,6 +1911,7 @@ async function* runSession(
 		};
 		const turn = async function* (
 			parts: PromptPart[],
+			command = false,
 		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			const receipt = carried;
 			carried = [];
@@ -1709,6 +1921,12 @@ async function* runSession(
 			yield* recordQueued();
 			if (turns++ > 0 && opts.effort && !(await sendEffort()))
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
+			// The set's instructions open the first prompt after the session opens (§3.3, `first-message`);
+			// a command keeps its turn to itself.
+			// Owed until a turn is received: a `cancelled` stop may mean the prompt never went in.
+			const carriesShared = sharedTextOwed && !!sharedText && !command;
+			if (carriesShared && sharedText)
+				parts = [{ type: "text", text: sharedText }, ...parts];
 			// One turn for the hooks however many tries it takes: a retry takes no second snapshot.
 			const turnId = adapter.peekSeq();
 			await turnHook("start", turnId);
@@ -1738,6 +1956,7 @@ async function* runSession(
 				// A stop other than cancelled is the receipt; claude-agent-acp's `cancelled` may mean the
 				// prompt never went in. A compact carries no missed context (#1168, #1179).
 				if ("stop" in end && end.stop !== "cancelled") {
+					if (carriesShared) sharedTextOwed = false;
 					// One receipt holds at most 50 ids, so a larger turn sends several.
 					for (let i = 0; i < receipt.length; i += 50)
 						yield adapter.messagesReceived(receipt.slice(i, i + 50));
@@ -1827,7 +2046,13 @@ async function* runSession(
 				...(context?.addendum ? [context.addendum] : []),
 				...after,
 			];
-			if (frame.wrap || before.length || extra.length || attachments?.length) {
+			if (
+				frame.wrap ||
+				before.length ||
+				extra.length ||
+				attachments?.length ||
+				sharedTextOwed
+			) {
 				const lead = yield* turn(
 					promptParts(
 						wrap([...before, COMMAND_LEAD, ...extra].join("\n\n")),
@@ -1840,7 +2065,7 @@ async function* runSession(
 			}
 			const record = frame.beforeCommand?.();
 			if (record) yield record;
-			return yield* turn([{ type: "text", text: command }]);
+			return yield* turn([{ type: "text", text: command }], true);
 		};
 
 		/** The agent's own compact command as a turn, between two boundary events (#1024). */
@@ -1859,12 +2084,15 @@ async function* runSession(
 			compacting = true;
 			let r: TurnEnd;
 			try {
-				r = yield* turn([
-					{
-						type: "text",
-						text: `/${c.command}${instructions ? ` ${instructions}` : ""}`,
-					},
-				]);
+				r = yield* turn(
+					[
+						{
+							type: "text",
+							text: `/${c.command}${instructions ? ` ${instructions}` : ""}`,
+						},
+					],
+					true,
+				);
 			} finally {
 				compacting = false;
 			}

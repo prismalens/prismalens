@@ -452,6 +452,7 @@ export const EVENT_VIEWS = {
 	jobs_ended: hidden,
 	auto_paused: hidden,
 	pull_request_linked: hidden,
+	agent_loadout: hidden,
 } as const satisfies { [K in EventKind]: EventView<EventOf<K>> };
 
 /** Kinds a lane's transcript node draws; `transcript/registry.ts` must cover each. */

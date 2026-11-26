@@ -1,0 +1,20 @@
+{
+	"row": "probe-runs-no-user-code",
+	"kind": "happy",
+	"title": "A health check runs no user or repo code",
+	"run": { "isolation": "probe" },
+	"expect": "no-user-code",
+	"markers": {
+		"claude-code": ["mcp-project", "mcp-user", "project-hook", "user-hook"],
+		"codex": ["mcp-plugin", "mcp-project", "mcp-user"],
+		"opencode": ["mcp-project", "mcp-user", "plugin"],
+		"gemini": ["mcp-project", "mcp-user"]
+	},
+	"na": {
+		"cursor": "no documented switch: a background pass never starts it",
+		"antigravity": "no documented switch: a background pass never starts it",
+		"deepagents": "no documented switch: a background pass never starts it",
+		"local": "no documented switch: a background pass never starts it"
+	},
+	"fixtures": []
+}

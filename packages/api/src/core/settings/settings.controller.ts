@@ -5,11 +5,17 @@ import { Controller, UseGuards } from "@nestjs/common";
 import { Implement, implement, ORPCError } from "@orpc/nest";
 import type { HarnessId } from "@prismalens/config/harness";
 import { settingsContract } from "@prismalens/contracts";
+import { requireHostOwner } from "../auth/host.js";
 import { isOwner, requireOwner } from "../auth/owner.js";
+import {
+	AgentSetupError,
+	AgentSetupService,
+} from "../harness/agent-setup.service.js";
 import {
 	HarnessService,
 	HarnessSettingsError,
 } from "../harness/harness.service.js";
+import { HarnessRefreshService } from "../harness/harness-refresh.service.js";
 import { TelemetryService } from "../telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 import { DiagnosticsService } from "./diagnostics.service.js";
@@ -25,6 +31,8 @@ export class SettingsController {
 		private readonly telemetryService: TelemetryService,
 		private readonly updateService: UpdateService,
 		private readonly diagnosticsService: DiagnosticsService,
+		private readonly refresh: HarnessRefreshService,
+		private readonly agentSetup: AgentSetupService,
 	) {}
 
 	/** Settings → About (#717), with the update verdict for this caller (#724) */
@@ -197,6 +205,73 @@ export class SettingsController {
 			}),
 			checkHarness: implement(settingsContract.harnesses.checkHarness).handler(
 				async ({ input }) => this.harnessService.check(input.id as HarnessId),
+			),
+			checkAllHarnesses: implement(
+				settingsContract.harnesses.checkAllHarnesses,
+			).handler(async () => this.refresh.checkAll()),
+		};
+	}
+
+	/**
+	 * What loads, and the PrismaLens set (#1180 §3.1, §3.3). Approving, previewing and revealing
+	 * answer only the host's own local session, never a paired device.
+	 */
+	@Implement(settingsContract.agentSetup)
+	agentSetupRoutes() {
+		const c = settingsContract.agentSetup;
+		const s = this.agentSetup;
+		const guard = async <T>(run: () => Promise<T>): Promise<T> => {
+			try {
+				return await run();
+			} catch (error) {
+				if (error instanceof AgentSetupError)
+					throw new ORPCError(error.code, { message: error.message });
+				throw error;
+			}
+		};
+		return {
+			loadout: implement(c.loadout).handler(({ input }) =>
+				guard(() => s.loadout(input)),
+			),
+			sharedSet: implement(c.sharedSet).handler(() => s.sharedSet()),
+			updateSharedSet: implement(c.updateSharedSet).handler(
+				({ input, context }) => {
+					requireOwner(context.request);
+					return guard(() => s.updateSharedSet(input));
+				},
+			),
+			approveSharedServer: implement(c.approveSharedServer).handler(
+				({ input, context }) => {
+					requireHostOwner(context.request);
+					return guard(() => s.approveSharedServer(input));
+				},
+			),
+			removeSharedServer: implement(c.removeSharedServer).handler(
+				({ input, context }) => {
+					requireOwner(context.request);
+					return guard(() => s.removeSharedServer(input.name));
+				},
+			),
+			setSharedMembership: implement(c.setSharedMembership).handler(
+				({ input, context }) => {
+					requireOwner(context.request);
+					return guard(() => s.setMembership(input.id, input.member));
+				},
+			),
+			sharedSources: implement(c.sharedSources).handler(() =>
+				s.sharedSources(),
+			),
+			previewSharedServer: implement(c.previewSharedServer).handler(
+				({ input, context }) => {
+					requireHostOwner(context.request);
+					return guard(() => s.preview(input));
+				},
+			),
+			revealSharedServerRow: implement(c.revealSharedServerRow).handler(
+				({ input, context }) => {
+					requireHostOwner(context.request);
+					return guard(() => s.reveal(input));
+				},
 			),
 		};
 	}

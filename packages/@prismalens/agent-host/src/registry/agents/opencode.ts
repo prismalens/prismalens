@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { AgentDescriptor } from "../agents.js";
+import { opencodeProbeIsolation } from "../isolation.js";
 import { opencodePermission } from "../opencode.js";
 import { probed } from "../row.js";
 
@@ -91,4 +92,5 @@ export const opencode = {
 				"packages/opencode/src/acp/service.ts forkSession: session.fork has no point",
 		},
 	},
+	probeIsolation: opencodeProbeIsolation,
 } satisfies AgentDescriptor;

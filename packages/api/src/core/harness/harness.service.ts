@@ -8,7 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import { statSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import {
 	Injectable,
@@ -16,7 +16,7 @@ import {
 	type OnApplicationBootstrap,
 	Optional,
 } from "@nestjs/common";
-import type { LaunchPolicy } from "@prismalens/agent-host";
+import { isolationContext, type LaunchPolicy } from "@prismalens/agent-host";
 import {
 	type HarnessSelection,
 	isWindowsMountPath,
@@ -79,6 +79,12 @@ import {
 	HarnessModelsService,
 } from "./harness-models.service.js";
 import { HarnessProbeService } from "./harness-probe.service.js";
+import {
+	checksInBackground,
+	REFRESH_DEFAULT_MINUTES,
+	REFRESH_MINUTES,
+	type RefreshMinutes,
+} from "./harness-refresh.service.js";
 
 /** How long a remembered "ready" stands before a run checks again; "not ready" is never reused (#673 w9). */
 export const READY_CHECK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -130,6 +136,8 @@ export interface AgentRuntime {
 		concurrency?: number;
 		onStop?: "stop" | "finish";
 	};
+	/** Settings → Agent → Clean profile: runs skip the user's hooks and plugins (#1180 §3.4). */
+	cleanProfile?: { version: string | null };
 }
 
 export interface HarnessSettings {
@@ -187,6 +195,47 @@ export interface HarnessSettings {
 	off?: HarnessId[];
 	/** Put through Add agent without passing; listed anyway (#1171). */
 	added?: HarnessId[];
+	/** Runs skip the user's hooks and plugins on these agents (#1180 §3.4). */
+	cleanProfile?: HarnessId[];
+	/** Minutes between background checks; absent is 15, 0 is off (#1180 §1.4). */
+	refreshMinutes?: RefreshMinutes;
+}
+
+/** Whether the Clean profile switch is offered for `id` here, and why not (#1180 §3.4). */
+function cleanProfileStatus(
+	id: HarnessId,
+	s: HarnessSettings,
+	env: NodeJS.ProcessEnv,
+	version: string | null,
+): { cleanProfile?: { offered: boolean; on: boolean; reason?: string } } {
+	const use = HARNESS_REGISTRY[id].cleanProfile;
+	if (!use) return {};
+	const defined = Object.fromEntries(
+		Object.entries(env).filter(
+			(e): e is [string, string] => e[1] !== undefined,
+		),
+	);
+	const reason =
+		use.unavailable?.(
+			isolationContext({ runDir: tmpdir(), env: defined, version }),
+		) ?? null;
+	return {
+		cleanProfile: {
+			offered: !reason,
+			on: s.cleanProfile?.includes(id) ?? false,
+			...(reason ? { reason } : {}),
+		},
+	};
+}
+
+/** Stored only when it is not the default. */
+function refreshMinutesField(raw: unknown): {
+	refreshMinutes?: RefreshMinutes;
+} {
+	return (REFRESH_MINUTES as readonly unknown[]).includes(raw) &&
+		raw !== REFRESH_DEFAULT_MINUTES
+		? { refreshMinutes: raw as RefreshMinutes }
+		: {};
 }
 
 const AXES = ["accessLevels"] as const;
@@ -238,6 +287,8 @@ export interface HarnessSettingsPatch {
 	/** Each merged per agent; `false` takes it out. */
 	off?: Partial<Record<HarnessId, boolean>>;
 	added?: Partial<Record<HarnessId, boolean>>;
+	cleanProfile?: Partial<Record<HarnessId, boolean>>;
+	refreshMinutes?: RefreshMinutes;
 }
 
 const RUNTIME_FIELDS = [
@@ -254,6 +305,8 @@ const RUNTIME_FIELDS = [
 	"subagentsOnStop",
 	"useDefaults",
 	"threadTitles",
+	"cleanProfile",
+	"refreshMinutes",
 ] as const satisfies readonly (keyof HarnessSettingsPatch)[];
 
 /** Per-use defaults that still name a known agent; `null` or junk drops the use. */
@@ -596,11 +649,13 @@ export class HarnessService implements OnApplicationBootstrap {
 		void this.restoreChecks().then(() => this.sweep());
 	}
 
+	/** At boot: each installed agent that is on and whose check runs isolated (#1180 R1). */
 	async sweep(): Promise<void> {
 		const settings = await this.getSettings();
 		const off = new Set(settings.off);
 		for (const h of listHarnessStatus(this.selectionInput(settings))) {
-			if (h.installed && !off.has(h.id)) await this.checkOnce(h.id);
+			if (h.installed && !off.has(h.id) && checksInBackground(h.id))
+				await this.checkOnce(h.id, { requireIsolation: true });
 		}
 	}
 
@@ -772,6 +827,13 @@ export class HarnessService implements OnApplicationBootstrap {
 					: {}),
 				onStop: s.subagentsOnStop ?? "stop",
 			},
+			...(s.cleanProfile?.includes(id) && HARNESS_REGISTRY[id].cleanProfile
+				? {
+						cleanProfile: {
+							version: this.models.checked(id)?.version ?? null,
+						},
+					}
+				: {}),
 			...(binaryPath ? { binaryPath } : {}),
 			...(local ? { launchArgs: args } : {}),
 			note: set
@@ -848,10 +910,13 @@ export class HarnessService implements OnApplicationBootstrap {
 	}
 
 	/** The Settings Check button: the handshake with this agent's runtime (#907). */
-	async check(id: HarnessId): Promise<HarnessProbeResult> {
+	async check(
+		id: HarnessId,
+		opts: { requireIsolation?: boolean } = {},
+	): Promise<HarnessProbeResult> {
 		const seq = this.reserve(id);
 		const { runtime, guard } = await this.probeInputs(id);
-		const result = await this.probe.check(id, runtime, guard, seq);
+		const result = await this.probe.check(id, runtime, guard, seq, opts);
 		void this.persistChecks();
 		return result;
 	}
@@ -927,12 +992,18 @@ export class HarnessService implements OnApplicationBootstrap {
 		return { ready: true };
 	}
 
-	private checkOnce(id: HarnessId): Promise<Check | null> {
+	/** `requireIsolation`: a check nobody asked for starts only isolated (#1180 R1). */
+	private checkOnce(
+		id: HarnessId,
+		opts: { requireIsolation?: boolean } = {},
+	): Promise<Check | null> {
 		const running = this.inFlight.get(id);
 		if (running) return running;
 		const seq = this.reserve(id);
 		const next: Promise<Check | null> = this.probeInputs(id)
-			.then(({ runtime, guard }) => this.probe.check(id, runtime, guard, seq))
+			.then(({ runtime, guard }) =>
+				this.probe.check(id, runtime, guard, seq, opts),
+			)
 			.then(() => {
 				void this.persistChecks();
 				return this.models.checked(id) ?? null;
@@ -1028,11 +1099,14 @@ export class HarnessService implements OnApplicationBootstrap {
 			const localAgent = cleanLocalAgent(parsed.localAgent);
 			const off = cleanIds(parsed.off);
 			const added = cleanIds(parsed.added);
+			const cleanProfile = cleanIds(parsed.cleanProfile);
 			// A stored `agentModes` (before the two axes) is not read back (#673 w21).
 			return {
 				harness,
 				...(off.length ? { off } : {}),
 				...(added.length ? { added } : {}),
+				...(cleanProfile.length ? { cleanProfile } : {}),
+				...refreshMinutesField(parsed.refreshMinutes),
 				...(Object.keys(models).length ? { models } : {}),
 				...(favourites.length ? { favourites } : {}),
 				...(Object.keys(efforts).length ? { efforts } : {}),
@@ -1129,6 +1203,7 @@ export class HarnessService implements OnApplicationBootstrap {
 		});
 		const off = mergeIds(current.off, patch.off);
 		const added = mergeIds(current.added, patch.added);
+		const cleanProfile = mergeIds(current.cleanProfile, patch.cleanProfile);
 		const turnedOff = off.filter((id) => !current.off?.includes(id));
 		const turnedOn = (current.off ?? []).filter((id) => !off.includes(id));
 		const harness = patch.harness ?? current.harness;
@@ -1146,6 +1221,8 @@ export class HarnessService implements OnApplicationBootstrap {
 				harness !== "auto" && turnedOff.includes(harness) ? "auto" : harness,
 			...(off.length ? { off } : {}),
 			...(added.length ? { added } : {}),
+			...(cleanProfile.length ? { cleanProfile } : {}),
+			...refreshMinutesField(patch.refreshMinutes ?? current.refreshMinutes),
 			...(Object.keys(models).length ? { models } : {}),
 			...(favourites.length ? { favourites } : {}),
 			...(Object.keys(efforts).length ? { efforts } : {}),
@@ -1240,10 +1317,13 @@ export class HarnessService implements OnApplicationBootstrap {
 		for (const id of changed) {
 			this.models.forget(id);
 			this.inFlight.delete(id);
-			void this.checkOnce(id);
+			if (checksInBackground(id))
+				void this.checkOnce(id, { requireIsolation: true });
 		}
 		if (changed.size) void this.persistChecks();
-		for (const id of turnedOn) if (!changed.has(id)) void this.checkOnce(id);
+		for (const id of turnedOn)
+			if (!changed.has(id) && checksInBackground(id))
+				void this.checkOnce(id, { requireIsolation: true });
 		return settings;
 	}
 
@@ -1439,6 +1519,12 @@ export class HarnessService implements OnApplicationBootstrap {
 					envVars: envVarStates(h.id, settings.envNames?.[h.id] ?? []),
 					models: this.models.modelsFor(h.id, catalogue),
 					checked,
+					...cleanProfileStatus(
+						h.id,
+						settings,
+						{ ...process.env, ...runtimes.get(h.id)?.env },
+						checked?.version ?? null,
+					),
 				};
 			}),
 			selection: selection.runnable

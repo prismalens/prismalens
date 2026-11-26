@@ -60,6 +60,7 @@ import {
 	ScheduledRunSchema,
 } from "@prismalens/contracts";
 import { type AskResult, reapLiveHarnesses } from "@prismalens/engine";
+import { AgentSetupService } from "../../core/harness/agent-setup.service.js";
 import { HarnessService } from "../../core/harness/harness.service.js";
 import { RepoSourceService } from "../../core/harness/repo-source.service.js";
 import { ThreadNamerService } from "../../core/harness/thread-namer.service.js";
@@ -405,6 +406,7 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 		@Optional() admission?: AdmissionService,
 		@Optional() private readonly credentials?: CredentialsService,
 		@Optional() private readonly threadNamer?: ThreadNamerService,
+		@Optional() private readonly agentSetup?: AgentSetupService,
 	) {
 		// The store takes the delegate structurally (narrowed to the calls it
 		// makes), so it stays testable without a database. `PrismaService` forwards
@@ -594,6 +596,12 @@ export class DispatchService implements OnModuleInit, OnApplicationShutdown {
 					update: { value },
 				});
 			},
+			...(this.agentSetup
+				? {
+						sharedSet: (harness: HarnessId, cwd: string) =>
+							this.agentSetup?.forRun(harness, cwd) ?? Promise.resolve(null),
+					}
+				: {}),
 			requestedSecrets: async (runId) => {
 				const rows = await this.prisma.secretRequested.findMany({
 					where: { investigationId: runId, valueEnc: { not: null } },

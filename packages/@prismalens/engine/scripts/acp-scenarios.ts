@@ -434,6 +434,8 @@ export function checkRow(
 			return toolResults > 0 && errors.length > 0 && !report
 				? null
 				: `expected the step's tool result, then an error and no report (${saw})`;
+		case "no-user-code":
+			return "an isolation row runs through runIsolationRow, not checkRow";
 		case "gateway":
 			if (!report) return `no report (${saw})`;
 			return gatewayProblem(seen.events, gateway);

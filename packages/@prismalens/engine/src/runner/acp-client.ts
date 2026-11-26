@@ -257,6 +257,8 @@ export interface AcpSessionConfig {
 			tail: { prompts: number; text: string };
 		};
 	};
+	/** An agent's own notification (method starting `_`), such as `_claude/sdkMessage` (#1180). */
+	onExtNotification?: (method: string, params: unknown) => void;
 	/** `session/new` and `session/load` `mcpServers`, chosen from what `initialize` advertised (#848). */
 	mcpServers?: (
 		capabilities:
@@ -1469,6 +1471,8 @@ export class AcpSession {
 				this.authAccount = status.kind === "none" ? null : named;
 				this.authStatusSeen?.();
 			}
+		} else if (msg.method?.startsWith("_")) {
+			this.config.onExtNotification?.(msg.method, msg.params);
 		}
 	}
 

@@ -33,6 +33,7 @@ export const EVENT_FOLD: { readonly [K in CanonicalEvent["kind"]]: FoldClass } =
 		session_opened: "read",
 		turn_input: "read",
 		session_config: "work",
+		agent_loadout: "work",
 		harness_tool_call: "work",
 		harness_tools: "work",
 		// The starter's link to the thread it started stays read: bar 10.2 (#1101).

@@ -566,6 +566,7 @@ async function runJobInternal(
 				return null;
 			});
 		const usage = usageWriter(ports, runId);
+		const shared = await sharedOf(ports, selection.harness, workspace.cwd);
 		const outcome = await conductRun(
 			{
 				runId,
@@ -593,6 +594,7 @@ async function runJobInternal(
 				// Never process.env: the launcher's allowlist plus this agent's provider keys and Settings rows, never PRISMALENS_* (ADR 0004 §5, #907).
 				...runOptionsOf(runtime, data),
 				...secrets,
+				...(shared ? { shared } : {}),
 				...turnInputPort(ports, runId),
 				...deliveredPort(ports, runId, harness),
 				limits: { wallClockMs: INVESTIGATION_DEFAULTS.harnessWallClockMs },
@@ -1343,6 +1345,7 @@ async function runFollowUp(
 		// The new session's first usage lands after the old one is cleared (ruling 13).
 		let handedOff: Promise<void> = Promise.resolve();
 		const usage = usageWriter(ports, id, () => handedOff);
+		const shared = await sharedOf(ports, harness, workspace.cwd);
 		const outcome = await conductRun(
 			{
 				runId: id,
@@ -1362,6 +1365,7 @@ async function runFollowUp(
 				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...runOptionsOf(runtime, data),
 				...secrets,
+				...(shared ? { shared } : {}),
 				...turnInputPort(ports, id),
 				...deliveredPort(ports, id, harness),
 				sessionCause: resume.restart
@@ -1886,6 +1890,7 @@ function runOptionsOf(runtime: AgentRuntime, data: InvestigationJobData) {
 		...(runtime.subagentLimits
 			? { subagentLimits: runtime.subagentLimits }
 			: {}),
+		...(runtime.cleanProfile ? { cleanProfile: runtime.cleanProfile } : {}),
 	};
 }
 
@@ -1980,6 +1985,20 @@ function turnInputPort(
 			}
 		},
 	};
+}
+
+/** The PrismaLens set this run's session gets; a set that cannot be read never stops a run (#1180). */
+async function sharedOf(
+	ports: RunPorts,
+	harness: HarnessId,
+	cwd: string,
+): Promise<RunInvestigationOptions["shared"] | null> {
+	return (
+		(await ports.sharedSet?.(harness, cwd).catch((e) => {
+			logger.warn("Could not read the PrismaLens set", e);
+			return null;
+		})) ?? null
+	);
 }
 
 async function secretOptions(

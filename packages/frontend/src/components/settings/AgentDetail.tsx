@@ -45,6 +45,7 @@ import {
 } from "@/components/agent/model-list";
 import { fact } from "@/components/kit/fact";
 import { Mark } from "@/components/kit/Mark";
+import { settingOf } from "@/components/kit/registry";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
@@ -67,6 +68,8 @@ import {
 import { notSignedIn, signInNext } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
 import { AccountButtons, UpdateButton, useAgentCtx } from "./AgentLines";
+import { AgentLoadout } from "./AgentLoadout";
+import { CheckTimes, safeCheck, UNSAFE_CHECK_HINT } from "./agent-checks";
 import { EnvVarNotes, envStateWord } from "./agent-env";
 import { CustomModelDialog } from "./CustomModelDialog";
 import { SignInButton } from "./SignInButton";
@@ -147,6 +150,30 @@ export function errorText(error: unknown): string | null {
 	return error instanceof Error ? error.message : String(error);
 }
 
+/** Check; on an agent with no safe check its hint says the session may run the agent's own code (#1180 R1). */
+function CheckButton({
+	safe,
+	pending,
+	onCheck,
+}: {
+	safe: boolean;
+	pending: boolean;
+	onCheck: () => void;
+}) {
+	const button = (
+		<Button
+			variant="secondary"
+			size="sm"
+			disabled={pending}
+			onClick={onCheck}
+			data-testid="agent-detail-check"
+		>
+			{pending ? "Checking" : "Check"}
+		</Button>
+	);
+	return safe ? button : <Hint label={UNSAFE_CHECK_HINT}>{button}</Hint>;
+}
+
 export function AgentDetail({ id }: { id: HarnessId }) {
 	const { data, isLoading } = useHarnesses();
 	const agent = data?.harnesses.find((h) => h.id === id);
@@ -200,19 +227,16 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 							<span className="flex-1" />
 							<SignInButton agent={agent} />
 							<UpdateButton agent={agent} />
-							<Button
-								variant="secondary"
-								size="sm"
-								disabled={check.isPending}
-								onClick={() => check.mutate({ id })}
-								data-testid="agent-detail-check"
-							>
-								{check.isPending ? "Checking" : "Check"}
-							</Button>
+							<CheckButton
+								safe={safeCheck(id)}
+								pending={check.isPending}
+								onCheck={() => check.mutate({ id })}
+							/>
 							<AgentMore agent={agent} />
 						</div>
 					</AgentSurface>
 					<div className="mb-6 flex flex-col gap-1 text-body text-text-2">
+						{checked && <CheckTimes agent={agent} />}
 						{checked && (
 							<p data-testid="agent-detail-check-line">
 								{checked.outcome !== "sign-in-needed"
@@ -281,6 +305,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 						)}
 					</div>
 					<UseGroup agent={agent} />
+					{agent.installed && <AgentLoadout agent={agent} />}
 					{agent.modelVia === "acp" && <ModelsSection agent={agent} />}
 					<SettingGroup title="Runtime" testId="agent-runtime">
 						<RuntimeFields id={id} />
@@ -320,6 +345,36 @@ function AgentMore({ agent }: { agent: HarnessStatus }) {
  * On or off, and Remove from list for an agent listed only because Add agent saved it (#1171).
  * Off keeps every setting; auto and new runs skip it.
  */
+/** Shown only where this agent's clean profile holds here (#1180 §3.4). */
+function CleanProfileRow({
+	on,
+	pending,
+	onChange,
+}: {
+	on: boolean;
+	pending: boolean;
+	onChange: (on: boolean) => void;
+}) {
+	const s = settingOf("agent.cleanProfile");
+	const canEdit = useCanEditRuntime();
+	return (
+		<SettingRow
+			label={<label htmlFor="agent-clean-profile">{s.label}</label>}
+			description={s.sentence}
+			testId={s.anchor}
+			locked={canEdit ? undefined : RUNTIME_HOST_ONLY}
+		>
+			<Switch
+				id="agent-clean-profile"
+				checked={on}
+				disabled={pending || !canEdit}
+				onCheckedChange={onChange}
+				data-testid="agent-clean-profile"
+			/>
+		</SettingRow>
+	);
+}
+
 function UseGroup({ agent }: { agent: HarnessStatus }) {
 	const id = agent.id as HarnessId;
 	const settings = useHarnessSettings().data;
@@ -351,6 +406,13 @@ function UseGroup({ agent }: { agent: HarnessStatus }) {
 						data-testid="agent-detail-on"
 					/>
 				</SettingRow>
+				{agent.cleanProfile?.offered && (
+					<CleanProfileRow
+						on={agent.cleanProfile.on}
+						pending={update.isPending}
+						onChange={(on) => update.mutate({ cleanProfile: { [id]: on } })}
+					/>
+				)}
 				{agent.runnable && (
 					<SettingRow
 						label="Use for new runs"

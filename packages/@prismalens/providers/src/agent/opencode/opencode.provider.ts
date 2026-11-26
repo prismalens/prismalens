@@ -77,6 +77,84 @@ export const opencode = defineAgent({
 		acpRegistryIds: ["opencode", "opencode-v2"],
 		usageReports: [],
 		settingsFile: "~/.config/opencode/opencode.json",
+		// opencode.ai/docs/{rules,skills,plugins,config}; Claude's files only where no AGENTS.md (#1180).
+		configLayout: {
+			instructions: [
+				{
+					path: "{$XDG_CONFIG_HOME|~/.config}/opencode/AGENTS.md",
+					scope: "global",
+				},
+				{
+					path: "~/.claude/CLAUDE.md",
+					scope: "global",
+					via: "claude-code",
+					onlyIfMissing: "{$XDG_CONFIG_HOME|~/.config}/opencode/AGENTS.md",
+				},
+				{ path: "<ancestors>/AGENTS.md", scope: "repo" },
+				{
+					path: "<ancestors>/CLAUDE.md",
+					scope: "repo",
+					via: "claude-code",
+					onlyIfMissing: "<ancestors>/AGENTS.md",
+				},
+			],
+			skills: [
+				{
+					path: "{$XDG_CONFIG_HOME|~/.config}/opencode/skills",
+					scope: "global",
+				},
+				{ path: "~/.claude/skills", scope: "global", via: "claude-code" },
+				{ path: "~/.agents/skills", scope: "global" },
+				{ path: "<ancestors>/.opencode/skills", scope: "repo" },
+				{
+					path: "<ancestors>/.claude/skills",
+					scope: "repo",
+					via: "claude-code",
+				},
+				{ path: "<ancestors>/.agents/skills", scope: "repo" },
+			],
+			mcp: [
+				...["opencode.json", "opencode.jsonc", "config.json"].map(
+					(f) =>
+						({
+							path: `{$XDG_CONFIG_HOME|~/.config}/opencode/${f}`,
+							scope: "global",
+							format: "jsonc",
+							key: "mcp",
+						}) as const,
+				),
+				...["opencode.json", "opencode.jsonc"].map(
+					(f) =>
+						({
+							path: `<repo>/${f}`,
+							scope: "repo",
+							format: "jsonc",
+							key: "mcp",
+						}) as const,
+				),
+			],
+			hooks: [],
+			plugins: [
+				...["opencode.json", "opencode.jsonc"].map(
+					(f) =>
+						({
+							path: `{$XDG_CONFIG_HOME|~/.config}/opencode/${f}`,
+							scope: "global",
+							format: "jsonc",
+							key: "plugin",
+						}) as const,
+				),
+				...["opencode.json", "opencode.jsonc"].map(
+					(f) =>
+						({
+							path: `<repo>/${f}`,
+							scope: "repo",
+							format: "jsonc",
+							key: "plugin",
+						}) as const,
+				),
+			],
+		},
 		noLevelReason: "OpenCode has per-tool rules, not one permission level.",
 		ownSettingsNote: () =>
 			"Your opencode.json rules stay; PrismaLens sets each tool's catch-all for the level.",

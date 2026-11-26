@@ -16,13 +16,18 @@ import type {
 	Query,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
+	CLAUDE_CHECK_ENV,
+	claudeCheckOptions,
+	codexConfigArgs,
+	type IsolationHost,
+	isolationContext,
 	killProcessTree,
 	type LaunchPolicy,
 	spawnAgent,
 } from "@prismalens/agent-host";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import type { LimitWindow } from "@prismalens/contracts";
-import { parse as parseToml } from "smol-toml";
+import { foundMcpNames } from "./agent-config.js";
 import { removeRunDir } from "./harness-doctor.js";
 import { apiKeyIn, prepareRunEnv } from "./investigate.js";
 
@@ -70,6 +75,8 @@ export interface LimitReadDeps {
 	home?: string;
 	/** Claude Code's managed settings file on this platform. */
 	managedSettingsPath?: string;
+	/** Where the check isolation reads policy files (`managed-mcp.json`); tests swap it. */
+	isolationHost?: IsolationHost;
 }
 
 export const LIMIT_READ_BUDGET_MS = 15_000;
@@ -129,33 +136,9 @@ export async function readAgentLimits(
 
 type Rpc = { id?: number; result?: unknown; error?: unknown };
 
-/** The `-c` overrides that keep the user's hooks and MCP servers from starting (R1). */
+/** The `-c` overrides that keep the user's hooks, plugins and MCP servers from starting (R1). */
 export function codexAppServerArgs(mcp: readonly string[]): string[] {
-	const name = (n: string) =>
-		/^[A-Za-z0-9_-]+$/.test(n) ? n : JSON.stringify(n);
-	return [
-		"app-server",
-		"-c",
-		"features.hooks=false",
-		...mcp.flatMap((n) => ["-c", `mcp_servers.${name(n)}.enabled=false`]),
-	];
-}
-
-/** The MCP server names in the user's own `config.toml`, under the planned `CODEX_HOME`. */
-export function codexUserMcpNames(
-	env: Record<string, string>,
-	home: string = homedir(),
-): string[] {
-	const dir = env.CODEX_HOME || join(home, ".codex");
-	try {
-		const config = parseToml(readFileSync(join(dir, "config.toml"), "utf8"));
-		const servers = config.mcp_servers;
-		return servers && typeof servers === "object" && !Array.isArray(servers)
-			? Object.keys(servers)
-			: [];
-	} catch {
-		return [];
-	}
+	return ["app-server", ...codexConfigArgs(mcp)];
 }
 
 async function readCodex(
@@ -167,7 +150,13 @@ async function readCodex(
 		command: plan.command,
 		args: [
 			...(plan.args ?? []),
-			...codexAppServerArgs(codexUserMcpNames(plan.env, deps.home)),
+			...codexAppServerArgs(
+				foundMcpNames(
+					"codex",
+					{ ...plan.env, ...(deps.home ? { HOME: deps.home } : {}) },
+					null,
+				),
+			),
 		],
 		cwd: plan.cwd,
 		env: plan.env,
@@ -380,11 +369,16 @@ async function readClaude(
 			options: {
 				pathToClaudeCodeExecutable: plan.command,
 				cwd: plan.cwd,
-				env: { ...plan.env, ENABLE_CLAUDEAI_MCP_SERVERS: "false" },
+				env: { ...plan.env, ...CLAUDE_CHECK_ENV },
 				settingSources: ["user"],
-				strictMcpConfig: true,
+				...(claudeCheckOptions(
+					isolationContext({
+						runDir: plan.cwd,
+						env: plan.env,
+						...deps.isolationHost,
+					}),
+				) as Pick<Options, "strictMcpConfig" | "settings">),
 				mcpServers: {},
-				settings: { disableAllHooks: true },
 			},
 		});
 		const usage = q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
