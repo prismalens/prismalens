@@ -98,7 +98,7 @@ test("check calls a failed fetch or a script-filled shell unreadable, never chan
 	);
 });
 
-test("check calls a short page changed when its clause is gone: two words, or with an analytics script", async () => {
+test("check calls a page with any body text changed when its clause is gone, scripts or not", async () => {
 	const one = {
 		id: "a",
 		auth: {
@@ -113,11 +113,12 @@ test("check calls a short page changed when its clause is gone: two words, or wi
 			page,
 			`${page}<script async src="https://analytics.test/a.js"></script><script>track("view")</script>`,
 			"<p>Automation prohibited.</p>",
+			"<p>Automation prohibited.</p><script src=analytics.js></script>",
 		].map(
 			async (html) => (await checkSources([one], async () => html))[0].state,
 		),
 	);
-	assert.deepEqual(states, ["changed", "changed", "changed"]);
+	assert.deepEqual(states, ["changed", "changed", "changed", "changed"]);
 });
 
 test("plain makes markup, Markdown links, entities, curly quotes and code marks comparable", () => {

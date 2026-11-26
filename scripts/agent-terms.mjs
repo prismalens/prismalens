@@ -75,18 +75,14 @@ export const rawUrl = (url) =>
 		"https://raw.githubusercontent.com/$1/",
 	);
 
-/** Only a no-JavaScript notice, or a title at most beside a script: a shell its script fills in, so it can't be judged. */
-const SHELL_WORDS = 3;
+/** No body text once head, script, style and noscript go, or only a no-JavaScript notice: a shell, so it can't be judged. */
 const NO_JS =
 	/^[^.]*\b(enable|turn on|requires?)\b[^.]*\bjavascript\b[^.]*\.?$/i;
 const pageOf = (raw) => {
-	const text = plain(raw).trim();
-	const words = text ? text.split(" ").length : 0;
-	const scripted = /<script\b/i.test(raw);
-	return {
-		text,
-		shell: NO_JS.test(text) || (scripted && words < SHELL_WORDS),
-	};
+	const body = plain(
+		raw.replace(/<(head|title|noscript)\b[\s\S]*?<\/\1>/gi, " "),
+	).trim();
+	return { text: plain(raw), shell: !body || NO_JS.test(body) };
 };
 
 /** Each distinct source: `present`, `changed` (its clause is gone), or `unreadable`. */
