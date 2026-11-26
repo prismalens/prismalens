@@ -72,6 +72,14 @@ function parse(raw: string): CanonicalEvent | null {
 	}
 }
 
+function isOperatorMessage(raw: string): boolean {
+	try {
+		return JSON.parse(raw)?.kind === "operator_message";
+	} catch {
+		return false;
+	}
+}
+
 /** The words a message carries: the user's or the agent's. */
 function messageText(e: CanonicalEvent | null): string | null {
 	if (e?.kind === "agent_step" || e?.kind === "operator_message")
@@ -79,18 +87,22 @@ function messageText(e: CanonicalEvent | null): string | null {
 	return null;
 }
 
-/** Where a cited message's text reaches the receiving agent: inside a fence, cut short (#1195). */
+/**
+ * Where a cited message's text reaches the receiving agent: inside a fence (#1195). It is cut
+ * short only when `pl_citation_read` can return the rest; a quote with no readable message goes whole.
+ */
 export function citationBlock(
 	c: { threadId: string; key?: string; turn?: number },
 	text: string,
 ): string {
+	const readable = Boolean(c.key && c.turn);
 	const body = sanitizeUntrustedBlock(
-		text.length > CITATION_EXCERPT_CHARS
+		readable && text.length > CITATION_EXCERPT_CHARS
 			? `${text.slice(0, CITATION_EXCERPT_CHARS)}\n(cut here; pl_citation_read has the rest)`
 			: text,
 	);
 	return [
-		c.key && c.turn
+		readable
 			? `Cited from thread ${c.threadId}, message ${c.key}, turn ${c.turn}. For that turn's tool calls, edits, files and pull requests, call pl_citation_read with threadId "${c.threadId}" and key "${c.key}".`
 			: `Cited from thread ${c.threadId}.`,
 		fenceUntrusted(
@@ -155,7 +167,7 @@ export class Citations {
 			this.prisma.investigationEvent.findMany({
 				where: { investigationId: threadId, event: { contains: OP } },
 				orderBy: { ordinal: "asc" },
-				select: { ordinal: true },
+				select: { ordinal: true, event: true },
 			}),
 			this.prisma.investigationEvent.findFirst({
 				where: {
@@ -166,7 +178,10 @@ export class Citations {
 				select: { ordinal: true },
 			}),
 		]);
-		const starts = ops.map((o) => o.ordinal);
+		// OP also matches a tool call whose arguments carry that kind; only the event's own kind starts a turn.
+		const starts = ops
+			.filter((o) => isOperatorMessage(o.event))
+			.map((o) => o.ordinal);
 		const startWrote =
 			starts.length > 0 &&
 			(!firstAgent || (starts[0] as number) < firstAgent.ordinal);

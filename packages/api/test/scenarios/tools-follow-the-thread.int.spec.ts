@@ -7,7 +7,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	defaultSpec,
-	INVESTIGATION_REPORT_BRANCH,
+	messageRefId,
+	rowKey,
 	type Schedule,
 	type ScheduleDetail,
 	type ThreadSubjectKind,
@@ -146,6 +147,31 @@ runs.set("schedule", { id: check, other: s1.id });
 		other: first.investigationId,
 		file: file.id,
 	});
+
+	// pl_citation_read answers only for a message the user cited into the thread (#1195): each run sends one.
+	for (const run of runs.values()) {
+		const source = run.other ?? p2.id;
+		const rows = await (await pl.prisma()).investigationEvent.findMany({
+			where: { investigationId: source },
+			orderBy: { ordinal: "asc" },
+			select: { branchId: true, seq: true, event: true },
+		});
+		const row = rows.find((r) => {
+			const e = JSON.parse(r.event) as { kind: string; text?: string };
+			return (e.kind === "agent_step" || e.kind === "operator_message") && Boolean(e.text?.trim());
+		});
+		if (!row) throw new Error(`thread ${source} holds no message to cite`);
+		const key = rowKey(row.branchId, row.seq);
+		await pl.api(`/investigations/${run.id}/messages`, {
+			method: "POST",
+			body: {
+				text: "Does that message change the answer?",
+				references: [{ kind: "message", id: messageRefId(source, key), label: "cited" }],
+			},
+		});
+		await settled(run.id);
+		run.cite = { threadId: source, key };
+	}
 }, 240_000);
 
 afterAll(async () => {
@@ -258,18 +284,6 @@ describe("Tools follow the thread (#1020): no offered tool always fails", () => 
 					since: new Date(),
 				},
 			});
-			// pl_citation_read answers only for a message the user cited into this thread (#1195).
-			const source = run.other ?? (runs.get("project")?.id as string);
-			const cited = await prisma.investigationEvent.findFirstOrThrow({
-				where: { investigationId: source },
-				orderBy: { ordinal: "asc" },
-				select: { branchId: true, seq: true },
-			});
-			const key = `${cited.branchId === INVESTIGATION_REPORT_BRANCH ? "report" : cited.branchId}:${cited.seq}`;
-			await prisma.messageCitation.create({
-				data: { threadId: run.id, sourceThreadId: source, sourceKey: key, sourceTurn: 1 },
-			});
-			run.cite = { threadId: source, key };
 			const owes = row.kind === "chat" ? "answer" : "report";
 			await g.lease(run.id, "prismalens-coverage", undefined, undefined, { subject, owes });
 			const offered = servedTo(g.tools, { subject, owes });

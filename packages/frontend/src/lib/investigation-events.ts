@@ -1144,9 +1144,18 @@ export function deriveTranscript(
 	const gateway = matchGateway(events);
 	/** Rename calls, said as one "Named" line and kept out of every group. */
 	const named = new Set<string>();
-	const stopLines = events.some(
-		(e) => e.kind === "usage_limit" || e.kind === "provider_blocked",
-	);
+	// A stop event says the stop for its own turn, which starts at each operator message.
+	const turnOf = new Map<CanonicalEvent, number>();
+	const stopTurns = new Set<number>();
+	let turn = 0;
+	for (const e of events) {
+		if (e.kind === "operator_message") turn++;
+		turnOf.set(e, turn);
+		if (e.kind === "usage_limit" || e.kind === "provider_blocked")
+			stopTurns.add(turn);
+	}
+	const stoppedIn = (e: CanonicalEvent | undefined) =>
+		e !== undefined && stopTurns.has(turnOf.get(e) ?? 0);
 	// The run's stop classifies its last error only: an earlier one, before a resume, keeps its own message.
 	const lastError = events.findLast((e) => e.kind === "error");
 	const findings = new Map<
@@ -1739,11 +1748,11 @@ export function deriveTranscript(
 					break;
 				}
 				// A provider stop's own line says it once; the turn adds no end of its own (sheet §10).
-				if (event.failure && stopLines) break;
+				if (event.failure && stoppedIn(event)) break;
 				// A run a stop ended reads its state here, never "Failed" with the raw error (#1193).
 				const held = event === lastError ? providerStopEnd(run) : null;
 				if (held) {
-					if (!stopRecorded) {
+					if (!stoppedIn(event)) {
 						standingAt = items.length;
 						items.push({ ...held, key });
 					}
@@ -1967,7 +1976,7 @@ export function deriveTranscript(
 		items.push(stoppedLine(run, lastTs));
 	} else if (run?.status === "failed" && standingAt < 0 && !sawError) {
 		const stop = providerStopEnd(run);
-		if (stop && !stopRecorded) {
+		if (stop && !stoppedIn(events.at(-1))) {
 			standingAt = items.length;
 			items.push(stop);
 		} else if (!stop) {

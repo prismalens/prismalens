@@ -54,7 +54,7 @@ describe("quotes held for a closed thread box (#1195)", () => {
 describe("a quote's source on its own thread's page (#1193)", () => {
 	const quote = (key?: string): Quote => ({
 		source: { threadId: SOURCE_A, kind: "transcript", ...(key ? { key } : {}) },
-		text: "Approved",
+		text: "Approved by two\nand the lines after it",
 	});
 	beforeEach(() => {
 		window.history.pushState({}, "", `/threads/${SOURCE_A}`);
@@ -77,13 +77,16 @@ describe("a quote's source on its own thread's page (#1193)", () => {
 		expect(scrolled).not.toHaveBeenCalled();
 	});
 
-	it("finds an older quote with no key by its first line", () => {
+	it("finds an older quote with no key by its first line, the one row that holds it", () => {
 		const jump = vi.fn();
-		const scrolled = vi.fn();
-		(document.getElementById("first") as HTMLElement).scrollIntoView = scrolled;
+		const first = vi.fn();
+		const second = vi.fn();
+		(document.getElementById("first") as HTMLElement).scrollIntoView = first;
+		(document.getElementById("second") as HTMLElement).scrollIntoView = second;
 		setItemJumper(jump);
 		showQuoteSource(quote());
 		expect(jump).not.toHaveBeenCalled();
-		expect(scrolled.mock.calls).toEqual([[{ block: "center" }]]);
+		expect(first).not.toHaveBeenCalled();
+		expect(second.mock.calls).toEqual([[{ block: "center" }]]);
 	});
 });

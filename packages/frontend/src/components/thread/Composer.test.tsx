@@ -21,6 +21,7 @@ import {
 	it,
 	vi,
 } from "vitest";
+import type { SendEnvelope } from "@/lib/composer-send";
 import { Composer, type ComposerProps } from "./Composer";
 import { QUEUE_HINT, STEER_HINT } from "./composer/chips";
 import { loadEditorKit } from "./composer/editor/load-kit";
@@ -31,6 +32,7 @@ import {
 	pasteInto,
 	settleEditor,
 } from "./composer/editor/test-helpers";
+import { sendQuote } from "./composer/quote";
 
 vi.mock("@/components/agent/AgentPicker", () => ({
 	ModelChip: ({ model }: { model: string }) => (
@@ -606,7 +608,10 @@ describe("the one composer (#1020)", () => {
 		const settled = new Promise<"sent" | "cancelled">((resolve) => {
 			settle = resolve;
 		});
-		const onSend = vi.fn(() => ({ result: "deferred" as const, settled }));
+		const onSend = vi.fn((_env: SendEnvelope, _now: boolean) => ({
+			result: "deferred" as const,
+			settled,
+		}));
 		await render({
 			onSend,
 			initialFiles: [new File(["a"], "same.log", { type: "text/plain" })],
@@ -641,6 +646,78 @@ describe("the one composer (#1020)", () => {
 				container.querySelectorAll('[data-testid="composer-file"]'),
 			).map((f) => f.textContent),
 		).toEqual([expect.stringContaining("same.log")]);
+		// The file the box kept is the replacement, not the one that was sent.
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			);
+		});
+		expect(onSend).toHaveBeenCalledTimes(2);
+		const kept = (onSend.mock.calls[1]?.[0].attachments ?? []) as File[];
+		expect(kept.map((f) => f.name)).toEqual(["same.log"]);
+		expect(await Promise.all(kept.map((f) => f.text()))).toEqual([
+			"replacement",
+		]);
+	});
+
+	it("keeps a replacement quote with the same opening line when a deferred send settles", async () => {
+		let settle!: (val: "sent" | "cancelled") => void;
+		const settled = new Promise<"sent" | "cancelled">((resolve) => {
+			settle = resolve;
+		});
+		const onSend = vi.fn((_env: SendEnvelope, _now: boolean) => ({
+			result: "deferred" as const,
+			settled,
+		}));
+		const threadId = "11111111-1111-4111-8111-111111111111";
+		const quoteFrom = (source: string, text: string): Quote => ({
+			source: { threadId: source, kind: "transcript" },
+			text,
+		});
+		const sent = quoteFrom(
+			"22222222-2222-4222-8222-222222222222",
+			"Approved\nby alice",
+		);
+		const replacement = quoteFrom(
+			"33333333-3333-4333-8333-333333333333",
+			"Approved\nby bob",
+		);
+		await render({ onSend, scope: `thread:${threadId}` });
+		const box = q("composer-input") as HTMLElement;
+		const enter = () =>
+			act(async () => {
+				box.dispatchEvent(
+					new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+				);
+			});
+		await act(async () => {
+			sendQuote(threadId, { key: "sent", quote: sent, cut: false });
+		});
+		await enter();
+		expect(onSend).toHaveBeenCalledTimes(1);
+		await act(async () => {
+			(q("composer-chip-remove") as HTMLButtonElement).click();
+		});
+		await act(async () => {
+			sendQuote(threadId, { key: "next", quote: replacement, cut: false });
+		});
+		const chips = () =>
+			Array.from(
+				container.querySelectorAll('[data-testid="composer-quote"]'),
+			).map((c) => c.textContent);
+		expect(chips()).toEqual([expect.stringContaining("Approved")]);
+
+		await act(async () => {
+			settle("sent");
+			await settled;
+		});
+		expect(chips()).toEqual([expect.stringContaining("Approved")]);
+		await enter();
+		expect(onSend).toHaveBeenCalledTimes(2);
+		expect(onSend.mock.calls.map(([env]) => env.quotes)).toEqual([
+			[sent],
+			[replacement],
+		]);
 	});
 
 	it("merges extras into the envelope received by onSend", async () => {
