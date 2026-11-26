@@ -408,7 +408,7 @@ export function modelsLine(
 }
 
 /** Show or hide, star, reorder and add models; one PATCH per change (#907 decision 2). */
-function ModelsSection({ agent }: { agent: HarnessStatus }) {
+export function ModelsSection({ agent }: { agent: HarnessStatus }) {
 	const id = agent.id as HarnessId;
 	const { customModels, hiddenModels, modelOrder, models } = useAgentChoice();
 	const favourites = useHarnessSettings().data?.favourites ?? [];
