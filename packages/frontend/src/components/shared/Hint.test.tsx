@@ -138,3 +138,56 @@ describe("Hint on pointer leave (#1020)", () => {
 		host.remove();
 	});
 });
+
+describe("Hint on scroll (#1193)", () => {
+	it("opens no hint when the page scrolls during the hover delay", () => {
+		vi.useFakeTimers();
+		// A hint closed within SKIP_MS of now shows without its delay; start past that.
+		vi.setSystemTime(Date.now() + 1_000);
+		const host = document.createElement("div");
+		document.body.appendChild(host);
+		const root = createRoot(host);
+		act(() =>
+			root.render(
+				<TooltipProvider>
+					<Hint label="Files">
+						<button type="button">icon</button>
+					</Hint>
+				</TooltipProvider>,
+			),
+		);
+		const button = host.querySelector("button") as HTMLButtonElement;
+		act(() => {
+			button.dispatchEvent(
+				new PointerEvent("pointermove", {
+					bubbles: true,
+					pointerType: "mouse",
+				}),
+			);
+			vi.advanceTimersByTime(200);
+		});
+		act(() => {
+			document.dispatchEvent(new Event("scroll"));
+			vi.runAllTimers();
+		});
+		expect(document.querySelector('[data-testid="hint"]')).toBeNull();
+		act(() => {
+			button.dispatchEvent(
+				new PointerEvent("pointerleave", { pointerType: "mouse" }),
+			);
+			button.dispatchEvent(
+				new PointerEvent("pointermove", {
+					bubbles: true,
+					pointerType: "mouse",
+				}),
+			);
+			vi.runAllTimers();
+		});
+		expect(
+			document.querySelector('[data-testid="hint"]')?.textContent,
+		).toContain("Files");
+		act(() => root.unmount());
+		host.remove();
+		vi.useRealTimers();
+	});
+});

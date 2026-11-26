@@ -8,7 +8,7 @@ import { HARNESS_IDS } from "@prismalens/config/harness";
  */
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
-import { MESSAGE_KEY, UUID } from "./composer-values.js";
+import { MESSAGE_KEY, UUID_PATTERN } from "./composer-values.js";
 import { AccessLevelSchema, AgentModeIdSchema } from "./settings.js";
 
 /**
@@ -20,7 +20,7 @@ export const ComposerScopeSchema = /* @__PURE__ */ lazySchema(() =>
 		.string()
 		.regex(
 			new RegExp(
-				`^(thread:${UUID}|new:home(:${UUID})?|new:(project|service|incident):${UUID}(:${UUID})?)$`,
+				`^(thread:${UUID_PATTERN}|new:home(:${UUID_PATTERN})?|new:(project|service|incident):${UUID_PATTERN}(:${UUID_PATTERN})?)$`,
 			),
 			"Not a composer scope.",
 		),
@@ -103,6 +103,10 @@ export const ReferenceRefSchema = /* @__PURE__ */ lazySchema(() =>
 	}),
 );
 export type ReferenceRef = z.infer<typeof ReferenceRefSchema>;
+
+/** A `message` reference's id: its thread and its event key (#1195). */
+export const messageRefId = (threadId: string, key: string) =>
+	`${threadId}/${key}`;
 
 export const MAX_QUOTES_PER_MESSAGE = 10;
 export const MAX_REFERENCES_PER_MESSAGE = 20;

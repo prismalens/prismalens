@@ -407,6 +407,50 @@ describe("the one composer (#1020)", () => {
 		expect(chips[0]?.textContent).toContain("the quoted slice");
 	});
 
+	it("a restored draft keeps the line break and the spaces typed while it loaded", async () => {
+		mockServerDraft = {
+			scope: "new:home",
+			rev: 2,
+			generation: 0,
+			version: 2,
+			doc: textDoc("hello"),
+			text: "hello",
+			quotes: [],
+			references: [],
+			choice: {},
+			updatedAt: "2026-11-11T10:00:00.000Z",
+			attachments: [],
+		};
+		mockServerDraftPending = true;
+		const props = await render({ scope: "new:home" });
+		const editor = getEditor(q("composer-input") as HTMLElement);
+		await act(async () => {
+			editor.commands.insertContent([
+				{ type: "text", text: " alpha" },
+				{ type: "hardBreak" },
+				{ type: "text", text: "beta " },
+			]);
+		});
+		mockServerDraftPending = false;
+		await act(async () => root.render(<Composer {...props} />));
+		await settleEditor();
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 10));
+		});
+		expect(
+			getEditor(q("composer-input") as HTMLElement).getJSON().content,
+		).toEqual([
+			{
+				type: "paragraph",
+				content: [
+					{ type: "text", text: "hello alpha" },
+					{ type: "hardBreak" },
+					{ type: "text", text: "beta " },
+				],
+			},
+		]);
+	});
+
 	it("keeps the typed text in the box when onSend returns deferred or cancelled", async () => {
 		const onSendDeferred = vi.fn(() => "deferred" as const);
 		await render({ onSend: onSendDeferred });
@@ -555,6 +599,48 @@ describe("the one composer (#1020)", () => {
 				container.querySelectorAll('[data-testid="composer-file"]'),
 			).map((f) => f.textContent),
 		).toEqual([expect.stringContaining("later.log")]);
+	});
+
+	it("keeps a replacement file of the same name when a deferred send settles", async () => {
+		let settle!: (val: "sent" | "cancelled") => void;
+		const settled = new Promise<"sent" | "cancelled">((resolve) => {
+			settle = resolve;
+		});
+		const onSend = vi.fn(() => ({ result: "deferred" as const, settled }));
+		await render({
+			onSend,
+			initialFiles: [new File(["a"], "same.log", { type: "text/plain" })],
+		});
+		const box = q("composer-input") as HTMLElement;
+		await act(async () => {
+			box.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			);
+		});
+		expect(onSend).toHaveBeenCalledTimes(1);
+		await act(async () => {
+			(q("composer-chip-remove") as HTMLButtonElement).click();
+		});
+		const input = q("composer-file-input") as HTMLInputElement;
+		await act(async () => {
+			Object.defineProperty(input, "files", {
+				configurable: true,
+				value: [new File(["replacement"], "same.log", { type: "text/plain" })],
+			});
+			input.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+		expect(getText(box)).toBe(" [same.log] ");
+
+		await act(async () => {
+			settle("sent");
+			await settled;
+		});
+		expect(getText(box)).toBe(" [same.log] ");
+		expect(
+			Array.from(
+				container.querySelectorAll('[data-testid="composer-file"]'),
+			).map((f) => f.textContent),
+		).toEqual([expect.stringContaining("same.log")]);
 	});
 
 	it("merges extras into the envelope received by onSend", async () => {

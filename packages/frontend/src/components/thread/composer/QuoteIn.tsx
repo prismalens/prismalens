@@ -3,6 +3,7 @@
 
 import { FileText, MessageSquare, SquarePen } from "lucide-react";
 import { useDeferredValue, useState } from "react";
+import { Problem } from "@/components/shared/State";
 import {
 	Command,
 	CommandEmpty,
@@ -33,6 +34,8 @@ export interface PickableThread {
 export function QuotePicker({
 	threads,
 	loading,
+	failed = false,
+	onRetry,
 	query,
 	onQuery,
 	onNew,
@@ -40,6 +43,9 @@ export function QuotePicker({
 }: {
 	threads: readonly PickableThread[];
 	loading: boolean;
+	/** The thread list did not load: New thread stays, and Retry asks again. */
+	failed?: boolean;
+	onRetry?: () => void;
 	query: string;
 	onQuery: (q: string) => void;
 	onNew: () => void;
@@ -56,6 +62,13 @@ export function QuotePicker({
 			/>
 			<CommandList className="max-h-[360px]">
 				<CommandEmpty>{loading ? "Loading threads" : "No thread"}</CommandEmpty>
+				{failed && (
+					<Problem
+						text="Threads did not load."
+						onRetry={onRetry}
+						className="px-3"
+					/>
+				)}
 				<CommandGroup>
 					<CommandItem
 						value="new-thread"
@@ -150,6 +163,8 @@ export function QuoteIn({
 				<QuotePicker
 					threads={threads}
 					loading={feed.isPending}
+					failed={feed.isError}
+					onRetry={() => void feed.refetch()}
 					query={query}
 					onQuery={setQuery}
 					onNew={() => {

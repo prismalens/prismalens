@@ -126,7 +126,7 @@ import { askAside, btwQuestion, onPrimeAside } from "./aside-bus";
 import type { ComposerState } from "./Composer";
 import { ComposerStandIn } from "./ComposerStandIn";
 import { decidedForYou } from "./composer/decided";
-import { openNewThread, quoteOf } from "./composer/quote";
+import { openNewThread, quoteOf, setItemJumper } from "./composer/quote";
 import { scopedChangesOptions } from "./diff/use-scoped-changes";
 import type { FindView } from "./find/find-highlight";
 import { GitStateChip, GitStateStrip } from "./git/GitStateChip";
@@ -625,6 +625,11 @@ export function ThreadPage({ id }: { id: string }) {
 		landing.at ?? win?.landing ?? undefined,
 		setOpenSteps,
 	);
+	const { goTo } = jumps;
+	useEffect(() => {
+		setItemJumper(goTo);
+		return () => setItemJumper(null);
+	}, [goTo]);
 	useReadAdvance(
 		id,
 		jumps.range.last,

@@ -55,6 +55,10 @@ const OP = '"kind":"operator_message"';
 const cut = (s: string, n: number) =>
 	s.length > n ? `${s.slice(0, n - 1)}…` : s;
 
+/** The cited message goes whole: the excerpt sent with it points here for the rest. */
+const reply = (text: string, mark: string) =>
+	mark ? text : cut(text, REPLY_CHARS);
+
 function parse(raw: string): CanonicalEvent | null {
 	try {
 		const p = CanonicalEventSchema.safeParse(JSON.parse(raw));
@@ -315,10 +319,10 @@ export class Citations {
 			const mark =
 				rowKey(r.branchId, r.seq) === key ? " (the cited message)" : "";
 			if (e.kind === "operator_message" && e.text.trim())
-				lines.push(`User asked${mark}:\n${cut(e.text.trim(), REPLY_CHARS)}`);
+				lines.push(`User asked${mark}:\n${reply(e.text.trim(), mark)}`);
 			if (e.kind !== "agent_step") continue;
 			if (e.text.trim())
-				lines.push(`Agent said${mark}:\n${cut(e.text.trim(), REPLY_CHARS)}`);
+				lines.push(`Agent said${mark}:\n${reply(e.text.trim(), mark)}`);
 			for (const c of e.toolCalls) {
 				calls.push(`- ${c.name} ${cut(JSON.stringify(c.args), CALL_CHARS)}`);
 				for (const k of PATH_KEYS) {

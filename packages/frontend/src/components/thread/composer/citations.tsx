@@ -11,6 +11,7 @@ import {
 	useContext,
 	useMemo,
 } from "react";
+import { Problem } from "@/components/shared/State";
 import { orpc } from "@/lib/api/orpc-client";
 
 /** A thread's citations both ways (#1195); one request per thread, shared by its rows. */
@@ -40,7 +41,8 @@ export function CitationsProvider({
 	threadId: string;
 	children: ReactNode;
 }) {
-	const data = useCitations(threadId).data;
+	const query = useCitations(threadId);
+	const data = query.data;
 	const citedIn = data?.citedIn ?? NONE;
 	const cites = data?.cites ?? NONE;
 	const value = useMemo(
@@ -48,7 +50,15 @@ export function CitationsProvider({
 		[threadId, citedIn, cites],
 	);
 	return (
-		<CitedInContext.Provider value={value}>{children}</CitedInContext.Provider>
+		<CitedInContext.Provider value={value}>
+			{!data && query.isError && (
+				<Problem
+					text="Citations did not load."
+					onRetry={() => void query.refetch()}
+				/>
+			)}
+			{children}
+		</CitedInContext.Provider>
 	);
 }
 
