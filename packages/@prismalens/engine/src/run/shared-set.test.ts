@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import type { SharedMcpServerStored } from "@prismalens/contracts/schemas";
@@ -172,29 +172,72 @@ describe("deliverShared (#1180 §3.3)", () => {
 });
 
 describe("a node script relative to the session's folder (#1180 §3.3)", () => {
+	const NOTE = "Needs an absolute script path";
 	const ws = mkdtempSync(join(dir, "ws-"));
-	writeFileSync(join(ws, "server.js"), "x");
+	const outside = mkdtempSync(join(dir, "out-"));
+	// Each name below is written so Node resolves it on every platform: on Windows `\` is a
+	// separator, elsewhere part of the file's name.
+	mkdirSync(join(ws, "srv"));
+	mkdirSync(join(ws, "%2e%2e"));
+	mkdirSync(join(dir, "x"), { recursive: true });
+	for (const f of ["server.js", ".\\server.js", "srv/index.js", "srv\\index.js", "%2e%2e/server.js"])
+		writeFileSync(join(ws, f), "x");
+	writeFileSync(join(dir, "x", "server.js"), "x");
+	writeFileSync(join(outside, "index.js"), "x");
+	symlinkSync(outside, join(ws, "out"), "junction");
 	const pkg = mkdtempSync(join(dir, "ws-"));
 	mkdirSync(join(pkg, "server"));
 	writeFileSync(join(pkg, "server", "index.js"), "x");
+	type Arg = string | { value: string };
 	/** A bound server whose command is a file named `name`, as approval stores it. */
-	const server = async (name: string, args: string[]) => {
+	const server = async (name: string, args: Arg[], values: Record<string, string>) => {
 		const bin = mkdtempSync(join(dir, "bin-"));
 		writeFileSync(join(bin, name), "x");
 		const bound = await bindFiles({ type: "stdio", command: join(bin, name), args, env: [] }, {});
 		const hash = sharedServerHash(bound.def, bound.files);
-		return { name: "s", ...bound, values: {}, hash, valuesFor: hash, recipients: ["claude-code"], from: null };
+		return { name: "s", ...bound, values, hash, valuesFor: hash, recipients: ["claude-code"], from: null };
 	};
-	const sent = async (name: string, args: string[], cwd = ws) => {
-		const d = await deliverShared([await server(name, args)], "claude-code", { http: true, ownNames: [], cwd });
+	const deliver = async (name: string, args: Arg[], values: Record<string, string> = {}, cwd = ws) =>
+		deliverShared([await server(name, args, values)], "claude-code", { http: true, ownNames: [], cwd });
+	const sent = async (name: string, args: Arg[], values: Record<string, string> = {}, cwd = ws) => {
+		const d = await deliver(name, args, values, cwd);
 		return [d.servers.length, d.items[0]?.note ?? null];
 	};
+	const script = (value: string, cwd = ws, before: string[] = [], name = "node") =>
+		sent(name, [...before, { value: "SCRIPT" }], { SCRIPT: value }, cwd);
 
 	it("is not sent, and says it needs an absolute script path, for `node server` with server.js or with server/index.js", async () => {
-		expect([await sent("node", ["server"]), await sent("node", ["server"], pkg)]).toEqual([
-			[0, "Needs an absolute script path"],
-			[0, "Needs an absolute script path"],
+		expect([await sent("node", ["server"]), await sent("node", ["server"], {}, pkg)]).toEqual([
+			[0, NOTE],
+			[0, NOTE],
 		]);
+	});
+
+	it("checks the argv after values are put in: a value naming a relative script in any spelling Node resolves is not sent", async () => {
+		const values = ["server", "./server", ".\\server", "srv/", "srv\\index", "../x/server", "%2e%2e/server", "out"];
+		const outcomes = [];
+		for (const v of values) outcomes.push(await script(v));
+		outcomes.push(await script("server", pkg));
+		expect(outcomes).toEqual([...values, "server/index.js"].map(() => [0, NOTE]));
+	});
+
+	it("finds the script after node's flags, and when node is node.exe", async () => {
+		expect([
+			await script("server", ws, ["--inspect"]),
+			await script("server", ws, ["-r", "x"]),
+			await script("server", ws, [], "node.exe"),
+		]).toEqual([
+			[0, NOTE],
+			[0, NOTE],
+			[0, NOTE],
+		]);
+	});
+
+	it("puts a value into neither the note, the row nor the servers when it holds one back", async () => {
+		const secret = "srv-7f3a9c";
+		writeFileSync(join(ws, `${secret}.js`), "x");
+		const d = await deliver("node", [{ value: "SCRIPT" }], { SCRIPT: secret });
+		expect([d.items[0]?.note, d.servers, d.hidden, JSON.stringify(d).includes(secret)]).toEqual([NOTE, [], [], false]);
 	});
 
 	it("sends `npx some-pkg serve`, `node --run build` and a node script given by its full path", async () => {
@@ -202,7 +245,9 @@ describe("a node script relative to the session's folder (#1180 §3.3)", () => {
 			await sent("npx", ["some-pkg", "serve"]),
 			await sent("node", ["--run", "build"]),
 			await sent("node", [join(ws, "server.js")]),
+			await script(join(ws, "server.js")),
 		]).toEqual([
+			[1, null],
 			[1, null],
 			[1, null],
 			[1, null],

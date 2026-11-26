@@ -200,6 +200,26 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 		]);
 	});
 
+	it("holds back a node server whose secret argument names a script in the run's folder, and the secret is in neither the run's share nor What loads", async () => {
+		const secret = "srv-7f3a9c";
+		const ws = join(env.root, "node-secret-ws");
+		mkdirSync(ws, { recursive: true });
+		writeFileSync(join(ws, `${secret}.js`), "x");
+		const node = join(bin, "node");
+		writeFileSync(node, "x");
+		const def = { type: "stdio" as const, command: node, args: [{ value: "SCRIPT" }], env: [] };
+		await service.approveSharedServer({ name: "nodes", def, values: { SCRIPT: secret }, recipients: ["claude-code"], from: null });
+		const repositoryId = (await prisma.repository.create({ data: { fullName: "local/node-secret-ws", url: ws } })).id;
+		const run = await service.forRun("claude-code", ws);
+		const view = await service.loadout({ id: "claude-code", repositoryId });
+		expect([
+			run.servers,
+			run.hidden,
+			view.items.find((i) => i.name === "pl-nodes")?.note,
+			JSON.stringify([run, view]).includes(secret),
+		]).toEqual([[], [], "Needs an absolute script path", false]);
+	});
+
 	it("refuses an approved URL that carries sign-in, a query or a fragment", async () => {
 		const urls = ["https://u:p@mcp.example/v1", "https://mcp.example/v1?key=x", "https://mcp.example/v1#f"];
 		const outcomes = await Promise.all(
