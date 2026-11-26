@@ -22,6 +22,7 @@ import {
 	HarnessService,
 	storedUseDefault,
 } from "./harness.service.js";
+import type { AgentUpdatesService } from "./agent-updates.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
 import type { HarnessProbeService } from "./harness-probe.service.js";
 
@@ -212,6 +213,33 @@ describe("HarnessService", () => {
 	});
 
 	describe("customModels per harness (#673 w57)", () => {
+		it("keeps a custom model's name and known labels, and a bare id as a string (#1180)", async () => {
+			mockPrismaService.setting.findUnique.mockResolvedValue(
+				settingRow({
+					harness: "auto",
+					customModels: {
+						opencode: [
+							"local/a",
+							{ id: " local/b ", name: " Gateway B ", labels: ["fast", "telepathy"] },
+							{ id: "local/c", name: "  " },
+							{ id: "local/a", name: "dupe" },
+							{ name: "no id" },
+						],
+					},
+				}),
+			);
+			await expect(service().getSettings()).resolves.toEqual({
+				harness: "auto",
+				customModels: {
+					opencode: [
+						"local/a",
+						{ id: "local/b", name: "Gateway B", labels: ["fast"] },
+						"local/c",
+					],
+				},
+			});
+		});
+
 		it("getSettings cleans customModels: trims, deduplicates, drops empty lists and unknown harness ids", async () => {
 			mockPrismaService.setting.findUnique.mockResolvedValue(
 				settingRow({
@@ -431,6 +459,32 @@ describe("HarnessService", () => {
 	});
 
 	describe("getStatus", () => {
+		it("carries each installed agent's update, sign-out and account lines from AgentUpdatesService (#1180)", async () => {
+			process.env.PATH = pathWith("opencode");
+			const lines = {
+				update: { command: "opencode upgrade" },
+				newerRelease: "2.5.0",
+				signOut: { command: "opencode auth logout" },
+				switchAccount: null,
+			};
+			const updates = {
+				releases: vi.fn(async () => ({})),
+				commandsFor: vi.fn(async () => lines),
+			} as unknown as AgentUpdatesService;
+			const svc = new HarnessService(
+				mockPrismaService as unknown as PrismaService,
+				new HarnessModelsService(),
+				{} as HarnessProbeService,
+				undefined,
+				updates,
+			);
+			const status = await svc.getStatus();
+			const row = (id: string) => status.harnesses.find((h) => h.id === id);
+			expect(row("opencode")).toMatchObject(lines);
+			expect(row("codex")?.update).toBeUndefined();
+			expect(updates.commandsFor).toHaveBeenCalledTimes(1);
+		});
+
 		it("reports every registry row alongside the verdict", async () => {
 			process.env.PATH = pathWith("opencode");
 

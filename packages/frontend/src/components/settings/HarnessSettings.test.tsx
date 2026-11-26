@@ -83,6 +83,11 @@ const mockHarnesses: HarnessStatus[] = [
 	},
 ];
 
+const { stageSpy, checkHarnessSpy } = vi.hoisted(() => ({
+	stageSpy: vi.fn(),
+	checkHarnessSpy: vi.fn(async () => ({})),
+}));
+
 // Its rows have their own tests.
 vi.mock("./AgentThreadsSettings", () => ({
 	AgentThreadsGroup: () => null,
@@ -119,9 +124,19 @@ vi.mock("@/lib/api/hooks", () => ({
 // Permissions reads what each agent enforced; these tests have no runs.
 vi.mock("@tanstack/react-query", () => ({
 	useQuery: () => ({ data: { rows: [] } }),
+	useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 vi.mock("@/lib/api/orpc-client", () => ({
 	orpc: { usage: { enforcement: { queryOptions: () => ({}) } } },
+	client: { settings: { harnesses: { checkHarness: checkHarnessSpy } } },
+}));
+vi.mock("@/lib/terminal/use-terminal-availability", () => ({
+	useTerminalAvailability: () => ({ available: true }),
+}));
+vi.mock("@/lib/terminal/store", () => ({
+	terminalStore: { stage: stageSpy },
+	useTerminalState: (pick: (s: { hosts: number }) => unknown) =>
+		pick({ hosts: 1 }),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -780,5 +795,62 @@ describe("versionText", () => {
 			tested: null,
 		};
 		expect(versionText(h)).toBeNull();
+	});
+});
+
+describe("HarnessSettings Update all (#1180)", () => {
+	afterEach(() => {
+		for (const h of mockHarnesses) {
+			h.update = undefined;
+			h.versionVsTested = undefined;
+			h.newerRelease = undefined;
+		}
+		stageSpy.mockClear();
+		checkHarnessSpy.mockClear();
+	});
+
+	it("joins two due update commands with `; ` in one fresh terminal and checks both again", async () => {
+		Object.assign(mockHarnesses[0], {
+			update: { command: "claude update" },
+			versionVsTested: "older",
+		});
+		Object.assign(mockHarnesses[2], {
+			update: { command: "opencode upgrade" },
+			newerRelease: "2.5.0",
+		});
+		await act(async () => root.render(<HarnessSettings />));
+		await act(async () =>
+			(
+				container.querySelector(
+					'[data-testid="agents-update-all"]',
+				) as HTMLButtonElement
+			).click(),
+		);
+		expect(stageSpy).toHaveBeenCalledTimes(1);
+		const [line, opts] = stageSpy.mock.calls[0] as [
+			string,
+			{ fresh: boolean; onEnd: () => void },
+		];
+		expect(line).toBe("claude update; opencode upgrade; exit");
+		expect(opts.fresh).toBe(true);
+		await act(async () => opts.onEnd());
+		expect(checkHarnessSpy.mock.calls).toEqual([
+			[{ id: "claude-code" }],
+			[{ id: "opencode" }],
+		]);
+	});
+
+	it("one due update shows no Update all", async () => {
+		Object.assign(mockHarnesses[0], {
+			update: { command: "claude update" },
+			versionVsTested: "older",
+		});
+		Object.assign(mockHarnesses[2], {
+			update: { command: "opencode upgrade" },
+		});
+		await act(async () => root.render(<HarnessSettings />));
+		expect(
+			container.querySelector('[data-testid="agents-update-all"]'),
+		).toBeNull();
 	});
 });

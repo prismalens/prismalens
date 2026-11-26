@@ -12,6 +12,7 @@ import {
 	SANDBOX_STATES,
 } from "@prismalens/config/harness";
 import { z } from "zod";
+import { MODEL_LABELS } from "./settings-values.js";
 import { SubagentLimitSchema, SubagentsOnStopSchema } from "./subagents.js";
 
 // =============================================================================
@@ -197,6 +198,19 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 		added: z.boolean().optional(),
 		/** The agent's own login, staged in the terminal; null when it has none here (#1171). */
 		signIn: z.object({ command: z.string() }).nullable().optional(),
+		/** The agent's own sign-out and account switch, staged like Sign in; null under the same stored-env rule (#1180). */
+		signOut: z.object({ command: z.string() }).nullable().optional(),
+		switchAccount: z.object({ command: z.string() }).nullable().optional(),
+		/** How to update it: a command to stage, or its documented route as text (#1180). */
+		update: z
+			.union([
+				z.object({ command: z.string() }),
+				z.object({ line: z.string() }),
+			])
+			.nullable()
+			.optional(),
+		/** A newer npm release than the installed one, read daily under Check for updates (#1180). */
+		newerRelease: z.string().nullable().optional(),
 		/** The version it ran against the tested one; null when either is unknown. */
 		versionVsTested: z.enum(["older", "same", "newer"]).nullable().optional(),
 		/** The program Binary path names: the agent's own CLI, not its adapter; empty for the local agent. */
@@ -249,6 +263,8 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 				companionVersion: z.string().nullable().default(null),
 				/** The model it reported as current: the agent's own model row names this, never a PrismaLens choice. */
 				servedModel: z.string().nullable(),
+				/** The served model, when the agent's own options listed a Fast mode for it (#1180). */
+				fastModel: z.string().optional(),
 				effort: EffortOptionSchema.nullable(),
 				/** The agent's own permission modes; null when it advertised none. */
 				modes: z.array(AgentModeOptionSchema).nullable().default(null),
@@ -300,8 +316,16 @@ const ModelIdSchema = /* @__PURE__ */ lazySchema(() =>
 const EffortValueSchema = /* @__PURE__ */ lazySchema(() =>
 	z.string().min(1).max(64),
 );
+/** A custom model with the name and labels the person gave it (#1180). */
+export const CustomModelSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		id: ModelIdSchema,
+		name: z.string().max(80).optional(),
+		labels: z.array(z.enum(MODEL_LABELS)).max(3).optional(),
+	}),
+);
 const CustomModelsSchema = /* @__PURE__ */ lazySchema(() =>
-	z.array(ModelIdSchema).max(50),
+	z.array(z.union([ModelIdSchema, CustomModelSchema])).max(50),
 );
 const PathSchema = /* @__PURE__ */ lazySchema(() =>
 	z.string().trim().min(1).max(1024),

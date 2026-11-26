@@ -44,6 +44,8 @@ import type {
 import {
 	AccessLevelSchema,
 	asksLeftOpen,
+	type CustomModel,
+	customModelsOf,
 	ENDED_INCIDENT_STATUSES,
 	effectiveAccess,
 	HelperPlaceSchema,
@@ -356,12 +358,12 @@ export function resolveHarnessRunModel(
 /** The run's model is one the operator added in Settings, Agent (#673 w57). */
 export function isCustomModel(
 	model: { model?: string; modelSource?: ModelSource },
-	custom: readonly string[] | undefined,
+	custom: readonly (string | CustomModel)[] | undefined,
 ): boolean {
 	return (
 		model.modelSource === "operator" &&
 		!!model.model &&
-		!!custom?.includes(model.model)
+		customModelsOf(custom).some((m) => m.id === model.model)
 	);
 }
 
