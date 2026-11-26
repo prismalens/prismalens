@@ -291,6 +291,14 @@ describe("the rows a sent message leaves (#1195)", () => {
 	});
 });
 
+// A turn's body between its fence lines, as its blocks in order.
+const turnBlocks = (body: string) => body.split("\n").slice(5, -1).join("\n").split("\n\n");
+const steps = (from: number, to: number, cited?: number) =>
+	Array.from({ length: to - from + 1 }, (_, i) => {
+		const n = from + i;
+		return `Agent said${n === cited ? " (the cited message)" : ""}:\nstep ${n}`;
+	});
+
 describe("pl_citation_read (#1195)", () => {
 	it("returns the cited message's turn: its words, tool calls, edits and files, with a link to it", async () => {
 		const read = tool();
@@ -378,10 +386,11 @@ describe("pl_citation_read (#1195)", () => {
 			references: [{ kind: "message", id: messageRefId(short, "main:0"), label: "first" }],
 		});
 		const r = await tool()(citing, { threadId: short, key: "main:0" });
-		expect(r.body.body).toContain("User asked (the cited message):\nGo\n");
-		expect(r.body.body).toContain("Agent said:\nstep 200\n");
-		expect(r.body.body).toContain("Agent said:\nstep 299\n");
-		expect(r.body.body).not.toContain("left out");
+		expect(turnBlocks(r.body.body as string)).toEqual([
+			"Thread title: Opening cite",
+			"User asked (the cited message):\nGo",
+			...steps(1, 299),
+		]);
 	});
 
 	it("names how many rows of a long turn it leaves out, where it leaves them", async () => {
@@ -574,10 +583,11 @@ ${"b".repeat(1999)}…
 			references: [{ kind: "message", id: messageRefId(mid, "main:251"), label: "mid" }],
 		});
 		const body = (await tool()(citing, { threadId: mid, key: "main:251" })).body.body as string;
-		expect(body).toContain("Agent said:\nstep 225\n");
-		expect(body).toContain("Agent said (the cited message):\nstep 251\n");
-		expect(body).toContain("Agent said:\nstep 299\n");
-		expect(body).not.toContain("left out");
+		expect(turnBlocks(body)).toEqual([
+			"Thread title: Mid cite",
+			"User asked:\nGo",
+			...steps(1, 299, 251),
+		]);
 	});
 
 	it("reads nothing when a reset lands between finding the citation and reading its turn", async () => {
