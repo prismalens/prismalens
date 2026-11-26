@@ -164,11 +164,11 @@ import {
 	ScheduledFailedDock,
 	signInOf,
 } from "./session/StopDocks";
-import { useSharedSetLine } from "./shared-set-line";
 import { usePageSlots } from "./slots";
 import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
 import { threadLanding } from "./thread-landing";
 import { useRewind } from "./use-rewind";
+import { useSharedSetLine } from "./use-shared-set-line";
 import { useTranscriptJumps } from "./use-transcript-jumps";
 
 /** The confirm loads when an edit, undo or restore opens it, not with the thread's first paint. */

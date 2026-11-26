@@ -1,25 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
+import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import {
 	heldSharedRevision,
 	type SharedRevisionEvent,
 	type SharedSet,
 } from "@prismalens/contracts/schemas";
-import { useMemo } from "react";
-import { useSharedSet } from "@/lib/api/hooks/use-agent-setup-orpc";
+import type { QueryClient } from "@tanstack/react-query";
+import { orpc } from "@/lib/api/orpc-client";
+import { type Agent, keepsSystemPrompt } from "./use-shared-set-line";
 
 export const SHARED_SET_COMPACT_LINE =
 	"Changed instructions reach this thread after it compacts.";
-
-type Agent = HarnessId | string | null | undefined;
-
-const keepsSystemPrompt = (harness: Agent): harness is HarnessId =>
-	!!harness &&
-	Object.hasOwn(HARNESS_REGISTRY, harness) &&
-	HARNESS_REGISTRY[harness as HarnessId].facts?.systemPromptVia?.value ===
-		"claude-meta";
 
 /**
  * The composer line for a thread whose session holds other PrismaLens instructions than the
@@ -44,13 +37,14 @@ export function sharedSetLine(
 	};
 }
 
-export function useSharedSetLine(
+/** The line once the set is read: from the cache Settings keeps, else fetched once. */
+export async function sharedSetLineFor(
+	client: QueryClient,
 	events: readonly SharedRevisionEvent[],
 	harness: Agent,
-) {
-	const set = useSharedSet(keepsSystemPrompt(harness)).data;
-	return useMemo(
-		() => sharedSetLine(events, harness, set),
-		[events, harness, set],
+): Promise<{ line: string; detail: string } | null> {
+	const set = await client.ensureQueryData(
+		orpc.settings.agentSetup.sharedSet.queryOptions({ input: {} }),
 	);
+	return sharedSetLine(events, harness, set);
 }

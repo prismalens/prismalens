@@ -103,9 +103,7 @@ const slotState = vi.hoisted(() => ({
 
 // The header's parent crumb reads the thread tree, outside what these tests cover.
 vi.mock("./ParentLink", () => ({ ParentLink: () => null }));
-vi.mock("@/lib/api/hooks/use-agent-setup-orpc", () => ({
-	useSharedSet: () => ({ data: undefined }),
-}));
+vi.mock("./use-shared-set-line", () => ({ useSharedSetLine: () => null }));
 
 vi.mock("./slots", () => ({
 	usePageSlots: () => slotState.slots,
