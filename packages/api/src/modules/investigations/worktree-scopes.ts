@@ -24,6 +24,7 @@ import {
 	type RevertBlock,
 	type RevertChangesInput,
 	type RevertChangesResult,
+	type RevertKept,
 	type RewindRepoPreview,
 	RUN_DIFF_MAX_BYTES,
 	type RunWorkspace,
@@ -568,7 +569,14 @@ const refused = (
 	reason: Extract<RevertChangesResult, { state: "refused" }>["reason"],
 	paths: string[] = [],
 	block: RevertBlock | null = null,
-): RevertChangesResult => ({ state: "refused", reason, paths, block });
+	kept: RevertKept[] = [],
+): RevertChangesResult => ({
+	state: "refused",
+	reason,
+	paths,
+	block,
+	...(kept.length ? { kept } : {}),
+});
 
 const REGULAR = /^(100644|100755) [0-9a-f]+$/;
 
@@ -772,12 +780,14 @@ export async function revertChanges(
 				targets: final,
 				backup: now,
 			});
-			if (written.linked) return refused("linked", [written.linked]);
+			if (written.linked)
+				return refused("linked", [written.linked], null, written.kept);
 			await takeSnapshot(store, { ref: `${REVERT_REF}/${id}/after` });
 			return {
 				state: "done",
 				revertId: id,
 				paths: written.receipt.map((r) => r.path),
+				kept: written.kept,
 			} satisfies RevertChangesResult;
 		} catch (e) {
 			if (e instanceof HunkConflict) return refused("stale", paths);
@@ -922,7 +932,7 @@ async function unlinkKnown(path: string): Promise<void> {
 
 export interface WriteResult {
 	receipt: ReceiptRow[];
-	kept: RewindKeep[];
+	kept: RevertKept[];
 	/** A linked ancestor stopped the writes; what was written was set back. */
 	linked: string | null;
 }
@@ -944,7 +954,7 @@ export async function writeStates(
 		backup: Map<string, string>;
 	},
 ): Promise<WriteResult> {
-	const kept: RewindKeep[] = [];
+	const kept: RevertKept[] = [];
 	const receipt: ReceiptRow[] = [];
 	const paths = [...o.targets.keys()];
 	const filtered = await filteredPaths(store, paths);

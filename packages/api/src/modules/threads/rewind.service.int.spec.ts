@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eventually, ScenarioApp } from "../../../test/scenarios/support/scenario-app.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
-import { rewindFiles, storeOps, undoRewindFiles } from "../investigations/worktree-scopes.js";
+import { restoreFiles, rewindFiles, storeOps, undoRewindFiles } from "../investigations/worktree-scopes.js";
 import { snapshotStores, storeGit } from "../investigations/worktree-snapshots.js";
 import { ToolAsksService } from "../investigations/tool-asks.service.js";
 import { RewindService } from "./rewind.service.js";
@@ -36,7 +36,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 vi.mock("../investigations/worktree-scopes.js", async (importOriginal) => {
 	const m = await importOriginal<typeof import("../investigations/worktree-scopes.js")>();
-	return { ...m, rewindFiles: vi.fn(m.rewindFiles), undoRewindFiles: vi.fn(m.undoRewindFiles) };
+	return {
+		...m,
+		rewindFiles: vi.fn(m.rewindFiles),
+		undoRewindFiles: vi.fn(m.undoRewindFiles),
+		restoreFiles: vi.fn(m.restoreFiles),
+	};
 });
 const actual = await vi.importActual<typeof import("../investigations/worktree-scopes.js")>(
 	"../investigations/worktree-scopes.js",
@@ -50,6 +55,7 @@ const APP_V1 = "line 1\nline 2\ntimeout = 5\nline 4\nline 5\nline 6\nline 7\nlin
 const APP_TURN_1 = APP_V1.replace("retries = 1", "retries = 2");
 const APP_TURN_2 = APP_V1.replace("retries = 1", "retries = 3");
 const HAND_EDIT = "# shop\n\nEdited by hand.\n";
+const FIRST = "fake-session:rewind The checkout client retries too little. Raise the retries step by step.";
 const MESSAGE_2 = "Set the retries to 3";
 let projectId = "";
 
@@ -104,7 +110,7 @@ async function fixture(): Promise<{ id: string; cwd: string }> {
 		method: "POST",
 		body: {
 			subject: { kind: "project", repositoryId: projectId },
-			text: "fake-session:rewind The checkout client retries too little. Raise the retries step by step.",
+			text: FIRST,
 			workIn: "worktree",
 		},
 	});
@@ -142,6 +148,12 @@ async function rewindAt(id: string, seq: number, text = "Set the retries to 5", 
 		{ kind: "you" },
 		true,
 	);
+}
+
+/** Stops PrismaLens and starts it again on the same data: its boot hooks run before it serves. */
+async function restart() {
+	await pl.stop();
+	await pl.boot();
 }
 
 function doneOf<T extends { state: string }>(r: T): Extract<T, { state: "done" }> {
@@ -353,6 +365,52 @@ describe("RewindService (#1193)", () => {
 		}
 	});
 
+	it("the events reader pages past folded rows: it never returns one, keeps a same-seq group whole, and its cursors skip none", async () => {
+		const { id } = await fixture();
+		const prisma = await pl.prisma();
+		const { _max } = await prisma.investigationEvent.aggregate({ where: { investigationId: id }, _max: { seq: true } });
+		const base = _max.seq ?? 0;
+		const step = (seq: number, branchId: string, text: string) => ({
+			kind: "agent_step" as const,
+			runId: id,
+			branchId,
+			path: [],
+			seq,
+			ts: new Date(0).toISOString(),
+			text,
+			toolCalls: [],
+		});
+		const rows = [
+			{ e: step(base + 1, "run", "a"), folded: null },
+			{ e: step(base + 2, "run", "folded alone"), folded: "r1" },
+			{ e: step(base + 3, "b1", "g1"), folded: null },
+			{ e: step(base + 3, "b2", "g2"), folded: null },
+			{ e: step(base + 3, "b3", "g3"), folded: null },
+			{ e: step(base + 3, "b4", "folded in the group"), folded: "r1" },
+			{ e: step(base + 4, "run", "z"), folded: null },
+		];
+		for (const r of rows)
+			await prisma.investigationEvent.create({
+				data: { investigationId: id, seq: r.e.seq, branchId: r.e.branchId, event: JSON.stringify(r.e), foldedBy: r.folded },
+			});
+		const page = async (cursor: number) => {
+			const p: { events: CanonicalEvent[]; nextCursor?: number | null } = await pl.api(
+				`/investigations/${id}/events?limit=2&cursor=${cursor}`,
+			);
+			return { texts: p.events.map((e) => (e.kind === "agent_step" ? e.text : e.kind)), next: p.nextCursor ?? null };
+		};
+
+		const first = await page(base);
+		const second = await page(first.next as number);
+		const third = await page(second.next as number);
+
+		expect([first, second, third]).toEqual([
+			{ texts: ["a"], next: base + 1 },
+			{ texts: ["g1", "g2", "g3"], next: base + 3 },
+			{ texts: ["z"], next: null },
+		]);
+	});
+
 	it("a view-only device sees the view-only block and its rewind is refused view-only", async () => {
 		const { id } = await fixture();
 		const seq = await seqOf(id, MESSAGE_2);
@@ -387,8 +445,8 @@ describe("RewindService (#1193)", () => {
 		});
 		const gitDir = (await snapshotStores()).find((s) => s.runId === id)?.gitDir as string;
 
-		await rewinds().markInterrupted();
-		await rewinds().markInterrupted();
+		await restart();
+		await restart();
 
 		const marked = (await visible(id)).filter((e) => e.kind === "rewind_interrupted");
 		const backup = (await storeGit(gitDir, ["rev-parse", `refs/pl/op/${op}/backup`])).trim();
@@ -424,11 +482,43 @@ describe("RewindService (#1193)", () => {
 		await storeGit(gitDir, ["update-ref", "-d", `refs/pl/op/${op}/committed`]);
 		const count = (await visible(id)).length;
 
-		await rewinds().markInterrupted();
+		await restart();
+		await restart();
 
 		expect((await storeOps(gitDir)).get(op)?.refs.has("committed")).toBe(true);
 		expect((await storeOps(gitDir)).get(op)?.refs.has("interrupted")).toBe(false);
 		expect((await visible(id)).length).toBe(count);
+	});
+
+	it("a row appended to a folded branch during the file writes refuses the rewind stale, folds nothing, and puts the files back", async () => {
+		const { id, cwd } = await fixture();
+		const seq = await seqOf(id, MESSAGE_2);
+		const prisma = await pl.prisma();
+		let late = "";
+		vi.mocked(rewindFiles).mockImplementationOnce(async (...a) => {
+			const r = await actual.rewindFiles(...a);
+			// An ask answered meanwhile commits on `asks` without the thread's admission.
+			const { _max } = await prisma.investigationEvent.aggregate({ where: { investigationId: id }, _max: { seq: true } });
+			const at = (_max.seq ?? 0) + 1;
+			const row = await prisma.investigationEvent.create({
+				data: {
+					investigationId: id,
+					seq: at,
+					branchId: "asks",
+					event: JSON.stringify({ kind: "error", runId: id, branchId: "asks", path: [], seq: at, ts: new Date(0).toISOString(), message: "late" }),
+				},
+			});
+			late = row.id;
+			return r;
+		});
+
+		const r = await rewindAt(id, seq);
+
+		expect(r).toEqual({ state: "refused", reason: "stale", paths: [] });
+		expect((await prisma.investigationEvent.findUniqueOrThrow({ where: { id: late } })).foldedBy).toBeNull();
+		expect((await visible(id)).some((e) => e.kind === "thread_rewound")).toBe(false);
+		expect(await interruptedOf(id)).toEqual([]);
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
 	});
 
 	it("a rewind whose file writer fails partway is refused interrupted, folds nothing, and marks its operation interrupted for Restore", async () => {
@@ -486,26 +576,30 @@ describe("RewindService (#1193)", () => {
 		expect(await interruptedOf(id)).toEqual(["undo"]);
 	});
 
-	it("an Undo whose record fails after its files went back is refused interrupted and marks its operation interrupted, not dropped", async () => {
+	it("an Undo whose record fails after its files went back sets them back through Restore's writer, keeps the thread rewound, and leaves nothing for Restore", async () => {
 		const { id, cwd } = await fixture();
 		const r = doneOf(await rewindAt(id, await seqOf(id, MESSAGE_2)));
 		await idle(id, "the edited message's turn to end");
 		const tx = vi.spyOn(await pl.prisma(), "$transaction");
+		let undone = "";
 		vi.mocked(undoRewindFiles).mockImplementationOnce(async (...a) => {
 			const done = await actual.undoRewindFiles(...a);
+			undone = read(cwd, "src/app.txt");
 			tx.mockRejectedValueOnce(new Error("database is locked"));
 			return done;
 		});
 
-		const u = await rewinds().undo(id, r.rewindId, true);
+		await expect(rewinds().undo(id, r.rewindId, true)).rejects.toThrow("database is locked");
 
-		expect(u).toEqual({ state: "refused", reason: "interrupted", paths: [] });
+		expect(undone).toBe(APP_TURN_2);
 		expect((await visible(id)).some((e) => e.kind === "rewind_undone")).toBe(false);
-		expect(await interruptedOf(id)).toEqual(["undo"]);
+		expect(await interruptedOf(id)).toEqual([]);
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_1);
+		expect(doneOf(await rewinds().undo(id, r.rewindId, true)).restored).toEqual([{ repo: "repo", path: "src/app.txt" }]);
 		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
 	});
 
-	it("an Undo whose read of the edited message fails after its files went back is refused interrupted and marks its operation interrupted", async () => {
+	it("an Undo whose read of the edited message fails after its files went back sets them back and leaves nothing for Restore", async () => {
 		const { id, cwd } = await fixture();
 		const r = doneOf(await rewindAt(id, await seqOf(id, MESSAGE_2)));
 		await idle(id, "the edited message's turn to end");
@@ -516,6 +610,24 @@ describe("RewindService (#1193)", () => {
 			return done;
 		});
 
+		await expect(rewinds().undo(id, r.rewindId, true)).rejects.toThrow("database is locked");
+
+		expect(await interruptedOf(id)).toEqual([]);
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_1);
+	});
+
+	it("an Undo whose record fails and whose setting back fails is refused interrupted and marks its operation interrupted for Restore", async () => {
+		const { id, cwd } = await fixture();
+		const r = doneOf(await rewindAt(id, await seqOf(id, MESSAGE_2)));
+		await idle(id, "the edited message's turn to end");
+		const tx = vi.spyOn(await pl.prisma(), "$transaction");
+		vi.mocked(undoRewindFiles).mockImplementationOnce(async (...a) => {
+			const done = await actual.undoRewindFiles(...a);
+			tx.mockRejectedValueOnce(new Error("database is locked"));
+			return done;
+		});
+		vi.mocked(restoreFiles).mockRejectedValueOnce(new Error("disk full"));
+
 		const u = await rewinds().undo(id, r.rewindId, true);
 
 		expect(u).toEqual({ state: "refused", reason: "interrupted", paths: [] });
@@ -523,7 +635,7 @@ describe("RewindService (#1193)", () => {
 		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
 	});
 
-	it("a rewind asked again with a rewind id that already committed returns that rewind, unsent, without running it again", async () => {
+	it("a rewind asked again with a rewind id whose edit already went returns that rewind as sent, without running or sending it again", async () => {
 		const { id } = await fixture();
 		const seq = await seqOf(id, MESSAGE_2);
 		const rewindId = randomUUID();
@@ -534,15 +646,136 @@ describe("RewindService (#1193)", () => {
 
 		const again = await rewinds().rewind(input, { kind: "you" }, true);
 
+		expect(again).toEqual({ state: "done", rewindId, reverted: first.reverted, kept: first.kept, sent: true, why: null });
+		const after = await visible(id);
+		expect(after.filter((e) => e.kind === "thread_rewound").length).toBe(1);
+		expect(after.filter((e) => e.kind === "operator_message" && e.text === input.text).length).toBe(1);
+	});
+
+	it("a rewind that committed but whose edit was never admitted, asked again after a restart, sends the edit once", async () => {
+		const { id } = await fixture();
+		const seq = await seqOf(id, MESSAGE_2);
+		const rewindId = randomUUID();
+		const p = await rewinds().preview(id, seq, true);
+		const input = { id, seq, text: "Set the retries to 5", expect: expectOf(p), include: [], rewindId };
+		const dispatch = pl.resolve<DispatchService>(DispatchService) as DispatchService;
+		// The restart lands between the fold's commit and the edit's admission.
+		vi.spyOn(dispatch, "admitHeld").mockRejectedValueOnce(new Error("PrismaLens stopped"));
+		const first = doneOf(await rewinds().rewind(input, { kind: "you" }, true));
+		expect(first.sent).toBe(false);
+		await restart();
+
+		const again = await rewinds().rewind(input, { kind: "you" }, true);
+		await idle(id, "the edited message's turn to end");
+		const third = await rewinds().rewind(input, { kind: "you" }, true);
+
+		expect(again).toEqual({ state: "done", rewindId, reverted: first.reverted, kept: first.kept, sent: true, why: null });
+		expect(third).toEqual(again);
+		const after = await visible(id);
+		expect(after.filter((e) => e.kind === "thread_rewound").length).toBe(1);
+		expect(after.filter((e) => e.kind === "operator_message" && e.text === input.text).length).toBe(1);
+	});
+
+	/** A rewind whose fold commits but whose edit is never admitted. */
+	async function unsentRewind(id: string, seq: number, text: string) {
+		const rewindId = randomUUID();
+		const p = await rewinds().preview(id, seq, true);
+		const input = { id, seq, text, expect: expectOf(p), include: [], rewindId };
+		const dispatch = pl.resolve<DispatchService>(DispatchService) as DispatchService;
+		vi.spyOn(dispatch, "admitHeld").mockRejectedValueOnce(new Error("PrismaLens stopped"));
+		const first = doneOf(await rewinds().rewind(input, { kind: "you" }, true));
+		expect(first.sent).toBe(false);
+		return { input, first };
+	}
+
+	it("an unsent rewind asked again by a caller who cannot write is refused view-only and sends nothing", async () => {
+		const { id } = await fixture();
+		const { input } = await unsentRewind(id, await seqOf(id, MESSAGE_2), "Set the retries to 5");
+
+		const again = await rewinds().rewind(input, { kind: "you" }, false);
+
+		expect(again).toEqual({ state: "refused", reason: "view-only", paths: [] });
+		expect((await visible(id)).filter((e) => e.kind === "operator_message" && e.text === input.text).length).toBe(0);
+	});
+
+	it("an unsent rewind asked again after the operator sent another message is unsent, as the thread moved on, and sends nothing", async () => {
+		const { id } = await fixture();
+		const { input, first } = await unsentRewind(id, await seqOf(id, MESSAGE_2), "Set the retries to 5");
+		await pl.api(`/investigations/${id}/messages`, { method: "POST", body: { text: "Check the logs first" } });
+		await idle(id, "the other message's turn to end");
+
+		const again = await rewinds().rewind(input, { kind: "you" }, true);
+
 		expect(again).toEqual({
 			state: "done",
-			rewindId,
+			rewindId: input.rewindId,
 			reverted: first.reverted,
 			kept: first.kept,
 			sent: false,
-			why: "PrismaLens restarted during this edit, so the edited message may already have been sent. Check the thread before sending it again, or Undo.",
+			why: "The thread moved on before the edit was sent, so it was not sent.",
 		});
-		expect((await visible(id)).filter((e) => e.kind === "thread_rewound").length).toBe(1);
+		expect((await visible(id)).filter((e) => e.kind === "operator_message" && e.text === input.text).length).toBe(0);
+	});
+
+	it("an unsent rewind asked again after the operator sent the same text as another message is unsent, with delivery unknown, and sends nothing", async () => {
+		const { id } = await fixture();
+		const { input, first } = await unsentRewind(id, await seqOf(id, MESSAGE_2), "Set the retries to 5");
+		await pl.api(`/investigations/${id}/messages`, { method: "POST", body: { text: input.text } });
+		await idle(id, "the other message's turn to end");
+
+		const again = await rewinds().rewind(input, { kind: "you" }, true);
+
+		expect(again).toEqual({
+			state: "done",
+			rewindId: input.rewindId,
+			reverted: first.reverted,
+			kept: first.kept,
+			sent: false,
+			why: "PrismaLens could not tell whether the edited message was sent. Check the thread before sending it again.",
+		});
+		expect((await visible(id)).filter((e) => e.kind === "operator_message" && e.text === input.text).length).toBe(1);
+	});
+
+	it("an unsent rewind asked again after another message that quotes its rewind id is unsent, as the thread moved on, and sends nothing", async () => {
+		const { id } = await fixture();
+		const { input, first } = await unsentRewind(id, await seqOf(id, MESSAGE_2), "Set the retries to 5");
+		await pl.api(`/investigations/${id}/messages`, { method: "POST", body: { text: `Ignore rewind ${input.rewindId}` } });
+		await idle(id, "the other message's turn to end");
+
+		const again = await rewinds().rewind(input, { kind: "you" }, true);
+
+		expect(again).toEqual({
+			state: "done",
+			rewindId: input.rewindId,
+			reverted: first.reverted,
+			kept: first.kept,
+			sent: false,
+			why: "The thread moved on before the edit was sent, so it was not sent.",
+		});
+		expect((await visible(id)).filter((e) => e.kind === "operator_message" && e.text === input.text).length).toBe(0);
+	});
+
+	it("an unsent rewind A asked again after a later unsent rewind B is unsent and sends nothing, while B asked again sends B's edit", async () => {
+		const { id } = await fixture();
+		const a = await unsentRewind(id, await seqOf(id, MESSAGE_2), "Set the retries to 5");
+		const b = await unsentRewind(id, await seqOf(id, FIRST), "Raise the retries to 9");
+
+		const againA = await rewinds().rewind(a.input, { kind: "you" }, true);
+		const againB = await rewinds().rewind(b.input, { kind: "you" }, true);
+		await idle(id, "B's edited message's turn to end");
+
+		expect(againA).toEqual({
+			state: "done",
+			rewindId: a.input.rewindId,
+			reverted: a.first.reverted,
+			kept: a.first.kept,
+			sent: false,
+			why: "The thread moved on before the edit was sent, so it was not sent.",
+		});
+		expect(againB).toEqual({ ...b.first, sent: true, why: null });
+		const after = await visible(id);
+		expect(after.filter((e) => e.kind === "operator_message" && e.text === a.input.text).length).toBe(0);
+		expect(after.filter((e) => e.kind === "operator_message" && e.text === b.input.text).length).toBe(1);
 	});
 
 	it("a rewind whose send fails after the fold committed is done and unsent, and Undo still works", async () => {

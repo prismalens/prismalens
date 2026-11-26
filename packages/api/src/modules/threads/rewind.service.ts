@@ -11,6 +11,7 @@ import {
 	deliveryEnvelope,
 	forkPointOf,
 	INVESTIGATION_REPORT_BRANCH,
+	InvestigationJobDataSchema,
 	type JobAttachment,
 	type JobMessageContext,
 	type KeepWhy,
@@ -104,7 +105,7 @@ type Thread = {
 };
 
 class Refuse extends Error {
-	constructor(readonly reason: "running") {
+	constructor(readonly reason: "running" | "stale") {
 		super(reason);
 	}
 }
@@ -120,6 +121,9 @@ const keptOf = (
 	repo: string,
 	ks: readonly { path: string; why: KeepWhy }[],
 ): RewindKept[] => ks.map((k) => ({ repo, ...k }));
+
+const UNKNOWN_SENT =
+	"PrismaLens could not tell whether the edited message was sent. Check the thread before sending it again.";
 
 /**
  * Edit a sent message and run it again (#1193, the #1128 items). Later turns fold (never
@@ -466,16 +470,11 @@ export class RewindService {
 		// A retried rewind id that already committed (a restart mid-action) is never run twice.
 		const past = this.rewinds(rows).find(
 			(r) => input.rewindId && r.event.rewindId === input.rewindId,
-		)?.event;
+		);
 		if (past)
-			return {
-				state: "done",
-				rewindId: past.rewindId,
-				reverted: past.reverted,
-				kept: past.kept,
-				sent: false,
-				why: "PrismaLens restarted during this edit, so the edited message may already have been sent. Check the thread before sending it again, or Undo.",
-			};
+			return canWrite
+				? this.resumeSend(t, rows, past, input.text, by)
+				: refused("view-only");
 		const m = this.messageOf(rows, input.seq);
 		if (!m || m.event.kind !== "operator_message") return refused("stale");
 		const look = await this.look(t, rows, m, canWrite);
@@ -572,6 +571,17 @@ export class RewindService {
 					select: { id: true },
 				});
 				if (job) throw new Refuse("running");
+				// A row the preview did not show (an ask answered during the writes) is never folded.
+				const late = await tx.investigationEvent.findFirst({
+					where: {
+						investigationId: t.id,
+						foldedBy: null,
+						branchId: { in: look.branches },
+						ordinal: { gt: look.preview.revision },
+					},
+					select: { ordinal: true },
+				});
+				if (late) throw new Refuse("stale");
 				const range = {
 					investigationId: t.id,
 					foldedBy: null,
@@ -615,7 +625,7 @@ export class RewindService {
 			});
 		} catch (e) {
 			if (!(await compensate())) return interrupted();
-			if (e instanceof Refuse) return refused("running");
+			if (e instanceof Refuse) return refused(e.reason);
 			throw e;
 		}
 		for (const d of done)
@@ -634,6 +644,77 @@ export class RewindService {
 			sent: sent === null,
 			why: sent,
 		};
+	}
+
+	/**
+	 * A committed rewind asked again after a restart: its edit is sent unless it already went,
+	 * or the thread moved on. It replays rather than forks: the fork point was in the folded rows.
+	 */
+	private async resumeSend(
+		t: Thread,
+		rows: Row[],
+		past: ReturnType<RewindService["rewinds"]>[number],
+		text: string,
+		by: RewindBy,
+	): Promise<RewindResult> {
+		const { event, row } = past;
+		const stored = {
+			state: "done" as const,
+			rewindId: event.rewindId,
+			reverted: event.reverted,
+			kept: event.kept,
+		};
+		const job = await this.prisma.job.findUnique({
+			where: { investigationId: t.id },
+			select: { payload: true },
+		});
+		if (job && this.jobRewindId(job.payload) === event.rewindId)
+			return { ...stored, sent: true, why: null };
+		// A message carries no rewind id: a later one with the edit's text may or may not be it.
+		const next = rows.find(
+			(r) => r.ordinal > row.ordinal && r.event.kind === "operator_message",
+		);
+		if (next?.event.kind === "operator_message" && next.event.text === text)
+			return { ...stored, sent: false, why: UNKNOWN_SENT };
+		const later = this.rewinds(rows).some(
+			(r) => r.row.ordinal > row.ordinal && !r.undone,
+		);
+		if (past.undone || next || later || (await this.running(t)))
+			return {
+				...stored,
+				sent: false,
+				why: "The thread moved on before the edit was sent, so it was not sent.",
+			};
+		// The edited message itself is folded: read it on purpose for its quotes and files.
+		const edited = await this.prisma.investigationEvent.findFirst({
+			where: { investigationId: t.id, ordinal: event.messageOrdinal },
+			select: { event: true },
+		});
+		const m = edited
+			? CanonicalEventSchema.safeParse(JSON.parse(edited.event))
+			: null;
+		if (!m?.success || m.data.kind !== "operator_message")
+			return {
+				...stored,
+				sent: false,
+				why: "The edited message could not be read back, so it was not sent.",
+			};
+		const why = await this.send(t, m.data, text, by, {
+			rewindId: event.rewindId,
+			fork: null,
+			why: "PrismaLens restarted before the edit was sent",
+		});
+		return { ...stored, sent: why === null, why };
+	}
+
+	/** The rewind a job's edited message came from, or null for any other job. */
+	private jobRewindId(payload: string): string | null {
+		try {
+			const job = InvestigationJobDataSchema.safeParse(JSON.parse(payload));
+			return job.data?.resume?.rewind?.rewindId ?? null;
+		} catch {
+			return null;
+		}
 	}
 
 	/** Admits the edited message under the held admission; the refusal's words, or null when sent. */
@@ -682,7 +763,7 @@ export class RewindService {
 			logger.warn(
 				`Sending the edit of ${t.id} failed: ${(e as Error).message}`,
 			);
-			return "PrismaLens could not tell whether the edited message was sent. Check the thread before sending it again.";
+			return UNKNOWN_SENT;
 		}
 	}
 
@@ -799,7 +880,22 @@ export class RewindService {
 		const ws = this.ws(t);
 		const ctx = this.ctx(t, canWrite);
 		const done: Extract<RepoOpResult, { state: "done" }>[] = [];
-		// Files some repos already got back stay for Restore: never dropped, marked now.
+		/** Puts each repo this Undo wrote back to its backup through Restore's writer; false when one could not be. */
+		const compensate = async (): Promise<boolean> => {
+			let all = true;
+			for (const d of done) {
+				if (!ws) break;
+				const back = await this.restoreBackup(ws, d.repo, ctx, d.op);
+				if (!back) {
+					all = false;
+					continue;
+				}
+				await markOp(ws, d.repo, ctx, d.op, "dropped").catch(() => {});
+				await markOp(ws, d.repo, ctx, back, "dropped").catch(() => {});
+			}
+			return all;
+		};
+		// What compensation could not set back stays for Restore: marked now, never dropped.
 		const interrupted = async () => {
 			await this.markInterrupted(id);
 			return refused("interrupted");
@@ -824,10 +920,14 @@ export class RewindService {
 				} as RepoOpResult;
 			});
 			if (r.state === "refused") {
-				if (threw) return interrupted();
+				// A throw may have written some of this repo's files: its op stays for Restore.
+				if (threw) {
+					await compensate();
+					return interrupted();
+				}
 				await markOp(ws, repo, ctx, op, "dropped").catch(() => {});
 				if (r.reason === "gone" || r.reason === "no-snapshot") continue;
-				if (done.length) return interrupted();
+				if (!(await compensate())) return interrupted();
 				return refused("stale", pathsOf(repo, refusedPaths(r)));
 			}
 			done.push(r);
@@ -894,7 +994,7 @@ export class RewindService {
 				return out;
 			});
 		} catch (e) {
-			if (done.length) return interrupted();
+			if (!(await compensate())) return interrupted();
 			if (e instanceof Refuse) return refused("running");
 			throw e;
 		}
@@ -923,6 +1023,35 @@ export class RewindService {
 				return [];
 			}
 		});
+	}
+
+	/** Restores `of`'s backup for the paths still at its target; the new op's id, or null when it could not. */
+	private async restoreBackup(
+		ws: RunWorkspace,
+		repo: string,
+		ctx: ScopeContext,
+		of: string,
+	): Promise<string | null> {
+		const op = randomUUID();
+		try {
+			const plan = await previewRestoreFiles(ws, repo, ctx, of);
+			if (typeof plan === "string") return null;
+			// Created and damaged paths are the user's since the backup: never ticked here.
+			const r = await restoreFiles(ws, repo, ctx, {
+				op,
+				of,
+				expect: { head: plan.head, tree: plan.tree },
+				include: new Set(),
+			});
+			if (r.state === "done") return op;
+			await markOp(ws, repo, ctx, op, "dropped").catch(() => {});
+			return null;
+		} catch (e) {
+			logger.warn(
+				`Setting back ${repo} after a failed Undo failed: ${(e as Error).message}`,
+			);
+			return null;
+		}
 	}
 
 	private async interrupted(id: string, op: string) {

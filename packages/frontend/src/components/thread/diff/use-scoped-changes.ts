@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type {
-	DiffScope,
-	RevertBlock,
-	RevertChangesInput,
-	RevertChangesResult,
-	WorktreeChanges,
+import {
+	type DiffScope,
+	KEEP_WORDS,
+	type RevertBlock,
+	type RevertChangesInput,
+	type RevertChangesResult,
+	type RevertKept,
+	type WorktreeChanges,
 } from "@prismalens/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "@/lib/api/orpc-client";
@@ -134,7 +136,29 @@ export function refusedWords(
 ): string {
 	if (r.block) return REVERT_BLOCK_WORDS[r.block];
 	const base = REFUSED_WORDS[r.reason];
-	return r.paths.length ? `${base} ${r.paths.join(", ")}` : base;
+	const said = r.paths.length ? `${base} ${r.paths.join(", ")}` : base;
+	const kept = keptWords(r.kept ?? []);
+	return kept ? `${said} ${kept}` : said;
+}
+
+/** The paths the writer left as the user saved them, each with its reason; null for none. */
+export function keptWords(kept: readonly RevertKept[]): string | null {
+	if (!kept.length) return null;
+	return `Left as you saved them: ${kept.map((k) => `${k.path} (${KEEP_WORDS[k.why]})`).join(", ")}.`;
+}
+
+/** A revert or its undo as a toast: it reads as done only when it wrote a file (#1193). */
+export function revertToast(
+	r: RevertChangesResult,
+	done: string,
+	not: string,
+): { title: string; description?: string; variant?: "destructive" } {
+	if (r.state === "refused")
+		return { title: not, description: refusedWords(r), variant: "destructive" };
+	const kept = keptWords(r.kept ?? []) ?? undefined;
+	if (!r.paths.length)
+		return { title: not, description: kept, variant: "destructive" };
+	return kept ? { title: done, description: kept } : { title: done };
 }
 
 /** Revert and Undo; refetches every scope after. */
