@@ -178,6 +178,7 @@ describe("What loads merges only a matching session's report (#1180 §3.1)", () 
 					items: [
 						{ kind: "mcp", name: "db", scope: "repo", path: join(project, ".mcp.json"), disk: true, reported: null, state: "failed" },
 						{ kind: "plugin", name: "lint@m", scope: "plugin", path: null, disk: true, reported: null, state: "loads" },
+						{ kind: "mcp", name: "docs", scope: "global", path: null, disk: true, reported: null, state: "loads" },
 					],
 				}),
 			},
@@ -207,6 +208,10 @@ describe("What loads merges only a matching session's report (#1180 §3.1)", () 
 		expect(merged.report?.threadId).toBe(thread);
 		expect(merged.items.find((i) => i.name === "db")).toMatchObject({ disk: true, state: "failed", scope: "repo" });
 		expect(merged.items.find((i) => i.name === "lint@m")).toMatchObject({ disk: false, state: "loads" });
+		// Claude's init gives no path: its row merges into the disk row by kind and name.
+		expect(merged.items.filter((i) => i.name === "docs").map((i) => [i.disk, i.state, i.path])).toEqual([
+			[true, "loads", join(home, ".claude.json")],
+		]);
 		const clean = await service.loadout({ id: "claude-code", repositoryId, profile: "clean" });
 		expect([clean.report, clean.staleReport, clean.items.some((i) => i.name === "lint@m")]).toEqual([null, null, false]);
 	});

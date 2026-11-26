@@ -224,3 +224,18 @@ export async function deliverShared(
 	}
 	return out;
 }
+
+/** What one run's session gets of the PrismaLens set, resolved by the product before launch. */
+export interface RunShared {
+	/** For ACP `mcpServers`; `pick` drops HTTP ones where the agent takes none. */
+	servers: McpServer[];
+	/** Every value sent, for the scrubbers. */
+	hidden: string[];
+	/** The instructions revision recorded on `session_opened`. */
+	revision: string;
+	/** Null when the agent is not a recipient or there is no text. */
+	instructions: string | null;
+	/** `configFingerprint` for this session's `agent_loadout` report. */
+	fingerprint: string;
+	profile: "own" | "clean";
+}

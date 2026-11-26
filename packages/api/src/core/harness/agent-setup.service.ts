@@ -33,6 +33,7 @@ import {
 	deliverShared,
 	layoutOf,
 	mcpSourceHash,
+	type RunShared,
 	readMcpSource,
 	readOnDisk,
 	sharedServerHash,
@@ -371,6 +372,37 @@ export class AgentSetupService {
 		return { value };
 	}
 
+	/** The set as one run on `id` in `cwd` receives it: servers, values to hide, instructions, fingerprint. */
+	async forRun(id: HarnessId, cwd: string): Promise<RunShared> {
+		const [env, row, stored] = await Promise.all([
+			this.envOf(id),
+			this.setRow(),
+			this.storedServers(),
+		]);
+		const ownNames = readOnDisk(id, env, cwd)
+			.filter((i) => i.kind === "mcp")
+			.map((i) => i.name);
+		const shared = await deliverShared(stored, id, {
+			http: true,
+			ownNames,
+			...(id === "deepagents" ? { runFile: true } : {}),
+		});
+		const member = row.instructionsFor.includes(id);
+		return {
+			servers: shared.servers,
+			hidden: shared.hidden,
+			revision: row.revision,
+			instructions: member && row.instructions.trim() ? row.instructions : null,
+			fingerprint: configFingerprint(id, env, cwd, {
+				profile: "own",
+				isolation: null,
+				sharedRevision: row.revision,
+				member,
+			}),
+			profile: "own",
+		};
+	}
+
 	// ------------------------------------------------------------ what loads
 
 	private async repoRoot(repositoryId: string | undefined) {
@@ -454,17 +486,26 @@ export class AgentSetupService {
 			staleReport ??= { at, threadId: e.investigationId };
 		}
 		const key = (i: LoadedItem) =>
-			`${i.kind}\0${i.name}\0${i.scope}\0${i.path ?? ""}`;
+			`${i.kind} ${i.name} ${i.scope} ${i.path ?? ""}`;
 		const byKey = new Map(reported.map((i) => [key(i), i]));
+		// Claude's init names servers and skills without a path: matched by kind and name.
+		const pathless = (i: LoadedItem) => `${i.kind} ${i.name}`;
+		const byName = new Map(
+			reported.filter((i) => i.path === null).map((i) => [pathless(i), i]),
+		);
 		const merged = [...disk, ...ours].map((i) => {
-			const r = byKey.get(key(i));
+			const r = byKey.get(key(i)) ?? byName.get(pathless(i));
 			if (!r) return i;
-			byKey.delete(key(i));
+			byKey.delete(key(r));
+			byName.delete(pathless(r));
 			return { ...i, reported: r.reported, state: r.state };
 		});
+		const left = [...byKey.values()].filter(
+			(i) => i.path !== null || byName.has(pathless(i)),
+		);
 		const items = [
 			...merged,
-			...[...byKey.values()].map((i) => ({ ...i, disk: false })),
+			...left.map((i) => ({ ...i, disk: false })),
 		].slice(0, 500);
 		return {
 			agent: id,
