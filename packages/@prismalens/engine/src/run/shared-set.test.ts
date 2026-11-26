@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import type { SharedMcpServerStored } from "@prismalens/contracts/schemas";
@@ -168,6 +168,45 @@ describe("deliverShared (#1180 §3.3)", () => {
 		writeFileSync(join(bin, "docs"), "x");
 		const rel = relative(process.cwd(), bin);
 		expect(resolveCommand("docs", { PATH: rel }, "linux")).toBe(join(bin, "docs"));
+	});
+});
+
+describe("a node script relative to the session's folder (#1180 §3.3)", () => {
+	const ws = mkdtempSync(join(dir, "ws-"));
+	writeFileSync(join(ws, "server.js"), "x");
+	const pkg = mkdtempSync(join(dir, "ws-"));
+	mkdirSync(join(pkg, "server"));
+	writeFileSync(join(pkg, "server", "index.js"), "x");
+	/** A bound server whose command is a file named `name`, as approval stores it. */
+	const server = async (name: string, args: string[]) => {
+		const bin = mkdtempSync(join(dir, "bin-"));
+		writeFileSync(join(bin, name), "x");
+		const bound = await bindFiles({ type: "stdio", command: join(bin, name), args, env: [] }, {});
+		const hash = sharedServerHash(bound.def, bound.files);
+		return { name: "s", ...bound, values: {}, hash, valuesFor: hash, recipients: ["claude-code"], from: null };
+	};
+	const sent = async (name: string, args: string[], cwd = ws) => {
+		const d = await deliverShared([await server(name, args)], "claude-code", { http: true, ownNames: [], cwd });
+		return [d.servers.length, d.items[0]?.note ?? null];
+	};
+
+	it("is not sent, and says it needs an absolute script path, for `node server` with server.js or with server/index.js", async () => {
+		expect([await sent("node", ["server"]), await sent("node", ["server"], pkg)]).toEqual([
+			[0, "Needs an absolute script path"],
+			[0, "Needs an absolute script path"],
+		]);
+	});
+
+	it("sends `npx some-pkg serve`, `node --run build` and a node script given by its full path", async () => {
+		expect([
+			await sent("npx", ["some-pkg", "serve"]),
+			await sent("node", ["--run", "build"]),
+			await sent("node", [join(ws, "server.js")]),
+		]).toEqual([
+			[1, null],
+			[1, null],
+			[1, null],
+		]);
 	});
 });
 

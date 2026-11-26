@@ -183,6 +183,23 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 		expect([outcomes, await names()]).toEqual([[no, no, no], []]);
 	});
 
+	it("does not send a node server whose script is relative to the run's folder, and What loads says it needs an absolute script path", async () => {
+		const ws = join(env.root, "node-ws");
+		mkdirSync(join(ws, "server"), { recursive: true });
+		writeFileSync(join(ws, "server", "index.js"), "x");
+		const node = join(bin, "node");
+		writeFileSync(node, "x");
+		const def = { type: "stdio" as const, command: node, args: ["server"], env: [] };
+		await service.approveSharedServer({ name: "nodes", def, values: {}, recipients: ["claude-code"], from: null });
+		const repositoryId = (await prisma.repository.create({ data: { fullName: "local/node-ws", url: ws } })).id;
+		const run = await service.forRun("claude-code", ws);
+		const view = await service.loadout({ id: "claude-code", repositoryId });
+		expect([run.servers, view.items.find((i) => i.name === "pl-nodes")?.note]).toEqual([
+			[],
+			"Needs an absolute script path",
+		]);
+	});
+
 	it("refuses an approved URL that carries sign-in, a query or a fragment", async () => {
 		const urls = ["https://u:p@mcp.example/v1", "https://mcp.example/v1?key=x", "https://mcp.example/v1#f"];
 		const outcomes = await Promise.all(

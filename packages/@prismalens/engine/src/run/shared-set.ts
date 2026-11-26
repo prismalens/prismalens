@@ -8,7 +8,8 @@
  */
 import { createHash } from "node:crypto";
 import { createReadStream, statSync } from "node:fs";
-import { delimiter, isAbsolute, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { delimiter, isAbsolute, join, parse, resolve } from "node:path";
 import type { McpServer } from "@agentclientprotocol/sdk/unstable";
 import type {
 	LoadedItem,
@@ -174,7 +175,8 @@ export type NotSent =
 	| "Not sent: needs values"
 	| "Not sent: no HTTP"
 	| "Not sent: name taken"
-	| "Changed";
+	| "Changed"
+	| "Needs an absolute script path";
 
 export interface SharedDelivery {
 	/** For ACP `mcpServers` on `session/new`, `session/load` and `session/resume` alike. */
@@ -235,6 +237,26 @@ export function toRunFile(s: SharedMcpServerStored): RunFileServers {
 	};
 }
 
+/**
+ * Whether a `node` server names a script Node would load from `cwd`, each thread's own folder.
+ * Approval has no folder, so it hashed no such file.
+ */
+function relativeScript(def: SharedMcpDef, cwd: string): boolean {
+	if (def.type !== "stdio" || parse(def.command).name.toLowerCase() !== "node")
+		return false;
+	const load = createRequire(join(cwd, "noop.js"));
+	return def.args.some((a) => {
+		if (typeof a !== "string" || a.startsWith("-") || isAbsolute(a))
+			return false;
+		try {
+			load.resolve(`./${a}`);
+			return true;
+		} catch {
+			return false;
+		}
+	});
+}
+
 function toMcp(s: SharedMcpServerStored): McpServer {
 	const name = sharedServerName(s.name);
 	const v = (n: string) => s.values[n] ?? "";
@@ -267,6 +289,8 @@ export async function deliverShared(
 		ownNames: readonly string[];
 		/** deepagents reads servers from its run file, which holds env references, never a value. */
 		runFile?: boolean;
+		/** The folder the session starts in; a node script relative to it is not sent. */
+		cwd?: string | null;
 		hash?: (path: string) => Promise<string | null>;
 	},
 ): Promise<SharedDelivery> {
@@ -294,6 +318,8 @@ export async function deliverShared(
 			note = "Not sent: needs values";
 		else if (transport === "http" && !o.http) note = "Not sent: no HTTP";
 		else if (o.ownNames.includes(name)) note = "Not sent: name taken";
+		else if (o.cwd && relativeScript(s.def, o.cwd))
+			note = "Needs an absolute script path";
 		else
 			for (const f of s.files)
 				if ((await hash(f.path)) !== f.sha256) {

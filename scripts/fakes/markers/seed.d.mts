@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/** The agent's config root from `env`; refused unless it is a `pl-*` folder under the OS temp folder. */
+/** The env var naming `harness`'s config folder, which the markers go in. */
+export function configVar(harness: string): string | undefined;
+/** `env` with the agent's config folder copied into a scratch home made now. */
+export function scratchEnv(
+	harness: string,
+	env: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv;
+/** The agent's config folder from `env`; refused unless it is inside a home `scratchEnv` made. */
 export function scratchRoot(harness: string, env: NodeJS.ProcessEnv): string;
 /** Writes that stay in `root`, refusing a linked file or a path whose real location leaves it. */
 export function homeFs(root: string): {

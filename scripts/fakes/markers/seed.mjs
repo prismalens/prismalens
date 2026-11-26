@@ -5,8 +5,11 @@
 // a project MCP server, and Codex and OpenCode plugins. Each agent keeps them in its own layout.
 import {
 	appendFileSync,
+	cpSync,
+	existsSync,
 	lstatSync,
 	mkdirSync,
+	mkdtempSync,
 	readFileSync,
 	realpathSync,
 	writeFileSync,
@@ -46,11 +49,13 @@ const ROOT_VAR = {
 	opencode: "XDG_CONFIG_HOME",
 	gemini: "GEMINI_CLI_HOME",
 };
+/** The env var naming `harness`'s config folder, which the markers go in. */
+export const configVar = (harness) => ROOT_VAR[harness];
 const within = (path, root) => {
 	const rel = relative(root, path);
 	return !rel.startsWith("..") && !isAbsolute(rel);
 };
-/** The folder PrismaLens made for this run: `<temp>/pl-*`, the way admission-fake and the rows name theirs. */
+/** A workspace folder PrismaLens made: `<temp>/pl-*`, the way the rows and the doctor name theirs. */
 function madeByUs(dir) {
 	const rel = relative(resolve(tmpdir()), resolve(dir));
 	return !rel.startsWith("..") && !isAbsolute(rel) && rel.startsWith("pl-");
@@ -59,24 +64,46 @@ const refuse = (what) => {
 	throw new Error(`${what}; markers go only in a scratch home`);
 };
 
-/** The agent's config root from `env`; refused unless it is in a `pl-*` folder under the OS temp folder. */
+/** The config roots this process made with `mkdtemp`; user markers go in no other folder. */
+const homes = new Set();
+
+/**
+ * The env for one isolation row: the agent's config folder from `env`, copied (links followed,
+ * so nothing in the copy points back) into a scratch home made now. The source is only read.
+ */
+export function scratchEnv(harness, env) {
+	const key = ROOT_VAR[harness];
+	const src = key ? env[key] : undefined;
+	if (!key) return env;
+	if (!src) refuse(`${harness}: ${key} is not set`);
+	if (!madeByUs(src)) refuse(`${harness}: ${key} is not under the temp folder`);
+	const home = mkdtempSync(join(tmpdir(), "pl-seed-"));
+	homes.add(resolve(home));
+	const dest = join(home, "config");
+	if (existsSync(src))
+		cpSync(src, dest, { recursive: true, dereference: true });
+	else mkdirSync(dest);
+	return { ...env, [key]: dest };
+}
+
+/** The agent's config folder from `env`; refused unless it is inside a home `scratchEnv` made. */
 export function scratchRoot(harness, env) {
 	const key = ROOT_VAR[harness];
 	const dir = key ? env[key] : undefined;
 	if (!dir) refuse(`${harness}: ${key} is not set`);
-	if (!madeByUs(dir)) refuse(`${harness}: ${key} is not under the temp folder`);
-	mkdirSync(dir, { recursive: true });
-	if (!within(realpathSync.native(dir), realpathSync.native(tmpdir())))
-		refuse(`${harness}: ${key} resolves outside the temp folder`);
+	const home = [...homes].find((h) => within(resolve(dir), h));
+	if (!home) refuse(`${harness}: ${key} is not a scratch home this run made`);
+	homeFs(home).mkdir(dir);
 	return dir;
 }
 
 /**
- * Writes that stay in `root`: each path's deepest existing part must resolve inside it, and an
- * existing file must be neither a link nor hard-linked, so no write reaches a real config.
+ * Writes that stay in `root`. Before any write or mkdir, the path's nearest existing ancestor
+ * must resolve inside it, and an existing file must be neither a link nor hard-linked.
  */
 export function homeFs(root) {
-	if (!madeByUs(root)) refuse(`${root} is not under the temp folder`);
+	if (!homes.has(resolve(root)) && !madeByUs(root))
+		refuse(`${root} is not under the temp folder`);
 	const real = realpathSync.native(root);
 	const check = (path) => {
 		const abs = resolve(path);
@@ -98,7 +125,13 @@ export function homeFs(root) {
 		}
 	};
 	const fs = {
-		mkdir: (dir) => mkdirSync(check(dir), { recursive: true }),
+		mkdir: (dir) => {
+			const abs = resolve(dir);
+			// One level at a time, so a link made between levels is still caught.
+			if (existsSync(abs)) return void check(abs);
+			fs.mkdir(dirname(abs));
+			mkdirSync(check(abs));
+		},
 		write: (path, text) => {
 			fs.mkdir(dirname(path));
 			writeFileSync(check(path), text);
