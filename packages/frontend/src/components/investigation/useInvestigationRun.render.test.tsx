@@ -13,12 +13,15 @@ const h = vi.hoisted(() => ({
 	isLoading: false,
 	isError: false,
 	catchUp: vi.fn(async () => {}),
+	/** Succeeded mutations by key, as useMutationState reads them. */
+	succeeded: {} as Record<string, number[]>,
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => ({
 	...(await importOriginal<typeof import("@tanstack/react-query")>()),
 	useQueryClient: () => ({ invalidateQueries: vi.fn() }),
-	useMutationState: () => [],
+	useMutationState: (o: { filters: { mutationKey: string[] } }) =>
+		h.succeeded[o.filters.mutationKey[0] ?? ""] ?? [],
 	useQuery: () => ({
 		data: { id: "inv", status: h.status, workspace: null },
 		isLoading: false,
@@ -33,6 +36,10 @@ vi.mock("@/lib/api/orpc-client", () => ({
 			getStatus: { queryOptions: () => ({}) },
 			// The hook reads answered asks to catch the page up after one (#1101).
 			answerAsk: { mutationKey: () => ["answerAsk"] },
+		},
+		threads: {
+			rewindUndo: { mutationKey: () => ["rewindUndo"] },
+			rewindRestore: { mutationKey: () => ["rewindRestore"] },
 		},
 	},
 }));
@@ -145,4 +152,25 @@ describe("useInvestigationRun: a run that ends with its stream down", () => {
 		expect(captured?.eventsError).toBe(true);
 		await act(async () => root.unmount());
 	});
+});
+
+describe("useInvestigationRun: an ended thread's own rows (#1193)", () => {
+	it.each(["answerAsk", "rewindUndo", "rewindRestore"])(
+		"reads the record on once %s succeeds, since no stream carries its row",
+		async (key) => {
+			const root = createRoot(document.createElement("div"));
+			h.status = "completed";
+			h.history = [];
+			h.succeeded = {};
+			await act(async () => root.render(<Probe />));
+			h.catchUp.mockClear();
+
+			h.succeeded = { [key]: [1] };
+			await act(async () => root.render(<Probe />));
+
+			expect(h.catchUp).toHaveBeenCalledTimes(1);
+			h.succeeded = {};
+			await act(async () => root.unmount());
+		},
+	);
 });

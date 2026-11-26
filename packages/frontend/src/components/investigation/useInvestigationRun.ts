@@ -83,6 +83,14 @@ export function useShared<T>(next: T): T {
 	return shared;
 }
 
+/** How many calls under `mutationKey` have succeeded. */
+function useSucceeded(mutationKey: readonly unknown[]): number {
+	return useMutationState({
+		filters: { mutationKey, status: "success" },
+		select: (m) => m.state.submittedAt,
+	}).length;
+}
+
 /** Only an ended run takes a follow-up; a live one takes messages (#747). */
 export function followUpState(
 	investigation: {
@@ -181,17 +189,14 @@ export function useInvestigationRun(
 		const t = window.setInterval(pull, 2000);
 		return () => window.clearInterval(t);
 	}, [windowed, awaitingFollowUp, isActive, pull]);
-	// An answer closes its ask in the record; a page not streaming reads that close now (#1101).
-	const answered = useMutationState({
-		filters: {
-			mutationKey: orpc.investigations.answerAsk.mutationKey(),
-			status: "success",
-		},
-		select: (m) => m.state.submittedAt,
-	}).length;
+	// An answer, an Undo or a Restore writes its row to the record; a page not streaming reads it now (#1101, #1193).
+	const answered = useSucceeded(orpc.investigations.answerAsk.mutationKey());
+	const undone = useSucceeded(orpc.threads.rewindUndo.mutationKey());
+	const restored = useSucceeded(orpc.threads.rewindRestore.mutationKey());
+	const written = answered + undone + restored;
 	useEffect(() => {
-		if (answered) void catchUp();
-	}, [answered, catchUp]);
+		if (written) void catchUp();
+	}, [written, catchUp]);
 	const lastSeq = events[events.length - 1]?.seq ?? -1;
 	const ended = !!investigation && isWorkflowTerminal(investigation.status);
 	useEffect(() => {
