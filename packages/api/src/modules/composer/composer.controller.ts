@@ -59,6 +59,10 @@ export class ReferencesController {
 			use: implement(referencesContract.use).handler(async ({ input }) => {
 				await this.references.use([input]);
 			}),
+			// GET /references/citations - both ways (#1195)
+			citations: implement(referencesContract.citations).handler(({ input }) =>
+				this.references.citations.list(input.threadId),
+			),
 		};
 	}
 }

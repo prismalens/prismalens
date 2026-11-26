@@ -30,6 +30,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { causeOf } from "@/components/home/needs-cause";
 import { fact } from "@/components/kit/fact";
 import {
 	AgentBadge,
@@ -40,6 +41,7 @@ import {
 } from "@/components/kit/MarkBadges";
 import { relTime } from "@/components/kit/rel-time";
 import {
+	fixActionId,
 	Status,
 	type StatusKind,
 	statusIcon,
@@ -558,6 +560,7 @@ function ListRowView({
 	// An ask row opens its ask card even before the ask itself has loaded on a slow link.
 	const asking =
 		!!entry || (inNeeds && (mark === "approval" || mark === "question"));
+	const fixId = inNeeds ? rowFixId(node) : null;
 	const cardOpen = asking ? askOpen : peek;
 	// Details on demand in the row's reserved gap: hover, focus or a tap shows them, Escape hides (#1101 cat 8.2).
 	// Its text is drawn only while shown, so nothing else changes; screen readers get it always.
@@ -710,10 +713,12 @@ function ListRowView({
 				// The card's code loads as the row is reached, so Space opens it at once (#1101 cat 1).
 				onPointerEnter={() => void RowCard.preload(true)}
 				onFocus={() => void RowCard.preload(true)}
+				// Only a row with details redraws on hover: rows passing under a still pointer as the list scrolls stay put (#1101 bar 1.8).
 				onPointerOver={() =>
-					!moreAt.hover && setMoreAt((m) => ({ ...m, hover: true }))
+					more && !moreAt.hover && setMoreAt((m) => ({ ...m, hover: true }))
 				}
 				onPointerLeave={() => {
+					if (!moreAt.hover && !moreHidden) return;
 					setMoreHidden(false);
 					setMoreAt((m) => ({ ...m, hover: false }));
 				}}
@@ -879,6 +884,7 @@ function ListRowView({
 						{...(onSettle ? { onSettle: () => onSettle(t) } : {})}
 					/>
 				</div>
+				{inNeeds && !asking && fixId && <RowFix node={node} id={fixId} />}
 				{!entry && answerNote && (
 					<p
 						className="pb-1.5 text-meta text-text-2"
@@ -894,6 +900,23 @@ function ListRowView({
 		</ThreadContextMenu>
 	);
 }
+
+/** A needs-you row's registered fix beyond opening it, as Home's card offers it (#1193). */
+function rowFixId(node: ListNode) {
+	const id = fixActionId(node.info.status, causeOf(node));
+	return id && id !== "needs.open" && id !== "needs.answer" ? id : null;
+}
+
+/** The registry loads behind the row, not with the shell's first paint (entry-budget.json). */
+const RowFix = lazyPart(
+	() => import("./RowFix").then((m) => m.RowFix),
+	() => (
+		<div className="flex pb-1.5">
+			<div className="min-h-6" />
+		</div>
+	),
+	{ afterFirstContent: true },
+);
 
 /** Space, or Answer on an ask row: the last agent sentence and what holds the thread. */
 function Peek({

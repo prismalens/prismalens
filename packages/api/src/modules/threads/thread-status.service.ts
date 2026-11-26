@@ -17,6 +17,7 @@ import {
 	type PendingAsk,
 	PendingAskSchema,
 	PICKUP_MS,
+	PrChecksSchema,
 	pendingAsks,
 	projectAsks,
 	type ThreadAsks,
@@ -26,6 +27,7 @@ import {
 } from "@prismalens/contracts";
 import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
+import { safeParseJsonObject } from "../../shared/utils/json-utils.js";
 import { AsksService } from "../asks/asks.service.js";
 import { isSettled } from "./settled.js";
 
@@ -61,13 +63,15 @@ export class ThreadStatusService {
 		now = clock.date(),
 	): Promise<Map<string, ThreadStatusInfo>> {
 		const ids = rows.map((r) => r.id);
-		const [askKinds, stops, hosts, waiting, pickups] = await Promise.all([
-			this.askKinds(rows),
-			this.stops(ids),
-			this.hostStops(rows),
-			this.waitingOn(ids, now),
-			this.pickups(rows, now),
-		]);
+		const [askKinds, stops, hosts, waiting, pickups, failing] =
+			await Promise.all([
+				this.askKinds(rows),
+				this.stops(ids),
+				this.hostStops(rows),
+				this.waitingOn(ids, now),
+				this.pickups(rows, now),
+				this.failingChecks(ids),
+			]);
 		const out = new Map<string, ThreadStatusInfo>();
 		for (const r of rows)
 			out.set(
@@ -86,6 +90,7 @@ export class ThreadStatusService {
 						stopped:
 							r.status === "cancelled" || r.lastTurnOutcome === "stopped",
 						pickup: pickups.has(r.id),
+						checksFailing: failing.get(r.id) ?? null,
 					},
 					now,
 				),
@@ -240,6 +245,35 @@ export class ThreadStatusService {
 					isBlockedMode(mode.data),
 				...(mode.success ? { mode: mode.data } : {}),
 			});
+		}
+		return out;
+	}
+
+	/** Threads whose newest PR is open with failing checks, by its number. */
+	private async failingChecks(
+		ids: string[],
+	): Promise<Map<string, { number: number | null }>> {
+		const out = new Map<string, { number: number | null }>();
+		if (!ids.length) return out;
+		const rows = await this.prisma.pullRequest.findMany({
+			where: { investigationId: { in: ids } },
+			orderBy: { createdAt: "desc" },
+			select: {
+				investigationId: true,
+				number: true,
+				state: true,
+				checks: true,
+			},
+		});
+		const seen = new Set<string>();
+		for (const r of rows) {
+			if (seen.has(r.investigationId)) continue;
+			seen.add(r.investigationId);
+			const checks = PrChecksSchema.safeParse(
+				safeParseJsonObject(r.checks),
+			).data;
+			if (r.state === "open" && checks?.state === "failing")
+				out.set(r.investigationId, { number: r.number });
 		}
 		return out;
 	}

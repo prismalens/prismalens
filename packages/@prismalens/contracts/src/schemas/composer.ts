@@ -8,10 +8,8 @@ import { HARNESS_IDS } from "@prismalens/config/harness";
  */
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
+import { MESSAGE_KEY, UUID_PATTERN } from "./composer-values.js";
 import { AccessLevelSchema, AgentModeIdSchema } from "./settings.js";
-
-const UUID =
-	"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
 /**
  * `thread:<id>`, `new:home`, or `new:project|service|incident:<id>`. A new thread opened with
@@ -22,7 +20,7 @@ export const ComposerScopeSchema = /* @__PURE__ */ lazySchema(() =>
 		.string()
 		.regex(
 			new RegExp(
-				`^(thread:${UUID}|new:home(:${UUID})?|new:(project|service|incident):${UUID}(:${UUID})?)$`,
+				`^(thread:${UUID_PATTERN}|new:home(:${UUID_PATTERN})?|new:(project|service|incident):${UUID_PATTERN}(:${UUID_PATTERN})?)$`,
 			),
 			"Not a composer scope.",
 		),
@@ -43,6 +41,10 @@ export const QuoteSchema = /* @__PURE__ */ lazySchema(() =>
 			threadId: z.string().uuid(),
 			/** The event the text came from, so the chip scrolls back to it. */
 			seq: z.number().int().min(0).optional(),
+			/** The message's event key (`<branch>:<seq>`): what a citation in another thread names (#1195). */
+			key: z.string().regex(MESSAGE_KEY).optional(),
+			/** The turn of its thread the message sits in, counted from 1; set when the message is sent. */
+			turn: z.number().int().min(1).optional(),
 			kind: z.enum([
 				"transcript",
 				"report",
@@ -85,6 +87,7 @@ export const REFERENCE_KINDS = [
 	"silence",
 	"alert_rule",
 	"command",
+	"message",
 ] as const;
 export const ReferenceKindSchema = /* @__PURE__ */ lazySchema(() =>
 	z.enum(REFERENCE_KINDS),
@@ -100,6 +103,10 @@ export const ReferenceRefSchema = /* @__PURE__ */ lazySchema(() =>
 	}),
 );
 export type ReferenceRef = z.infer<typeof ReferenceRefSchema>;
+
+/** A `message` reference's id: its thread and its event key (#1195). */
+export const messageRefId = (threadId: string, key: string) =>
+	`${threadId}/${key}`;
 
 export const MAX_QUOTES_PER_MESSAGE = 10;
 export const MAX_REFERENCES_PER_MESSAGE = 20;

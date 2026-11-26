@@ -5,6 +5,7 @@ import {
 	Copy,
 	MessageCircleQuestion,
 	MessageSquarePlus,
+	MessagesSquare,
 	Quote,
 } from "lucide-react";
 import {
@@ -25,11 +26,14 @@ export interface SelectionCtx {
 		quote: (q: QuoteChip) => void;
 		newThread: (q: QuoteChip) => void;
 		aside?: (q: QuoteChip) => void;
+		quoteIn?: (q: QuoteChip) => void;
 	} | null;
-	facts: Facts<"aside">;
+	facts: Facts<"aside" | "quoteIn">;
 }
 
-export const selectionObject = defineObject<SelectionCtx, "aside">("selection");
+export const selectionObject = defineObject<SelectionCtx, "aside" | "quoteIn">(
+	"selection",
+);
 
 export const selectionCopy = defineAction({
 	id: "selection.copy",
@@ -67,6 +71,18 @@ export const selectionAside = defineAction({
 	when: (f) => !!f.is?.aside,
 	run: (c) => {
 		c.to?.aside?.(c.chip);
+		c.done();
+	},
+});
+
+/** Into any thread's box, picked from a list (#1195). */
+export const selectionQuoteIn = defineAction({
+	id: "selection.quoteIn",
+	label: "Quote in another thread",
+	icon: MessagesSquare,
+	when: (f) => !!f.is?.quoteIn,
+	run: (c) => {
+		c.to?.quoteIn?.(c.chip);
 		c.done();
 	},
 });

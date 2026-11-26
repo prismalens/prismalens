@@ -63,7 +63,8 @@ const thread = (id: string, status: string, agentStarted: boolean) =>
 		projectName: null,
 		titleSetBy: null,
 		serviceName: null,
-		section: "active",
+		// As the server sections it: a stop with no armed resume needs you.
+		section: status === "working" || status === "done" ? "active" : "needs",
 		state: { status },
 		...(agentStarted
 			? {

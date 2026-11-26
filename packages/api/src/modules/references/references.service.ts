@@ -9,6 +9,7 @@ import {
 	AgentCommandsSchema,
 	CanonicalEventSchema,
 	type JobMessageContext,
+	parseMessageRefId,
 	plToolName,
 	type Quote,
 	quoteMarkdown,
@@ -29,6 +30,7 @@ import {
 import * as clock from "../../core/clock.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { compactCommandOf, registryFacts } from "../wakes/session.js";
+import { Citations, citationBlock } from "./citations.js";
 import { FILE_LIST_TIMED_OUT } from "./file-list.js";
 import { rank, refKey } from "./ranking.js";
 import { RecordsProvider } from "./records.provider.js";
@@ -128,6 +130,7 @@ const idAfter = (scope: string, prefix: string) =>
 @Injectable()
 export class ReferencesService {
 	readonly records: RecordsProvider;
+	readonly citations: Citations;
 	private readonly providers: ReferenceProvider[];
 
 	constructor(
@@ -137,6 +140,7 @@ export class ReferencesService {
 		extra: ReferenceProvider[] | null = null,
 	) {
 		this.records = new RecordsProvider(prisma);
+		this.citations = new Citations(prisma);
 		this.providers = [this.records, ...(extra ?? [])];
 	}
 
@@ -294,15 +298,34 @@ export class ReferencesService {
 		input: { quotes?: Quote[]; references?: ReferenceRef[] },
 		run: { threadId: string | null; scope?: string | null },
 	): Promise<JobMessageContext | undefined> {
-		const quotes = input.quotes ?? [];
 		const references = input.references ?? [];
-		if (!quotes.length && !references.length) return undefined;
+		if (!input.quotes?.length && !references.length) return undefined;
 		const parts: string[] = [];
-		for (const q of quotes)
-			parts.push(quoteMarkdown(q, await this.quoteSource(q)));
-		const snaps = await this.snapshots(references, run);
+		const quotes: Quote[] = [];
+		for (const q of input.quotes ?? []) {
+			const cited = await this.cited(q, run.threadId);
+			quotes.push(cited.quote);
+			parts.push(cited.text);
+		}
+		// A message cited from another thread goes fenced, as a cited quote does (#1195).
+		const unavailable: string[] = [];
+		for (const r of references) {
+			if (r.kind !== "message") continue;
+			const m = parseMessageRefId(r.id);
+			if (m?.threadId === run.threadId) continue;
+			const msg = m && (await this.citations.message(m.threadId, m.key));
+			if (msg) parts.push(citationBlock(msg, msg.text));
+			else
+				unavailable.push(
+					`- message "${r.label}": could not be read, it was deleted or has no text.`,
+				);
+		}
+		const snaps = await this.snapshots(
+			references.filter((r) => r.kind !== "message"),
+			run,
+		);
 		let budget = REFERENCE_SNAPSHOTS_MAX_CHARS;
-		const lines: string[] = [];
+		const lines: string[] = [...unavailable];
 		for (const s of snaps) {
 			const tool = s.readTool ? ` For more, call ${s.readTool}.` : "";
 			const scope = s.outOfScope
@@ -326,6 +349,36 @@ export class ReferencesService {
 			...(quotes.length ? { quotes } : {}),
 			...(references.length ? { references } : {}),
 			addendum: parts.join("\n\n"),
+		};
+	}
+
+	/** The messages these cited from other threads, kept as rows once the message is sent (#1195). */
+	cite(
+		threadId: string,
+		input: { quotes?: Quote[]; references?: ReferenceRef[] },
+	): Promise<void> {
+		return this.citations.record(threadId, input).catch(() => {});
+	}
+
+	/**
+	 * A quote from this thread goes as a blockquote; one from another thread's conversation
+	 * goes fenced with its turn, and the quote keeps that turn for the chip (#1195).
+	 */
+	private async cited(
+		q: Quote,
+		threadId: string | null,
+	): Promise<{ quote: Quote; text: string }> {
+		const words = ["transcript", "report", "tool_output"].includes(
+			q.source.kind,
+		);
+		if (q.source.threadId === threadId || !words)
+			return { quote: q, text: quoteMarkdown(q, await this.quoteSource(q)) };
+		const msg = q.source.key
+			? await this.citations.message(q.source.threadId, q.source.key)
+			: null;
+		return {
+			quote: msg ? { ...q, source: { ...q.source, turn: msg.turn } } : q,
+			text: citationBlock(msg ?? { threadId: q.source.threadId }, q.text),
 		};
 	}
 

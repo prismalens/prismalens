@@ -74,6 +74,8 @@ export const ThreadStatusInfoSchema = /* @__PURE__ */ lazySchema(() =>
 		host: HostStopSchema.optional(),
 		/** Done because you stopped its turn: reads "Stopped by you". */
 		stopped: z.boolean().optional(),
+		/** Failed because its PR's checks fail: a PR thread never reads Done then (#1193). */
+		checks: z.object({ number: z.number().int().nullable() }).optional(),
 		/** Settled with nothing since: every surface reads Settled, not Done, after a reload (#1101 category 2). */
 		settledAt: DateStringSchema.optional(),
 	}),
@@ -105,6 +107,8 @@ export interface StatusFacts {
 	/** The last turn was stopped by the user, or the run was cancelled. */
 	stopped?: boolean;
 	waitingOn: WaitingOn | null;
+	/** Its newest open PR's checks fail. */
+	checksFailing?: { number: number | null } | null;
 	/** The user answered an ask and the agent has not taken the answer up yet. */
 	pickup?: boolean;
 }
@@ -132,6 +136,7 @@ export function threadStatus(f: StatusFacts, now: Date): ThreadStatusInfo {
 		return { status: "limited", ...(f.stop.mode ? { mode: f.stop.mode } : {}) };
 	if (f.failed && f.interrupted) return { status: "interrupted" };
 	if (f.failed) return { status: "failed" };
+	if (f.checksFailing) return { status: "failed", checks: f.checksFailing };
 	// Stopping a turn is Done, never a status of its own (#1101 category 2).
 	if (f.stopped) return { status: "done", stopped: true };
 	if (f.waitingOn) return { status: "waiting", waitingOn: f.waitingOn };

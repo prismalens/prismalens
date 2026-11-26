@@ -1,18 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-/**
- * Home's handover (#1101 F3): under the composer, the threads that need you with
- * each one's fix while the sidebar's list is off screen, then what changed while
- * you were away as one digest that opens Events.
- */
-import type { HarnessId } from "@prismalens/config/harness";
 import { agentName } from "@prismalens/contracts";
 import * as P from "@radix-ui/react-popover";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { AwayDigest } from "@/components/home/AwayView";
-import type { NeedsCtx } from "@/components/home/needs.actions";
+import { causeOf } from "@/components/home/needs-cause";
+import { useNeedsCtx } from "@/components/home/use-needs-ctx";
 import { fact } from "@/components/kit/fact";
 import { AgentBadge, StartedByMark } from "@/components/kit/MarkBadges";
 import { ContextMenu } from "@/components/kit/Menu";
@@ -28,12 +23,6 @@ import {
 import { detailLine } from "@/components/shell/ThreadTree";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
-import { agentFacts } from "@/lib/agent-facts";
-import { useResumeInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
-import { useRetryNow } from "@/lib/api/hooks/use-session-orpc";
-import { failureWords, signInCommand } from "@/lib/failure-words";
-import { accountLink } from "@/lib/provider-stop";
-import { stopCause } from "@/lib/stop-causes";
 import type { ListNode } from "@/lib/thread-list";
 import { threadLink } from "@/lib/thread-rows";
 import { cn } from "@/lib/utils";
@@ -112,68 +101,6 @@ export function HomeNeeds({
 			)}
 		</section>
 	);
-}
-
-/** What stopped a thread: a provider or host stop. */
-const stopOf = (n: ListNode) =>
-	n.info.mode ?? n.info.host ?? n.thread.limit?.mode ?? null;
-
-/** The cause the status registry's `fix` reads: a stop, or a signed-out agent's failure. */
-const causeOf = (n: ListNode) =>
-	stopOf(n) ??
-	(n.info.status === "failed" &&
-	n.thread.error &&
-	failureWords(n.thread.error).signIn
-		? "sign_in"
-		: null);
-
-/** The context a card's registered fix actions run with. */
-function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
-	const navigate = useNavigate();
-	const retry = useRetryNow(node.id);
-	const resume = useResumeInvestigation();
-	const t = node.thread;
-	const cause = causeOf(node);
-	const stop = stopOf(node);
-	const view = stop ? stopCause(stop) : null;
-	const link = view?.account
-		? accountLink(t.harness, view.account.page, t.model)
-		: null;
-	const url = link?.url ?? null;
-	const command = signInCommand(agentFacts(t.harness)?.loginHint);
-	return {
-		answer,
-		updateKey: () =>
-			void navigate({
-				to: "/settings",
-				search: {
-					tab: "agent",
-					agent: (t.harness ?? undefined) as HarnessId | undefined,
-				},
-			}),
-		account: () => {
-			if (url) window.open(url, "_blank", "noopener");
-		},
-		accountLabel: link?.label ?? "",
-		signInCommand: command,
-		freeSpace: () =>
-			void navigate({ to: "/settings", search: { tab: "runs" } }),
-		retryNow: () => retry.mutate(),
-		resume: () => resume.mutate({ id: node.id }),
-		open: () => void navigate(threadLink(t)),
-		facts: {
-			is: {
-				ask: node.info.status === "approval" || node.info.status === "question",
-				key: view?.fix === "needs.updateKey",
-				credit: !!url && view?.fix === "needs.addCredit",
-				cap: !!url && view?.fix === "needs.raiseCap",
-				busy: retry.isPending || resume.isPending,
-				disk: cause === "disk_full",
-				signIn: cause === "sign_in" && !!command,
-				interrupted: node.info.status === "interrupted",
-			},
-		},
-	};
 }
 
 /** One thread that needs you: its status, title, cause, marks and age, and its one fix. */
