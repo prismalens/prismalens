@@ -1015,12 +1015,21 @@ async function* runSession(
 		? gatewayOffer(opts.gateway, descriptor.gatewayDelivery)
 		: null;
 	const sharedServers = opts.shared?.servers ?? [];
+	const sharedNames = new Set(sharedServers.map((s) => s.name));
+	/** The shared servers the session was handed once its capabilities were known; history records these. */
+	let sharedSent: string[] | null = null;
+	const sentOf = <T extends { name: string }>(picked: T[]): T[] => {
+		sharedSent = picked.map((s) => s.name).filter((n) => sharedNames.has(n));
+		return picked;
+	};
 	const mcpServers = offer
 		? (caps: Parameters<typeof offer.pick>[0]) =>
-				offer.pick(caps, sharedServers)
+				sentOf(offer.pick(caps, sharedServers))
 		: sharedServers.length
 			? (caps: Parameters<ReturnType<typeof gatewayOffer>["pick"]>[0]) =>
-					sharedServers.filter((s) => caps?.http === true || !("type" in s))
+					sentOf(
+						sharedServers.filter((s) => caps?.http === true || !("type" in s)),
+					)
 			: null;
 	const row = HARNESS_REGISTRY[opts.harness];
 	const inSystemPrompt = row?.facts?.systemPromptVia?.value === "claude-meta";
@@ -1718,7 +1727,7 @@ async function* runSession(
 						...opening,
 						sharedSet: {
 							revision: opts.shared.revision,
-							servers: sharedServers.map((s) => s.name),
+							servers: sharedSent ?? sharedServers.map((s) => s.name),
 						},
 					}
 				: opening,
@@ -1887,10 +1896,10 @@ async function* runSession(
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
 			// The set's instructions open the first prompt after the session opens (§3.3, `first-message`);
 			// a command keeps its turn to itself.
-			if (sharedTextOwed && sharedText && !command) {
+			// Owed until a turn is received: a `cancelled` stop may mean the prompt never went in.
+			const carriesShared = sharedTextOwed && !!sharedText && !command;
+			if (carriesShared && sharedText)
 				parts = [{ type: "text", text: sharedText }, ...parts];
-				sharedTextOwed = false;
-			}
 			// One turn for the hooks however many tries it takes: a retry takes no second snapshot.
 			const turnId = adapter.peekSeq();
 			await turnHook("start", turnId);
@@ -1920,6 +1929,7 @@ async function* runSession(
 				// A stop other than cancelled is the receipt; claude-agent-acp's `cancelled` may mean the
 				// prompt never went in. A compact carries no missed context (#1168, #1179).
 				if ("stop" in end && end.stop !== "cancelled") {
+					if (carriesShared) sharedTextOwed = false;
 					// One receipt holds at most 50 ids, so a larger turn sends several.
 					for (let i = 0; i < receipt.length; i += 50)
 						yield adapter.messagesReceived(receipt.slice(i, i + 50));
