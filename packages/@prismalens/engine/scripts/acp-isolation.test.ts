@@ -30,7 +30,8 @@ import {
 	seedUser,
 } from "../../../../scripts/fakes/markers/seed.mjs";
 import type { Row } from "../../../../scripts/fakes/scripted-model.mjs";
-import { isolatedSession, runIsolationRow } from "./acp-isolation.js";
+import { probeHarness } from "../src/run/harness-doctor.js";
+import { isolatedSession, probeProblem, runIsolationRow } from "./acp-isolation.js";
 
 const ENGINE = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dirs: string[] = [];
@@ -341,6 +342,17 @@ describe("the isolation rows (#1180 R1)", () => {
 			expect(mine(real)).toBe('{"mine":true}');
 		},
 	);
+
+	it("fails a check path whose probe returned a failure outcome instead of throwing, and passes one that answered", async () => {
+		const missing = join(mkdtempSync(join(tmpdir(), "pl-iso-bin-")), "no-such-agent");
+		dirs.push(dirname(missing));
+		const failed = await probeHarness("opencode", { binaryPath: missing, sandbox: async () => ({}) });
+		expect([
+			failed.outcome,
+			probeProblem(failed),
+			probeProblem({ outcome: "answers-acp", detail: "ok" }),
+		]).toEqual(["failed-to-start", `the probe ended failed-to-start: ${failed.detail}`, null]);
+	});
 
 	it("reports a session that cannot start as a problem, not a pass", async () => {
 		const empty = mkdtempSync(join(tmpdir(), "pl-iso-path-"));

@@ -26,7 +26,7 @@ vi.mock("./investigate.js", () => ({
 }));
 
 const { conductRun } = await import("./conductor.js");
-const { injectedSecrets, RecordScrubber, redactEvent, requestedSecrets, scrub, StreamScrubber } = await import(
+const { injectedSecrets, RecordScrubber, redactEvent, redactLine, requestedSecrets, scrub, StreamScrubber } = await import(
 	"./redact.js"
 );
 
@@ -120,13 +120,61 @@ describe("shared values never reach a stream, even split across pieces (#1180 §
 		expect(joined(run(new StreamScrubber([VALUE]), [[encoded]]))).toBe('{"arg":"[redacted]"}');
 	});
 
-	it("redactEvent replaces inside string values only, never a key or a kind, so an argument equal to an event kind cannot change an event", () => {
-		const event = { kind: "turn_usage", turn_usage: "turn_usage", nested: [{ text: `x turn_usage y` }] };
+	it("redactEvent replaces inside string values, keeps a kind and a schema field name, so an argument equal to an event kind cannot change an event", () => {
+		const event = { kind: "turn_usage", text: "turn_usage", nested: [{ text: `x turn_usage y` }] };
 		expect(redactEvent(event, ["turn_usage"])).toEqual({
 			kind: "turn_usage",
-			turn_usage: "[redacted]",
+			text: "[redacted]",
 			nested: [{ text: "x [redacted] y" }],
 		});
+	});
+
+	it("redactEvent keeps schema values equal to a secret, nested in arrays, and redacts the same word in what the agent named", () => {
+		const loadout = {
+			kind: "agent_loadout",
+			profile: "own",
+			items: [
+				{ kind: "mcp", name: "loads", scope: "prismalens", state: "loads", transport: "stdio", layer: "config" },
+				{ kind: "mcp", name: "mcp", scope: "repo", state: "not-sent", transport: "http", layer: "config" },
+			],
+		};
+		expect([redactEvent(loadout, ["loads"]), redactEvent(loadout, ["mcp", "repo"])]).toEqual([
+			{ ...loadout, items: [{ ...loadout.items[0], name: "[redacted]" }, loadout.items[1]] },
+			{ ...loadout, items: [loadout.items[0], { ...loadout.items[1], name: "[redacted]" }] },
+		]);
+	});
+
+	it("redactEvent scrubs a secret in a key the agent or a person named, keeping two such keys apart", () => {
+		const step = {
+			kind: "agent_step",
+			text: "ok",
+			toolCalls: [{ toolCallId: "t1", name: "x", args: { "sv-key-one": 1, "sv-key-two": 2, plain: "sv-key-one" } }],
+		};
+		expect(redactEvent(step, ["sv-key-one", "sv-key-two"])).toEqual({
+			kind: "agent_step",
+			text: "ok",
+			toolCalls: [{ toolCallId: "t1", name: "x", args: { "[redacted]": 1, "[redacted] 2": 2, plain: "[redacted]" } }],
+		});
+	});
+
+	it("redactLine writes a parsed line back from what it parsed, so a repeated member or a key cannot carry a secret through", () => {
+		const secret = "sv-wire-0123456789";
+		expect([
+			redactLine(`{"a":"${secret}","a":"x"}`, [secret]),
+			redactLine(`{"${secret}":1}`, [secret]),
+			redactLine(`{"a":"\\u0073v-wire-0123456789"}`, [secret]),
+			redactLine(`{"a":1,"b":[true,null,"keep"]}`, [secret]),
+		]).toEqual(['{"a":"x"}', '{"[redacted]":1}', '{"a":"[redacted]"}', '{"a":1,"b":[true,null,"keep"]}']);
+	});
+
+	it("redactLine scrubs a line that does not parse, and one holding text that is not valid UTF-16, as text", () => {
+		const secret = "sv-wire-0123456789";
+		const lone = String.fromCharCode(0xd800);
+		expect([
+			redactLine(`{"a":"${secret}"`, [secret]),
+			redactLine(`not json ${secret}${lone}`, [secret]),
+			redactLine(JSON.stringify({ a: `${lone}${secret}` }), [secret]),
+		]).toEqual(['{"a":"[redacted]"', `not json [redacted]${lone}`, JSON.stringify({ a: `${lone}[redacted]` })]);
 	});
 
 	it("redactEvent scrubs a kind inside a tool's input or arguments, which the agent wrote, while the event's own kind stays", () => {

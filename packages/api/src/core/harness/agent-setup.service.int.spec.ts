@@ -127,7 +127,7 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 		await approveDocs();
 		await approveWeb("/v1", { key: SECRET });
 		const first = await service.loadout({ id: "claude-code" });
-		expect(first.items.find((i) => i.name === "pl-web")).toMatchObject({ state: "loads", scope: "prismalens" });
+		expect(first.items.find((i) => i.name === "pl-web")).toMatchObject({ state: "unknown", scope: "prismalens" });
 		await approveWeb("/v2", {});
 		const web = (await service.sharedSet()).servers.find((s) => s.name === "web");
 		expect(web?.missingValues).toEqual(["key"]);
@@ -218,6 +218,22 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 			view.items.find((i) => i.name === "pl-nodes")?.note,
 			JSON.stringify([run, view]).includes(secret),
 		]).toEqual([[], [], "Needs an absolute script path", false]);
+	});
+
+	it("offers an approved HTTP server to the run, and What loads shows it as sent only if the agent takes HTTP", async () => {
+		const cwd = join(env.root, "http-ws");
+		mkdirSync(cwd, { recursive: true });
+		await approveDocs(["claude-code"]);
+		await approveWeb("/v1", { key: SECRET });
+		const run = await service.forRun("claude-code", cwd);
+		const items = (await service.loadout({ id: "claude-code" })).items.filter((i) => i.scope === "prismalens");
+		expect([run.servers.map((m) => m.name).sort(), items.map((i) => [i.name, i.state, i.note ?? null])]).toEqual([
+			["pl-docs", "pl-web"],
+			[
+				["pl-docs", "loads", null],
+				["pl-web", "unknown", "Sent if the agent takes HTTP"],
+			],
+		]);
 	});
 
 	it("refuses an approved URL that carries sign-in, a query or a fragment", async () => {

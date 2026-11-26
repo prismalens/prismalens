@@ -2516,6 +2516,30 @@ describe("a command turn (#1024)", () => {
 		]);
 	});
 
+	it("keeps the set's instructions owed past a turn that ended cancelled, so the Send now prompt after it carries them (#1180 §3.3)", async () => {
+		let deliver: ((line: { text: string }) => void) | undefined;
+		const o = opts("steerable", {
+			env: { ...process.env, FAKE_ACP_MODE: "steerable", FAKE_WAIT_CANCEL: "1" },
+			shared: set,
+			steer: {
+				next: () => null,
+				onNow: (d) => {
+					deliver = d;
+					return () => {
+						deliver = undefined;
+					};
+				},
+			},
+		});
+		for await (const ev of runInvestigation(o))
+			if (ev.kind === "tool_result" && ev.result.toolCallId === "t2") deliver?.({ text: "Stop and look at the TTL." });
+		const prompts = promptsSent(o.runDir);
+		expect(prompts.slice(0, 2).map((p) => [p[0]?.text, p.at(-1)?.text])).toEqual([
+			["Always cite the runbook.", prompts[0]?.at(-1)?.text],
+			["Always cite the runbook.", "Stop and look at the TTL."],
+		]);
+	});
+
 	it("after a restart, the restart note goes in the turn before the command", async () => {
 		const { runDir } = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
@@ -2887,6 +2911,24 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		expect(events.find((e) => e.kind === "session_opened")).toMatchObject({ sharedSet: { revision: "rev-7", servers: ["pl-docs"] } });
 		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
 		expect([wire.includes('{\\"name\\":\\"pl-docs\\",\\"type\\":\\"stdio\\"}'), wire.includes("secret-arg-path"), wire.includes(VALUE)]).toEqual([true, false, false]);
+	});
+
+	it("records in session history only the shared servers the session was handed: an HTTP one only for an agent that takes HTTP", async () => {
+		const web = { type: "http" as const, name: "pl-web", url: "https://mcp.example/v1", headers: [] };
+		const opened = async (http: boolean) => {
+			const record = join(tmp("rec"), "record.json");
+			const { events } = await collect("ok", {
+				env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD: record, ...(http ? { FAKE_MCP_HTTP: "1" } : {}) },
+				shared: { ...shared, servers: [...shared.servers, web] },
+			});
+			const seen = JSON.parse(readFileSync(record, "utf8")) as { mcpServers: { name: string }[] };
+			const e = events.find((x) => x.kind === "session_opened");
+			return [seen.mcpServers.map((m) => m.name), e && "sharedSet" in e ? e.sharedSet?.servers : null];
+		};
+		expect([await opened(false), await opened(true)]).toEqual([
+			[["pl-docs"], ["pl-docs"]],
+			[["pl-docs", "pl-web"], ["pl-docs", "pl-web"]],
+		]);
 	});
 
 	it("keeps a shared value with a quote and a backslash out of every inbound wire record, raw and JSON-escaped", async () => {
