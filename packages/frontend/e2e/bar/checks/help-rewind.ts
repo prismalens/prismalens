@@ -104,6 +104,7 @@ export interface Fixture {
 	id: string;
 	cwd: string;
 	path: string;
+	repositoryId: string;
 }
 
 /**
@@ -139,7 +140,7 @@ export async function rewindFixture(
 		await sendMessage(page, id, text);
 		await idle(page, id);
 	}
-	return { id, cwd, path: `/threads/${id}` };
+	return { id, cwd, path: `/threads/${id}`, repositoryId: seed.repositoryId };
 }
 
 export const fileAt = (cwd: string, p: string) => {

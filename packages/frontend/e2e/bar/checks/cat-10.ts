@@ -8,6 +8,7 @@ import {
 	apiPost,
 	apiPut,
 	eventsOf,
+	type Fixture,
 	idle,
 	MESSAGE_2,
 	MESSAGE_3,
@@ -277,14 +278,14 @@ export default defineChecks([
 				});
 			const markers = async (id: string) =>
 				(await eventsOf(page, id)).filter((e) => e.kind === "thread_rewound");
-			/** A thread whose fake agent calls pl_thread_rewind on `target`'s last message. */
-			const caller = async (target: string) => {
+			/** A thread on the target's project, so it can read it, whose fake agent calls pl_thread_rewind. */
+			const caller = async (target: Fixture) => {
 				const { investigationId } = await apiPost<{ investigationId: string }>(
 					page,
 					"/threads",
 					{
-						subject: { kind: "none" },
-						text: `fake-session:rewind-caller Edit the last message of ${target}`,
+						subject: { kind: "project", repositoryId: target.repositoryId },
+						text: `fake-session:rewind-caller Edit the last message of ${target.path}`,
 						// The fake sessions speak as Claude Code; the sim's default agent may be another.
 						harness: "claude-code",
 					},
@@ -311,7 +312,7 @@ export default defineChecks([
 					const fx = await rewindFixture(page, sim, { messages: [MESSAGE_2] });
 					if (typeof fx === "string") return notSetUp(fx);
 					await setStart(mode);
-					const by = await caller(fx.path);
+					const by = await caller(fx);
 					if (mode === "ask") {
 						const askId = await askOf(by);
 						if (!askId) {
@@ -327,8 +328,13 @@ export default defineChecks([
 					}
 					await idle(page, by);
 					await idle(page, fx.id);
-					const got = await markers(fx.id);
 					const want = mode === "never" ? 0 : 1;
+					// An approved action runs on the next pending-actions pass, after the caller's turn ended.
+					let got = await markers(fx.id);
+					for (let i = 0; got.length < want && i < 40; i++) {
+						await page.waitForTimeout(500);
+						got = await markers(fx.id);
+					}
 					if (got.length !== want)
 						fails.push(`${mode}: ${got.length} rewinds, not ${want}`);
 					if (got[0] && (got[0].by as { kind?: string })?.kind !== "thread")
@@ -345,7 +351,7 @@ export default defineChecks([
 					busy.id,
 					"Check the retries again, take your time",
 				);
-				const by = await caller(busy.path);
+				const by = await caller(busy);
 				await idle(page, by);
 				if ((await markers(busy.id)).length)
 					fails.push("running: a running thread was rewound");
@@ -358,7 +364,7 @@ export default defineChecks([
 				const stale = await rewindFixture(page, sim, { messages: [MESSAGE_2] });
 				if (typeof stale === "string") return notSetUp(stale);
 				await setStart("ask");
-				const asker = await caller(stale.path);
+				const asker = await caller(stale);
 				const askId = await askOf(asker);
 				if (!askId) fails.push("stale: no approval card opened");
 				else {
