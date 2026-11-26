@@ -486,10 +486,10 @@ export class AgentSetupService {
 			staleReport ??= { at, threadId: e.investigationId };
 		}
 		const key = (i: LoadedItem) =>
-			`${i.kind} ${i.name} ${i.scope} ${i.path ?? ""}`;
+			`${i.kind}\0${i.name}\0${i.scope}\0${i.path ?? ""}`;
 		const byKey = new Map(reported.map((i) => [key(i), i]));
 		// Claude's init names servers and skills without a path: matched by kind and name.
-		const pathless = (i: LoadedItem) => `${i.kind} ${i.name}`;
+		const pathless = (i: LoadedItem) => `${i.kind}\0${i.name}`;
 		const byName = new Map(
 			reported.filter((i) => i.path === null).map((i) => [pathless(i), i]),
 		);

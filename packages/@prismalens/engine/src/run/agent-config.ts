@@ -349,7 +349,7 @@ export function configFingerprint(
 	const rows = items
 		.map((i) =>
 			[i.kind, i.name, i.scope, i.path ?? "", i.state, content(i.path)].join(
-				" ",
+				"\0",
 			),
 		)
 		.sort();
