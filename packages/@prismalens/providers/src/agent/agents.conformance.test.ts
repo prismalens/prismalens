@@ -6,7 +6,8 @@ import { conformance } from "../conformance/index.ts";
 import type { EntryPointDef } from "../descriptor.ts";
 import { agents } from "../index.ts";
 import { builtIn } from "../registry.gen.ts";
-import { type AgentDef, type CheckedModes, installCommand } from "./family.ts";
+import { type AgentDef, type CheckedModes, installCommand, TERMS_RUNS } from "./family.ts";
+import { runsUnder } from "./terms.ts";
 
 const LEVELS = ["supervised", "auto-edits", "auto", "full-access"] as const;
 const REQUIRED = Object.values(builtIn)
@@ -49,8 +50,27 @@ conformance("agent", agents(), [
 		},
 	},
 	{
+		id: "terms",
+		title: "gives every sign-in method a verdict, with its clause, URL and read date",
+		run: (p) => {
+			const methods = p.auth?.methods ?? [];
+			const unsourced = methods
+				.filter(
+					({ terms: t }) =>
+						!TERMS_RUNS.includes(t?.runs) ||
+						!/^https:\/\/\S+$/.test(t.source?.url ?? "") ||
+						!t.source.clause?.trim() ||
+						!/^\d{4}-\d{2}-\d{2}$/.test(t.source.readOn ?? "") ||
+						(t.runs === "unknown" && !t.gaps?.length),
+				)
+				.map((m) => m.id);
+			expect(unsourced).toEqual([]);
+		},
+	},
+	{
 		id: "unattended",
-		title: "offers a sign-in method alert and scheduled runs may use",
-		run: (p) => expect(p.auth?.methods?.some((m) => m.unattended)).toBe(true),
+		title: "offers a sign-in path alert and scheduled runs may use",
+		run: (p) =>
+			expect(p.auth?.methods?.some((m) => runsUnder(m.terms.runs, "alert"))).toBe(true),
 	},
 ]);

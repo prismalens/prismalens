@@ -18,3 +18,6 @@ export const agents = (): AgentDef[] =>
 
 /** The agent family's types and helpers, for a reader that needs no registry. */
 export * from "./agent/family.ts";
+
+/** Which runs each sign-in path may start, by its vendor's terms. */
+export * from "./agent/terms.ts";

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { channelOf, defineAgent, testedOf } from "../family.ts";
+import { channelOf, codingPlan, defineAgent, testedOf } from "../family.ts";
 import pin from "./pin.json" with { type: "json" };
 
 export const opencode = defineAgent({
@@ -27,13 +27,40 @@ export const opencode = defineAgent({
 				id: "login",
 				label: "OpenCode auth login",
 				steps: ["terminal", "browser"],
-				unattended: true,
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://opencode.ai/docs/cli/",
+						clause:
+							"It is designed for scripts, CI jobs, and other workflows that need model output directly in the terminal.",
+						readOn: "2026-11-26",
+					},
+					gaps: ["the terms of the provider it is signed in to"],
+				},
 			},
+			codingPlan(["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]),
 			{
 				id: "provider-key",
 				label: "A provider key in env",
 				steps: ["credentials"],
-				unattended: true,
+				env: [
+					{ name: "ANTHROPIC_API_KEY" },
+					{ name: "OPENAI_API_KEY" },
+					{ name: "GEMINI_API_KEY" },
+					{ name: "GOOGLE_GENERATIVE_AI_API_KEY" },
+					{ name: "GOOGLE_API_KEY" },
+					{ name: "OPENROUTER_API_KEY" },
+				],
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://opencode.ai/docs/cli/",
+						clause:
+							"It is designed for scripts, CI jobs, and other workflows that need model output directly in the terminal.",
+						readOn: "2026-11-26",
+					},
+					gaps: ["the terms of the provider that key belongs to"],
+				},
 			},
 		],
 	},
