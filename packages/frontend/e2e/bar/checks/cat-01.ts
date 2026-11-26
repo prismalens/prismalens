@@ -237,7 +237,11 @@ export default defineChecks([
 						"";
 					return {
 						title: text("row-title"),
-						word: text("row-status"),
+						// The status says itself by its icon, named by its word (#1101 cat 2).
+						word:
+							wrap
+								.querySelector('[role="img"][data-fact="status"]')
+								?.getAttribute("aria-label") ?? "",
 						age: text("row-age"),
 						needs: !!el.closest('[data-testid="thread-section-needs"]'),
 						detail: text("row-detail") || text("row-cause"),
@@ -248,7 +252,7 @@ export default defineChecks([
 				const name = r.title || `row ${i + 1}`;
 				return [
 					!r.title && `${name}: no title`,
-					!r.word && `${name}: no status word`,
+					!r.word && `${name}: no status icon named by its word`,
 					!r.age && `${name}: no age`,
 					r.needs &&
 						!r.detail &&
@@ -257,7 +261,7 @@ export default defineChecks([
 			});
 			return verdict(
 				fails,
-				`${seen.length} rows: each has a title, a status word and an age; ${seen.filter((r) => r.needs).length} needs-you rows each have a detail line`,
+				`${seen.length} rows: each has a title, a status icon named by its word and an age; ${seen.filter((r) => r.needs).length} needs-you rows each have a detail line`,
 			);
 		},
 	},

@@ -14,6 +14,7 @@ import {
 	type ThreadStatusInfo,
 	type WaitingOn,
 } from "@prismalens/contracts";
+import type { MarkState } from "@/components/kit/marks";
 import { relTime, spanWord } from "@/components/kit/rel-time";
 import { stopMode, stopRowWords } from "@/lib/provider-stop";
 import { stopCause } from "@/lib/stop-causes";
@@ -140,6 +141,62 @@ export function statusReason(
 			return "PrismaLens restarted mid-run";
 		case "done":
 			return info.stopped ? "Stopped by you" : null;
+	}
+}
+
+/** A reason the row draws as the reason mark and a short token; `words` is its hint. */
+export type ReasonToken = {
+	mark: MarkState<"reason">;
+	token: string | null;
+	words: string;
+};
+
+/**
+ * A list row's reason, one fact: an icon and token where the reason has a shape, words where
+ * it is a cause, and null where the status icon already says it ("Run failed", "Stopped by you").
+ */
+export function rowReason(
+	t: ThreadRow,
+	info: ThreadStatusInfo,
+	now: number,
+	at: (iso: string) => string = formatClock,
+): ReasonToken | { mark?: never; words: string } | null {
+	const words = statusReason(t, info, now, at);
+	if (!words) return null;
+	switch (info.status) {
+		case "waiting": {
+			const w = info.waitingOn;
+			if (!w) return { words };
+			if (w.kind === "pr")
+				return {
+					mark: w.until === "checks_done" ? "checks" : w.until,
+					token: w.number === null ? null : `#${w.number}`,
+					words,
+				};
+			if (w.kind === "cron")
+				return { mark: "repeat", token: w.nextAt ? at(w.nextAt) : null, words };
+			return { mark: "wake", token: at(w.at), words };
+		}
+		case "working":
+			return info.quietSince
+				? {
+						mark: "quiet",
+						token: `${quietMinutes(info.quietSince, now)}m`,
+						words,
+					}
+				: { words };
+		case "failed":
+			if (info.checks)
+				return {
+					mark: "failing",
+					token: info.checks.number ? `#${info.checks.number}` : null,
+					words,
+				};
+			return t.error?.trim() ? { words } : null;
+		case "done":
+			return null;
+		default:
+			return { words };
 	}
 }
 
