@@ -55,6 +55,10 @@ const OP = '"kind":"operator_message"';
 const cut = (s: string, n: number) =>
 	s.length > n ? `${s.slice(0, n - 1)}…` : s;
 
+/** The cited message goes whole: the excerpt sent with it points here for the rest. */
+const reply = (text: string, mark: string) =>
+	mark ? text : cut(text, REPLY_CHARS);
+
 function parse(raw: string): CanonicalEvent | null {
 	try {
 		const p = CanonicalEventSchema.safeParse(JSON.parse(raw));
@@ -180,25 +184,32 @@ export class Citations {
 			if (m && m.threadId !== threadId) cited.set(r.id, m);
 		}
 		for (const c of cited.values()) {
+			const gen = await this.generation(c.threadId);
 			const msg = await this.message(c.threadId, c.key);
-			if (!msg) continue;
+			if (!msg || gen === null) continue;
+			const where = {
+				threadId,
+				sourceThreadId: c.threadId,
+				sourceKey: c.key,
+			};
 			await this.prisma.messageCitation.upsert({
-				where: {
-					threadId_sourceThreadId_sourceKey: {
-						threadId,
-						sourceThreadId: c.threadId,
-						sourceKey: c.key,
-					},
-				},
-				create: {
-					threadId,
-					sourceThreadId: c.threadId,
-					sourceKey: c.key,
-					sourceTurn: msg.turn,
-				},
+				where: { threadId_sourceThreadId_sourceKey: where },
+				create: { ...where, sourceTurn: msg.turn },
 				update: {},
 			});
+			// A reset deletes citations; one landing after it but read before it names the old run.
+			if ((await this.generation(c.threadId)) !== gen)
+				await this.prisma.messageCitation.deleteMany({ where });
 		}
+	}
+
+	/** The thread's reset count: a reset bumps it with the delete of its citations. */
+	private async generation(threadId: string): Promise<number | null> {
+		const t = await this.prisma.investigation.findUnique({
+			where: { id: threadId },
+			select: { eventGeneration: true },
+		});
+		return t?.eventGeneration ?? null;
 	}
 
 	/** A thread's citations both ways: what it cited, and where its own messages were cited. */
@@ -240,6 +251,7 @@ export class Citations {
 		threadId: string,
 		key: string,
 	): Promise<CitedTurn | null> {
+		const gen = await this.generation(threadId);
 		const row = await this.prisma.messageCitation.findUnique({
 			where: {
 				threadId_sourceThreadId_sourceKey: {
@@ -285,7 +297,8 @@ export class Citations {
 		]);
 		if (!thread || !cited) return null;
 		const span = await this.span(threadId, cited.ordinal);
-		// A long turn reads its opening half and the half from the cited row on, so the cited row is always in.
+		// A long turn reads its opening half, then half from the cited row (or straight on, when the
+		// opening already holds it); what it skips is counted in place.
 		const from = (gte: number, take: number) =>
 			this.prisma.investigationEvent.findMany({
 				where: {
@@ -299,26 +312,41 @@ export class Citations {
 				take,
 				select: { event: true, branchId: true, seq: true, ordinal: true },
 			});
-		const [head, tail] = await Promise.all([
-			from(span.from, TURN_ROWS / 2),
-			from(Math.max(span.from, cited.ordinal), TURN_ROWS / 2),
+		const head = await from(span.from, TURN_ROWS / 2);
+		const headEnd = head.at(-1)?.ordinal ?? span.from - 1;
+		const tail = await from(
+			Math.max(headEnd + 1, cited.ordinal),
+			TURN_ROWS / 2,
+		);
+		const tailEnd = tail.at(-1)?.ordinal ?? headEnd;
+		const between = (gt: number, lt: number | null) =>
+			this.prisma.investigationEvent.count({
+				where: {
+					investigationId: threadId,
+					ordinal: { gt, ...(lt !== null ? { lt } : {}) },
+				},
+			});
+		const [gap, rest] = await Promise.all([
+			tail[0] ? between(headEnd, tail[0].ordinal) : 0,
+			between(tailEnd, span.until),
 		]);
-		const seen = new Set(head.map((r) => r.ordinal));
-		const rows = [...head, ...tail.filter((r) => !seen.has(r.ordinal))];
+		const rows = [...head, ...tail];
+		const leftOut = (n: number) => `(${n} rows of this turn left out)`;
 		const lines: string[] = [`Thread title: ${thread.title ?? "Untitled"}`];
 		const files = new Set<string>();
 		const calls: string[] = [];
 		const edits: string[] = [];
 		for (const r of rows) {
+			if (gap && r === tail[0]) lines.push(leftOut(gap));
 			const e = parse(r.event);
 			if (!e) continue;
 			const mark =
 				rowKey(r.branchId, r.seq) === key ? " (the cited message)" : "";
 			if (e.kind === "operator_message" && e.text.trim())
-				lines.push(`User asked${mark}:\n${cut(e.text.trim(), REPLY_CHARS)}`);
+				lines.push(`User asked${mark}:\n${reply(e.text.trim(), mark)}`);
 			if (e.kind !== "agent_step") continue;
 			if (e.text.trim())
-				lines.push(`Agent said${mark}:\n${cut(e.text.trim(), REPLY_CHARS)}`);
+				lines.push(`Agent said${mark}:\n${reply(e.text.trim(), mark)}`);
 			for (const c of e.toolCalls) {
 				calls.push(`- ${c.name} ${cut(JSON.stringify(c.args), CALL_CHARS)}`);
 				for (const k of PATH_KEYS) {
@@ -334,6 +362,7 @@ export class Citations {
 					);
 			}
 		}
+		if (rest) lines.push(leftOut(rest));
 		if (calls.length)
 			lines.push(`Tool calls:\n${calls.slice(0, 60).join("\n")}`);
 		if (edits.length) lines.push(`Edits:\n${edits.slice(0, 20).join("\n")}`);
@@ -350,6 +379,8 @@ export class Citations {
 					)
 					.join("\n")}`,
 			);
+		// A reset under these reads may have swapped the cited row for a rerun's (#1195).
+		if (gen === null || (await this.generation(threadId)) !== gen) return null;
 		return {
 			threadId,
 			key,

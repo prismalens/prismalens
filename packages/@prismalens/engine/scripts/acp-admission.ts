@@ -32,6 +32,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	authenticateMethod,
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
@@ -431,6 +432,10 @@ const r11 = await (async (): Promise<string> => {
 			},
 			destroy: () => base.destroy(),
 		};
+		const authenticateOf = (env: Record<string, string | undefined>) => {
+			const method = authenticateMethod(HARNESS_REGISTRY[harness], env);
+			return method ? { authenticate: method.methodId } : {};
+		};
 		const first = new AcpSession({
 			command: prep.launch.command,
 			args: [
@@ -439,6 +444,7 @@ const r11 = await (async (): Promise<string> => {
 			],
 			cwd: work,
 			env: prep.env,
+			...authenticateOf(prep.env),
 			launcher,
 			permission: (req) => {
 				const option = optionOf(req, "allow");

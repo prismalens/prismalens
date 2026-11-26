@@ -1115,6 +1115,8 @@ export function deriveTranscript(
 	const stopLines = events.some(
 		(e) => e.kind === "usage_limit" || e.kind === "provider_blocked",
 	);
+	// The run's stop classifies its last error only: an earlier one, before a resume, keeps its own message.
+	const lastError = events.findLast((e) => e.kind === "error");
 	const findings = new Map<
 		string,
 		Extract<TranscriptItem, { kind: "finding" }>
@@ -1701,7 +1703,7 @@ export function deriveTranscript(
 				// A provider stop's own line says it once; the turn adds no end of its own (sheet §10).
 				if (event.failure && stopLines) break;
 				// A run a stop ended reads its state here, never "Failed" with the raw error (#1193).
-				const held = first ? providerStopEnd(run) : null;
+				const held = event === lastError ? providerStopEnd(run) : null;
 				if (held) {
 					if (!stopRecorded) {
 						standingAt = items.length;

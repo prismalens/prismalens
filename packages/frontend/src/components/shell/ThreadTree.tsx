@@ -30,7 +30,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { causeOf, useNeedsCtx } from "@/components/home/use-needs-ctx";
+import { causeOf } from "@/components/home/needs-cause";
 import { fact } from "@/components/kit/fact";
 import {
 	AgentBadge,
@@ -39,7 +39,6 @@ import {
 	StartedByMark,
 	startedByLabel,
 } from "@/components/kit/MarkBadges";
-import { entryOf } from "@/components/kit/registry";
 import { relTime } from "@/components/kit/rel-time";
 import {
 	fixActionId,
@@ -561,6 +560,7 @@ function ListRowView({
 	// An ask row opens its ask card even before the ask itself has loaded on a slow link.
 	const asking =
 		!!entry || (inNeeds && (mark === "approval" || mark === "question"));
+	const fixId = inNeeds ? rowFixId(node) : null;
 	const cardOpen = asking ? askOpen : peek;
 	// Details on demand in the row's reserved gap: hover, focus or a tap shows them, Escape hides (#1101 cat 8.2).
 	// Its text is drawn only while shown, so nothing else changes; screen readers get it always.
@@ -884,7 +884,7 @@ function ListRowView({
 						{...(onSettle ? { onSettle: () => onSettle(t) } : {})}
 					/>
 				</div>
-				{inNeeds && !asking && rowFixId(node) && <RowFix node={node} />}
+				{inNeeds && !asking && fixId && <RowFix node={node} id={fixId} />}
 				{!entry && answerNote && (
 					<p
 						className="pb-1.5 text-meta text-text-2"
@@ -907,28 +907,16 @@ function rowFixId(node: ListNode) {
 	return id && id !== "needs.open" && id !== "needs.answer" ? id : null;
 }
 
-/** The row's one fix: the same registered action, label and icon as Home's card and the dock. */
-function RowFix({ node }: { node: ListNode }) {
-	const ctx = useNeedsCtx(node, () => {});
-	const id = rowFixId(node);
-	const found = id ? entryOf(id, ctx) : null;
-	if (!found || "separator" in found) return null;
-	return (
-		<div className="flex pb-1.5" style={{ paddingLeft: 30 }}>
-			<button
-				type="button"
-				disabled={found.disabled}
-				onClick={found.onSelect}
-				className="inline-flex min-h-6 items-center gap-1 rounded-control px-1.5 text-meta text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
-				data-testid="row-fix"
-				data-fix={found.id}
-			>
-				{found.icon && <found.icon className="size-3.5" aria-hidden />}
-				{found.label}
-			</button>
+/** The registry loads behind the row, not with the shell's first paint (entry-budget.json). */
+const RowFix = lazyPart(
+	() => import("./RowFix").then((m) => m.RowFix),
+	() => (
+		<div className="flex pb-1.5">
+			<div className="min-h-6" />
 		</div>
-	);
-}
+	),
+	{ afterFirstContent: true },
+);
 
 /** Space, or Answer on an ask row: the last agent sentence and what holds the thread. */
 function Peek({

@@ -10,6 +10,7 @@ import { fact } from "@/components/kit/fact";
 import { Status } from "@/components/kit/Status";
 import { primeAside } from "@/components/thread/aside-bus";
 import { docksHere } from "@/components/thread/composer/decided";
+import { lazyQuoteIn } from "@/components/thread/composer/QuoteInPart";
 import {
 	openNewThread,
 	type QuoteChip,
@@ -56,7 +57,7 @@ const AskDock = lazyPart(
 const DecidedList = lazyPart(() =>
 	import("@/components/thread/composer/AskDock").then((m) => m.DecidedList),
 );
-const QuoteIn = lazyPart(() =>
+const QuoteIn = lazyQuoteIn(() =>
 	import("@/components/thread/composer/QuoteIn").then((m) => m.QuoteIn),
 );
 const QuotePopover = lazyPart(() =>

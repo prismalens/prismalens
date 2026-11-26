@@ -8,10 +8,8 @@ import { HARNESS_IDS } from "@prismalens/config/harness";
  */
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
+import { MESSAGE_KEY, UUID_PATTERN } from "./composer-values.js";
 import { AccessLevelSchema, AgentModeIdSchema } from "./settings.js";
-
-const UUID =
-	"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
 /**
  * `thread:<id>`, `new:home`, or `new:project|service|incident:<id>`. A new thread opened with
@@ -22,7 +20,7 @@ export const ComposerScopeSchema = /* @__PURE__ */ lazySchema(() =>
 		.string()
 		.regex(
 			new RegExp(
-				`^(thread:${UUID}|new:home(:${UUID})?|new:(project|service|incident):${UUID}(:${UUID})?)$`,
+				`^(thread:${UUID_PATTERN}|new:home(:${UUID_PATTERN})?|new:(project|service|incident):${UUID_PATTERN}(:${UUID_PATTERN})?)$`,
 			),
 			"Not a composer scope.",
 		),
@@ -33,9 +31,6 @@ export type ComposerScope = z.infer<typeof ComposerScopeSchema>;
 export function scopeThreadId(scope: string): string | null {
 	return scope.startsWith("thread:") ? scope.slice("thread:".length) : null;
 }
-
-/** A message's event key, `<branch>:<seq>`; plain so it can name the message in a prompt's trusted line. */
-const MESSAGE_KEY = /^[\w.-]{1,120}:\d{1,9}$/;
 
 export const QUOTE_MAX_CHARS = 8000;
 export const QUOTE_COMMENT_MAX_CHARS = 4000;
@@ -112,15 +107,6 @@ export type ReferenceRef = z.infer<typeof ReferenceRefSchema>;
 /** A `message` reference's id: its thread and its event key (#1195). */
 export const messageRefId = (threadId: string, key: string) =>
 	`${threadId}/${key}`;
-
-export function parseMessageRefId(
-	id: string,
-): { threadId: string; key: string } | null {
-	const m = new RegExp(`^(${UUID})/(.+)$`).exec(id);
-	return m?.[1] && m[2] && MESSAGE_KEY.test(m[2])
-		? { threadId: m[1], key: m[2] }
-		: null;
-}
 
 export const MAX_QUOTES_PER_MESSAGE = 10;
 export const MAX_REFERENCES_PER_MESSAGE = 20;

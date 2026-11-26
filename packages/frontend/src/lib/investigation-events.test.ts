@@ -1036,6 +1036,48 @@ describe("deriveTranscript: a provider stop is Limited or Blocked, never Failed 
 		]);
 	});
 
+	it("a blocked stop ends the turn that was blocked, and an earlier error keeps its own message", () => {
+		const error = (seq: number, message: string): CanonicalEvent => ({
+			kind: "error",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq,
+			ts: `2026-11-13T02:0${seq}:00.000Z`,
+			message,
+		});
+		const resume: CanonicalEvent = {
+			kind: "operator_message",
+			runId: RUN_ID,
+			branchId: "main",
+			path: [],
+			seq: 3,
+			label: null,
+			ts: "2026-11-13T02:03:00.000Z",
+			text: "Try again",
+			mode: "queue",
+			delivered: true,
+		};
+		const items = deriveTranscript(
+			[
+				agentStep("main", 1, "Checking."),
+				error(2, "tool crashed"),
+				resume,
+				agentStep("main", 4, "Retrying."),
+				error(5, "provider refused the request"),
+			],
+			{ run: { ...ended, endReason: "blocked", error: "provider refused the request" } },
+		);
+		expect(
+			items
+				.filter((i) => i.kind === "end")
+				.map((i) => [i.key, i.tone, i.text]),
+		).toEqual([
+			["main-2", "failed", "Failed: tool crashed"],
+			["main-5", "stale", `Blocked at ${formatClock(ended.completedAt)}`],
+		]);
+	});
+
 	it("a limited run whose usage_limit event is recorded adds no end of its own", () => {
 		const limit: CanonicalEvent = {
 			kind: "usage_limit",

@@ -7,6 +7,7 @@ import { executeTool, resultValue } from "@prismalens/integrations/harness";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ScenarioApp } from "../../../test/scenarios/support/scenario-app.js";
 import { citationTools } from "../gateway/tools/citations.js";
+import { InvestigationsService } from "../investigations/investigations.service.js";
 import { Citations } from "./citations.js";
 import { ReferencesService } from "./references.service.js";
 
@@ -100,8 +101,9 @@ afterAll(async () => {
 
 const tool = () => {
 	const [t] = citationTools({ turn: (r, th, k) => citations.turn(r, th, k) });
+	if (!t) throw new Error("citationTools offers no tool");
 	return async (runId: string, args: unknown) => {
-		const c = await executeTool(t as never, args, {
+		const c = await executeTool(t, args, {
 			runId,
 			signal: new AbortController().signal,
 		});
@@ -184,7 +186,7 @@ describe("compose sends a cited message to the agent (#1195)", () => {
 		expect(out?.addendum).not.toContain("TAIL");
 	});
 
-	it("a reference to a missing message, or to this thread's own, adds nothing", async () => {
+	it("a reference to a missing message is named as unreadable, and one to this thread's own adds nothing", async () => {
 		const out = await svc.compose(
 			{
 				references: [
@@ -194,7 +196,9 @@ describe("compose sends a cited message to the agent (#1195)", () => {
 			},
 			{ threadId: citing },
 		);
-		expect(out?.addendum).toBe("");
+		expect(out?.addendum).toBe(
+			'Referenced:\n- message "gone": could not be read, it was deleted or has no text.',
+		);
 	});
 
 	it("a quote of another thread's message keeps its turn for the chip and names the message", async () => {
@@ -336,6 +340,63 @@ describe("pl_citation_read (#1195)", () => {
 		expect(r.body.body).toContain("User asked:\nGo\n");
 	});
 
+	it("reads a 300-row turn whole when the cited message opens it", async () => {
+		const prisma = await pl.prisma();
+		const short = await thread("Opening cite", [ask(0, "Go")]);
+		await prisma.investigationEvent.createMany({
+			data: Array.from({ length: 299 }, (_, i) => ({
+				investigationId: short,
+				seq: i + 1,
+				branchId: "main",
+				event: JSON.stringify(answer(i + 1, `step ${i + 1}`)),
+			})),
+		});
+		await svc.cite(citing, {
+			references: [{ kind: "message", id: messageRefId(short, "main:0"), label: "first" }],
+		});
+		const r = await tool()(citing, { threadId: short, key: "main:0" });
+		expect(r.body.body).toContain("User asked (the cited message):\nGo\n");
+		expect(r.body.body).toContain("Agent said:\nstep 200\n");
+		expect(r.body.body).toContain("Agent said:\nstep 299\n");
+		expect(r.body.body).not.toContain("left out");
+	});
+
+	it("names how many rows of a long turn it leaves out, where it leaves them", async () => {
+		const prisma = await pl.prisma();
+		const long = await thread("Gap turn", [ask(0, "Go")]);
+		await prisma.investigationEvent.createMany({
+			data: Array.from({ length: 450 }, (_, i) => ({
+				investigationId: long,
+				seq: i + 1,
+				branchId: "main",
+				event: JSON.stringify(answer(i + 1, `step ${i + 1}`)),
+			})),
+		});
+		await svc.cite(citing, {
+			references: [{ kind: "message", id: messageRefId(long, "main:430"), label: "deep" }],
+		});
+		const body = (await tool()(citing, { threadId: long, key: "main:430" })).body.body as string;
+		expect(body).toContain(
+			"Agent said:\nstep 199\n\n(230 rows of this turn left out)\n\nAgent said (the cited message):\nstep 430\n",
+		);
+		expect(body).toContain("Agent said:\nstep 450\n");
+	});
+
+	it("returns the whole cited message when it is longer than a surrounding reply may be", async () => {
+		const whole = `${"a".repeat(2500)}END`;
+		const wordy = await thread("Wordy", [ask(0, "Go"), answer(1, whole), answer(2, `${"b".repeat(2500)}END`)]);
+		await svc.cite(citing, {
+			references: [{ kind: "message", id: messageRefId(wordy, "main:1"), label: "wordy" }],
+		});
+		const r = await tool()(citing, { threadId: wordy, key: "main:1" });
+		expect(r.body.body).toContain(`Agent said (the cited message):
+${whole}
+`);
+		expect(r.body.body).toContain(`Agent said:
+${"b".repeat(1999)}…
+`);
+	});
+
 	it("reads as not_found once the cited thread is deleted", async () => {
 		await svc.cite(citing, {
 			references: [{ kind: "message", id: messageRefId(doomed, "main:0"), label: "bye" }],
@@ -348,5 +409,76 @@ describe("pl_citation_read (#1195)", () => {
 		expect(after.isError).toBe(true);
 		expect(after.body.error).toBe("not_found");
 		expect(after.body.message).toBe(`No message main:0 of thread ${doomed} was cited into this thread.`);
+	});
+
+	it("drops a citation when its source thread's events reset, so a rerun's message under the same key is not read as the cited one", async () => {
+		const reran = await thread("Rerun source", [ask(0, "First attempt")]);
+		const reader = await thread("Reader", [ask(0, "Read it")]);
+		await svc.cite(reader, {
+			references: [{ kind: "message", id: messageRefId(reran, "main:0"), label: "first" }],
+		});
+		const read = tool();
+		const before = await read(reader, { threadId: reran, key: "main:0" });
+		expect(before.body).toMatchObject({ threadId: reran, key: "main:0", turn: 1 });
+		const investigations = pl.resolve<InvestigationsService>(InvestigationsService);
+		if (!investigations) throw new Error("InvestigationsService is not provided");
+		expect(await investigations.clearEvents(reran)).toBe(1);
+		const prisma = await pl.prisma();
+		await prisma.investigationEvent.create({
+			data: {
+				investigationId: reran,
+				seq: 0,
+				branchId: "main",
+				event: JSON.stringify(ask(0, "Second attempt")),
+			},
+		});
+		expect(await citations.list(reader)).toEqual({ cites: [], citedIn: [] });
+		const after = await read(reader, { threadId: reran, key: "main:0" });
+		expect(after.isError).toBe(true);
+		expect(after.body.error).toBe("not_found");
+	});
+
+	const rerun = async (id: string, text: string) => {
+		const investigations = pl.resolve<InvestigationsService>(InvestigationsService);
+		if (!investigations) throw new Error("InvestigationsService is not provided");
+		await investigations.clearEvents(id);
+		await (await pl.prisma()).investigationEvent.create({
+			data: { investigationId: id, seq: 0, branchId: "main", event: JSON.stringify(ask(0, text)) },
+		});
+	};
+
+	it("keeps no citation that a reset lands between reading the cited message and writing it", async () => {
+		const src = await thread("Reset mid-cite", [ask(0, "First attempt")]);
+		const reader = await thread("Mid-cite reader", [ask(0, "Read it")]);
+		const read = citations.message.bind(citations);
+		const spy = vi.spyOn(citations, "message").mockImplementationOnce(async (t, k) => {
+			const m = await read(t, k);
+			await rerun(src, "Second attempt");
+			return m;
+		});
+		await svc.cite(reader, {
+			references: [{ kind: "message", id: messageRefId(src, "main:0"), label: "first" }],
+		});
+		spy.mockRestore();
+		expect(await citations.list(reader)).toEqual({ cites: [], citedIn: [] });
+	});
+
+	it("reads nothing when a reset lands between finding the citation and reading its turn", async () => {
+		const src = await thread("Reset mid-read", [ask(0, "First attempt")]);
+		const reader = await thread("Mid-read reader", [ask(0, "Read it")]);
+		await svc.cite(reader, {
+			references: [{ kind: "message", id: messageRefId(src, "main:0"), label: "first" }],
+		});
+		const prisma = await pl.prisma();
+		const find = prisma.messageCitation.findUnique.bind(prisma.messageCitation);
+		const spy = vi.spyOn(prisma.messageCitation, "findUnique").mockImplementationOnce((async (a: Parameters<typeof find>[0]) => {
+			const row = await find(a);
+			await rerun(src, "Second attempt");
+			return row;
+		}) as typeof find);
+		const r = await tool()(reader, { threadId: src, key: "main:0" });
+		spy.mockRestore();
+		expect(r.isError).toBe(true);
+		expect(r.body.error).toBe("not_found");
 	});
 });

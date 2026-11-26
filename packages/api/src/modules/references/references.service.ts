@@ -308,18 +308,24 @@ export class ReferencesService {
 			parts.push(cited.text);
 		}
 		// A message cited from another thread goes fenced, as a cited quote does (#1195).
+		const unavailable: string[] = [];
 		for (const r of references) {
-			const m = r.kind === "message" ? parseMessageRefId(r.id) : null;
+			if (r.kind !== "message") continue;
+			const m = parseMessageRefId(r.id);
+			if (m?.threadId === run.threadId) continue;
 			const msg = m && (await this.citations.message(m.threadId, m.key));
-			if (msg && m.threadId !== run.threadId)
-				parts.push(citationBlock(msg, msg.text));
+			if (msg) parts.push(citationBlock(msg, msg.text));
+			else
+				unavailable.push(
+					`- message "${r.label}": could not be read, it was deleted or has no text.`,
+				);
 		}
 		const snaps = await this.snapshots(
 			references.filter((r) => r.kind !== "message"),
 			run,
 		);
 		let budget = REFERENCE_SNAPSHOTS_MAX_CHARS;
-		const lines: string[] = [];
+		const lines: string[] = [...unavailable];
 		for (const s of snaps) {
 			const tool = s.readTool ? ` For more, call ${s.readTool}.` : "";
 			const scope = s.outOfScope

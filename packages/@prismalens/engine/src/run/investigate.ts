@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import {
 	AGENT_REGISTRY,
+	authenticateMethod,
 	type LaunchPolicy,
 	planLaunch,
 	writeLaunchFiles,
@@ -136,6 +137,15 @@ import {
 import { withCwdRelativeSources } from "./report-paths.js";
 import { userServerByOurName } from "./reserved-name.js";
 import { checkSandbox } from "./sandbox-check.js";
+
+const authenticateOf = (
+	row: Parameters<typeof authenticateMethod>[0],
+	env: Readonly<Record<string, string | undefined>>,
+) => {
+	const method = authenticateMethod(row, env);
+	return method ? { authenticate: method.methodId } : {};
+};
+
 import { turnInputOf } from "./turn-input.js";
 import { parseUsageUpdate, quotaOf } from "./usage.js";
 
@@ -162,6 +172,7 @@ export interface RunInvestigationOptions {
 		| "sessionMeta"
 		| "companionBinary"
 	> &
+		Partial<Pick<HarnessDescriptor, "authenticate">> &
 		Partial<
 			Pick<
 				HarnessDescriptor,
@@ -968,6 +979,7 @@ async function* runSession(
 		sessionMeta: brief
 			? { ...descriptor.sessionMeta?.(), systemPrompt: { append: brief } }
 			: descriptor.sessionMeta?.(),
+		...authenticateOf(descriptor, env),
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
 		onWire: wire,

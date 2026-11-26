@@ -104,6 +104,16 @@ describe("permissionLine variants (§1 Settings lines)", () => {
 		);
 	});
 
+	it("cursor: its own modes are named as not levels, never as no modes (#1235)", () => {
+		expect([
+			permissionLine(mockHarness("cursor"), undefined),
+			levelRowLine(mockHarness("cursor"), "full-access"),
+		]).toEqual([
+			"Ask always, PrismaLens's pick. Cursor's Agent, Plan and Ask modes are not permission levels.",
+			"Cursor's modes are not permission levels; PrismaLens answers its asks by this level.",
+		]);
+	});
+
 	it("key absent: '<default label>, PrismaLens's pick. No level set in <file>.'", () => {
 		expect(permissionLine(mockHarness("claude-code"), undefined)).toBe(
 			"Ask always, PrismaLens's pick. No level set in ~/.claude/settings.json.",
@@ -217,6 +227,13 @@ describe("agentNote variants (the four agent notes)", () => {
 
 	it("deepagents has no agent note", () => {
 		expect(agentNote(mockHarness("deepagents"))).toBeNull();
+	});
+
+	it("Antigravity's note is Google's terms in one line, and Cursor has none (#1235)", () => {
+		expect([agentNote(mockHarness("antigravity")), agentNote(mockHarness("cursor"))]).toEqual([
+			"Google's terms cover one person's own use of a personal sign-in here; runs an alert starts are your call.",
+			null,
+		]);
 	});
 });
 

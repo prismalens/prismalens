@@ -21,6 +21,7 @@
 				"rule": "agent-id-handmade",
 				"fix": "Read the difference from the agent registry: add a fact to AgentFacts in @prismalens/providers src/agent/family.ts, set it in each agent's descriptor, and read it through HARNESS_REGISTRY in @prismalens/config/harness; never compare, switch on, list or key on an agent id",
 				"ids": "agent",
+				"generic": ["local", "cursor"],
 				"allow": [
 					"packages/@prismalens/providers/src/agent/",
 					"packages/@prismalens/agent-host/src/registry/"

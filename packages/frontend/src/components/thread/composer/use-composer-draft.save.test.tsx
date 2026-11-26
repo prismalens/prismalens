@@ -21,6 +21,7 @@ type SaveCall = {
 	draftKey?: string | null;
 	attachments?: string[];
 	done: (s: Saved) => void;
+	fail: (e: unknown) => void;
 };
 const saves: SaveCall[] = [];
 
@@ -38,13 +39,14 @@ vi.mock("@/lib/api/hooks/use-drafts-orpc", () => ({
 			draftKey?: string | null;
 			attachments?: string[];
 		}) =>
-			new Promise<Saved>((done) => {
+			new Promise<Saved>((done, fail) => {
 				saves.push({
 					baseRev: body.baseRev,
 					text: body.text,
 					draftKey: body.draftKey,
 					attachments: body.attachments,
 					done,
+					fail,
 				});
 			}),
 	}),
@@ -251,6 +253,44 @@ describe("saving a draft (#1024)", () => {
 		await show("typed after");
 		await wait(DRAFT_DEBOUNCE_MS * 2);
 		expect(saves).toEqual([]);
+	});
+
+	it("when a save conflicts with a newer nonempty draft another device wrote after a send, offers both and saves nothing over it", async () => {
+		await show("");
+		await show("hello");
+		await wait(DRAFT_DEBOUNCE_MS);
+		await act(async () => saves[0]?.done({ rev: 5, generation: 0 }));
+		await show("hello again");
+		await wait(DRAFT_DEBOUNCE_MS);
+		expect(saves.map((s) => [s.baseRev, s.text])).toEqual([
+			[0, "hello"],
+			[5, "hello again"],
+		]);
+		await act(async () =>
+			saves[1]?.fail({
+				code: "CONFLICT",
+				data: {
+					current: {
+						rev: 9,
+						generation: 2,
+						version: 2,
+						doc: textDoc("typed on the laptop"),
+						text: "typed on the laptop",
+						quotes: [],
+						references: [],
+						choice: {},
+						attachments: [],
+						draftKey: null,
+						scope: "new:home",
+						updatedAt: "2026-11-11T10:00:00.000Z",
+					},
+				},
+			}),
+		);
+		await wait(DRAFT_DEBOUNCE_MS * 2);
+		expect(saves).toHaveLength(2);
+		expect(api.conflict?.theirs.text).toBe("typed on the laptop");
+		expect(api.conflict?.mine.doc).toEqual(textDoc("hello again"));
 	});
 
 	it("after a send the server tombstoned, saves from the revision and generation it holds", async () => {

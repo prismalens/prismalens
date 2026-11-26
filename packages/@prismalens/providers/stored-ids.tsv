@@ -11,3 +11,7 @@ Run.harness	local	agent.local
 Schedule.harness	local	agent.local
 Run.harness	opencode	agent.opencode
 Schedule.harness	opencode	agent.opencode
+Run.harness	antigravity	agent.antigravity
+Schedule.harness	antigravity	agent.antigravity
+Run.harness	cursor	agent.cursor
+Schedule.harness	cursor	agent.cursor
