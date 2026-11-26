@@ -149,6 +149,12 @@ async function rewindAt(id: string, seq: number, text = "Set the retries to 5", 
 	);
 }
 
+/** Stops PrismaLens and starts it again on the same data: its boot hooks run before it serves. */
+async function restart() {
+	await pl.stop();
+	await pl.boot();
+}
+
 function doneOf<T extends { state: string }>(r: T): Extract<T, { state: "done" }> {
 	if (r.state !== "done") throw new Error(`expected done, got ${JSON.stringify(r)}`);
 	return r as Extract<T, { state: "done" }>;
@@ -392,8 +398,8 @@ describe("RewindService (#1193)", () => {
 		});
 		const gitDir = (await snapshotStores()).find((s) => s.runId === id)?.gitDir as string;
 
-		await rewinds().markInterrupted();
-		await rewinds().markInterrupted();
+		await restart();
+		await restart();
 
 		const marked = (await visible(id)).filter((e) => e.kind === "rewind_interrupted");
 		const backup = (await storeGit(gitDir, ["rev-parse", `refs/pl/op/${op}/backup`])).trim();
@@ -429,7 +435,8 @@ describe("RewindService (#1193)", () => {
 		await storeGit(gitDir, ["update-ref", "-d", `refs/pl/op/${op}/committed`]);
 		const count = (await visible(id)).length;
 
-		await rewinds().markInterrupted();
+		await restart();
+		await restart();
 
 		expect((await storeOps(gitDir)).get(op)?.refs.has("committed")).toBe(true);
 		expect((await storeOps(gitDir)).get(op)?.refs.has("interrupted")).toBe(false);
