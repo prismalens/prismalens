@@ -164,7 +164,7 @@ const journeysDir = defineBddConfig({
 
 const QUARANTINE = /@quarantine/;
 // Scenarios that empty their stack (Settings, Reset data) never share one: the main run skips
-// them and e2e-browser.yml runs them on their own, one worker, after it (#1154).
+// them and e2e-browser.yml runs them on their own, one worker, in a separate job (#1154).
 const RESETS = /@reset-data/;
 
 const baseURL = PL_UP ? `http://localhost:${PL_UP_PORT}` : ownStack.frontendURL;
