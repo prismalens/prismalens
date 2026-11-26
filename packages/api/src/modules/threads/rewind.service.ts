@@ -458,6 +458,19 @@ export class RewindService {
 		const t = await this.thread(input.id);
 		if (!t) return refused("stale");
 		const rows = await this.rows(input.id);
+		// A retried rewind id that already committed (a restart mid-action) is never run twice.
+		const past = this.rewinds(rows).find(
+			(r) => input.rewindId && r.event.rewindId === input.rewindId,
+		)?.event;
+		if (past)
+			return {
+				state: "done",
+				rewindId: past.rewindId,
+				reverted: past.reverted,
+				kept: past.kept,
+				sent: false,
+				why: "PrismaLens restarted during this edit, so the edited message may not have been sent. Send it again or Undo.",
+			};
 		const m = this.messageOf(rows, input.seq);
 		if (!m || m.event.kind !== "operator_message") return refused("stale");
 		const look = await this.look(t, rows, m, canWrite);
@@ -472,7 +485,9 @@ export class RewindService {
 		const ws = look.ws;
 		const ctx = this.ctx(t, canWrite);
 		const done: Extract<RepoOpResult, { state: "done" }>[] = [];
-		const compensate = async () => {
+		/** Sets each completed repo back; false when one could not be, so its op stays unsettled. */
+		const compensate = async (): Promise<boolean> => {
+			let all = true;
 			for (const d of done) {
 				if (!ws) break;
 				const back = await undoRewindFiles(ws, d.repo, ctx, {
@@ -481,14 +496,23 @@ export class RewindService {
 					rewindId,
 					afterSeq: Number.POSITIVE_INFINITY,
 				}).catch(() => null);
+				if (back?.state !== "done") {
+					all = false;
+					continue;
+				}
 				await markOp(ws, d.repo, ctx, d.op, "dropped").catch(() => {});
-				if (back?.state === "done")
-					await markOp(ws, d.repo, ctx, back.op, "dropped").catch(() => {});
+				await markOp(ws, d.repo, ctx, back.op, "dropped").catch(() => {});
 			}
+			return all;
+		};
+		const interrupted = async () => {
+			await this.markInterrupted(t.id);
+			return refused("interrupted");
 		};
 		for (const repo of look.preview.repos) {
 			if (repo.state !== "ok" || !ws) continue;
 			const op = randomUUID();
+			let threw = false;
 			const r = await rewindFiles(ws, repo.repo, ctx, {
 				op,
 				rewindId,
@@ -500,6 +524,7 @@ export class RewindService {
 				expect: input.expect.repos[repo.repo] as { head: string; tree: string },
 			}).catch((e: unknown) => {
 				logger.warn(`Rewind of ${repo.repo} failed: ${(e as Error).message}`);
+				threw = true;
 				return {
 					state: "refused",
 					repo: repo.repo,
@@ -508,10 +533,14 @@ export class RewindService {
 				} as RepoOpResult;
 			});
 			if (r.state === "refused") {
-				await markOp(ws, repo.repo, ctx, op, "dropped").catch(() => {});
-				await compensate();
+				// A throw may have written some files: its op stays for Restore, never dropped.
+				if (!threw)
+					await markOp(ws, repo.repo, ctx, op, "dropped").catch(() => {});
+				if (!(await compensate()) || threw) return interrupted();
 				return refused(
-					r.reason === "stale" ? "stale" : "conflict",
+					r.reason === "stale" || r.reason === "too-many"
+						? "stale"
+						: "conflict",
 					pathsOf(repo.repo, r.paths),
 				);
 			}
@@ -580,7 +609,7 @@ export class RewindService {
 				return out;
 			});
 		} catch (e) {
-			await compensate();
+			if (!(await compensate())) return interrupted();
 			if (e instanceof Refuse) return refused("running");
 			throw e;
 		}
@@ -626,9 +655,11 @@ export class RewindService {
 				{ threadId: t.id },
 			)
 			.catch(() => undefined);
-		const said =
-			by.kind === "thread" ? await senderLine(this.prisma, by.id, text) : text;
 		try {
+			const said =
+				by.kind === "thread"
+					? await senderLine(this.prisma, by.id, text)
+					: text;
 			const ok = await this.dispatch.admitHeld(
 				t.id,
 				said,
@@ -642,7 +673,11 @@ export class RewindService {
 			return ok ? null : "A follow-up is already running.";
 		} catch (e) {
 			if (e instanceof FollowUpRefused) return e.message;
-			throw e;
+			// The fold has committed: report it, with delivery unknown, rather than lose its id.
+			logger.warn(
+				`Sending the edit of ${t.id} failed: ${(e as Error).message}`,
+			);
+			return "PrismaLens could not tell whether the edited message was sent. Check the thread before sending it again.";
 		}
 	}
 
@@ -753,31 +788,41 @@ export class RewindService {
 		const mine = all.find((r) => r.event.rewindId === rewindId);
 		if (!mine) return refused("stale");
 		if (mine.undone) return refused("already-undone");
-		if (all.at(-1)?.event.rewindId !== rewindId) return refused("superseded");
+		const latest = all.filter((r) => !r.undone).at(-1);
+		if (latest?.event.rewindId !== rewindId) return refused("superseded");
 		const marker = mine.event;
 		const ws = this.ws(t);
 		const ctx = this.ctx(t, canWrite);
 		const done: Extract<RepoOpResult, { state: "done" }>[] = [];
+		// Files some repos already got back stay for Restore: never dropped, marked now.
+		const interrupted = async () => {
+			await this.markInterrupted(id);
+			return refused("interrupted");
+		};
 		for (const [repo, of] of Object.entries(marker.journals)) {
 			if (!ws) break;
 			const op = randomUUID();
+			let threw = false;
 			const r = await undoRewindFiles(ws, repo, ctx, {
 				op,
 				of,
 				rewindId,
 				afterSeq: mine.row.seq,
-			}).catch(
-				() =>
-					({
-						state: "refused",
-						repo,
-						reason: "gone",
-						paths: [],
-					}) as RepoOpResult,
-			);
+			}).catch((e: unknown) => {
+				logger.warn(`Undo of ${repo} failed: ${(e as Error).message}`);
+				threw = true;
+				return {
+					state: "refused",
+					repo,
+					reason: "gone",
+					paths: [],
+				} as RepoOpResult;
+			});
 			if (r.state === "refused") {
+				if (threw) return interrupted();
 				await markOp(ws, repo, ctx, op, "dropped").catch(() => {});
 				if (r.reason === "gone" || r.reason === "no-snapshot") continue;
+				if (done.length) return interrupted();
 				return refused("stale", pathsOf(repo, r.paths));
 			}
 			done.push(r);
@@ -844,9 +889,7 @@ export class RewindService {
 				return out;
 			});
 		} catch (e) {
-			// The files went back but the record did not: put them where the rewind left them.
-			for (const d of done)
-				if (ws) await markOp(ws, d.repo, ctx, d.op, "dropped").catch(() => {});
+			if (done.length) return interrupted();
 			if (e instanceof Refuse) return refused("running");
 			throw e;
 		}
@@ -957,9 +1000,23 @@ export class RewindService {
 				const t = await this.thread(input.id);
 				const found = t ? await this.interrupted(input.id, input.op) : null;
 				const ws = t ? this.ws(t) : null;
-				if (!t || !found || !ws || found.restored) return refused("gone");
+				if (!t || !found || !ws) return refused("gone");
 				if (await this.running(t)) return refused("running");
 				const ctx = this.ctx(t, canWrite);
+				// A path an earlier Restore left (kept or skipped) is offered again; none left is gone.
+				if (found.restored) {
+					const plan = await previewRestoreFiles(
+						ws,
+						found.ev.repo,
+						ctx,
+						input.op,
+					);
+					if (
+						typeof plan === "string" ||
+						!(plan.overwrite.length + plan.created.length + plan.damaged.length)
+					)
+						return refused("gone");
+				}
 				const op = randomUUID();
 				const r = await restoreFiles(ws, found.ev.repo, ctx, {
 					op,
@@ -997,8 +1054,10 @@ export class RewindService {
 	 * reached `committed` is marked. One whose event did commit gets `committed`; any other
 	 * gets its `interrupted` ref and a `rewind_interrupted` event. Writes no worktree file.
 	 */
-	async markInterrupted(): Promise<void> {
+	async markInterrupted(only?: string): Promise<void> {
 		for (const store of await snapshotStores()) {
+			// One thread's stores, called under its exclusive gate right after a failure.
+			if (only && store.runId !== only) continue;
 			const ops = await storeOps(store.gitDir);
 			if (
 				![...ops.values()].some(

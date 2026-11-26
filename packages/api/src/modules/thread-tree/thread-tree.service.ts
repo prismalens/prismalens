@@ -461,7 +461,13 @@ export class ThreadTreeService
 						`${threadLink(target)} changed since the edit was shown.`,
 						"Call pl_thread_rewind again to see the current state.",
 					)
-				: (rewindBlockFailure(result.reason) ??
+				: result.reason === "interrupted"
+					? fail(
+							"internal",
+							`The edit of ${threadLink(target)} stopped partway.`,
+							"Do not retry; its thread offers Restore to the user.",
+						)
+					: (rewindBlockFailure(result.reason) ??
 						fail("internal", "The edit did not run.", "Continue without it."));
 		const line = `Rewound ${threadLink(target)}: ${args.turns} turn${args.turns === 1 ? "" : "s"} folded, ${result.reverted.length} file${result.reverted.length === 1 ? "" : "s"} set back, ${result.kept.length} kept. It continues from the edited message.`;
 		return {

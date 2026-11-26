@@ -42,11 +42,15 @@ export function useRestorePreview(id: string, op: string | null) {
 	});
 }
 
-/** The rewind, undo and restore calls; each reloads the thread's row after. */
+/** The rewind, undo and restore calls; each reloads the thread's row and its changes after. */
 export function useRewindCalls(id: string) {
 	const client = useQueryClient();
-	const settled = () =>
+	const settled = () => {
 		void client.invalidateQueries({ queryKey: investigationKeys.detail(id) });
+		void client.invalidateQueries({
+			queryKey: orpc.investigations.getChanges.key(),
+		});
+	};
 	return {
 		rewind: useMutation({
 			...orpc.threads.rewind.mutationOptions(),
@@ -63,21 +67,10 @@ export function useRewindCalls(id: string) {
 	};
 }
 
-/** The page's open dialog, and the text a refused admission handed back to its editor. */
+/** The page's open dialog. */
 export function useRewind() {
 	const [target, setTarget] = useState<RewindTarget | null>(null);
-	const [kept, setKept] = useState<{
-		seq: number;
-		text: string;
-		why: string;
-	} | null>(null);
-	return {
-		target,
-		open: setTarget,
-		close: () => setTarget(null),
-		kept,
-		setKept,
-	};
+	return { target, open: setTarget, close: () => setTarget(null) };
 }
 
 /** The words for a refusal: a block's own, or what changed. */
@@ -97,6 +90,8 @@ export function rewindRefusalWords(
 			return "Only the latest edit can be undone.";
 		case "already-undone":
 			return "This edit was already undone.";
+		case "interrupted":
+			return "It stopped partway. Restore puts the files back.";
 		default:
 			return "It did not run.";
 	}

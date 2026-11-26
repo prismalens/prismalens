@@ -18,10 +18,19 @@ import {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eventually, ScenarioApp } from "../../../test/scenarios/support/scenario-app.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
-import { rewindFiles, storeOps } from "../investigations/worktree-scopes.js";
+import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
+import { rewindFiles, storeOps, undoRewindFiles } from "../investigations/worktree-scopes.js";
 import { snapshotStores, storeGit } from "../investigations/worktree-snapshots.js";
 import { ToolAsksService } from "../investigations/tool-asks.service.js";
 import { RewindService } from "./rewind.service.js";
+
+vi.mock("../investigations/worktree-scopes.js", async (importOriginal) => {
+	const m = await importOriginal<typeof import("../investigations/worktree-scopes.js")>();
+	return { ...m, rewindFiles: vi.fn(m.rewindFiles), undoRewindFiles: vi.fn(m.undoRewindFiles) };
+});
+const actual = await vi.importActual<typeof import("../investigations/worktree-scopes.js")>(
+	"../investigations/worktree-scopes.js",
+);
 
 vi.setConfig({ testTimeout: 30_000 }); // slowest test 9903 ms; 3x, rounded up to the second, at least 5 s (#1154)
 
@@ -103,6 +112,10 @@ async function fixture(): Promise<{ id: string; cwd: string }> {
 	return { id, cwd };
 }
 
+/** The kinds of the thread's rewind_interrupted events: each is an operation Restore offers. */
+const interruptedOf = async (id: string) =>
+	(await visible(id)).flatMap((e) => (e.kind === "rewind_interrupted" ? [e.opKind] : []));
+
 const expectOf = (p: RewindPreview) => ({
 	messageOrdinal: p.messageOrdinal,
 	revision: p.revision,
@@ -110,6 +123,21 @@ const expectOf = (p: RewindPreview) => ({
 		p.repos.flatMap((r) => (r.state === "ok" ? [[r.repo, { head: r.head, tree: r.tree }]] : [])),
 	),
 });
+
+/** Rewinds the message at `seq` against a fresh preview. */
+async function rewindAt(id: string, seq: number, text = "Set the retries to 5", rewindId?: string) {
+	const p = await rewinds().preview(id, seq, true);
+	return rewinds().rewind(
+		{ id, seq, text, expect: expectOf(p), include: [], ...(rewindId ? { rewindId } : {}) },
+		{ kind: "you" },
+		true,
+	);
+}
+
+function doneOf<T extends { state: string }>(r: T): Extract<T, { state: "done" }> {
+	if (r.state !== "done") throw new Error(`expected done, got ${JSON.stringify(r)}`);
+	return r as Extract<T, { state: "done" }>;
+}
 
 beforeAll(async () => {
 	await pl.boot();
@@ -302,7 +330,7 @@ describe("RewindService (#1193)", () => {
 		}
 	});
 
-	it("a Claude Code thread forks at message 2 when the turn before it ended on a plain message", async () => {
+	it("a Claude Code thread's preview chooses fork at message 2 when the turn before it ended on a plain message", async () => {
 		const was = (await pl.api<{ harness: string }>("/settings/harness")).harness;
 		await pl.api("/settings/harness", { method: "PATCH", body: { harness: "claude-code" } });
 		try {
@@ -391,5 +419,157 @@ describe("RewindService (#1193)", () => {
 		expect((await storeOps(gitDir)).get(op)?.refs.has("committed")).toBe(true);
 		expect((await storeOps(gitDir)).get(op)?.refs.has("interrupted")).toBe(false);
 		expect((await visible(id)).length).toBe(count);
+	});
+
+	it("a rewind whose file writer fails partway is refused interrupted, folds nothing, and marks its operation interrupted for Restore", async () => {
+		const { id, cwd } = await fixture();
+		const seq = await seqOf(id, MESSAGE_2);
+		vi.mocked(rewindFiles).mockImplementationOnce(async (...a) => {
+			await actual.rewindFiles(...a);
+			throw new Error("disk full");
+		});
+
+		const r = await rewindAt(id, seq);
+
+		expect(r).toEqual({ state: "refused", reason: "interrupted", paths: [] });
+		expect((await visible(id)).some((e) => e.kind === "thread_rewound")).toBe(false);
+		expect(await interruptedOf(id)).toEqual(["rewind"]);
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_1);
+	});
+
+	it("a rewind whose record fails and whose compensation fails is refused interrupted and marks its operation interrupted", async () => {
+		const { id, cwd } = await fixture();
+		const seq = await seqOf(id, MESSAGE_2);
+		const p = await rewinds().preview(id, seq, true);
+		const tx = vi.spyOn(await pl.prisma(), "$transaction");
+		vi.mocked(rewindFiles).mockImplementationOnce(async (...a) => {
+			const r = await actual.rewindFiles(...a);
+			tx.mockRejectedValueOnce(new Error("database is locked"));
+			return r;
+		});
+		vi.mocked(undoRewindFiles).mockRejectedValueOnce(new Error("disk full"));
+
+		const r = await rewinds().rewind(
+			{ id, seq, text: "Set the retries to 5", expect: expectOf(p), include: [] },
+			{ kind: "you" },
+			true,
+		);
+
+		expect(r).toEqual({ state: "refused", reason: "interrupted", paths: [] });
+		expect(await interruptedOf(id)).toEqual(["rewind"]);
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_1);
+	});
+
+	it("an Undo whose file writer fails partway is refused interrupted, keeps the thread rewound, and marks its operation interrupted", async () => {
+		const { id } = await fixture();
+		const r = doneOf(await rewindAt(id, await seqOf(id, MESSAGE_2)));
+		await idle(id, "the edited message's turn to end");
+		vi.mocked(undoRewindFiles).mockImplementationOnce(async (...a) => {
+			await actual.undoRewindFiles(...a);
+			throw new Error("disk full");
+		});
+
+		const u = await rewinds().undo(id, r.rewindId, true);
+
+		expect(u).toEqual({ state: "refused", reason: "interrupted", paths: [] });
+		expect((await visible(id)).some((e) => e.kind === "rewind_undone")).toBe(false);
+		expect(await interruptedOf(id)).toEqual(["undo"]);
+	});
+
+	it("an Undo whose record fails after its files went back is refused interrupted and marks its operation interrupted, not dropped", async () => {
+		const { id, cwd } = await fixture();
+		const r = doneOf(await rewindAt(id, await seqOf(id, MESSAGE_2)));
+		await idle(id, "the edited message's turn to end");
+		const tx = vi.spyOn(await pl.prisma(), "$transaction");
+		vi.mocked(undoRewindFiles).mockImplementationOnce(async (...a) => {
+			const done = await actual.undoRewindFiles(...a);
+			tx.mockRejectedValueOnce(new Error("database is locked"));
+			return done;
+		});
+
+		const u = await rewinds().undo(id, r.rewindId, true);
+
+		expect(u).toEqual({ state: "refused", reason: "interrupted", paths: [] });
+		expect((await visible(id)).some((e) => e.kind === "rewind_undone")).toBe(false);
+		expect(await interruptedOf(id)).toEqual(["undo"]);
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
+	});
+
+	it("a rewind asked again with a rewind id that already committed returns that rewind, unsent, without running it again", async () => {
+		const { id } = await fixture();
+		const seq = await seqOf(id, MESSAGE_2);
+		const rewindId = randomUUID();
+		const p = await rewinds().preview(id, seq, true);
+		const input = { id, seq, text: "Set the retries to 5", expect: expectOf(p), include: [], rewindId };
+		const first = doneOf(await rewinds().rewind(input, { kind: "you" }, true));
+		await idle(id, "the edited message's turn to end");
+
+		const again = await rewinds().rewind(input, { kind: "you" }, true);
+
+		expect(again).toEqual({
+			state: "done",
+			rewindId,
+			reverted: first.reverted,
+			kept: first.kept,
+			sent: false,
+			why: "PrismaLens restarted during this edit, so the edited message may not have been sent. Send it again or Undo.",
+		});
+		expect((await visible(id)).filter((e) => e.kind === "thread_rewound").length).toBe(1);
+	});
+
+	it("a rewind whose send fails after the fold committed is done and unsent, and Undo still works", async () => {
+		const { id, cwd } = await fixture();
+		const dispatch = pl.resolve<DispatchService>(DispatchService) as DispatchService;
+		vi.spyOn(dispatch, "admitHeld").mockRejectedValueOnce(new Error("database is locked"));
+
+		const r = doneOf(await rewindAt(id, await seqOf(id, MESSAGE_2)));
+
+		expect([r.sent, r.why]).toEqual([
+			false,
+			"PrismaLens could not tell whether the edited message was sent. Check the thread before sending it again.",
+		]);
+		expect(await rewinds().undo(id, r.rewindId, true)).toMatchObject({ state: "done" });
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
+	});
+
+	it("after rewind A, rewind B and Undo of B, Undo of A is done and brings the files back to before A", async () => {
+		const { id, cwd } = await fixture();
+		const a = doneOf(await rewindAt(id, await seqOf(id, MESSAGE_2), "Set the retries to 5"));
+		await idle(id, "A's edited message's turn to end");
+		const b = doneOf(await rewindAt(id, await seqOf(id, "Set the retries to 5"), "Set the retries to 7"));
+		await idle(id, "B's edited message's turn to end");
+		expect(await rewinds().undo(id, b.rewindId, true)).toMatchObject({ state: "done" });
+
+		const u = await rewinds().undo(id, a.rewindId, true);
+
+		expect(u).toMatchObject({ state: "done" });
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
+	});
+
+	it("Restore stays offered for a path the first Restore left, and writes it when the user ticks it", async () => {
+		const { id, cwd } = await fixture();
+		vi.mocked(rewindFiles).mockImplementationOnce(async (...a) => {
+			await actual.rewindFiles(...a);
+			throw new Error("disk full");
+		});
+		await rewindAt(id, await seqOf(id, MESSAGE_2));
+		const ev = (await visible(id)).find((e) => e.kind === "rewind_interrupted");
+		if (ev?.kind !== "rewind_interrupted") throw new Error("expected an interrupted rewind");
+		writeFileSync(join(cwd, "src", "app.txt"), "edited after the crash\n");
+		const first = await rewinds().restorePreview(id, ev.op, true);
+		expect(first.damaged).toEqual(["src/app.txt"]);
+		expect(
+			await rewinds().restore({ id, op: ev.op, expect: { head: first.head, tree: first.tree }, include: [] }, true),
+		).toMatchObject({ state: "done", restored: [] });
+
+		const second = await rewinds().restorePreview(id, ev.op, true);
+		expect(second.damaged).toEqual(["src/app.txt"]);
+		const r = await rewinds().restore(
+			{ id, op: ev.op, expect: { head: second.head, tree: second.tree }, include: ["src/app.txt"] },
+			true,
+		);
+
+		expect(r).toMatchObject({ state: "done", restored: [{ repo: ev.repo, path: "src/app.txt" }] });
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
 	});
 });
