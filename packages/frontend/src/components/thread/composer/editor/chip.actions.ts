@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { PanelTopOpen, UnfoldVertical, X } from "lucide-react";
+import { Copy, PanelTopOpen, UnfoldVertical, X } from "lucide-react";
 import {
 	defineAction,
 	defineObject,
 	type Facts,
 } from "@/components/kit/actions";
+import { copyText } from "@/lib/clipboard";
 
 /** A chip in the composer's text: a file, paste, quote, reference or command. */
 export interface ChipCtx {
 	open: () => void;
 	remove: () => void;
+	/** What the chip stands for in the sent message: a paste's text, a quote, a path or a link. */
+	text: string;
 	/** A folded paste back into the box as its text, in the chip's place. */
 	expand?: () => void;
 	facts: Facts<"folded" | "overLimit">;
@@ -25,6 +28,13 @@ export const chipOpen = defineAction({
 	label: "Show details",
 	icon: PanelTopOpen,
 	run: (c) => c.open(),
+});
+
+export const chipCopy = defineAction({
+	id: "chip.copy",
+	label: "Copy",
+	icon: Copy,
+	run: (c) => void copyText(c.text),
 });
 
 const OVER_LIMIT = "Over the box's limit";

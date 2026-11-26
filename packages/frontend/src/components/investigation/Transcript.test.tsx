@@ -872,3 +872,39 @@ describe("Transcript spine (#1020)", () => {
 		expect(changesEl?.textContent).toContain("Changed 1 file");
 	});
 });
+
+describe("the user's own message (#1193)", () => {
+	it("is the message menu's trigger: it carries the message surface and right-click opens the menu", async () => {
+		const items: TranscriptItem[] = [
+			{
+				kind: "operator",
+				key: "mine",
+				text: "Raise the retries",
+				at: "2026-11-03T10:00:00Z",
+				state: "delivered",
+				mode: "queue",
+				attachments: [],
+			},
+		];
+		await show(
+			<Transcript items={items} incidentId={null} agent="Claude Code" />,
+		);
+		const own = container.querySelector('[data-testid="transcript-operator"]');
+		expect(own?.getAttribute("data-surface")).toBe("message");
+		await act(async () => {
+			own?.dispatchEvent(
+				new MouseEvent("contextmenu", {
+					bubbles: true,
+					cancelable: true,
+					clientX: 10,
+					clientY: 10,
+				}),
+			);
+		});
+		await vi.waitFor(() =>
+			expect(
+				document.querySelector('[role="menu"] [data-testid="menu-copy"]'),
+			).not.toBeNull(),
+		);
+	});
+});

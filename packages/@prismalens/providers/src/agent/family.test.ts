@@ -34,7 +34,7 @@ describe("agent family helpers", () => {
 });
 
 describe("built-in agents", () => {
-	it("list the eight shipped agents in their declared order and resolve by id", () => {
+	it("list the thirteen shipped agents in their declared order and resolve by id", () => {
 		expect(agents().map((a) => a.id)).toEqual([
 			"agent.opencode",
 			"agent.claude-code",
@@ -42,6 +42,11 @@ describe("built-in agents", () => {
 			"agent.gemini",
 			"agent.cursor",
 			"agent.antigravity",
+			"agent.copilot",
+			"agent.kiro",
+			"agent.grok",
+			"agent.qwen",
+			"agent.goose",
 			"agent.deepagents",
 			"agent.local",
 		]);

@@ -84,7 +84,7 @@ test.describe("#523 — the alerts frame", () => {
 		);
 		await expect(page.getByTestId("alert-acknowledge")).toHaveCount(0);
 		await detail.getByTestId("alert-more").click();
-		await expect(page.getByTestId("alert-resolve")).toBeVisible();
+		await expect(page.getByTestId("menu-resolve")).toBeVisible();
 	});
 
 	test("empty — no alerts found", async ({ page }) => {

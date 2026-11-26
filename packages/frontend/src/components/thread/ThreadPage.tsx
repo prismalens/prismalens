@@ -139,6 +139,9 @@ import { iconOf, PaneMenu } from "./panel/PaneMenu";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
+	afterClose,
+	arrangeTabs,
+	movedOrder,
 	PANE_VIEW,
 	type PanelId,
 	type PanelSearch,
@@ -930,14 +933,32 @@ export function ThreadPage({ id }: { id: string }) {
 		desktopBrowser: hasDesktopBrowser(),
 		onOpen: (t) => openPanel({ panel: t }),
 	});
-	const tabs = panelTabs({
-		kind: context.data?.kind ?? null,
-		thread: true,
-		changes: !!workspace,
-		files: !!workspace,
-		browser: browserOpened || panes.layout.opened.includes("browser"),
-		newTab: search.panel === "new",
-	});
+	const tabs = arrangeTabs(
+		panelTabs({
+			kind: context.data?.kind ?? null,
+			thread: true,
+			changes: !!workspace,
+			files: !!workspace,
+			browser: browserOpened || panes.layout.opened.includes("browser"),
+			newTab: search.panel === "new",
+		}),
+		panes.layout,
+		[search.panel, search.split],
+	);
+	// A tab asked for again (a link, a key, the pane menu) is no longer closed. Only a new ask
+	// counts: closing the shown tab leaves the URL naming it until the next tab's navigation lands.
+	const askedBefore = useRef<PanelId[]>([]);
+	useEffect(() => {
+		const asked = [search.panel, search.split].filter((p): p is PanelId => !!p);
+		const fresh = asked.filter((p) => !askedBefore.current.includes(p));
+		askedBefore.current = asked;
+		if (fresh.length)
+			panes.setLayout((l) =>
+				l.closed.some((c) => fresh.includes(c))
+					? { ...l, closed: l.closed.filter((c) => !fresh.includes(c)) }
+					: l,
+			);
+	}, [search.panel, search.split, panes.setLayout]);
 	const panelWidth = useRightPanelWidth();
 	useAppCommand(
 		"panelExpand",
@@ -1049,8 +1070,6 @@ export function ThreadPage({ id }: { id: string }) {
 	const paneMenu = (
 		<PaneMenu
 			tools={panes.tools}
-			onOpen={panes.open}
-			onTile={panelOpen ? tilePane : undefined}
 			trigger={
 				<button
 					type="button"
@@ -1070,6 +1089,26 @@ export function ThreadPage({ id }: { id: string }) {
 		},
 		[browserOpened],
 	);
+
+	/** Closes tabs from their menu; the shown one hands over to the next kept, or the panel closes. */
+	function closeTabs(ids: PanelId[]) {
+		const { panel: next, split } = afterClose({
+			tabs: tabs.map((t) => t.id),
+			shown: tab,
+			split: search.split,
+			closing: ids,
+		});
+		panes.setLayout((l) => ({
+			...l,
+			closed: [...l.closed, ...ids.filter((c) => !l.closed.includes(c))],
+			split:
+				l.split && (ids.includes(l.split) || l.split === next) ? null : l.split,
+		}));
+		if (!next) closePanel();
+		// `split` is passed even when undefined: the URL keeps a split the search leaves out.
+		else if (next !== tab || split !== search.split)
+			openPanel({ panel: next, split });
+	}
 
 	function tilePane(t: PanelId | "terminal") {
 		if (t === "terminal") return;
@@ -2046,10 +2085,27 @@ ${about}`
 									show: () => openPanel({ panel: p }),
 									tile: () => tilePane(p),
 									close: closePanel,
+									closeTab: () => closeTabs([p]),
+									closeOthers: () => {
+										closeTabs(tabs.map((t) => t.id).filter((t) => t !== p));
+										if (p !== tab) openPanel({ panel: p });
+									},
+									move: (by) =>
+										panes.setLayout((l) => ({
+											...l,
+											order: movedOrder(
+												tabs.map((t) => t.id),
+												p,
+												by,
+											),
+										})),
 									widen: () => panelWidth.setFull(!panelWidth.full),
 									link: paneLink(p),
 									facts: {
 										is: {
+											others: tabs.length > 1,
+											first: tabs[0]?.id === p,
+											last: tabs.at(-1)?.id === p,
 											shown: p === tab,
 											tileable:
 												PANE_VIEW[p].tile && p !== tab && p !== splitTab?.id,

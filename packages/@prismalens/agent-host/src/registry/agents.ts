@@ -8,11 +8,16 @@
 import { antigravity } from "./agents/antigravity.js";
 import { claudeCode } from "./agents/claude-code.js";
 import { codex } from "./agents/codex.js";
+import { copilot } from "./agents/copilot.js";
 import { cursor } from "./agents/cursor.js";
 import { deepagents } from "./agents/deepagents.js";
 import { gemini } from "./agents/gemini.js";
+import { goose } from "./agents/goose.js";
+import { grok } from "./agents/grok.js";
+import { kiro } from "./agents/kiro.js";
 import { local } from "./agents/local.js";
 import { opencode } from "./agents/opencode.js";
+import { qwen } from "./agents/qwen.js";
 import type { AgentFacts } from "./facts.js";
 import type { AccessLevel, LevelFacts, ModeMechanism } from "./levels.js";
 
@@ -23,6 +28,11 @@ export const AGENT_IDS = [
 	"gemini",
 	"cursor",
 	"antigravity",
+	"copilot",
+	"kiro",
+	"grok",
+	"qwen",
+	"goose",
 	"deepagents",
 	"local",
 ] as const;
@@ -67,6 +77,8 @@ export {
 export interface AuthenticateMethod {
 	methodId: string;
 	env?: string;
+	/** Sent though `initialize` does not list it: the agent takes a method it never advertises. */
+	unlisted?: boolean;
 }
 
 /** The first of the row's methods that applies under `env`; null when it has none. */
@@ -75,6 +87,16 @@ export function authenticateMethod(
 	env: Readonly<Record<string, string | undefined>>,
 ): AuthenticateMethod | null {
 	return row.authenticate?.find((m) => !m.env || !!env[m.env]?.trim()) ?? null;
+}
+
+/** Whether `method` goes out: the agent listed it in `initialize`, or the row marks it unlisted. */
+export function sendsAuthenticate(
+	method: Pick<AuthenticateMethod, "methodId" | "unlisted">,
+	listed: readonly { id: string }[] | null | undefined,
+): boolean {
+	return (
+		method.unlisted === true || !!listed?.some((m) => m.id === method.methodId)
+	);
 }
 
 export interface AgentDescriptor {
@@ -113,6 +135,8 @@ export interface AgentDescriptor {
 	modelVia: "acp" | "unsupported";
 	/** ACP `authenticate` methods, first match wins; absent, the agent signs itself in (#1235). */
 	authenticate?: readonly AuthenticateMethod[];
+	/** Text in a refused `session/new` that means signed out, where the agent words it in its own terms. */
+	signedOutText?: RegExp;
 	/** Its handshake answers signed out: credentials are checked at the first prompt turn. */
 	signInAtFirstTurn?: boolean;
 	/** The host env var naming the model the agent runs when the host sets none. */
@@ -142,6 +166,11 @@ export const AGENT_ROWS = [
 	gemini,
 	cursor,
 	antigravity,
+	copilot,
+	kiro,
+	grok,
+	qwen,
+	goose,
 	deepagents,
 	local,
 ] as const satisfies readonly AgentDescriptor[];

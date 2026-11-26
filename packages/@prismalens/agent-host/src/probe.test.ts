@@ -223,11 +223,15 @@ describe("probeAgent", () => {
 
 describe("probeAgent on a row that names authenticate methods (#1235)", () => {
 	const GATE = resolve(import.meta.dirname, "__fixtures__/method-gate.mjs");
-	async function gate(env: Record<string, string>, budgets?: ProbeInput["budgets"]) {
+	async function gate(
+		env: Record<string, string>,
+		budgets?: ProbeInput["budgets"],
+		agent: ProbeInput["agent"] = "antigravity",
+	) {
 		const log = join(cwd, `auth-${Math.random().toString(36).slice(2)}.log`);
 		writeFileSync(log, "");
 		const r = await probeAgent({
-			agent: "antigravity",
+			agent,
 			command: process.execPath,
 			args: [GATE],
 			cwd,
@@ -253,6 +257,29 @@ describe("probeAgent on a row that names authenticate methods (#1235)", () => {
 			"sign-in-needed",
 			true,
 			"authenticate oauth-personal: no answer in 1s; finish the sign-in the agent opened, then check again",
+		]);
+	});
+
+	it("sends Grok's unlisted API-key method when XAI_API_KEY is set, and without it no method the agent did not list (#1236)", async () => {
+		const keyed = await gate({ XAI_API_KEY: "k" }, undefined, "grok");
+		const bare = await gate({}, undefined, "grok");
+		expect([keyed.r.outcome, keyed.sent, bare.r.outcome, bare.sent, bare.r.detail]).toEqual([
+			"answers-acp",
+			"xai.api_key\n",
+			"sign-in-needed",
+			"",
+			"Authentication required",
+		]);
+	});
+
+	it("reads goose's missing provider as signed out, and the same refusal from another agent as a failed start (#1236)", async () => {
+		const goose = await gate({ GATE: "goose" }, undefined, "goose");
+		const other = await gate({ GATE: "goose" }, undefined, "kiro");
+		expect([goose.r.outcome, goose.r.authRequired, goose.r.detail, other.r.outcome]).toEqual([
+			"sign-in-needed",
+			true,
+			"Failed to resolve provider and model: Configuration value not found: GOOSE_PROVIDER",
+			"failed-to-start",
 		]);
 	});
 });

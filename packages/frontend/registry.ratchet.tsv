@@ -43,7 +43,7 @@ e2e/stacks.test.ts	T1	4
 e2e/steps/fixtures.ts	biome-ignore	4
 kernel	closed-sets	25
 kernel	kinds	6
-kernel	object-kinds	29
+kernel	object-kinds	31
 measure/ci-minutes	agent-release-watch.yml	3
 measure/ci-minutes	agent-tests.yml	4
 measure/ci-minutes	build-desktop-app.yml	3
@@ -132,7 +132,6 @@ src/components/services/ServiceConnectionsReorder.test.tsx	as-never	1
 src/components/services/ServiceInvestigationsSection.test.ts	T2	1
 src/components/services/ServiceWorkspaceSection.test.tsx	T1	1
 src/components/settings/AboutSettings.tsx	copy-handrolled	4
-src/components/settings/AcpRegistrySearch.test.tsx	T2	1
 src/components/settings/AgentDetail.test.tsx	T1	3
 src/components/settings/AlertIntakeSettings.tsx	copy-handrolled	4
 src/components/settings/ConnectionFormDialog.test.ts	as-never	1
@@ -191,7 +190,6 @@ src/components/thread/find/FindBar.tsx	L3	1
 src/components/thread/find/use-thread-find.ts	biome-ignore	2
 src/components/thread/panel/HostBrowserPane.tsx	biome-ignore	1
 src/components/thread/panel/KindTab.tsx	time-handmade	1
-src/components/thread/panel/PaneMenu.tsx	L3	1
 src/components/thread/panel/PrView.tsx	biome-ignore	1
 src/components/thread/panel/ThreadSections.tsx	biome-ignore	1
 src/components/thread/panel/ThreadSidePanel.tsx	biome-ignore	1

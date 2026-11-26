@@ -295,6 +295,15 @@ export const PrHostTermsSchema = /* @__PURE__ */ lazySchema(() =>
 );
 export type PrHostTerms = z.infer<typeof PrHostTermsSchema>;
 
+/** What a host's adapter can do beyond reading, as data, so the UI never guesses by host kind (#1122). */
+export const PrHostCapabilitiesSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		/** Runs one check or job again. */
+		rerunCheck: z.boolean(),
+	}),
+);
+export type PrHostCapabilities = z.infer<typeof PrHostCapabilitiesSchema>;
+
 /**
  * A PR's subscriptions as one watch (#1024 surface F, #1179): `watching` while one is active,
  * `waiting` with events held for the agent, `disconnected` on a failing host, `stopped` keeps why.
@@ -330,6 +339,8 @@ export const PullRequestSchema = /* @__PURE__ */ lazySchema(() =>
 		id: z.string(),
 		url: z.string().url(),
 		host: PrHostSchema,
+		/** What the host's adapter can do; absent from an older server. */
+		can: PrHostCapabilitiesSchema.optional(),
 		/** `owner/repo` (GitLab: the full project path). */
 		repo: z.string(),
 		number: z.number().int().positive(),
