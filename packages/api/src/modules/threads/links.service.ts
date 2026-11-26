@@ -165,7 +165,10 @@ export class LinksService {
 		return out;
 	}
 
-	/** The first workspace repo that holds the path, or only the repo named `only`; the cwd's repo is tried first. */
+	/**
+	 * The first workspace repo that holds the path, the cwd's repo first. With `only`, the path is
+	 * that repo's own (root-relative) and no other repo or folder is tried.
+	 */
 	private async file(
 		ws: RunWorkspace | null,
 		ref: PathRef,
@@ -195,7 +198,11 @@ export class LinksService {
 		}
 		for (const repo of repos) {
 			const roots = [repo.dir];
-			if (ws.cwd !== repo.dir && ws.cwd.startsWith(repo.dir))
+			if (
+				only === undefined &&
+				ws.cwd !== repo.dir &&
+				ws.cwd.startsWith(repo.dir)
+			)
 				roots.unshift(ws.cwd);
 			for (const root of roots) {
 				const rel = await within(root, ref.path);

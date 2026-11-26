@@ -243,16 +243,16 @@ describe("LinksService.resolve of a bare file name (#1193)", () => {
 		omitted: "per-file",
 		truncated: false,
 	});
-	const resolve = async (repos: WorktreeChanges["repos"], text: string) => {
+	const resolveIn = async (
+		ws: { cwd: string; repos: ReturnType<typeof record>[] },
+		repos: WorktreeChanges["repos"],
+		text: string,
+	) => {
 		vi.mocked(readWorktreeChanges).mockResolvedValueOnce({ repos });
 		const { svc } = service([
 			{
 				id: TWO,
-				workspace: JSON.stringify({
-					layout: "single",
-					cwd: repoDir("first"),
-					repos: [record("first"), record("second")],
-				}),
+				workspace: JSON.stringify({ layout: "single", ...ws }),
 				title: "Two repos",
 				status: "completed",
 			},
@@ -260,11 +260,27 @@ describe("LinksService.resolve of a bare file name (#1193)", () => {
 		const [out] = await svc.resolve(TWO, [{ kind: "path", text }]);
 		return out;
 	};
+	const resolve = (repos: WorktreeChanges["repos"], text: string) =>
+		resolveIn({ cwd: repoDir("first"), repos: [record("first"), record("second")] }, repos, text);
 
 	it("opens the file in the repo that changed it, not the cwd's repo that holds an unchanged one", async () => {
 		expect(
 			await resolve([changes("second", [{ path: "src/a.ts", status: "modified" }])], "a.ts:12"),
 		).toEqual({ type: "file", repo: "second", sha: SHA, path: "src/a.ts", line: 12 });
+	});
+
+	it("opens the changed file from the repo root when the cwd is a subfolder holding a file at the same relative path", async () => {
+		mkdirSync(join(repoDir("mono"), "pkg", "src"), { recursive: true });
+		mkdirSync(join(repoDir("mono"), "src"), { recursive: true });
+		writeFileSync(join(repoDir("mono"), "pkg", "src", "a.ts"), "export {};\n");
+		writeFileSync(join(repoDir("mono"), "src", "a.ts"), "export {};\n");
+		expect(
+			await resolveIn(
+				{ cwd: join(repoDir("mono"), "pkg"), repos: [record("mono")] },
+				[changes("mono", [{ path: "src/a.ts", status: "modified" }])],
+				"a.ts:12",
+			),
+		).toEqual({ type: "file", repo: "mono", sha: SHA, path: "src/a.ts", line: 12 });
 	});
 
 	it("links the diff at the matched full path when the one changed file of that name was deleted", async () => {
@@ -277,10 +293,10 @@ describe("LinksService.resolve of a bare file name (#1193)", () => {
 		expect(
 			await resolve(
 				[
-					changes("first", [{ path: "src/b.ts", status: "added" }]),
-					changes("second", [{ path: "src/b.ts", status: "added" }]),
+					changes("first", [{ path: "src/a.ts", status: "modified" }]),
+					changes("second", [{ path: "src/a.ts", status: "modified" }]),
 				],
-				"b.ts:1",
+				"a.ts:1",
 			),
 		).toBeNull();
 	});
