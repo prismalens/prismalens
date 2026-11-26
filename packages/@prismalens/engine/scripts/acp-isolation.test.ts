@@ -10,6 +10,7 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	rmdirSync,
 	rmSync,
 	statSync,
@@ -177,6 +178,25 @@ describe("the isolation rows (#1180 R1)", () => {
 	};
 	const seedClaude = (home: string) => () => seedUser("claude-code", { CLAUDE_CONFIG_DIR: home }, home);
 	const mine = (real: string) => readFileSync(join(real, "settings.json"), "utf8");
+
+	it("accepts a config folder written by the temp folder's real path when the temp folder is a link, as macOS's /var is", () => {
+		const real = mkdtempSync(join(tmpdir(), "pl-iso-realtmp-"));
+		const link = join(tmpdir(), `pl-iso-tmplink-${process.pid}`);
+		symlinkSync(real, link, "junction");
+		dirs.push(real, link);
+		const saved = { TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP };
+		Object.assign(process.env, { TMPDIR: link, TEMP: link, TMP: link });
+		try {
+			const dir = join(realpathSync.native(link), "pl-seed-x", "claude_config_dir");
+			mkdirSync(dir, { recursive: true });
+			homeFs(dir).mkdir(join(dir, "sub"));
+			expect([tmpdir(), statSync(join(real, "pl-seed-x", "claude_config_dir", "sub")).isDirectory()]).toEqual([link, true]);
+		} finally {
+			for (const [k, v] of Object.entries(saved))
+				if (v === undefined) delete process.env[k];
+				else process.env[k] = v;
+		}
+	});
 
 	it("seeds a copy of the given config folder in a scratch home it made, and leaves the source as it was", () => {
 		const { src } = planted();
