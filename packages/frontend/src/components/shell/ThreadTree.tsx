@@ -324,6 +324,17 @@ export function ThreadTreeView({
 	useEffect(() => {
 		if (settledShort) onMoreSettled?.();
 	});
+	// A Show more pressed while a page loads is dropped by the feed: each page that lands short asks again.
+	const moreActive = useRef(onMoreActive);
+	moreActive.current = onMoreActive;
+	const activeShort =
+		!expandAll &&
+		!filter &&
+		active.length < Math.min(rowsShown, activeTotal ?? 0);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: each page that lands short asks once more
+	useEffect(() => {
+		if (activeShort) moreActive.current?.();
+	}, [activeShort, active.length]);
 	// Rows a page or a Show more adds mount from a deferred pass React builds in slices, never
 	// inside the task that brought the data (#1101 cat 1.8: no task over 100 ms while scrolling).
 	const activeDrawn = useDeferredValue(Math.min(rowsShown, active.length));
