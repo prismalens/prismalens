@@ -75,3 +75,21 @@ export const agentUseSharedSet = define.setting({
 	sentence: "This agent gets the PrismaLens set's instructions and servers.",
 	also: "shared mcp server instructions",
 });
+
+export const agentCheckEvery = define.setting({
+	id: "agent.checkEvery",
+	page: "agent",
+	anchor: "harness-check-every-row",
+	label: "Check every",
+	sentence: "Agents with a safe check are checked in the background.",
+	also: "refresh background check interval",
+});
+
+export const agentCleanProfile = define.setting({
+	id: "agent.cleanProfile",
+	page: "agent",
+	anchor: "agent-clean-profile-row",
+	label: "Clean profile",
+	sentence: "Skips your hooks and plugins.",
+	also: "hooks plugins mcp isolate",
+});

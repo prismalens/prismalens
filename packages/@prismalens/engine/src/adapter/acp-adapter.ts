@@ -34,6 +34,7 @@
  * stream (the UI's idempotent-upsert key is `(branchId, seq)`).
  */
 import type {
+	AgentLoadoutReport,
 	Artifact,
 	AskAnswer,
 	AskClosedOutcome,
@@ -749,6 +750,11 @@ export class AcpAdapter {
 		return { kind: "session_opened", ...this.base(), ...opening, carrier };
 	}
 
+	/** What this session reported loading (#1180 §3.1). */
+	agentLoadout(report: AgentLoadoutReport): CanonicalEvent {
+		return { kind: "agent_loadout", ...this.base(), ...report };
+	}
+
 	/** One prompt PrismaLens sent (#1166); `seq` is the one {@link peekSeq} gave the body. */
 	turnInput(input: {
 		inputId: string;
@@ -834,6 +840,7 @@ export class AcpAdapter {
 		usedPercent?: number;
 		resetsAt?: string;
 		status?: string;
+		account?: string;
 	}): CanonicalEvent {
 		return { kind: "agent_quota", ...this.base(), ...quota };
 	}

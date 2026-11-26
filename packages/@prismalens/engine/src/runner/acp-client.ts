@@ -249,6 +249,8 @@ export interface AcpSessionConfig {
 			tail: { prompts: number; text: string };
 		};
 	};
+	/** An agent's own notification (method starting `_`), such as `_claude/sdkMessage` (#1180). */
+	onExtNotification?: (method: string, params: unknown) => void;
 	/** `session/new` and `session/load` `mcpServers`, chosen from what `initialize` advertised (#848). */
 	mcpServers?: (
 		capabilities:
@@ -682,6 +684,8 @@ export class AcpSession {
 	pushesAuthStatus = false;
 	/** The `kind` of the last `_auth/status_update` (`"none"` is signed out); null before any. */
 	authStatusKind: string | null = null;
+	/** The account the last push named, as a limit read keys it: its email, else its label (#1180). */
+	authAccount: string | null = null;
 	private authStatusSeen: (() => void) | null = null;
 
 	constructor(private readonly config: AcpSessionConfig) {
@@ -1441,11 +1445,23 @@ export class AcpSession {
 				});
 			}
 		} else if (msg.method === AUTH_STATUS_UPDATE) {
-			const status = msg.params?.authStatus as { kind?: unknown } | undefined;
+			const status = msg.params?.authStatus as
+				| { kind?: unknown; label?: unknown; account?: { email?: unknown } }
+				| undefined;
 			if (typeof status?.kind === "string") {
 				this.authStatusKind = status.kind;
+				const email = status.account?.email;
+				const named =
+					typeof email === "string" && email
+						? email
+						: typeof status.label === "string" && status.label
+							? status.label
+							: null;
+				this.authAccount = status.kind === "none" ? null : named;
 				this.authStatusSeen?.();
 			}
+		} else if (msg.method?.startsWith("_")) {
+			this.config.onExtNotification?.(msg.method, msg.params);
 		}
 	}
 

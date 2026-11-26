@@ -403,6 +403,34 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(none).toEqual([]);
 	});
 
+	it("records the account the agent pushed on each usage window it reports (#1180)", async () => {
+		const { events } = await collect("ok", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_USAGE: "1",
+				FAKE_RATE_LIMIT: "1",
+				FAKE_AUTH_STATUS: "account",
+				FAKE_AUTH_LABEL: "Claude Max",
+				FAKE_AUTH_EMAIL: "dev@example.test",
+			},
+		});
+		const quotas = events
+			.filter((e) => e.kind === "agent_quota")
+			.map(({ window, type, usedPercent, status, account }) => ({ window, type, usedPercent, status, account }));
+		expect(quotas).toEqual([
+			{ window: "session", type: "five_hour", usedPercent: 40, status: "allowed", account: "dev@example.test" },
+		]);
+	});
+
+	it("records no account on a usage window when the agent pushed none", async () => {
+		const { events } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_USAGE: "1", FAKE_RATE_LIMIT: "1" },
+		});
+		const quota = events.find((e) => e.kind === "agent_quota");
+		expect(quota && "account" in quota ? quota.account : "absent").toBe("absent");
+	});
+
 	it("retries once in the same session when the first report is invalid", async () => {
 		const { events } = await collect("retry");
 		expect(events.at(-1)?.kind).toBe("report");
@@ -2751,5 +2779,62 @@ describe("message_received receipts (#1179)", () => {
 		});
 		for await (const ev of runInvestigation(earlyOpts)) earlyEvents.push(ev);
 		expect(earlyEvents.filter((e) => e.kind === "message_received")).toHaveLength(0);
+	});
+});
+
+describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () => {
+	const VALUE = "shared-value-0123456789";
+	const shared = {
+		servers: [{ name: "pl-docs", command: "/bin/docs-mcp", args: ["--root", "/srv/secret-arg-path"], env: [{ name: "TOKEN", value: VALUE }] }],
+		hidden: [VALUE],
+		revision: "rev-7",
+		instructions: "Always cite the runbook.",
+		fingerprint: "fp-1",
+		profile: "own" as const,
+	};
+
+	it("sends each shared server in session/new, records the set on session_opened, and the transcript keeps only its name and type", async () => {
+		const record = join(tmp("rec"), "record.json");
+		const { events, runDir } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD: record },
+			shared,
+		});
+		const seen = JSON.parse(readFileSync(record, "utf8")) as { mcpServers: unknown };
+		expect(seen.mcpServers).toEqual(shared.servers);
+		expect(events.find((e) => e.kind === "session_opened")).toMatchObject({ sharedSet: { revision: "rev-7", servers: ["pl-docs"] } });
+		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect([wire.includes('{\\"name\\":\\"pl-docs\\",\\"type\\":\\"stdio\\"}'), wire.includes("secret-arg-path"), wire.includes(VALUE)]).toEqual([true, false, false]);
+	});
+
+	it("puts the instructions at the start of the first prompt for an agent other than Claude Code, and only the first", async () => {
+		const prompts = join(tmp("rec"), "prompts.jsonl");
+		await collect("ok", { env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD_PROMPT: prompts }, shared });
+		const sent = readFileSync(prompts, "utf8").trim().split("\n").map((l) => JSON.parse(l) as string);
+		expect(sent[0]).toBe("Always cite the runbook.");
+		expect(sent.slice(1).includes("Always cite the runbook.")).toBe(false);
+	});
+
+	it("on Claude Code asks for the init, appends the instructions to the system prompt, and records one agent_loadout", async () => {
+		const record = join(tmp("rec"), "record.json");
+		const { events } = await collect("ok", {
+			harness: "claude-code",
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_RECORD: record,
+				FAKE_MODES: "default=Default,acceptEdits=Accept edits",
+				FAKE_SDK_INIT: JSON.stringify({ mcp_servers: [{ name: "docs", status: "connected", source: "user" }], skills: ["triage"] }),
+			},
+			shared,
+		});
+		const seen = JSON.parse(readFileSync(record, "utf8")) as { meta: Record<string, unknown> };
+		expect(seen.meta).toMatchObject({
+			claudeCode: { emitRawSDKMessages: [{ type: "system", subtype: "init" }] },
+			systemPrompt: { append: "Always cite the runbook." },
+		});
+		const loadouts = events.filter((e) => e.kind === "agent_loadout");
+		expect(loadouts.map((e) => (e.kind === "agent_loadout" ? [e.profile, e.fingerprint, e.items.map((i) => [i.kind, i.name, i.state])] : null))).toEqual([
+			["own", "fp-1", [["mcp", "docs", "loads"], ["skill", "triage", "loads"]]],
+		]);
 	});
 });

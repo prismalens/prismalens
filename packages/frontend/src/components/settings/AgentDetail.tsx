@@ -9,13 +9,22 @@
 
 import type { HarnessId } from "@prismalens/config/harness";
 import {
+	type CustomModel,
 	customModelsOf,
 	type HarnessStatus,
 	RUNTIME_HOST_ONLY,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { ArrowDown, ArrowLeft, ArrowUp, Heart, Star, X } from "lucide-react";
-import { type FormEvent, useRef, useState } from "react";
+import {
+	ArrowDown,
+	ArrowLeft,
+	ArrowUp,
+	Heart,
+	Pencil,
+	Star,
+	X,
+} from "lucide-react";
+import { type FormEvent, type ReactElement, useRef, useState } from "react";
 import { parse, quote } from "shell-quote";
 import { AgentMark, MakerMark } from "@/components/agent/AgentMark";
 import {
@@ -36,6 +45,8 @@ import {
 } from "@/components/agent/model-list";
 import { fact } from "@/components/kit/fact";
 import { Mark } from "@/components/kit/Mark";
+import { settingOf } from "@/components/kit/registry";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
 import { InlineCode } from "@/components/shared/InlineCode";
@@ -56,9 +67,11 @@ import {
 } from "@/lib/api/hooks";
 import { notSignedIn, signInNext } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
+import { AccountButtons, UpdateButton, useAgentCtx } from "./AgentLines";
 import { AgentLoadout } from "./AgentLoadout";
 import { CheckTimes, safeCheck, UNSAFE_CHECK_HINT } from "./agent-checks";
 import { EnvVarNotes, envStateWord } from "./agent-env";
+import { CustomModelDialog } from "./CustomModelDialog";
 import { SignInButton } from "./SignInButton";
 import { CredentialChip, StatePill, type Word } from "./source-words";
 import { accountLine, useForNewRuns } from "./use-for-new-runs";
@@ -184,40 +197,44 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 				<p className="text-body text-text-2">This agent is not known here.</p>
 			) : (
 				<>
-					<div className="mb-3 flex min-w-0 flex-wrap items-center gap-3">
-						<AgentMark id={agent.id} className="size-5" />
-						<h2
-							className="text-title font-semibold text-text-1"
-							data-testid="agent-detail-title"
-						>
-							{agent.label}
-						</h2>
-						<StatePill
-							word={
-								check.isPending
-									? { text: "Checking", tone: "neutral" }
-									: agentState(agent)
-							}
-							testId="agent-detail-state"
-						/>
-						{agent.installed && versionText(agent) && (
-							<Hint label={testedHint(agent)} meta={agent.tested?.date}>
-								<span
-									className="font-mono text-meta text-text-3"
-									data-testid={`harness-tested-${agent.id}`}
-								>
-									{versionText(agent)}
-								</span>
-							</Hint>
-						)}
-						<span className="flex-1" />
-						<SignInButton agent={agent} />
-						<CheckButton
-							safe={safeCheck(id)}
-							pending={check.isPending}
-							onCheck={() => check.mutate({ id })}
-						/>
-					</div>
+					<AgentSurface agent={agent}>
+						<div className="mb-3 flex min-w-0 flex-wrap items-center gap-3">
+							<AgentMark id={agent.id} className="size-5" />
+							<h2
+								className="text-title font-semibold text-text-1"
+								data-testid="agent-detail-title"
+							>
+								{agent.label}
+							</h2>
+							<StatePill
+								word={
+									check.isPending
+										? { text: "Checking", tone: "neutral" }
+										: agentState(agent)
+								}
+								testId="agent-detail-state"
+							/>
+							{agent.installed && versionText(agent) && (
+								<Hint label={testedHint(agent)} meta={agent.tested?.date}>
+									<span
+										className="font-mono text-meta text-text-3"
+										data-testid={`harness-tested-${agent.id}`}
+									>
+										{versionText(agent)}
+									</span>
+								</Hint>
+							)}
+							<span className="flex-1" />
+							<SignInButton agent={agent} />
+							<UpdateButton agent={agent} />
+							<CheckButton
+								safe={safeCheck(id)}
+								pending={check.isPending}
+								onCheck={() => check.mutate({ id })}
+							/>
+							<AgentMore agent={agent} />
+						</div>
+					</AgentSurface>
 					<div className="mb-6 flex flex-col gap-1 text-body text-text-2">
 						{checked && <CheckTimes agent={agent} />}
 						{checked && (
@@ -230,12 +247,16 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 							</p>
 						)}
 						{account && (
-							<p data-testid="agent-detail-account">
+							<div
+								className="flex flex-wrap items-center gap-2"
+								data-testid="agent-detail-account"
+							>
 								<span className="text-text-1">{account.label}</span>
 								{account.email && (
-									<span className="ml-2 text-text-3">{account.email}</span>
+									<span className="text-text-3">{account.email}</span>
 								)}
-							</p>
+								<AccountButtons agent={agent} />
+							</div>
 						)}
 						{agent.installed && <AgentLimitsRow agent={agent.id} />}
 						{checked?.lastTry && (
@@ -298,10 +319,60 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 	);
 }
 
+/** The header as the `agent.detail` surface: right-click lists the agent's own lines (#1180). */
+function AgentSurface({
+	agent,
+	children,
+}: {
+	agent: HarnessStatus;
+	children: ReactElement;
+}) {
+	return (
+		<Surface id="agent.detail" ctx={useAgentCtx(agent)}>
+			{children}
+		</Surface>
+	);
+}
+
+/** The header's ⋯, shown only while the agent has a line to offer. */
+function AgentMore({ agent }: { agent: HarnessStatus }) {
+	const ctx = useAgentCtx(agent);
+	if (!Object.values(ctx.facts.is ?? {}).some(Boolean)) return null;
+	return <SurfaceMore id="agent.detail" ctx={ctx} />;
+}
+
 /**
  * On or off, and Remove from list for an agent listed only because Add agent saved it (#1171).
  * Off keeps every setting; auto and new runs skip it.
  */
+/** Shown only where this agent's clean profile holds here (#1180 §3.4). */
+function CleanProfileRow({
+	on,
+	pending,
+	onChange,
+}: {
+	on: boolean;
+	pending: boolean;
+	onChange: (on: boolean) => void;
+}) {
+	const s = settingOf("agent.cleanProfile");
+	return (
+		<SettingRow
+			label={<label htmlFor="agent-clean-profile">{s.label}</label>}
+			description={s.sentence}
+			testId={s.anchor}
+		>
+			<Switch
+				id="agent-clean-profile"
+				checked={on}
+				disabled={pending}
+				onCheckedChange={onChange}
+				data-testid="agent-clean-profile"
+			/>
+		</SettingRow>
+	);
+}
+
 function UseGroup({ agent }: { agent: HarnessStatus }) {
 	const id = agent.id as HarnessId;
 	const settings = useHarnessSettings().data;
@@ -333,6 +404,13 @@ function UseGroup({ agent }: { agent: HarnessStatus }) {
 						data-testid="agent-detail-on"
 					/>
 				</SettingRow>
+				{agent.cleanProfile?.offered && (
+					<CleanProfileRow
+						on={agent.cleanProfile.on}
+						pending={update.isPending}
+						onChange={(on) => update.mutate({ cleanProfile: { [id]: on } })}
+					/>
+				)}
 				{agent.runnable && (
 					<SettingRow
 						label="Use for new runs"
@@ -395,8 +473,10 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 	const { customModels, hiddenModels, modelOrder, models } = useAgentChoice();
 	const favourites = useHarnessSettings().data?.favourites ?? [];
 	const update = useUpdateHarnessSettings();
-	const custom = customModelsOf(customModels[id]);
-	const customIds = custom.map((m) => m.id);
+	const stored = customModels[id] ?? [];
+	const custom = customModelsOf(stored);
+	const idOf = (m: string | CustomModel) => (typeof m === "string" ? m : m.id);
+	const [editing, setEditing] = useState<CustomModel | null>(null);
 	const hidden = hiddenModels[id] ?? [];
 	const list = agentModels(agent, {
 		custom,
@@ -433,7 +513,7 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 		}
 		setRefusal(null);
 		update.mutate(
-			{ customModels: { [id]: [...customIds, model] } },
+			{ customModels: { [id]: [...stored, model] } },
 			{ onSuccess: () => setDraft("") },
 		);
 	};
@@ -477,6 +557,7 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 					const favourite = isFavourite(favourites, id, m.id);
 					const labels = modelLabels(agent.id, m.id, {
 						custom: custom.find((c) => c.id === m.id),
+						fastModel: agent.checked?.fastModel,
 					});
 					return (
 						<Row
@@ -554,6 +635,21 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 											)}
 										/>
 									</Button>
+									{m.custom && (
+										<Button
+											variant="ghost"
+											size="icon"
+											aria-label={`Edit name and options of ${m.id}`}
+											onClick={() =>
+												setEditing(
+													custom.find((c) => c.id === m.id) ?? { id: m.id },
+												)
+											}
+											data-testid="custom-model-edit"
+										>
+											<Pencil className="size-3.5" />
+										</Button>
+									)}
 									{m.custom && (
 										<Button
 											variant="ghost"
@@ -647,6 +743,27 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 					}
 				/>
 			</Pool>
+			<CustomModelDialog
+				model={editing}
+				onOpenChange={(open) => !open && setEditing(null)}
+				isPending={update.isPending}
+				onSave={(next) =>
+					update.mutate(
+						{
+							customModels: {
+								[id]: stored.map((m) =>
+									idOf(m) !== next.id
+										? m
+										: next.name || next.labels
+											? next
+											: next.id,
+								),
+							},
+						},
+						{ onSuccess: () => setEditing(null) },
+					)
+				}
+			/>
 			<DestructiveConfirm
 				open={removing !== null}
 				onOpenChange={(open) => !open && setRemoving(null)}
@@ -657,7 +774,9 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 				error={update.error}
 				onConfirm={() =>
 					update.mutateAsync({
-						customModels: { [id]: customIds.filter((m) => m !== removing) },
+						customModels: {
+							[id]: stored.filter((m) => idOf(m) !== removing),
+						},
 					})
 				}
 			/>

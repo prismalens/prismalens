@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { AgentDescriptor } from "../agents.js";
+import { claudeCleanIsolation, claudeProbeIsolation } from "../isolation.js";
 import { customBaseUrl, probed, SUBAGENTS_ON_STOP_DEFAULT } from "../row.js";
 
 export const claudeCode = {
@@ -106,4 +107,6 @@ export const claudeCode = {
 		depth: { env: "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH" },
 		concurrency: { env: "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS" },
 	},
+	probeIsolation: claudeProbeIsolation,
+	cleanProfile: claudeCleanIsolation,
 } satisfies AgentDescriptor;

@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { AgentDescriptor } from "../agents.js";
+import { geminiCleanIsolation, geminiProbeIsolation } from "../isolation.js";
 import { probed } from "../row.js";
 
 export const gemini = {
@@ -59,4 +60,6 @@ export const gemini = {
 				"packages/cli/src/acp/acpRpcDispatcher.ts initialize: loadSession only",
 		},
 	},
+	probeIsolation: geminiProbeIsolation,
+	cleanProfile: geminiCleanIsolation,
 } satisfies AgentDescriptor;

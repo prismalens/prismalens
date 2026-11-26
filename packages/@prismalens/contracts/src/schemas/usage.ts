@@ -6,7 +6,6 @@ import { lazySchema } from "../lazy-schema.js";
 import { LimitWindowSchema } from "./provider-failure.js";
 import { AccessLevelSchema } from "./settings.js";
 
-export * from "./agent-setup.js";
 export * from "./model-identity.js";
 
 /** The Usage view's ranges (#1101 cat 17). */

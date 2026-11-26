@@ -8,7 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import { statSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import {
 	Injectable,
@@ -16,7 +16,7 @@ import {
 	type OnApplicationBootstrap,
 	Optional,
 } from "@nestjs/common";
-import type { LaunchPolicy } from "@prismalens/agent-host";
+import { isolationContext, type LaunchPolicy } from "@prismalens/agent-host";
 import {
 	type HarnessSelection,
 	isWindowsMountPath,
@@ -49,6 +49,7 @@ import {
 import {
 	type AgentEnvVar,
 	COLD_RESUME_TOKENS,
+	type CustomModel,
 	effectiveAccess,
 	type FavouriteModel,
 	type HarnessesResponse,
@@ -57,6 +58,7 @@ import {
 	type HarnessStatus,
 	type LocalAgent,
 	type LocalDefault,
+	MODEL_LABELS,
 	MODEL_USES,
 	type ModelUse,
 	RUNTIME_HOST_ONLY,
@@ -71,11 +73,18 @@ import { localDefault, prismalensLaunchPolicy } from "@prismalens/engine";
 import { CredentialsService } from "../../modules/integrations/crypto/credentials.service.js";
 import * as clock from "../clock.js";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { AgentUpdatesService } from "./agent-updates.service.js";
 import {
 	ChecksSnapshotSchema,
 	HarnessModelsService,
 } from "./harness-models.service.js";
 import { HarnessProbeService } from "./harness-probe.service.js";
+import {
+	checksInBackground,
+	REFRESH_DEFAULT_MINUTES,
+	REFRESH_MINUTES,
+	type RefreshMinutes,
+} from "./harness-refresh.service.js";
 
 /** How long a remembered "ready" stands before a run checks again; "not ready" is never reused (#673 w9). */
 export const READY_CHECK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -127,6 +136,8 @@ export interface AgentRuntime {
 		concurrency?: number;
 		onStop?: "stop" | "finish";
 	};
+	/** Settings → Agent → Clean profile: runs skip the user's hooks and plugins (#1180 §3.4). */
+	cleanProfile?: { version: string | null };
 }
 
 export interface HarnessSettings {
@@ -141,7 +152,7 @@ export interface HarnessSettings {
 	/** Permission level per harness for the next run (#673 w21); absent follows the agent's own default. */
 	accessLevels?: Partial<Record<HarnessId, AccessLevel>>;
 	/** Model ids the operator added per harness (#673 w57). */
-	customModels?: Partial<Record<HarnessId, string[]>>;
+	customModels?: Partial<Record<HarnessId, (string | CustomModel)[]>>;
 	/** Models left out of the picker per agent (#907). */
 	hiddenModels?: Partial<Record<HarnessId, string[]>>;
 	/** The operator's model order per agent. */
@@ -184,6 +195,47 @@ export interface HarnessSettings {
 	off?: HarnessId[];
 	/** Put through Add agent without passing; listed anyway (#1171). */
 	added?: HarnessId[];
+	/** Runs skip the user's hooks and plugins on these agents (#1180 §3.4). */
+	cleanProfile?: HarnessId[];
+	/** Minutes between background checks; absent is 15, 0 is off (#1180 §1.4). */
+	refreshMinutes?: RefreshMinutes;
+}
+
+/** Whether the Clean profile switch is offered for `id` here, and why not (#1180 §3.4). */
+function cleanProfileStatus(
+	id: HarnessId,
+	s: HarnessSettings,
+	env: NodeJS.ProcessEnv,
+	version: string | null,
+): { cleanProfile?: { offered: boolean; on: boolean; reason?: string } } {
+	const use = HARNESS_REGISTRY[id].cleanProfile;
+	if (!use) return {};
+	const defined = Object.fromEntries(
+		Object.entries(env).filter(
+			(e): e is [string, string] => e[1] !== undefined,
+		),
+	);
+	const reason =
+		use.unavailable?.(
+			isolationContext({ runDir: tmpdir(), env: defined, version }),
+		) ?? null;
+	return {
+		cleanProfile: {
+			offered: !reason,
+			on: s.cleanProfile?.includes(id) ?? false,
+			...(reason ? { reason } : {}),
+		},
+	};
+}
+
+/** Stored only when it is not the default. */
+function refreshMinutesField(raw: unknown): {
+	refreshMinutes?: RefreshMinutes;
+} {
+	return (REFRESH_MINUTES as readonly unknown[]).includes(raw) &&
+		raw !== REFRESH_DEFAULT_MINUTES
+		? { refreshMinutes: raw as RefreshMinutes }
+		: {};
 }
 
 const AXES = ["accessLevels"] as const;
@@ -203,7 +255,7 @@ export interface HarnessSettingsPatch {
 	/** Each merged per harness; `null` goes back to the default. */
 	accessLevels?: Partial<Record<HarnessId, AccessLevel | null>>;
 	/** Replaces that harness's list; `null` clears it. */
-	customModels?: Partial<Record<HarnessId, string[] | null>>;
+	customModels?: Partial<Record<HarnessId, (string | CustomModel)[] | null>>;
 	hiddenModels?: Partial<Record<HarnessId, string[] | null>>;
 	modelOrder?: Partial<Record<HarnessId, string[] | null>>;
 	/** Runtime fields (#907): host only, each merged per agent; `null` clears. */
@@ -235,6 +287,8 @@ export interface HarnessSettingsPatch {
 	/** Each merged per agent; `false` takes it out. */
 	off?: Partial<Record<HarnessId, boolean>>;
 	added?: Partial<Record<HarnessId, boolean>>;
+	cleanProfile?: Partial<Record<HarnessId, boolean>>;
+	refreshMinutes?: RefreshMinutes;
 }
 
 const RUNTIME_FIELDS = [
@@ -251,6 +305,8 @@ const RUNTIME_FIELDS = [
 	"subagentsOnStop",
 	"useDefaults",
 	"threadTitles",
+	"cleanProfile",
+	"refreshMinutes",
 ] as const satisfies readonly (keyof HarnessSettingsPatch)[];
 
 /** Per-use defaults that still name a known agent; `null` or junk drops the use. */
@@ -343,8 +399,54 @@ function cleanAxes(
 	return out as Pick<HarnessSettings, Axis>;
 }
 
-/** Custom model ids per harness: trimmed, deduplicated, empty lists dropped (#673 w57). */
-function cleanCustomModels(raw: unknown): Partial<Record<HarnessId, string[]>> {
+/**
+ * Custom models per harness (#673 w57): a bare id stays a string; one with a name or
+ * labels stays an object (#1180). Ids trimmed and deduplicated, empty lists dropped.
+ */
+function cleanCustomModels(
+	raw: unknown,
+): Partial<Record<HarnessId, (string | CustomModel)[]>> {
+	const out: Partial<Record<HarnessId, (string | CustomModel)[]>> = {};
+	if (!raw || typeof raw !== "object") return out;
+	for (const [id, list] of Object.entries(raw)) {
+		if (!HARNESS_IDS.includes(id as HarnessId) || !Array.isArray(list))
+			continue;
+		const seen = new Set<string>();
+		const models: (string | CustomModel)[] = [];
+		for (const m of list as unknown[]) {
+			const model = customModelOf(m);
+			if (!model) continue;
+			const key = typeof model === "string" ? model : model.id;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			models.push(model);
+		}
+		if (models.length) out[id as HarnessId] = models;
+	}
+	return out;
+}
+
+/** One stored custom model, or null when it holds no id. */
+function customModelOf(raw: unknown): string | CustomModel | null {
+	if (typeof raw === "string") return raw.trim() || null;
+	if (!raw || typeof raw !== "object") return null;
+	const r = raw as { id?: unknown; name?: unknown; labels?: unknown };
+	const id = typeof r.id === "string" ? r.id.trim() : "";
+	if (!id) return null;
+	const name = typeof r.name === "string" ? r.name.trim().slice(0, 80) : "";
+	const labels = Array.isArray(r.labels)
+		? MODEL_LABELS.filter((l) => (r.labels as unknown[]).includes(l))
+		: [];
+	if (!name && !labels.length) return id;
+	return {
+		id,
+		...(name ? { name } : {}),
+		...(labels.length ? { labels } : {}),
+	};
+}
+
+/** Model ids per harness: trimmed, deduplicated, empty lists dropped. */
+function cleanIdLists(raw: unknown): Partial<Record<HarnessId, string[]>> {
 	const out: Partial<Record<HarnessId, string[]>> = {};
 	if (!raw || typeof raw !== "object") return out;
 	for (const [id, list] of Object.entries(raw)) {
@@ -365,7 +467,7 @@ function cleanCustomModels(raw: unknown): Partial<Record<HarnessId, string[]>> {
 
 /** A list per agent, capped like the contract (#907). */
 function cleanLists(raw: unknown): Partial<Record<HarnessId, string[]>> {
-	const out = cleanCustomModels(raw);
+	const out = cleanIdLists(raw);
 	for (const id of Object.keys(out) as HarnessId[])
 		out[id] = out[id]?.slice(0, 500);
 	return out;
@@ -538,6 +640,7 @@ export class HarnessService implements OnApplicationBootstrap {
 			models,
 		),
 		@Optional() private readonly credentials?: CredentialsService,
+		@Optional() private readonly updates?: AgentUpdatesService,
 	) {}
 
 	/** Check each installed agent once, in the background, so the picker is right on first open. */
@@ -546,11 +649,13 @@ export class HarnessService implements OnApplicationBootstrap {
 		void this.restoreChecks().then(() => this.sweep());
 	}
 
+	/** At boot: each installed agent that is on and whose check runs isolated (#1180 R1). */
 	async sweep(): Promise<void> {
 		const settings = await this.getSettings();
 		const off = new Set(settings.off);
 		for (const h of listHarnessStatus(this.selectionInput(settings))) {
-			if (h.installed && !off.has(h.id)) await this.checkOnce(h.id);
+			if (h.installed && !off.has(h.id) && checksInBackground(h.id))
+				await this.checkOnce(h.id, { requireIsolation: true });
 		}
 	}
 
@@ -577,7 +682,7 @@ export class HarnessService implements OnApplicationBootstrap {
 	 * What a check of `id` runs under, as a hash: a check is shown only while this matches (#1171).
 	 * A stored variable's ciphertext changes on each write, so it stands in for a revision counter.
 	 */
-	private runtimeKey(
+	runtimeKey(
 		id: HarnessId,
 		s: HarnessSettings = this.lastSettings,
 		stored: Partial<Record<HarnessId, Record<string, string>>> = this
@@ -722,6 +827,13 @@ export class HarnessService implements OnApplicationBootstrap {
 					: {}),
 				onStop: s.subagentsOnStop ?? "stop",
 			},
+			...(s.cleanProfile?.includes(id) && HARNESS_REGISTRY[id].cleanProfile
+				? {
+						cleanProfile: {
+							version: this.models.checked(id)?.version ?? null,
+						},
+					}
+				: {}),
 			...(binaryPath ? { binaryPath } : {}),
 			...(local ? { launchArgs: args } : {}),
 			note: set
@@ -798,10 +910,13 @@ export class HarnessService implements OnApplicationBootstrap {
 	}
 
 	/** The Settings Check button: the handshake with this agent's runtime (#907). */
-	async check(id: HarnessId): Promise<HarnessProbeResult> {
+	async check(
+		id: HarnessId,
+		opts: { requireIsolation?: boolean } = {},
+	): Promise<HarnessProbeResult> {
 		const seq = this.reserve(id);
 		const { runtime, guard } = await this.probeInputs(id);
-		const result = await this.probe.check(id, runtime, guard, seq);
+		const result = await this.probe.check(id, runtime, guard, seq, opts);
 		void this.persistChecks();
 		return result;
 	}
@@ -877,12 +992,18 @@ export class HarnessService implements OnApplicationBootstrap {
 		return { ready: true };
 	}
 
-	private checkOnce(id: HarnessId): Promise<Check | null> {
+	/** `requireIsolation`: a check nobody asked for starts only isolated (#1180 R1). */
+	private checkOnce(
+		id: HarnessId,
+		opts: { requireIsolation?: boolean } = {},
+	): Promise<Check | null> {
 		const running = this.inFlight.get(id);
 		if (running) return running;
 		const seq = this.reserve(id);
 		const next: Promise<Check | null> = this.probeInputs(id)
-			.then(({ runtime, guard }) => this.probe.check(id, runtime, guard, seq))
+			.then(({ runtime, guard }) =>
+				this.probe.check(id, runtime, guard, seq, opts),
+			)
 			.then(() => {
 				void this.persistChecks();
 				return this.models.checked(id) ?? null;
@@ -978,11 +1099,14 @@ export class HarnessService implements OnApplicationBootstrap {
 			const localAgent = cleanLocalAgent(parsed.localAgent);
 			const off = cleanIds(parsed.off);
 			const added = cleanIds(parsed.added);
+			const cleanProfile = cleanIds(parsed.cleanProfile);
 			// A stored `agentModes` (before the two axes) is not read back (#673 w21).
 			return {
 				harness,
 				...(off.length ? { off } : {}),
 				...(added.length ? { added } : {}),
+				...(cleanProfile.length ? { cleanProfile } : {}),
+				...refreshMinutesField(parsed.refreshMinutes),
 				...(Object.keys(models).length ? { models } : {}),
 				...(favourites.length ? { favourites } : {}),
 				...(Object.keys(efforts).length ? { efforts } : {}),
@@ -1079,6 +1203,7 @@ export class HarnessService implements OnApplicationBootstrap {
 		});
 		const off = mergeIds(current.off, patch.off);
 		const added = mergeIds(current.added, patch.added);
+		const cleanProfile = mergeIds(current.cleanProfile, patch.cleanProfile);
 		const turnedOff = off.filter((id) => !current.off?.includes(id));
 		const turnedOn = (current.off ?? []).filter((id) => !off.includes(id));
 		const harness = patch.harness ?? current.harness;
@@ -1096,6 +1221,8 @@ export class HarnessService implements OnApplicationBootstrap {
 				harness !== "auto" && turnedOff.includes(harness) ? "auto" : harness,
 			...(off.length ? { off } : {}),
 			...(added.length ? { added } : {}),
+			...(cleanProfile.length ? { cleanProfile } : {}),
+			...refreshMinutesField(patch.refreshMinutes ?? current.refreshMinutes),
 			...(Object.keys(models).length ? { models } : {}),
 			...(favourites.length ? { favourites } : {}),
 			...(Object.keys(efforts).length ? { efforts } : {}),
@@ -1190,10 +1317,13 @@ export class HarnessService implements OnApplicationBootstrap {
 		for (const id of changed) {
 			this.models.forget(id);
 			this.inFlight.delete(id);
-			void this.checkOnce(id);
+			if (checksInBackground(id))
+				void this.checkOnce(id, { requireIsolation: true });
 		}
 		if (changed.size) void this.persistChecks();
-		for (const id of turnedOn) if (!changed.has(id)) void this.checkOnce(id);
+		for (const id of turnedOn)
+			if (!changed.has(id) && checksInBackground(id))
+				void this.checkOnce(id, { requireIsolation: true });
 		return settings;
 	}
 
@@ -1345,14 +1475,35 @@ export class HarnessService implements OnApplicationBootstrap {
 			HARNESS_IDS.map((id) => [id, this.listedRuntime(id, settings, stored)]),
 		);
 		const catalogue = this.models.catalogue();
+		const listed = listHarnessStatus({
+			...this.selectionInput(settings),
+			envFor: (id) => ({ ...process.env, ...runtimes.get(id)?.env }),
+		});
+		const releases = this.updates
+			? await this.updates.releases(
+					listed.filter((h) => h.installed).map((h) => h.id as HarnessId),
+				)
+			: {};
+		const lines = await Promise.all(
+			listed.map((h) =>
+				this.updates && h.installed
+					? this.updates
+							.commandsFor(
+								h.id as HarnessId,
+								settings,
+								installedVersion(this.models.checked(h.id)),
+								releases,
+							)
+							.catch(() => null)
+					: null,
+			),
+		);
 		return {
-			harnesses: listHarnessStatus({
-				...this.selectionInput(settings),
-				envFor: (id) => ({ ...process.env, ...runtimes.get(id)?.env }),
-			}).map((h) => {
+			harnesses: listed.map((h, i) => {
 				const off = settings.off?.includes(h.id) ?? false;
 				const checked = this.models.checked(h.id);
 				return {
+					...(lines[i] ?? {}),
 					...h,
 					runnable: h.installed && !off && this.checkPasses(h.id),
 					providerSignIn: providerSignIn(
@@ -1368,6 +1519,12 @@ export class HarnessService implements OnApplicationBootstrap {
 					envVars: envVarStates(h.id, settings.envNames?.[h.id] ?? []),
 					models: this.models.modelsFor(h.id, catalogue),
 					checked,
+					...cleanProfileStatus(
+						h.id,
+						settings,
+						{ ...process.env, ...runtimes.get(h.id)?.env },
+						checked?.version ?? null,
+					),
 				};
 			}),
 			selection: selection.runnable
@@ -1388,6 +1545,11 @@ export class HarnessService implements OnApplicationBootstrap {
 					},
 		};
 	}
+}
+
+/** The agent CLI's own version from the last check: behind a shipped adapter, its companion's. */
+function installedVersion(checked: HarnessStatus["checked"]): string | null {
+	return checked?.companionVersion ?? checked?.version ?? null;
 }
 
 /** The version a check read against the tested one, paired as Settings shows them (#818). */

@@ -130,8 +130,9 @@ export function harnessRefreshPort(
 			const off = new Set((await harness.getSettings()).off ?? []);
 			return (await harness.installedIds()).filter((id) => !off.has(id));
 		},
-		minutes: async () => REFRESH_DEFAULT_MINUTES,
-		check: (id) => harness.check(id),
+		minutes: async () =>
+			(await harness.getSettings()).refreshMinutes ?? REFRESH_DEFAULT_MINUTES,
+		check: (id) => harness.check(id, { requireIsolation: true }),
 		readLimits: (id) => usage.readLimits(id),
 		safeCheck: checksInBackground,
 	};
