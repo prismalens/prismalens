@@ -39,9 +39,10 @@ function take(markers: string): string[] {
 
 const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** One session and one turn on `harness` in `cwd`, with the clean profile or the user's own. */
-async function session(
+/** One session (and a turn when `turn`) on `harness` in `cwd`; a problem when it cannot run, else null. */
+export async function isolatedSession(
 	harness: HarnessId,
+	env: NodeJS.ProcessEnv,
 	cwd: string,
 	profile: "own" | "probe" | "clean",
 	turn: boolean,
@@ -52,7 +53,7 @@ async function session(
 			harness,
 			cwd,
 			runDir,
-			hostEnv: process.env,
+			hostEnv: env,
 		});
 		const rowMeta = AGENT_REGISTRY[harness].sessionMeta?.();
 		const row = AGENT_REGISTRY[harness];
@@ -100,16 +101,20 @@ async function session(
 			// A check never sends a turn; it is held open long enough for the agent to start its servers.
 			if (!turn) await settle(5_000);
 			else
-				for await (const item of s.prompt("Say hello."))
-					if (item.kind === "done" || item.kind === "error") break;
+				for await (const item of s.prompt("Say hello.")) {
+					if (item.kind === "error")
+						return `the ${profile} turn failed: ${item.message}`;
+					if (item.kind === "done") break;
+				}
 		} finally {
 			await s.close().catch(() => undefined);
 		}
 		return null;
 	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
 		return err instanceof CheckNotIsolatedError
-			? `no ${profile} isolation: ${err.message}`
-			: null;
+			? `no ${profile} isolation: ${message}`
+			: `the ${profile} session failed: ${message}`;
 	} finally {
 		rmSync(runDir, {
 			recursive: true,
@@ -124,13 +129,14 @@ async function session(
 export async function runIsolationRow(
 	row: Row,
 	harness: HarnessId,
+	env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ problem: string | null; saw: string }> {
 	const markers = mkdtempSync(join(tmpdir(), "pl-matrix-markers-"));
 	const controls = row.markers?.[harness] ?? [];
 	const seen: string[] = [];
-	const seed = (cwd: string) => seedProject(harness, cwd, process.env, markers);
+	const seed = (cwd: string) => seedProject(harness, cwd, env, markers);
 	try {
-		seedUser(harness, process.env, markers);
+		seedUser(harness, env, markers);
 		if (!controls.length)
 			return {
 				problem: `no positive control is declared for ${harness}`,
@@ -138,7 +144,13 @@ export async function runIsolationRow(
 			};
 		const workspace = mkdtempSync(join(tmpdir(), "pl-matrix-iso-ws-"));
 		const control = async () => {
-			await session(harness, workspace, "own", row.run.isolation === "clean");
+			await isolatedSession(
+				harness,
+				env,
+				workspace,
+				"own",
+				row.run.isolation === "clean",
+			);
 			await settle(1_000);
 		};
 		seed(workspace);
@@ -157,13 +169,13 @@ export async function runIsolationRow(
 				? [
 						[
 							"clean session and turn",
-							() => session(harness, workspace, "clean", true),
+							() => isolatedSession(harness, env, workspace, "clean", true),
 						],
 					]
 				: [
 						[
 							"isolated session",
-							() => session(harness, workspace, "probe", false),
+							() => isolatedSession(harness, env, workspace, "probe", false),
 						],
 						[
 							"background pass",

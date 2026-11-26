@@ -7,9 +7,11 @@ import {
 	appendFileSync,
 	mkdirSync,
 	readFileSync,
+	realpathSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MARKER = resolve(dirname(fileURLToPath(import.meta.url)), "marker.mjs");
@@ -41,13 +43,43 @@ function mergeJson(path, add) {
 }
 const toml = (s) => `'${s}'`;
 
-/** The user-scope markers, in the agent's own (scratch) home from `env`. */
+const ROOT_VAR = {
+	"claude-code": "CLAUDE_CONFIG_DIR",
+	codex: "CODEX_HOME",
+	opencode: "XDG_CONFIG_HOME",
+	gemini: "GEMINI_CLI_HOME",
+};
+const inside = (dir, root) => {
+	const rel = relative(root, dir);
+	return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+};
+/** The agent's config root from `env`; refused unless it is under the OS temp folder, so a row never edits a real config. */
+export function scratchRoot(harness, env) {
+	const key = ROOT_VAR[harness];
+	const dir = key ? env[key] : undefined;
+	if (!dir)
+		throw new Error(
+			`${harness}: ${key} is not set; markers go only in a scratch home`,
+		);
+	if (!inside(resolve(dir), resolve(tmpdir())))
+		throw new Error(
+			`${harness}: ${key} is not under the temp folder; markers go only in a scratch home`,
+		);
+	mkdirSync(dir, { recursive: true });
+	if (!inside(realpathSync.native(dir), realpathSync.native(tmpdir())))
+		throw new Error(
+			`${harness}: ${key} resolves outside the temp folder; markers go only in a scratch home`,
+		);
+	return dir;
+}
+
+/** The user-scope markers, in the agent's own scratch home from `env`. */
 export function seedUser(harness, env, markers) {
 	const hook = (name) => ({
 		hooks: [{ type: "command", command: shell(markers, name) }],
 	});
 	if (harness === "claude-code") {
-		const dir = env.CLAUDE_CONFIG_DIR;
+		const dir = scratchRoot(harness, env);
 		mergeJson(join(dir, "settings.json"), {
 			hooks: {
 				SessionStart: [hook("user-hook")],
@@ -58,7 +90,7 @@ export function seedUser(harness, env, markers) {
 			mcpServers: { "mk-user": marker(markers, "mcp-user", true) },
 		});
 	} else if (harness === "codex") {
-		const home = env.CODEX_HOME;
+		const home = scratchRoot(harness, env);
 		const mkt = join(home, "mk-marketplace");
 		const plugin = (root) => {
 			mkdirSync(join(root, ".codex-plugin"), { recursive: true });
@@ -118,7 +150,7 @@ export function seedUser(harness, env, markers) {
 			JSON.stringify({ hooks: { SessionStart: [hook("user-hook")] } }),
 		);
 	} else if (harness === "opencode") {
-		const dir = join(env.XDG_CONFIG_HOME, "opencode");
+		const dir = join(scratchRoot(harness, env), "opencode");
 		const m = marker(markers, "mcp-user", true);
 		mergeJson(join(dir, "opencode.json"), {
 			mcp: {
@@ -141,7 +173,7 @@ export function seedUser(harness, env, markers) {
 			`import { appendFileSync } from "node:fs";\nexport default { id: "mk", setup: async () => { ${write}; return {}; } };\n`,
 		);
 	} else if (harness === "gemini") {
-		const path = join(env.GEMINI_CLI_HOME, ".gemini", "settings.json");
+		const path = join(scratchRoot(harness, env), ".gemini", "settings.json");
 		mergeJson(path, {
 			mcpServers: { "mk-user": marker(markers, "mcp-user", true) },
 			hooks: { SessionStart: [hook("user-hook")] },
@@ -171,7 +203,7 @@ export function seedProject(harness, cwd, env, markers) {
 			JSON.stringify({ hooks: { SessionStart: [hook("project-hook")] } }),
 		);
 		appendFileSync(
-			join(env.CODEX_HOME, "config.toml"),
+			join(scratchRoot(harness, env), "config.toml"),
 			`\n[projects.${toml(cwd)}]\ntrust_level = "trusted"\n`,
 		);
 	} else if (harness === "opencode") {
