@@ -44,7 +44,12 @@ describe("resolveHarnessSelection", () => {
 	it.each([
 		["cursor", "cursor-agent"],
 		["antigravity", "agy_acp_server"],
-	])("honours a PRISMALENS_HARNESS pin to %s when %s is on PATH (#1235)", (harness, binary) => {
+		["copilot", "copilot"],
+		["kiro", "kiro-cli"],
+		["grok", "grok"],
+		["qwen", "qwen"],
+		["goose", "goose"],
+	])("honours a PRISMALENS_HARNESS pin to %s when %s is on PATH (#1235, #1236)", (harness, binary) => {
 		const s = resolveHarnessSelection({ envHarness: harness, isOnPath: onPath([binary]) });
 		expect(s).toMatchObject({ runnable: true, harness, auto: false });
 	});
@@ -87,6 +92,11 @@ describe("resolveHarnessSelection", () => {
 			"gemini",
 			"cursor",
 			"antigravity",
+			"copilot",
+			"kiro",
+			"grok",
+			"qwen",
+			"goose",
 			"deepagents",
 			"local",
 		]);

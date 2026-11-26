@@ -132,7 +132,6 @@ src/components/services/ServiceConnectionsReorder.test.tsx	as-never	1
 src/components/services/ServiceInvestigationsSection.test.ts	T2	1
 src/components/services/ServiceWorkspaceSection.test.tsx	T1	1
 src/components/settings/AboutSettings.tsx	copy-handrolled	4
-src/components/settings/AcpRegistrySearch.test.tsx	T2	1
 src/components/settings/AgentDetail.test.tsx	T1	3
 src/components/settings/AlertIntakeSettings.tsx	copy-handrolled	4
 src/components/settings/ConnectionFormDialog.test.ts	as-never	1

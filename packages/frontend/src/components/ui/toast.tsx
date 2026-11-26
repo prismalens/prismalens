@@ -26,32 +26,6 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName;
 
 /**
- * Lifts the toast stack above `ref` (a docked composer) while it is mounted: no toast
- * covers a control (#1101 cat 23).
- */
-export function useToastClearance(ref: React.RefObject<HTMLElement | null>) {
-	React.useEffect(() => {
-		const el = ref.current;
-		if (!el) return;
-		const root = document.documentElement.style;
-		const set = () =>
-			root.setProperty(
-				"--toast-clear",
-				`${Math.max(0, window.innerHeight - el.getBoundingClientRect().top)}px`,
-			);
-		const seen = new ResizeObserver(set);
-		seen.observe(el);
-		window.addEventListener("resize", set);
-		set();
-		return () => {
-			seen.disconnect();
-			window.removeEventListener("resize", set);
-			root.removeProperty("--toast-clear");
-		};
-	}, [ref]);
-}
-
-/**
  * Floating, bottom-right: a state bar and one line (look ruling §2). The bar
  * says how it went; the words never turn red.
  */

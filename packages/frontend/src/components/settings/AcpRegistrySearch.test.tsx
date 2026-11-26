@@ -169,16 +169,21 @@ describe("StepList (#848)", () => {
 describe("Registry search under Add agent's tiles (#911)", () => {
 	it("leaves out the agents that are already tiles, so none reads Not installed twice", () => {
 		const ids = OTHER_AGENTS.map((e) => e.id);
-		for (const tile of [
+		const tiles = [
 			"claude-acp",
 			"codex-acp",
 			"gemini",
 			"opencode",
 			"opencode-v2",
 			"deepagents",
-		])
-			expect(ids).not.toContain(tile);
-		expect(ids).toContain("goose");
+			"github-copilot-cli",
+			"kiro",
+			"grok-build",
+			"qwen-code",
+			"goose",
+		];
+		expect(ids.filter((id) => tiles.includes(id))).toEqual([]);
+		expect(ids).toContain("amp-acp");
 		expect(searchRegistry("codex").map((e) => e.id)).not.toContain("codex-acp");
 	});
 });

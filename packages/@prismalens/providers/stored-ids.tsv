@@ -15,3 +15,13 @@ Run.harness	antigravity	agent.antigravity
 Schedule.harness	antigravity	agent.antigravity
 Run.harness	cursor	agent.cursor
 Schedule.harness	cursor	agent.cursor
+Run.harness	copilot	agent.copilot
+Schedule.harness	copilot	agent.copilot
+Run.harness	goose	agent.goose
+Schedule.harness	goose	agent.goose
+Run.harness	grok	agent.grok
+Schedule.harness	grok	agent.grok
+Run.harness	kiro	agent.kiro
+Schedule.harness	kiro	agent.kiro
+Run.harness	qwen	agent.qwen
+Schedule.harness	qwen	agent.qwen
