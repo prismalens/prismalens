@@ -925,13 +925,52 @@ describe("limit reads before a run (#1180)", () => {
 					}),
 				},
 			});
-		await quota(1, T0, {});
+		// A key the read doesn't hold, so only the account rule can leave it out.
+		await quota(1, T0, { window: "model", type: "older" });
 		await quota(2, T2, { account: "b@example.test" });
 		expect(
 			claudeOf(await svc.limits())?.windows.map((w) => [w.key, w.via]),
 		).toEqual([
 			["five_hour:session", "check"],
 			["seven_day:weekly", "check"],
+		]);
+	});
+
+	it("keeps the checked account's run window when another account reports that window later", async () => {
+		const { source: s } = source({ reads: [read("a@example.test", T0)] });
+		const svc = new UsageService(prisma, undefined, s);
+		await svc.readLimits("claude-code");
+		const thread = await prisma.investigation.create({
+			data: { status: "running", kind: "chat", harness: "claude-code" },
+		});
+		const quota = (seq: number, at: string, account: string, used: number) =>
+			prisma.investigationEvent.create({
+				data: {
+					investigationId: thread.id,
+					branchId: "main",
+					seq,
+					createdAt: new Date(at),
+					event: JSON.stringify({
+						kind: "agent_quota",
+						window: "session",
+						type: "five_hour",
+						usedPercent: used,
+						account,
+					}),
+				},
+			});
+		await quota(1, T1, "a@example.test", 45);
+		await quota(2, T2, "b@example.test", 99);
+		expect(
+			claudeOf(await svc.limits())?.windows.map((w) => [
+				w.key,
+				w.usedPercent,
+				w.at,
+				w.via,
+			]),
+		).toEqual([
+			["five_hour:session", 45, T1, "run"],
+			["seven_day:weekly", 60, T0, "check"],
 		]);
 	});
 
@@ -1079,6 +1118,42 @@ describe("API estimates for unpriced turns (#1180)", () => {
 			},
 		]);
 		expect((await summary()).totals.cost.estimate).toBe(3);
+	});
+
+	const opened = (model: string | null) => ({
+		kind: "session_opened",
+		how: "new",
+		cause: "first",
+		harness: "claude-code",
+		model,
+		carrier: "event",
+	});
+	const modelRows = async () =>
+		(await summary()).models.map((m) => [m.model, m.cost.estimate]);
+
+	it("puts a turn that named no model on the row of the model it was priced by", async () => {
+		await new UsageService(prisma).setPrices({
+			prices: [price("claude-code", null, "claude-sonnet-5-5", 3, 15)],
+		});
+		await turn("claude-code", { inputTokens: 1_000_000 }, [
+			opened("claude-sonnet-5-5"),
+		]);
+		// The thread has since moved to another model.
+		await prisma.investigation.updateMany({
+			data: { model: "claude-opus-5-5" },
+		});
+		expect(await modelRows()).toEqual([["claude-sonnet-5-5", 3]]);
+	});
+
+	it("prices no turn by a model that an opening with none replaced", async () => {
+		await new UsageService(prisma).setPrices({
+			prices: [price("claude-code", null, "claude-sonnet-5-5", 3, 15)],
+		});
+		await turn("claude-code", { inputTokens: 1_000_000 }, [
+			opened("claude-sonnet-5-5"),
+			opened(null),
+		]);
+		expect(await modelRows()).toEqual([["unknown", null]]);
 	});
 
 	it("gives none to a turn of several models", async () => {

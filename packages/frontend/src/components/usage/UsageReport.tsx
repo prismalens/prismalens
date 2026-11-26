@@ -34,6 +34,7 @@ import {
 } from "./usage-math";
 
 type Breakdown = "model" | "day";
+const rowKey = (m: UsageModel) => JSON.stringify([m.agent, m.model]);
 const ESTIMATE = "Estimate, from what the agents reported";
 
 function Headline({
@@ -245,7 +246,9 @@ export function UsageReport({
 	measure: UsageMeasure;
 }) {
 	const [by, setBy] = useState<Breakdown>("model");
-	const [open, setOpen] = useState<UsageModel | null>(null);
+	// The row's key, so the card reads the newest summary's figures.
+	const [openKey, setOpenKey] = useState<string | null>(null);
+	const open = summary.models.find((m) => rowKey(m) === openKey) ?? null;
 	if (summary.totals.turns === 0)
 		return (
 			<div className="grid gap-2" data-testid="usage-empty">
@@ -284,13 +287,13 @@ export function UsageReport({
 					summary={summary}
 					measure={measure}
 					by={by}
-					onOpenModel={setOpen}
+					onOpenModel={(m) => setOpenKey(rowKey(m))}
 				/>
 			</section>
 			<ModelCard
 				model={open}
 				step={summary.step}
-				onClose={() => setOpen(null)}
+				onClose={() => setOpenKey(null)}
 			/>
 		</div>
 	);

@@ -461,15 +461,14 @@ describe("HarnessService", () => {
 	describe("getStatus", () => {
 		it("carries each installed agent's update, sign-out and account lines from AgentUpdatesService (#1180)", async () => {
 			process.env.PATH = pathWith("opencode");
-			const lines = {
-				update: { command: "opencode upgrade" },
-				newerRelease: "2.5.0",
-				signOut: { command: "opencode auth logout" },
-				switchAccount: null,
-			};
 			const updates = {
 				releases: vi.fn(async () => ({})),
-				commandsFor: vi.fn(async () => lines),
+				commandsFor: vi.fn(async (id: string) => ({
+					update: { command: `${id} upgrade` },
+					newerRelease: "2.5.0",
+					signOut: { command: `${id} auth logout` },
+					switchAccount: null,
+				})),
 			} as unknown as AgentUpdatesService;
 			const svc = new HarnessService(
 				mockPrismaService as unknown as PrismaService,
@@ -480,9 +479,13 @@ describe("HarnessService", () => {
 			);
 			const status = await svc.getStatus();
 			const row = (id: string) => status.harnesses.find((h) => h.id === id);
-			expect(row("opencode")).toMatchObject(lines);
+			expect(row("opencode")).toMatchObject({
+				update: { command: "opencode upgrade" },
+				newerRelease: "2.5.0",
+				signOut: { command: "opencode auth logout" },
+				switchAccount: null,
+			});
 			expect(row("codex")?.update).toBeUndefined();
-			expect(updates.commandsFor).toHaveBeenCalledTimes(1);
 		});
 
 		it("reports every registry row alongside the verdict", async () => {

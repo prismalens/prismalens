@@ -9,6 +9,7 @@ import {
 	type EnforcementRow,
 	LIMIT_WINDOWS,
 	type LimitWindow,
+	type ModelIdentity,
 	type ModelPrice,
 	type ModelPrices,
 	RunFidelitySchema,
@@ -78,7 +79,7 @@ export class UsageService {
 				...(query.project ? { repositoryId: query.project } : {}),
 				...(query.agent ? { harness: query.agent } : {}),
 			},
-			select: { id: true, harness: true, model: true, updatedAt: true },
+			select: { id: true, harness: true, updatedAt: true },
 		});
 		const byId = new Map(threads.map((t) => [t.id, t]));
 		const events = await this.prisma.investigationEvent.findMany({
@@ -116,16 +117,17 @@ export class UsageService {
 			if (!usage) continue;
 			const thread = byId.get(e.investigationId);
 			const agent = thread?.harness ?? null;
-			const model = usage.model ?? thread?.model ?? "unknown";
-			const key = bucketKey(e.createdAt, span.step);
-			seenThreads.add(e.investigationId);
-			if (agent) reporting.add(agent);
-			const estimate = this.estimate(
-				prices,
+			// The row and the estimate read one identity, so a price lands on its own row.
+			const identity = turnIdentity(
 				usage,
 				contexts.get(e) ?? { harness: null, model: null },
 				agent,
 			);
+			const model = identity.model.value ?? "unknown";
+			const key = bucketKey(e.createdAt, span.step);
+			seenThreads.add(e.investigationId);
+			if (agent) reporting.add(agent);
+			const estimate = this.estimate(prices, usage, identity);
 			addTurn(totals, usage, estimate);
 			const day = days.get(key);
 			if (day) addTurn(day, usage, estimate);
@@ -200,7 +202,9 @@ export class UsageService {
 			if (!w) continue;
 			const windows = byAgent.get(agent) ?? new Map<string, RunWindow>();
 			byAgent.set(agent, windows);
-			if (!windows.has(w.key)) windows.set(w.key, w);
+			// Newest per account, so another account's later report hides none (#1180).
+			const id = JSON.stringify([w.account, w.key]);
+			if (!windows.has(id)) windows.set(id, w);
 		}
 		const reads = await readLimitReads(this.prisma);
 		const ran = await this.agentsThatRan();
@@ -373,11 +377,10 @@ export class UsageService {
 	private estimate(
 		prices: readonly ModelPrice[],
 		usage: NonNullable<ReturnType<typeof readTurnUsage>>,
-		ctx: TurnContext,
-		threadHarness: string | null,
+		identity: ModelIdentity,
 	): number | null {
 		if (usage.cost || !prices.length) return null;
-		const price = matchPrice(prices, turnIdentity(usage, ctx, threadHarness));
+		const price = matchPrice(prices, identity);
 		return price ? estimateCost(usage, price) : null;
 	}
 

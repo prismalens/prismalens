@@ -20,6 +20,7 @@ import {
 	codexProbeIsolation,
 	opencodeProbeIsolation,
 } from "@prismalens/agent-host";
+import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { prismalensLaunchPolicy } from "../launch/policy.js";
 import {
 	answeredDetail,
@@ -442,10 +443,31 @@ describe("fastModelOf (#1180)", () => {
 		currentValue: "opus",
 		options: [],
 	};
-	it("names the current model only when the session lists a fast option", () => {
-		expect(fastModelOf([model, { id: "fast", type: "boolean" }])).toBe("opus");
-		expect(fastModelOf([model, { id: "effort", type: "select" }])).toBeUndefined();
-		expect(fastModelOf(null)).toBeUndefined();
+	// The select claude-agent-acp sends a client that advertises no boolean options.
+	const fast = {
+		id: "fast",
+		name: "Fast mode",
+		type: "select",
+		currentValue: "off",
+		options: [
+			{ value: "off", name: "Off" },
+			{ value: "on", name: "On" },
+		],
+	};
+	const claude = HARNESS_REGISTRY["claude-code"];
+
+	it("names the current model only when the session lists the agent's Fast option", () => {
+		expect(fastModelOf([model, fast], claude)).toBe("opus");
+		expect(
+			fastModelOf([model, { id: "effort", type: "select" }], claude),
+		).toBeUndefined();
+		expect(fastModelOf(null, claude)).toBeUndefined();
+	});
+
+	it("reads no Fast mode into another agent's option of the same id", () => {
+		expect(
+			fastModelOf([model, fast], HARNESS_REGISTRY.opencode),
+		).toBeUndefined();
 	});
 });
 

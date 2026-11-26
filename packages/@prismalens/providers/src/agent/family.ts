@@ -145,6 +145,8 @@ export interface AgentFacts {
 	reportsLimits?: true;
 	/** How PrismaLens reads its plan limits before any run, through its own CLI (#1180); absent, only runs report them. */
 	limitsBeforeRun?: "codex-app-server" | "claude-sdk";
+	/** The ACP config option it lists only while the current model has a Fast mode (#1180). */
+	fastModeOption?: string;
 	/** The model PrismaLens asks for when the operator set none: the id the compatibility run passed on (#337 run e). */
 	defaultModel?: string;
 	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. */

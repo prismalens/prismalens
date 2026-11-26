@@ -27,7 +27,7 @@ import type { LimitWindow } from "@prismalens/contracts";
 import { foundMcpNames } from "./agent-config.js";
 import { withCodexAppServer } from "./codex-app-server.js";
 import { removeRunDir } from "./harness-doctor.js";
-import { prepareRunEnv } from "./investigate.js";
+import { apiKeyIn, prepareRunEnv } from "./investigate.js";
 
 export interface LimitReadWindow {
 	/** `<limitId or type>:<position or window>`, the key a run's window of the same kind carries. */
@@ -286,6 +286,7 @@ async function readClaude(
 	deps: LimitReadDeps,
 ): Promise<LimitRead | null> {
 	if (
+		apiKeyIn(plan.env, HARNESS_REGISTRY["claude-code"].providerKeys) ||
 		claudeUsesApiKeyHelper(
 			plan.env,
 			deps.home ?? homedir(),

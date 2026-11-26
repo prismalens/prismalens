@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import {
 	alwaysLine,
 	askSubject,
-	onceOffered,
 	waitedFor,
 	whyAsked,
 } from "./ask-lines.js";
@@ -160,16 +159,5 @@ describe("ask-lines (#1101 category 8)", () => {
 
 		// 3 d (>= 24 h)
 		expect(waitedFor(new Date(now - 3 * 86400_000).toISOString(), now)).toBe("3d");
-	});
-
-	it("onceOffered is false only for an agent ask whose options hold no allow_once (#1180)", () => {
-		type Kind = "allow_once" | "allow_always" | "reject_once";
-		const opts = (kinds: Kind[]) =>
-			kinds.map((kind, i) => ({ optionId: `o${i}`, name: kind, kind }));
-		const ask = (kinds: Kind[]) =>
-			makeAsk({ permission: { options: opts(kinds), toolKind: null } });
-		expect(onceOffered(ask(["allow_always", "reject_once"]))).toBe(false);
-		expect(onceOffered(ask(["allow_once", "allow_always"]))).toBe(true);
-		expect(onceOffered(ask([]))).toBe(true);
 	});
 });

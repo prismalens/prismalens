@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { Logger } from "@nestjs/common";
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../prisma/prisma.service.js";
 import { AgentUpdatesService } from "./agent-updates.service.js";
@@ -104,6 +105,38 @@ describe("AgentUpdatesService.releases (#1180)", () => {
 		await svc.settled();
 		expect(urls).toEqual([]);
 		expect(upsert).not.toHaveBeenCalled();
+	});
+
+	it("a refresh that fails is logged, and the next read tries again", async () => {
+		const rows: Record<string, unknown> = {};
+		const { svc, urls } = service(rows, "linux");
+		const { prisma } = svc as unknown as { prisma: PrismaService };
+		const real = prisma.setting.findUnique.bind(prisma.setting);
+		let locked = true;
+		prisma.setting.findUnique = ((args) => {
+			if (args.where.key === "update.prefs" && locked)
+				return Promise.reject(new Error("database is locked"));
+			return real(args);
+		}) as typeof real;
+		const warn = vi
+			.spyOn(Logger.prototype, "warn")
+			.mockImplementation(() => {});
+		try {
+			await svc.releases(["codex"]);
+			await expect(svc.settled()).resolves.toBeUndefined();
+			expect(warn.mock.calls).toEqual([
+				["Could not refresh agent releases: Error: database is locked"],
+			]);
+			expect(urls).toEqual([]);
+			locked = false;
+			await svc.releases(["codex"]);
+			await svc.settled();
+			expect(rows.AGENT_RELEASES).toEqual({
+				"@openai/codex": { checkedAt: 10 * DAY, latest: "0.200.0" },
+			});
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	it("on: reads the installed npm agents' latest once and stores it", async () => {

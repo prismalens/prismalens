@@ -621,11 +621,14 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 										size="icon"
 										aria-label={`Favourite ${name}`}
 										aria-pressed={favourite}
-										onClick={() =>
+										// Not `disabled`, which would drop keyboard focus mid-save.
+										aria-disabled={update.isPending}
+										onClick={() => {
+											if (update.isPending) return;
 											update.mutate({
 												favourites: toggleFavourite(favourites, id, m.id),
-											})
-										}
+											});
+										}}
 										data-testid="agent-model-favourite"
 									>
 										<Heart
