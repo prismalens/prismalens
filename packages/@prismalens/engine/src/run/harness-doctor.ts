@@ -256,6 +256,7 @@ export async function probeHarness(
 			| "companionBinary"
 			| "adapterPackage"
 			| "providerAuth"
+			| "fastModeOption"
 		>;
 		budgets?: ProbeInput["budgets"];
 		sandbox?: typeof checkSandbox;
@@ -320,6 +321,7 @@ export async function probeHarness(
 			};
 		}
 		const options = probed.raw.session.configOptions;
+		const fastModel = fastModelOf(options, descriptor);
 		const models = offeredModels(options);
 		const effort = offeredEffort(options);
 		const modes = offeredModes(probed.raw.session).modes;
@@ -345,7 +347,7 @@ export async function probeHarness(
 			companionVersion: await companion(),
 			...(models.length ? { models } : {}),
 			servedModel: selectedModel(options),
-			...(fastModelOf(options) ? { fastModel: fastModelOf(options) } : {}),
+			...(fastModel ? { fastModel } : {}),
 			effort,
 			modes: modes.length ? modes : null,
 			efforts: effortLevels(effort),
@@ -387,12 +389,14 @@ export async function probeHarness(
 	}
 }
 
-/**
- * The current model when the session lists a `fast` option: claude-agent-acp 0.109.0
- * (`session-fast-mode.js`) adds it only while the current model supports Fast mode (#1180).
- */
-export function fastModelOf(options: unknown): string | undefined {
-	if (!Array.isArray(options)) return undefined;
-	const listed = options.some((o: { id?: unknown } | null) => o?.id === "fast");
+/** The current model when the session lists the option the agent's row names as its Fast mode (#1180). */
+export function fastModelOf(
+	options: unknown,
+	row: { fastModeOption?: string },
+): string | undefined {
+	if (!row.fastModeOption || !Array.isArray(options)) return undefined;
+	const listed = options.some(
+		(o: { id?: unknown } | null) => o?.id === row.fastModeOption,
+	);
 	return listed ? (selectedModel(options) ?? undefined) : undefined;
 }
