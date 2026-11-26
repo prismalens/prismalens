@@ -32,12 +32,18 @@ export const antigravity = defineAgent({
 				id: "login",
 				label: "Google account",
 				steps: ["terminal", "browser"],
+				acp: "oauth-personal",
 				terms: {
-					runs: "never",
+					runs: "allowed",
 					source: {
-						url: "https://antigravity.google/faq.md",
+						url: "https://antigravity.google/docs/ide/extensions/acp.md",
+						clause: "Any ACP client can launch Antigravity CLI.",
+						readOn: "2026-11-26",
+					},
+					against: {
+						url: "https://antigravity.google/terms",
 						clause:
-							"Wrapping `agy` inside third-party coding agents or applications, or automating account rotation, is not supported under consumer plans.",
+							"You must not abuse, harm, interfere with, or disrupt the Service. This includes, but is not limited to, using the Service in connection with products not provided by us.",
 						readOn: "2026-11-26",
 					},
 				},
@@ -47,6 +53,7 @@ export const antigravity = defineAgent({
 				label: "GEMINI_API_KEY",
 				steps: ["credentials"],
 				env: [{ name: "GEMINI_API_KEY" }],
+				acp: "gemini-api-key",
 				terms: {
 					runs: "allowed",
 					source: {
@@ -58,15 +65,6 @@ export const antigravity = defineAgent({
 				},
 			},
 		],
-		precedence: {
-			first: "login",
-			source: {
-				url: "https://antigravity.google/docs/ide/extensions/acp.md",
-				clause:
-					"`agy acp` uses the credentials you cached with an interactive `agy` session.",
-				readOn: "2026-11-26",
-			},
-		},
 	},
 	facts: {
 		// No Antigravity source states a cache lifetime, an auto-compact point or a compact command.
@@ -78,8 +76,6 @@ export const antigravity = defineAgent({
 		acpRegistryIds: ["antigravity-acp"],
 		vendor: "google",
 		usageReports: [],
-		ownSettingsNote: () =>
-			"Antigravity's own settings apply, as in your terminal; which runs each sign-in may start is under Sign-in.",
 		install:
 			"Download Google Antigravity's ACP server for your platform (agentclientprotocol.com registry, antigravity-acp) and put agy_acp_server on PATH",
 		lines: {

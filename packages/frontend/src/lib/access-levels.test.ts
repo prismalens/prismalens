@@ -229,11 +229,8 @@ describe("agentNote variants (the four agent notes)", () => {
 		expect(agentNote(mockHarness("deepagents"))).toBeNull();
 	});
 
-	it("Antigravity's note is Google's terms in one line, and Cursor has none (#1235)", () => {
-		expect([agentNote(mockHarness("antigravity")), agentNote(mockHarness("cursor"))]).toEqual([
-			"Google's terms cover one person's own use of a personal sign-in here; runs an alert starts are your call.",
-			null,
-		]);
+	it("Antigravity and Cursor have no agent note: their sign-ins' terms are under Sign-in (#1252)", () => {
+		expect([agentNote(mockHarness("antigravity")), agentNote(mockHarness("cursor"))]).toEqual([null, null]);
 	});
 });
 

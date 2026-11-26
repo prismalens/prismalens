@@ -1028,6 +1028,53 @@ describe("runInvestigationJob schema validation", () => {
 			expect.objectContaining({ status: "failed", error: "No coding agent found on PATH." }),
 		);
 	});
+
+	// #1252: an alert run on a sign-in whose terms bar unattended use fails before the agent starts.
+	describe("sign-in terms", () => {
+		const QWEN_REFUSAL =
+			'Alert and scheduled runs can\'t use Qwen Code on Qwen account: its terms say "Modifying, copying, leasing, selling, distributing, or manipulating our Service; using bots to access the Service." (https://qwen.ai/termsservice). Start it yourself, or use OPENAI_API_KEY, OPENAI_MODEL and OPENAI_BASE_URL instead.';
+		const qwenPorts = (env: Record<string, string>, updateStatus = vi.fn(async () => true)) =>
+			fakePorts({
+				updateStatus,
+				agentRuntime: vi.fn(async () => ({ env, note: null })),
+				resolveHarness: vi.fn(async () => ({
+					selection: { runnable: true as const, harness: "qwen" as const, auto: false },
+				})),
+			});
+		const run = (ports: RunPorts, data: Partial<InvestigationJobData>) =>
+			runInvestigationJob(
+				{ id: "job-1", investigationId: "inv-1", attempts: 1 },
+				{ investigationId: "inv-1", incidentId: "inc-1", ...data },
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+
+		beforeEach(() => {
+			vi.stubEnv("OPENAI_API_KEY", "");
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockImplementation(async (_o, io: { store: { create(): Promise<void> } }) => {
+				await io.store.create();
+				return { report: { summary: "done", rootCause: null, nextSteps: [] } };
+			});
+		});
+		afterEach(() => vi.unstubAllEnvs());
+
+		it("fails an alert run on Qwen Code's own sign-in with the clause, and never starts the agent", async () => {
+			const updateStatus = vi.fn(async () => true);
+			await expect(run(qwenPorts({}, updateStatus), { unattended: true })).rejects.toThrow(QWEN_REFUSAL);
+			expect(updateStatus).toHaveBeenCalledWith("inv-1", expect.objectContaining({ status: "failed", error: QWEN_REFUSAL }));
+			expect(mocks.conductRun).not.toHaveBeenCalled();
+		});
+
+		it("starts the same alert run on an OPENAI_API_KEY from Settings, and a person's run on the sign-in", async () => {
+			await run(qwenPorts({ OPENAI_API_KEY: "sk-live" }), { unattended: true });
+			await run(qwenPorts({}), {});
+			expect(mocks.conductRun.mock.calls.map(([o]) => (o as { harness: string; termsWarning?: string }).harness)).toEqual([
+				"qwen",
+				"qwen",
+			]);
+		});
+	});
 });
 
 /**

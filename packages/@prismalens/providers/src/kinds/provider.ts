@@ -109,6 +109,7 @@ export const provider = defineKind({
 									z.object({ name: text, prefix: z.optional(text) }).strict(),
 								),
 							),
+							acp: z.optional(text),
 							terms,
 						}),
 					),

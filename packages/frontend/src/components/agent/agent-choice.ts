@@ -327,3 +327,15 @@ export function modelState(h: HarnessStatus): "list" | "pending" | "own" {
 		return agentFacts(h.id)?.picksOwnModel ? "own" : "pending";
 	return h.checked || h.models.entries.length > 0 ? "list" : "pending";
 }
+
+/** Why the picker can't start any run on this agent here, by its sign-in's terms; null when it can (#1252). */
+export function pickerBlock(status: HarnessStatus): string | null {
+	const path = status.authPath;
+	if (path?.runs !== "never") return null;
+	const method = agentFacts(status.id)?.signIn.methods.find(
+		(m) => m.id === path.method,
+	);
+	return method
+		? `PrismaLens doesn't run ${status.label} on ${method.label}: "${method.terms.source.clause}"`
+		: null;
+}

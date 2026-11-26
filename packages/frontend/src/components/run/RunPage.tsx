@@ -1381,6 +1381,7 @@ function summaryFacts(
 						f?.unattended
 							? "An alert started it, so nobody was there to answer: past reading files, anything the agent asked was refused. A follow-up you send runs at your Permission setting."
 							: null,
+						f?.termsWarning ?? null,
 						sandboxLine(levelSandbox(ctx.harness, level)),
 					]
 						.filter(Boolean)

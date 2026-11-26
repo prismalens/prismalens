@@ -32,15 +32,41 @@ export const kiro = defineAgent({
 				id: "login",
 				label: "Kiro account",
 				steps: ["terminal", "browser"],
-				unattended: true,
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://kiro.dev/docs/cli/headless/",
+						clause:
+							"Headless mode can use a stored login or an API key set as the KIRO_API_KEY environment variable",
+						readOn: "2026-11-26",
+					},
+				},
 			},
 			{
 				id: "api-key",
 				label: "KIRO_API_KEY",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "KIRO_API_KEY" }],
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://kiro.dev/docs/cli/headless/",
+						clause:
+							"Headless mode can use a stored login or an API key set as the KIRO_API_KEY environment variable",
+						readOn: "2026-11-26",
+					},
+				},
 			},
 		],
+		precedence: {
+			first: "login",
+			source: {
+				url: "https://kiro.dev/docs/cli/headless/",
+				clause:
+					"When a stored login is active, it takes precedence over KIRO_API_KEY, and Kiro CLI reports that choice at startup.",
+				readOn: "2026-11-26",
+			},
+		},
 	},
 	facts: {
 		// No Kiro source states a cache lifetime, an auto-compact point or a compact command.

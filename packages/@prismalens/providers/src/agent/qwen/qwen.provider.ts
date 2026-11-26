@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineAgent, modeNamed } from "../family.ts";
+import { codingPlan, defineAgent, modeNamed } from "../family.ts";
 
 export const qwen = defineAgent({
 	id: "agent.qwen",
@@ -30,10 +30,39 @@ export const qwen = defineAgent({
 	auth: {
 		methods: [
 			{
+				id: "login",
+				label: "Qwen account",
+				steps: ["terminal", "browser"],
+				terms: {
+					runs: "interactive-only",
+					source: {
+						url: "https://qwen.ai/termsservice",
+						clause:
+							"Modifying, copying, leasing, selling, distributing, or manipulating our Service; using bots to access the Service.",
+						readOn: "2026-11-26",
+					},
+					gaps: [
+						"qwen.ai/termsservice renders only with JavaScript: read from its bundle g.alicdn.com/qwenweb/qwen-ai-fe/0.0.91/js/9253.js, no browser read",
+					],
+				},
+			},
+			codingPlan(["OPENAI_API_KEY"], "OPENAI_BASE_URL"),
+			{
 				id: "api-key",
 				label: "OPENAI_API_KEY, OPENAI_MODEL and OPENAI_BASE_URL",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "OPENAI_API_KEY" }],
+				acp: "openai",
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://github.com/QwenLM/qwen-code/blob/main/docs/users/features/headless.md",
+						clause:
+							"Headless mode allows you to run Qwen Code programmatically from command line scripts and automation tools without any interactive UI.",
+						readOn: "2026-11-26",
+					},
+					gaps: ["Alibaba Cloud Model Studio's legal agreement"],
+				},
 			},
 		],
 	},
@@ -46,9 +75,6 @@ export const qwen = defineAgent({
 		compactTakesFocus: false,
 		acpRegistryIds: ["qwen-code"],
 		usageReports: [],
-		// Alibaba Cloud's Coding Plan page: "Do not use the plan's API key for automated scripts" (#1236).
-		ownSettingsNote: () =>
-			"An Alibaba Cloud Coding Plan key is for interactive use only; runs an alert starts need another key.",
 		settingsFile: "~/.qwen/settings.json",
 		install: "npm i -g @qwen-code/qwen-code",
 		lines: {

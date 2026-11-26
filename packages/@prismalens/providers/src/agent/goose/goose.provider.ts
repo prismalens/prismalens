@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { defineAgent, modeNamed } from "../family.ts";
+import { codingPlan, defineAgent, modeNamed } from "../family.ts";
 
 export const goose = defineAgent({
 	id: "agent.goose",
@@ -32,15 +32,42 @@ export const goose = defineAgent({
 				id: "login",
 				label: "goose configure",
 				steps: ["terminal"],
-				unattended: true,
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/goose-cli-commands.md",
+						clause: "Create a new scheduled job.",
+						readOn: "2026-11-26",
+					},
+					gaps: ["the terms of the provider goose is configured to use"],
+				},
 			},
+			codingPlan(["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]),
 			{
 				id: "api-key",
 				label: "GOOSE_PROVIDER and that provider's key",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "GOOSE_PROVIDER" }],
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/goose-cli-commands.md",
+						clause: "Create a new scheduled job.",
+						readOn: "2026-11-26",
+					},
+					gaps: ["the terms of the provider goose is configured to use"],
+				},
 			},
 		],
+		precedence: {
+			first: "env",
+			source: {
+				url: "https://goose-docs.ai/docs/guides/environment-variables",
+				clause:
+					"Environment variables take precedence over configuration files.",
+				readOn: "2026-11-26",
+			},
+		},
 	},
 	facts: {
 		// No goose source states a cache lifetime, an auto-compact point or a compact command.

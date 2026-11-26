@@ -14,17 +14,25 @@ import {
 	type AgentDescriptor,
 	type AgentId,
 	type AgentRunEnv,
+	authenticateMethod,
 	type LevelFacts,
 	reopens,
 } from "@prismalens/agent-host/registry";
 
 import {
 	type AgentFacts,
+	type AuthPath,
 	agents,
+	authPathOf,
 	type CatalogueSource,
 	type CheckedModes,
 	type AccessLevel as DescribedLevel,
 	type Lines,
+	type RunStarter,
+	type SignInMethod,
+	type SignInPrecedence,
+	type TermsGate,
+	termsGate,
 } from "@prismalens/providers/agents";
 import CATALOGUE_SOURCES from "./catalogue-sources.json" with { type: "json" };
 import { modelProvider, providerName } from "./model-makers.js";
@@ -54,10 +62,18 @@ export {
 } from "@prismalens/agent-host/registry";
 
 export {
+	type AuthPath,
 	type CatalogueSource,
 	type CheckedModes,
 	type InstallChannel,
 	installCommand,
+	type RunStarter,
+	runsUnder,
+	type SignInMethod,
+	TERMS_RUNS,
+	type TermsGate,
+	type TermsRuns,
+	type TermsSource,
 } from "@prismalens/providers/agents";
 
 export const HARNESS_IDS = AGENT_IDS;
@@ -113,6 +129,11 @@ export interface HarnessAccess extends LevelFacts {
 type ProductFacts = Omit<AgentFacts, "lines"> & {
 	/** A lettered tile, only where the agent has no published logo (#1101). */
 	mark?: AgentMarkFact;
+	/** Its sign-in methods with their vendor's terms, and which wins when two apply (#1252). */
+	signIn: {
+		methods: readonly SignInMethod[];
+		precedence?: SignInPrecedence;
+	};
 };
 
 /** Two letters for an agent with no published logo; one with a logo has its art in `assets/brands.ts`. */
@@ -139,7 +160,15 @@ function productOf(id: HarnessId): ProductFacts & { lines: Lines } {
 	const a = DESCRIBED.get(id);
 	if (!a)
 		throw new Error(`agent ${id} has no descriptor in @prismalens/providers`);
-	return { ...a.facts, ...("letters" in a.mark ? { mark: a.mark } : {}) };
+	const signIn = {
+		methods: a.auth?.methods ?? [],
+		...(a.auth?.precedence ? { precedence: a.auth.precedence } : {}),
+	};
+	return {
+		...a.facts,
+		signIn,
+		...("letters" in a.mark ? { mark: a.mark } : {}),
+	};
 }
 
 /**
@@ -308,4 +337,28 @@ export function providerSignedOutLine(
 	const named =
 		(provider && providerName(provider)) || provider || "its provider";
 	return `${HARNESS_REGISTRY[harness].label} is not signed in to ${named}. Sign in with its own CLI, then retry.`;
+}
+
+/** The sign-in path a run of `harness` takes on `env`, counting the ACP method its row sends (#1252). */
+export function harnessAuthPath(
+	harness: HarnessId,
+	env: Readonly<Record<string, string | undefined>>,
+): AuthPath | null {
+	const row = HARNESS_REGISTRY[harness];
+	return authPathOf(row.signIn, env, authenticateMethod(row, env)?.methodId);
+}
+
+/** Refuse, warn or pass a run of `harness` on `env` by its sign-in path's terms (#1252). */
+export function harnessTermsGate(
+	harness: HarnessId,
+	env: Readonly<Record<string, string | undefined>>,
+	startedBy: RunStarter,
+): TermsGate {
+	const row = HARNESS_REGISTRY[harness];
+	return termsGate(
+		{ name: row.label, auth: row.signIn },
+		env,
+		startedBy,
+		authenticateMethod(row, env)?.methodId,
+	);
 }

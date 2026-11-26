@@ -107,6 +107,8 @@ export interface SignInMethod {
 	)[];
 	/** Set in the run's env, this method is the one in use; absent, it is the CLI's own stored sign-in. */
 	readonly env?: readonly SignInEnv[];
+	/** The ACP `authenticate` method that picks it; when a run sends it, the agent uses this sign-in. */
+	readonly acp?: string;
 	readonly terms: Terms;
 }
 

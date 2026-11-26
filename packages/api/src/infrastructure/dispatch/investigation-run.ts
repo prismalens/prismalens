@@ -34,6 +34,7 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
+	harnessTermsGate,
 	type ModelSource,
 	reopens,
 	resolveAccess,
@@ -418,6 +419,8 @@ async function runJobInternal(
 		});
 		const { selection, model, modelSource, effort, customModel } = resolved;
 		if (!selection.runnable) throw new Error(selection.reason);
+		const runtime = await ports.agentRuntime(selection.harness);
+		const termsWarning = termsOf(selection.harness, runtime, startedByOf(data));
 		// Off the run's path: a slow or failing title never delays it (#1101).
 		const alert = data.alerts?.[0];
 		const firstText =
@@ -544,7 +547,6 @@ async function runJobInternal(
 		// A chat run's message is its whole first turn, with its own files (#673).
 		const brief = data.chat?.text ?? data.brief;
 		const attachments = data.chat ? data.chat.attachments : data.attachments;
-		const runtime = await ports.agentRuntime(selection.harness);
 		// A gateway that cannot lease leaves the run without PrismaLens tools, never stops it.
 		// A side question gets no PrismaLens tools: it answers from what it was given.
 		const gateway = await (data.toolFree ? undefined : ports.gateway)
@@ -579,6 +581,7 @@ async function runJobInternal(
 				accessLevel,
 				...(data.agentMode ? { agentMode: data.agentMode } : {}),
 				...(data.unattended ? { unattended: true } : {}),
+				...(termsWarning ? { termsWarning } : {}),
 				...(data.waitForAsks ? { waitForAsks: true } : {}),
 				...(data.toolFree ? { toolFree: true } : {}),
 				...(data.scheduled?.alwaysAllow?.length
@@ -1118,6 +1121,12 @@ async function runFollowUp(
 				`${row.label} can't reopen a finished session, so a new run starts from the report.`,
 			);
 		const runtime = await ports.agentRuntime(harness);
+		// A follow-up is a person's message; only a recovered alert or schedule run is nobody's.
+		const termsWarning = termsOf(
+			harness,
+			runtime,
+			data.unattended ? startedByOf(data) : "person",
+		);
 		if (!harnessLaunch(row, launchProbeOfRuntime(runtime)))
 			throw new Error(`${row.label} is no longer installed.`);
 		const recorded = RunWorkspaceSchema.parse(JSON.parse(inv.workspace));
@@ -1341,6 +1350,7 @@ async function runFollowUp(
 				...(accessLevel ? { accessLevel } : {}),
 				// A recovered alert-started run is still nobody's to answer (#818, #981).
 				...(data.unattended ? { unattended: true } : {}),
+				...(termsWarning ? { termsWarning } : {}),
 				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...runOptionsOf(runtime, data),
 				...(await secretOptions(ports, id, runtime)),
@@ -1793,6 +1803,24 @@ export function followUpModelSource(
 		...agentEnv,
 	});
 	return now.model === model ? now.source : "operator";
+}
+
+/**
+ * The run's sign-in terms on the env it launches with: a refusal throws its reason before
+ * the agent starts, a warning rides the run (#1252).
+ */
+function termsOf(
+	harness: HarnessId,
+	runtime: AgentRuntime,
+	startedBy: StartedBy,
+): string | undefined {
+	const gate = harnessTermsGate(
+		harness,
+		{ ...process.env, ...runtime.env },
+		startedBy,
+	);
+	if (gate && "refuse" in gate) throw new Error(gate.refuse);
+	return gate?.warn;
 }
 
 /** A run's spawn inputs from Settings → Agent (#907). */
