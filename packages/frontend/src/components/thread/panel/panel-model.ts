@@ -255,3 +255,21 @@ export function movedOrder(
 	[out[i], out[j]] = [out[j] as PanelId, id];
 	return out;
 }
+
+/** Where the panel lands after `closing` tabs: the pane on top, and the split under it. */
+export function afterClose(o: {
+	tabs: readonly PanelId[];
+	shown: PanelId | undefined;
+	split: PanelId | undefined;
+	closing: readonly PanelId[];
+}): { panel: PanelId | null; split: PanelId | undefined } {
+	const kept = o.tabs.filter((t) => !o.closing.includes(t));
+	const panel =
+		o.shown && !o.closing.includes(o.shown) ? o.shown : (kept[0] ?? null);
+	// A split whose tab closed, or that moved up to the top, leaves the split.
+	const split =
+		o.split && !o.closing.includes(o.split) && o.split !== panel
+			? o.split
+			: undefined;
+	return { panel, split };
+}

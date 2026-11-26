@@ -203,20 +203,29 @@ export class Citations {
 				sourceThreadId: c.threadId,
 				sourceKey: c.key,
 			};
-			await this.prisma.messageCitation.upsert({
-				where: { threadId_sourceThreadId_sourceKey: where },
-				create: { ...where, sourceTurn: msg.turn },
-				update: {},
+			await this.prisma.$transaction(async (tx) => {
+				// The first write takes SQLite's one write lock, so no reset commits between the
+				// generation check and the insert: a citation read before a reset is never written.
+				await tx.messageCitation.updateMany({
+					where,
+					data: { sourceTurn: msg.turn },
+				});
+				if ((await this.generation(c.threadId, tx)) !== gen) return;
+				await tx.messageCitation.upsert({
+					where: { threadId_sourceThreadId_sourceKey: where },
+					create: { ...where, sourceTurn: msg.turn },
+					update: {},
+				});
 			});
-			// A reset deletes citations; one landing after it but read before it names the old run.
-			if ((await this.generation(c.threadId)) !== gen)
-				await this.prisma.messageCitation.deleteMany({ where });
 		}
 	}
 
 	/** The thread's reset count: a reset bumps it with the delete of its citations. */
-	private async generation(threadId: string): Promise<number | null> {
-		const t = await this.prisma.investigation.findUnique({
+	private async generation(
+		threadId: string,
+		db: Pick<PrismaService, "investigation"> = this.prisma,
+	): Promise<number | null> {
+		const t = await db.investigation.findUnique({
 			where: { id: threadId },
 			select: { eventGeneration: true },
 		});
@@ -308,8 +317,8 @@ export class Citations {
 		]);
 		if (!thread || !cited) return null;
 		const span = await this.span(threadId, cited.ordinal);
-		// A long turn reads its opening half, then half from the cited row (or straight on, when the
-		// opening already holds it); what it skips is counted in place.
+		// A turn of up to TURN_ROWS reads whole; a longer one reads its opening half, then half from
+		// the cited row (or straight on, when the opening holds it), and counts what it skips in place.
 		const from = (gte: number, take: number) =>
 			this.prisma.investigationEvent.findMany({
 				where: {
@@ -323,12 +332,13 @@ export class Citations {
 				take,
 				select: { event: true, branchId: true, seq: true, ordinal: true },
 			});
-		const head = await from(span.from, TURN_ROWS / 2);
+		const opening = await from(span.from, TURN_ROWS + 1);
+		const whole = opening.length <= TURN_ROWS;
+		const head = whole ? opening : opening.slice(0, TURN_ROWS / 2);
 		const headEnd = head.at(-1)?.ordinal ?? span.from - 1;
-		const tail = await from(
-			Math.max(headEnd + 1, cited.ordinal),
-			TURN_ROWS / 2,
-		);
+		const tail = whole
+			? []
+			: await from(Math.max(headEnd + 1, cited.ordinal), TURN_ROWS / 2);
 		const tailEnd = tail.at(-1)?.ordinal ?? headEnd;
 		const between = (gt: number, lt: number | null) =>
 			this.prisma.investigationEvent.count({
@@ -337,10 +347,12 @@ export class Citations {
 					ordinal: { gt, ...(lt !== null ? { lt } : {}) },
 				},
 			});
-		const [gap, rest] = await Promise.all([
-			tail[0] ? between(headEnd, tail[0].ordinal) : 0,
-			between(tailEnd, span.until),
-		]);
+		const [gap, rest] = whole
+			? [0, 0]
+			: await Promise.all([
+					tail[0] ? between(headEnd, tail[0].ordinal) : 0,
+					between(tailEnd, span.until),
+				]);
 		const rows = [...head, ...tail];
 		const leftOut = (n: number) => `(${n} rows of this turn left out)`;
 		const lines: string[] = [`Thread title: ${thread.title ?? "Untitled"}`];

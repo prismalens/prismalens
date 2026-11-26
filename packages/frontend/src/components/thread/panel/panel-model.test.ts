@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	afterClose,
 	type PanelTab,
 	panelSearchOf,
 	panelTabs,
@@ -137,5 +138,40 @@ describe("shownTab (#1024)", () => {
 		expect(shownTab(tabs, undefined)).toBe("thread");
 		expect(shownTab(tabs, "browser")).toBe("thread");
 		expect(shownTab(tabs, "changes")).toBe("changes");
+	});
+});
+
+describe("afterClose (#1193)", () => {
+	it("promotes the split to the top pane and drops the split when the shown tab closes", () => {
+		expect(
+			afterClose({
+				tabs: ["thread", "changes", "files"],
+				shown: "thread",
+				split: "changes",
+				closing: ["thread"],
+			}),
+		).toEqual({ panel: "changes", split: undefined });
+	});
+
+	it("drops the split when its own tab closes, and keeps the shown tab on top", () => {
+		expect(
+			afterClose({
+				tabs: ["thread", "changes", "files"],
+				shown: "thread",
+				split: "files",
+				closing: ["files"],
+			}),
+		).toEqual({ panel: "thread", split: undefined });
+	});
+
+	it("keeps a split that differs from the tab that takes the top", () => {
+		expect(
+			afterClose({
+				tabs: ["thread", "changes", "files"],
+				shown: "thread",
+				split: "files",
+				closing: ["thread"],
+			}),
+		).toEqual({ panel: "changes", split: "files" });
 	});
 });
