@@ -32,6 +32,7 @@ import {
 	type UpdateSharedSetInput,
 } from "@prismalens/contracts/schemas";
 import {
+	allOnDisk,
 	bindFiles,
 	configFingerprint,
 	deliverShared,
@@ -383,7 +384,7 @@ export class AgentSetupService {
 			this.setRow(),
 			this.storedServers(),
 		]);
-		const ownNames = readOnDisk(id, env, cwd)
+		const ownNames = allOnDisk(id, env, cwd)
 			.filter((i) => i.kind === "mcp")
 			.map((i) => i.name);
 		const shared = await deliverShared(stored, id, {

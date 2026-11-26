@@ -187,7 +187,7 @@ function item(
 ): LoadedItem {
 	return {
 		kind,
-		name: name.slice(0, 200) || "(unnamed)",
+		name: name || "(unnamed)",
 		scope: entry.scope,
 		path,
 		disk: true,
@@ -245,8 +245,21 @@ function keyed(
 	return out;
 }
 
-/** Everything the agent's own config holds on disk now; an agent with no layout has none. */
+/** Everything the agent's own config holds on disk now, bounded for display; an agent with no layout has none. */
 export function readOnDisk(
+	agent: string,
+	env: Env,
+	repoRoot: string | null,
+	fs: ConfigFs = nodeConfigFs,
+	layout: ConfigLayout | null = layoutOf(agent),
+): LoadedItem[] {
+	return allOnDisk(agent, env, repoRoot, fs, layout)
+		.slice(0, MAX_ITEMS)
+		.map((i) => ({ ...i, name: i.name.slice(0, 200) }));
+}
+
+/** Every item with its whole name and no count limit: what isolation and the reserved name read. */
+export function allOnDisk(
 	agent: string,
 	env: Env,
 	repoRoot: string | null,
@@ -283,14 +296,12 @@ export function readOnDisk(
 				out.push(item(entry, "plugin", child, join(path, child), "found"));
 	}
 	const seen = new Set<string>();
-	return out
-		.filter((i) => {
-			const k = `${i.kind}\0${i.name}\0${i.scope}\0${i.path}`;
-			if (seen.has(k)) return false;
-			seen.add(k);
-			return true;
-		})
-		.slice(0, MAX_ITEMS);
+	return out.filter((i) => {
+		const k = `${i.kind}\0${i.name}\0${i.scope}\0${i.path}`;
+		if (seen.has(k)) return false;
+		seen.add(k);
+		return true;
+	});
 }
 
 /**
@@ -306,7 +317,7 @@ export function foundMcpNames(
 ): string[] {
 	return [
 		...new Set(
-			readOnDisk(agent, env, repoRoot, fs)
+			allOnDisk(agent, env, repoRoot, fs)
 				.filter(
 					(i) =>
 						i.kind === "mcp" &&
