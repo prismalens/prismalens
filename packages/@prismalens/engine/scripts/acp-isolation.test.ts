@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
 	existsSync,
@@ -31,7 +31,7 @@ import {
 } from "../../../../scripts/fakes/markers/seed.mjs";
 import type { Row } from "../../../../scripts/fakes/scripted-model.mjs";
 import { probeHarness } from "../src/run/harness-doctor.js";
-import { isolatedSession, probeProblem, runIsolationRow } from "./acp-isolation.js";
+import { isolatedSession, probeProblem, type RowPaths, runIsolationRow } from "./acp-isolation.js";
 
 const ENGINE = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dirs: string[] = [];
@@ -353,6 +353,39 @@ describe("the isolation rows (#1180 R1)", () => {
 			probeProblem({ outcome: "answers-acp", detail: "ok" }),
 		]).toEqual(["failed-to-start", `the probe ended failed-to-start: ${failed.detail}`, null]);
 	});
+
+	// A fake agent: its own session runs the user's SessionStart hooks; every other path starts nothing.
+	const fakeAgent = (outcome: "answers-acp" | "no-answer"): RowPaths => ({
+		session: async (_h, env, _cwd, profile) => {
+			const settings = JSON.parse(readFileSync(join(env.CLAUDE_CONFIG_DIR as string, "settings.json"), "utf8")) as {
+				hooks: { SessionStart: { hooks: { command: string }[] }[] };
+			};
+			const commands = settings.hooks.SessionStart.flatMap((h) => h.hooks.map((c) => c.command));
+			for (const c of profile === "own" ? commands : []) execSync(c);
+			return null;
+		},
+		probe: async (id) => ({ id, outcome, detail: "the agent did not answer initialize in 15s", hard: false }),
+		title: async () => {
+			throw new Error("no title");
+		},
+		limits: async () => null,
+	});
+
+	it("fails the row on a background pass whose probe did not answer, after the control fired", async () => {
+		const result = await runIsolationRow(row, "claude-code", {}, fakeAgent("no-answer"));
+		expect(result).toEqual({
+			problem: "background pass: the probe ended no-answer: the agent did not answer initialize in 15s",
+			saw: "own: user-hook; isolated session: none; background pass: the probe ended no-answer: the agent did not answer initialize in 15s",
+		});
+	}, 20_000);
+
+	it("passes the row when every probe answered and no path fired a marker", async () => {
+		const result = await runIsolationRow(row, "claude-code", {}, fakeAgent("answers-acp"));
+		expect(result).toEqual({
+			problem: null,
+			saw: "own: user-hook; isolated session: none; background pass: none; Check: none; title: none; limit read: none",
+		});
+	}, 20_000);
 
 	it("reports a session that cannot start as a problem, not a pass", async () => {
 		const empty = mkdtempSync(join(tmpdir(), "pl-iso-path-"));

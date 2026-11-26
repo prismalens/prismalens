@@ -177,6 +177,37 @@ describe("shared values never reach a stream, even split across pieces (#1180 §
 		]).toEqual(['{"a":"[redacted]"', `not json [redacted]${lone}`, JSON.stringify({ a: `${lone}[redacted]` })]);
 	});
 
+	it("redactLine finds a secret in a line that does not parse through its JSON escapes, and redacts the escaped text whole", () => {
+		const secret = "sv-wire-0123456789";
+		const smile = "key-\u{1F600}-0123456789";
+		const path = "https://x.example/t0k3n-0123";
+		const win = "C:\\vault\\k3y-0123456789";
+		const [a, b] = ["alpha-0123456789", "0123456789-omega"];
+		expect([
+			redactLine(`{"a":"\\u0073\\u0076\\u002d\\u0077\\u0069\\u0072\\u0065\\u002d\\u0030\\u0031\\u0032\\u0033\\u0034\\u0035\\u0036\\u0037\\u0038\\u0039 tail`, [secret]),
+			redactLine(`{"a":"\\u0073\\u0076-wire-0123456789","b":`, [secret]),
+			redactLine(`{"a":"key-\\uD83D\\ude00-0123456789`, [smile]),
+			redactLine(`{"a":"\\u0073v-wire-0123456789 x\\`, [secret]),
+			redactLine(`{"a":"sv-wire-0123456789\\u00`, [secret]),
+			redactLine(`{"a":"\\u0061lpha-0123456789-omeg\\u0061 end`, [a, b]),
+			redactLine(`{"a":"alpha-0123456789-omega end`, [a, b]),
+			redactLine(`{"a":"https:\\/\\/x.example\\/t0k3n-0123`, [path]),
+			redactLine(`{"a":"C:\\\\vault\\u005ck3y-0123456789`, [win]),
+			redactLine(`{"a":"\\\\u0073v-wire-0123456789`, [secret]),
+		]).toEqual([
+			'{"a":"[redacted] tail',
+			'{"a":"[redacted]","b":',
+			'{"a":"[redacted]',
+			'{"a":"[redacted] x\\',
+			'{"a":"[redacted]\\u00',
+			'{"a":"[redacted] end',
+			'{"a":"[redacted] end',
+			'{"a":"[redacted]',
+			'{"a":"[redacted]',
+			'{"a":"\\\\u0073v-wire-0123456789',
+		]);
+	});
+
 	it("redactEvent scrubs a kind inside a tool's input or arguments, which the agent wrote, while the event's own kind stays", () => {
 		const secret = "shared-value-0123456789";
 		const call = { kind: "harness_tool_call", input: { kind: secret, deep: [{ kind: secret }] } };

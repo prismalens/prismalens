@@ -1107,16 +1107,21 @@ async function* sessionRun(
 		: null;
 	const sharedServers = opts.shared?.servers ?? [];
 	const sharedNames = new Set(sharedServers.map((s) => s.name));
-	/** The shared servers the session was handed once its capabilities were known; history records these. */
-	let sharedSent: string[] | null = null;
+	// A run-file row reads every shared server from its file (`prepareRunEnv`), never from ACP.
+	const fromFile = descriptor.gatewayDelivery === "mcp-config-file";
+	/** The shared servers the session was handed; history records these. */
+	let sharedSent: string[] | null = fromFile
+		? Object.keys(opts.shared?.runFile?.servers ?? {})
+		: null;
 	const sentOf = <T extends { name: string }>(picked: T[]): T[] => {
-		sharedSent = picked.map((s) => s.name).filter((n) => sharedNames.has(n));
+		if (!fromFile)
+			sharedSent = picked.map((s) => s.name).filter((n) => sharedNames.has(n));
 		return picked;
 	};
 	const mcpServers = offer
 		? (caps: Parameters<typeof offer.pick>[0]) =>
 				sentOf(offer.pick(caps, sharedServers))
-		: sharedServers.length
+		: sharedServers.length && !fromFile
 			? (caps: Parameters<ReturnType<typeof gatewayOffer>["pick"]>[0]) =>
 					sentOf(
 						sharedServers.filter((s) => caps?.http === true || !("type" in s)),

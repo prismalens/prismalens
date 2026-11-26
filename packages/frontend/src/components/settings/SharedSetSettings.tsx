@@ -175,9 +175,12 @@ function Recipients({
 function NameField({
 	value,
 	onChange,
+	pinned = false,
 }: {
 	value: string;
 	onChange: (v: string) => void;
+	/** Copy again replaces the server under this name, so it is not edited. */
+	pinned?: boolean;
 }) {
 	const id = useId();
 	return (
@@ -187,6 +190,7 @@ function NameField({
 				id={id}
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
+				readOnly={pinned}
 				maxLength={40}
 				className="h-8"
 				data-testid="share-name"
@@ -390,9 +394,8 @@ function PreviewServer({
 	pending: boolean;
 	error: unknown;
 }) {
-	const [name, setName] = useState(
-		replace?.name ?? serverName(preview.source.key),
-	);
+	const [typed, setName] = useState(serverName(preview.source.key));
+	const name = replace?.name ?? typed;
 	const [args, setArgs] = useState<RowDraft[]>(preview.args.map(() => BLANK));
 	const [path, setPath] = useState<RowDraft>(BLANK);
 	const [values, setValues] = useState<Record<string, string>>({});
@@ -449,7 +452,7 @@ function PreviewServer({
 	};
 	return (
 		<>
-			<NameField value={name} onChange={setName} />
+			<NameField value={name} onChange={setName} pinned={!!replace} />
 			<Pool>
 				<Row
 					label={stdio ? "Command" : "Origin"}
@@ -520,7 +523,8 @@ function TypedServer({
 	pending: boolean;
 	error: unknown;
 }) {
-	const [name, setName] = useState(replace?.name ?? "");
+	const [typed, setName] = useState("");
+	const name = replace?.name ?? typed;
 	const [transport, setTransport] = useState<"stdio" | "http">("stdio");
 	const [command, setCommand] = useState("");
 	const [argText, setArgText] = useState("");
@@ -552,7 +556,7 @@ function TypedServer({
 		});
 	return (
 		<>
-			<NameField value={name} onChange={setName} />
+			<NameField value={name} onChange={setName} pinned={!!replace} />
 			<Select
 				value={transport}
 				onValueChange={(v) => setTransport(v === "http" ? "http" : "stdio")}

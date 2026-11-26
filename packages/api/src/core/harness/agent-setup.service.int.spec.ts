@@ -2,10 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 /** What loads and the PrismaLens set (#1180 §3.1, §3.3) over a temp SQLite database and scratch agent homes. */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { mcpSourceHash, readMcpSource } from "@prismalens/engine";
+import { GATEWAY_RUN_FILE } from "@prismalens/agent-host";
+import { mcpSourceHash, prepareRunEnv, readMcpSource } from "@prismalens/engine";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const env = await vi.hoisted(async () => {
@@ -336,15 +337,22 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 		expect(await names()).toEqual([]);
 	});
 
-	it("What loads uses the run's delivery: deepagents gets a server with values and a value-free one, both in its run file", async () => {
+	it("What loads uses the run's delivery: deepagents gets a server with values and a value-free one, both in its run file and neither value in it", async () => {
 		await approveDocs(["deepagents"]);
 		await approveWeb("/v1", {}, ["deepagents"], []);
 		const view = await service.loadout({ id: "deepagents" });
-		const run = await service.forRun("deepagents", env.root);
+		const cwd = join(env.root, "deepagents-ws");
+		const runDir = join(env.root, "deepagents-run");
+		mkdirSync(cwd, { recursive: true });
+		const shared = await service.forRun("deepagents", cwd);
+		const run = prepareRunEnv({ harness: "deepagents", cwd, runDir, shared, hostEnv: {} });
+		const text = readFileSync(join(runDir, "config", GATEWAY_RUN_FILE), "utf8");
 		expect([
 			view.items.filter((i) => i.scope === "prismalens").map((i) => [i.name, i.state, i.note ?? null]),
-			run?.servers,
-			Object.keys(run?.runFile?.servers ?? {}),
+			shared?.servers,
+			Object.keys((JSON.parse(text) as { mcpServers: object }).mcpServers),
+			text.includes(SECRET),
+			run.args,
 		]).toEqual([
 			[
 				["pl-docs", "loads", null],
@@ -352,6 +360,8 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 			],
 			[],
 			["pl-docs", "pl-web"],
+			false,
+			["--acp", "--mcp-config", join(runDir, "config", GATEWAY_RUN_FILE)],
 		]);
 	});
 });
