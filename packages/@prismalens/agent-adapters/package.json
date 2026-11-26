@@ -27,7 +27,7 @@
 	"devDependencies": {
 		"@agentclientprotocol/claude-agent-acp": "0.109.0",
 		"@agentclientprotocol/codex-acp": "2.8.0",
-		"@agentclientprotocol/sdk": "2.7.0",
+		"@agentclientprotocol/sdk": "2.9.1",
 		"@types/node": "catalog:",
 		"esbuild": "^0.28.1",
 		"typescript": "catalog:",

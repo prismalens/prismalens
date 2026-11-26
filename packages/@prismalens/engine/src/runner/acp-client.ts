@@ -110,7 +110,7 @@ export type AcpStreamItem =
 	| { kind: "elicit_closed"; askId: string; closed: HeldOutcome };
 
 /**
- * Every value SDK 1.9.0's types allow, for the fields a harness drifts on
+ * Every value the pinned SDK's types allow, for the fields a harness drifts on
  * first. The SDK's zod schemas are private and its transport drops or strips
  * what they reject, so the transport stays ours and these lists are how the
  * SDK stays the authority (#639 rec 2). The `Covers` check below fails to
@@ -124,6 +124,7 @@ const KNOWN_UPDATES = [
 	"compaction_update",
 	"config_option_update",
 	"current_mode_update",
+	"cursor_update",
 	"notice",
 	"plan",
 	"plan_removed",
@@ -189,7 +190,7 @@ export function isKnownUpdate(kind: unknown): boolean {
 }
 
 /**
- * A value the harness sent that SDK 1.9.0 does not know. It is logged and the
+ * A value the harness sent that the pinned SDK does not know. It is logged and the
  * message passes through unchanged; drift never fails a run. Extra fields are
  * not drift: ACP allows them (`_meta`, custom variants).
  */

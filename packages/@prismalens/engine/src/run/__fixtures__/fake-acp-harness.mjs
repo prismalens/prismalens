@@ -421,6 +421,7 @@ async function turn(sessionId, promptText) {
 			sessionUpdate: "unknown_session_update_kind",
 			extraField: "extra_update_val_again",
 		});
+		notify(sessionId, { sessionUpdate: "cursor_update", cursorId: "c1" });
 		notify(sessionId, {
 			sessionUpdate: "tool_call",
 			toolCallId: "t_custom",
