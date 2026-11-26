@@ -141,11 +141,16 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 	});
 
 	it("refuses an approved URL that carries sign-in, a query or a fragment", async () => {
-		for (const url of ["https://u:p@mcp.example/v1", "https://mcp.example/v1?key=x", "https://mcp.example/v1#f"])
-			await expect(
-				service.approveSharedServer({ name: "web", def: { type: "http", url, query: [], headers: [] }, values: {}, recipients: [], from: null }),
-			).rejects.toEqual(refused("The URL holds only its origin and path; a query part is a value"));
-		expect(await names()).toEqual([]);
+		const urls = ["https://u:p@mcp.example/v1", "https://mcp.example/v1?key=x", "https://mcp.example/v1#f"];
+		const outcomes = await Promise.all(
+			urls.map((url) =>
+				service
+					.approveSharedServer({ name: "web", def: { type: "http", url, query: [], headers: [] }, values: {}, recipients: [], from: null })
+					.then(() => "approved", (e: unknown) => e),
+			),
+		);
+		const no = refused("The URL holds only its origin and path; a query part is a value");
+		expect([outcomes, await names()]).toEqual([[no, no, no], []]);
 	});
 
 	it("an approval running beside a removal does not bring the removed server back", async () => {
@@ -161,8 +166,9 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 
 	it("a membership change whose second write fails leaves servers and instructions as they were", async () => {
 		await approveDocs(["claude-code"]);
-		const real = prisma.$transaction.bind(prisma) as (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>;
-		vi.spyOn(prisma, "$transaction").mockImplementationOnce(((fn: (tx: unknown) => Promise<unknown>) =>
+		type Interactive = (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>;
+		const real = prisma.$transaction.bind(prisma) as Interactive;
+		const failing: Interactive = (fn) =>
 			real(async (tx) => {
 				const t = tx as { setting: { upsert: (a: unknown) => Promise<unknown> } };
 				let writes = 0;
@@ -173,7 +179,8 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 							: Reflect.get(target, k),
 				});
 				return fn({ setting });
-			})) as never);
+			});
+		vi.spyOn(prisma, "$transaction").mockImplementationOnce(failing as typeof prisma.$transaction);
 		await expect(service.setMembership("codex", true)).rejects.toThrow("disk full");
 		const set = await service.sharedSet();
 		expect([set.servers[0]?.recipients, set.instructionsFor]).toEqual([["claude-code"], []]);
