@@ -13,6 +13,13 @@ on:
       - "scripts/pack-cli.mjs"
       - "scripts/lib/**"
       - "scripts/artifact-budgets.json"
+      - "packages/@prismalens/agent-adapters/scripts/**"
+      # The app installs the packed tarball, so any dependency change can grow it (#1269).
+      - "package.json"
+      - "packages/**/package.json"
+      - ".nvmrc"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/build-desktop-app.yml"
   push:
     branches: [main]
@@ -21,6 +28,13 @@ on:
       - "scripts/pack-cli.mjs"
       - "scripts/lib/**"
       - "scripts/artifact-budgets.json"
+      - "packages/@prismalens/agent-adapters/scripts/**"
+      # The app installs the packed tarball, so any dependency change can grow it (#1269).
+      - "package.json"
+      - "packages/**/package.json"
+      - ".nvmrc"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/build-desktop-app.yml"
   workflow_call:
     inputs:
