@@ -258,6 +258,36 @@ describe("ThreadWindowStore", () => {
 		expect(store.change).toBe("prepend");
 	});
 
+	it("a page that lands settles its edge in a new edges object, leaving the one a render read as it was (#1193)", () => {
+		const store = new ThreadWindowStore();
+		store.applyOpen(
+			makeOpen(
+				1,
+				makePage(1, [{ key: "main:2", ordinal: 2, event: operatorMessage(2, "two") }], {
+					lo: "main:2",
+					hi: "main:2",
+					hasBefore: true,
+					hasAfter: false,
+				}),
+			),
+		);
+		store.setEdge("before", "loading");
+		const read = store.edges;
+
+		store.applyPage(
+			makePage(1, [{ key: "main:0", ordinal: 0, event: operatorMessage(0, "zero") }], {
+				lo: "main:0",
+				hi: "main:0",
+				hasBefore: false,
+				hasAfter: true,
+			}),
+			"before",
+		);
+
+		expect(read).toEqual({ before: "loading", after: "idle" });
+		expect(store.edges).toEqual({ before: "idle", after: "idle" });
+	});
+
 	it("applyLive(gen, event) with an event past hi on a window with hasAfter false inserts it with ordinal null and moves hi to it.", () => {
 		const store = new ThreadWindowStore();
 		const p1 = operatorMessage(1, "one");

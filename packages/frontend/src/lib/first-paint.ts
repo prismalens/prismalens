@@ -30,6 +30,8 @@ const THREAD_CALLS = [
 	"/api/investigations/$1",
 	"/api/investigations/$1/window?fold=true&$item",
 ];
+/** The transcript's own pages and turns: what the reader scrolls to never waits behind held calls. */
+const THREAD_SOON = ["/api/investigations/$1/window/*"];
 /** The model picker's agents and default: it reads "…" until they land. */
 const PICKER_CALLS = ["/api/settings/harnesses", "/api/settings/harness"];
 /** The header's git and PR state and the details card: 10 s in, behind 25 reads, before #1130. */
@@ -61,13 +63,14 @@ export const FIRST_PAINT: readonly FirstPaintPage[] = [
 			"/api/investigations/$1/changes?scope=all&patch=none",
 		],
 		// The open file's patch is the pane's content: it never queues behind held calls (#1130).
-		soon: ["/api/investigations/$1/changes/patch?*"],
+		soon: ["/api/investigations/$1/changes/patch?*", ...THREAD_SOON],
 		next: THREAD_NEXT,
 	},
 	{
 		name: "thread",
 		path: /^\/threads\/([0-9a-f-]{36})(?:\?.*)?$/,
 		calls: THREAD_CALLS,
+		soon: THREAD_SOON,
 		next: THREAD_NEXT,
 	},
 	// The device check otherwise waits behind the page's code: 4 s on the slow link (#1130).
