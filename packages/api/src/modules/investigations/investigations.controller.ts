@@ -3,7 +3,13 @@
 
 import { randomUUID } from "node:crypto";
 import { Controller, Optional, UseGuards } from "@nestjs/common";
-import { Implement, implement, ORPCError } from "@orpc/nest";
+import {
+	Implement,
+	implement,
+	ORPCError,
+	type ORPCGlobalContext,
+} from "@orpc/nest";
+import type { Router } from "@orpc/server";
 import { OPERATE_SCOPE } from "@prismalens/auth";
 import { HARNESS_IDS, HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type {
@@ -168,7 +174,8 @@ export class InvestigationsController {
 	}
 
 	@Implement(investigationsContract)
-	investigations() {
+	// Named: the inferred router type is too long for declaration emit (TS7056).
+	investigations(): Router<typeof investigationsContract, ORPCGlobalContext> {
 		return {
 			// POST /investigations - Create a new investigation
 			create: implement(investigationsContract.create).handler(
