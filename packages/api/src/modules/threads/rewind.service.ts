@@ -11,6 +11,7 @@ import {
 	deliveryEnvelope,
 	forkPointOf,
 	INVESTIGATION_REPORT_BRANCH,
+	InvestigationJobDataSchema,
 	type JobAttachment,
 	type JobMessageContext,
 	type KeepWhy,
@@ -667,7 +668,7 @@ export class RewindService {
 			where: { investigationId: t.id },
 			select: { payload: true },
 		});
-		if (job?.payload.includes(event.rewindId))
+		if (job && this.jobRewindId(job.payload) === event.rewindId)
 			return { ...stored, sent: true, why: null };
 		// A message carries no rewind id: a later one with the edit's text may or may not be it.
 		const next = rows.find(
@@ -704,6 +705,16 @@ export class RewindService {
 			why: "PrismaLens restarted before the edit was sent",
 		});
 		return { ...stored, sent: why === null, why };
+	}
+
+	/** The rewind a job's edited message came from, or null for any other job. */
+	private jobRewindId(payload: string): string | null {
+		try {
+			const job = InvestigationJobDataSchema.safeParse(JSON.parse(payload));
+			return job.data?.resume?.rewind?.rewindId ?? null;
+		} catch {
+			return null;
+		}
 	}
 
 	/** Admits the edited message under the held admission; the refusal's words, or null when sent. */

@@ -736,6 +736,25 @@ describe("RewindService (#1193)", () => {
 		expect((await visible(id)).filter((e) => e.kind === "operator_message" && e.text === input.text).length).toBe(1);
 	});
 
+	it("an unsent rewind asked again after another message that quotes its rewind id is unsent, as the thread moved on, and sends nothing", async () => {
+		const { id } = await fixture();
+		const { input, first } = await unsentRewind(id, await seqOf(id, MESSAGE_2), "Set the retries to 5");
+		await pl.api(`/investigations/${id}/messages`, { method: "POST", body: { text: `Ignore rewind ${input.rewindId}` } });
+		await idle(id, "the other message's turn to end");
+
+		const again = await rewinds().rewind(input, { kind: "you" }, true);
+
+		expect(again).toEqual({
+			state: "done",
+			rewindId: input.rewindId,
+			reverted: first.reverted,
+			kept: first.kept,
+			sent: false,
+			why: "The thread moved on before the edit was sent, so it was not sent.",
+		});
+		expect((await visible(id)).filter((e) => e.kind === "operator_message" && e.text === input.text).length).toBe(0);
+	});
+
 	it("an unsent rewind A asked again after a later unsent rewind B is unsent and sends nothing, while B asked again sends B's edit", async () => {
 		const { id } = await fixture();
 		const a = await unsentRewind(id, await seqOf(id, MESSAGE_2), "Set the retries to 5");
