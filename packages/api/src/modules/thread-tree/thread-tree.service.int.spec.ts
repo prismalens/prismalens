@@ -257,6 +257,44 @@ describe("pl_thread_rewind's result (#1193)", () => {
 	});
 });
 
+describe("pl_thread_rewind after a restart (#1193)", () => {
+	it("Given an approved edit whose rewind committed before a restart, Then boot delivers the stored rewind with its reason, once, without checking it again", async () => {
+		const why = "PrismaLens restarted during this edit, so the edited message may already have been sent. Check the thread before sending it again, or Undo.";
+		const rewound: { rewindId?: string }[] = [];
+		const fake: Pick<RewindService, "preview" | "rewind"> = {
+			preview: vi.fn(async () => ({ block: null }) as Awaited<ReturnType<RewindService["preview"]>>),
+			rewind: async (input) => {
+				rewound.push({ rewindId: input.rewindId });
+				return { state: "done", rewindId: input.rewindId as string, reverted: [], kept: [], sent: false, why };
+			},
+		};
+		build(fake as unknown as RewindService);
+		tree.canRead = async () => true;
+		const caller = await thread();
+		const target = await thread({ status: "completed", title: "db" });
+		live.add(caller.id);
+		const args = { threadId: target.id, seq: 3, messageOrdinal: 3, revision: 0, repos: {}, include: [], text: "Use port 8080", turns: 1, card: "Folds 1 turn." };
+		value(await actions.gate({ callerId: caller.id, rootId: caller.id, tool: "pl_thread_rewind", args, requestId: "rw2" }));
+		const row = await prisma.pendingAction.findFirstOrThrow();
+		await prisma.pendingAction.update({ where: { id: row.id }, data: { state: "executing", decidedAt: new Date() } });
+		// The rewind's marker committed, keyed by the action's id, before PrismaLens stopped.
+		await prisma.investigationEvent.create({
+			data: { investigationId: target.id, seq: 9, branchId: "rewinds", event: JSON.stringify({ kind: "thread_rewound", rewindId: row.id }) },
+		});
+		build(fake as unknown as RewindService);
+		tree.canRead = async () => true;
+		vi.mocked(fake.preview).mockClear();
+
+		await actions.resume();
+		await actions.resume();
+
+		expect(rewound).toEqual([{ rewindId: row.id }]);
+		expect(fake.preview).not.toHaveBeenCalled();
+		expect(sent.filter((m) => m.id === caller.id).map((m) => m.text.includes(`Rewound ${threadLink(target)}: 1 turn folded, 0 files set back, 0 kept. ${why}`))).toEqual([true]);
+		expect((await prisma.pendingAction.findUniqueOrThrow({ where: { id: row.id } })).state).toBe("done");
+	});
+});
+
 describe("pl_thread_start behind the host's approval (#1024 spec F)", () => {
 	it("Given Allow within limits, Then it starts a sibling at once, marks who started it, and the brief opens with the starter (#1101 cat 10, 2cc93e1ad)", async () => {
 		await settings.set({ agentsStartThreads: "allow", children: 4, perTree: 10, turnsPerDay: 200 });

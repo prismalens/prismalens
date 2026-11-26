@@ -436,11 +436,13 @@ function OpenDialog({
 			throw new Refused(
 				r.reason === "gone"
 					? "The backup is gone, so nothing was restored."
-					: r.reason === "stale"
-						? "The files changed since this was shown. Open it again to see what it would do now."
-						: r.reason === "running"
-							? REWIND_BLOCK_WORDS.running
-							: REWIND_BLOCK_WORDS["view-only"],
+					: r.reason === "linked"
+						? `A folder in a file's path became a link, so nothing was restored: ${r.paths.map((x) => x.path).join(", ")}.`
+						: r.reason === "stale"
+							? "The files changed since this was shown. Open it again to see what it would do now."
+							: r.reason === "running"
+								? REWIND_BLOCK_WORDS.running
+								: REWIND_BLOCK_WORDS["view-only"],
 			);
 		toast({
 			title: "Restored",

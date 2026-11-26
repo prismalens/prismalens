@@ -212,7 +212,7 @@ export const RewindRestoreResultSchema = /* @__PURE__ */ lazySchema(() =>
 		}),
 		z.object({
 			state: z.literal("refused"),
-			reason: z.enum(["view-only", "running", "stale", "gone"]),
+			reason: z.enum(["view-only", "running", "stale", "gone", "linked"]),
 			paths: z.array(RewindPathSchema),
 		}),
 	]),

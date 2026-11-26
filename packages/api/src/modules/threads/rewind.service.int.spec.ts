@@ -7,7 +7,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	type CanonicalEvent,
@@ -24,6 +24,16 @@ import { snapshotStores, storeGit } from "../investigations/worktree-snapshots.j
 import { ToolAsksService } from "../investigations/tool-asks.service.js";
 import { RewindService } from "./rewind.service.js";
 
+/** Runs before each lstat the code under test makes, so a test can act at a check. */
+const fsHooks = vi.hoisted(() => ({ lstat: null as ((path: string) => void) | null }));
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const fs = await importOriginal<typeof import("node:fs/promises")>();
+	const lstat = (...a: Parameters<typeof fs.lstat>) => {
+		fsHooks.lstat?.(String(a[0]));
+		return fs.lstat(...a);
+	};
+	return { ...fs, lstat };
+});
 vi.mock("../investigations/worktree-scopes.js", async (importOriginal) => {
 	const m = await importOriginal<typeof import("../investigations/worktree-scopes.js")>();
 	return { ...m, rewindFiles: vi.fn(m.rewindFiles), undoRewindFiles: vi.fn(m.undoRewindFiles) };
@@ -561,6 +571,66 @@ describe("RewindService (#1193)", () => {
 		const u = await rewinds().undo(id, a.rewindId, true);
 
 		expect(u).toMatchObject({ state: "done" });
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
+	});
+
+	it("a Restore stopped by a folder that became a link is refused linked with that path, not as a backup that is gone", async () => {
+		const { id, cwd } = await fixture();
+		vi.mocked(rewindFiles).mockImplementationOnce(async (...a) => {
+			await actual.rewindFiles(...a);
+			throw new Error("disk full");
+		});
+		await rewindAt(id, await seqOf(id, MESSAGE_2));
+		const ev = (await visible(id)).find((e) => e.kind === "rewind_interrupted");
+		if (ev?.kind !== "rewind_interrupted") throw new Error("expected an interrupted rewind");
+		const p = await rewinds().restorePreview(id, ev.op, true);
+		const outside = join(pl.workspace, `outside-${id}`);
+		cpSync(join(cwd, "src"), outside, { recursive: true });
+		rmSync(join(cwd, "src"), { recursive: true });
+		symlinkSync(outside, join(cwd, "src"), process.platform === "win32" ? "junction" : "dir");
+
+		const r = await rewinds().restore({ id, op: ev.op, expect: { head: p.head, tree: p.tree }, include: [] }, true);
+
+		expect(r).toEqual({ state: "refused", reason: "linked", paths: [{ repo: ev.repo, path: "src/app.txt" }] });
+		expect(readFileSync(join(outside, "app.txt"), "utf8")).toBe(APP_TURN_1);
+	});
+
+	it("a path saved after the Restore backup is kept, stays offered, and a second Restore writes it", async () => {
+		const { id, cwd } = await fixture();
+		vi.mocked(rewindFiles).mockImplementationOnce(async (...a) => {
+			await actual.rewindFiles(...a);
+			throw new Error("disk full");
+		});
+		await rewindAt(id, await seqOf(id, MESSAGE_2));
+		const ev = (await visible(id)).find((e) => e.kind === "rewind_interrupted");
+		if (ev?.kind !== "rewind_interrupted") throw new Error("expected an interrupted rewind");
+		const first = await rewinds().restorePreview(id, ev.op, true);
+		expect(first.overwrite).toEqual(["src/app.txt"]);
+		// The save lands at the writer's folder check: after Restore's backup, before its write.
+		let saved = false;
+		fsHooks.lstat = (p) => {
+			if (!saved && p.replaceAll("\\", "/").endsWith("/src")) {
+				saved = true;
+				writeFileSync(join(cwd, "src", "app.txt"), "saved during the restore\n");
+			}
+		};
+		const r1 = await rewinds().restore({ id, op: ev.op, expect: { head: first.head, tree: first.tree }, include: [] }, true);
+		fsHooks.lstat = null;
+		expect(r1).toEqual({
+			state: "done",
+			restored: [],
+			kept: [{ repo: ev.repo, path: "src/app.txt", why: "changed-while-rewinding" }],
+		});
+		expect(read(cwd, "src/app.txt")).toBe("saved during the restore\n");
+
+		const second = await rewinds().restorePreview(id, ev.op, true);
+		expect(second.damaged).toEqual(["src/app.txt"]);
+		const r2 = await rewinds().restore(
+			{ id, op: ev.op, expect: { head: second.head, tree: second.tree }, include: ["src/app.txt"] },
+			true,
+		);
+
+		expect(r2).toEqual({ state: "done", restored: [{ repo: ev.repo, path: "src/app.txt" }], kept: [] });
 		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
 	});
 

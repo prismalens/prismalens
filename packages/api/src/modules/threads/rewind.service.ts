@@ -996,7 +996,8 @@ export class RewindService {
 	): Promise<RewindRestoreResult> {
 		const refused = (
 			reason: Extract<RewindRestoreResult, { state: "refused" }>["reason"],
-		): RewindRestoreResult => ({ state: "refused", reason, paths: [] });
+			paths: RewindPath[] = [],
+		): RewindRestoreResult => ({ state: "refused", reason, paths });
 		if (!canWrite) return refused("view-only");
 		const release = tryExclusive(input.id);
 		if (!release) return refused("running");
@@ -1031,6 +1032,8 @@ export class RewindService {
 				});
 				if (r.state === "refused") {
 					await markOp(ws, found.ev.repo, ctx, op, "dropped").catch(() => {});
+					if (r.reason === "linked")
+						return refused("linked", pathsOf(r.repo, refusedPaths(r)));
 					return refused(r.reason === "stale" ? "stale" : "gone");
 				}
 				const restored = pathsOf(r.repo, r.reverted);
