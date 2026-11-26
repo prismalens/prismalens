@@ -416,8 +416,9 @@ export default defineChecks([
 				fails.push(`the row reads ${state}, not blocked`);
 			const wrap = page.getByTestId("thread-row-wrap").filter({ has: row });
 			const fix = wrap.getByTestId("row-fix");
+			// The fix is a lazy part loaded after first content: 10 s behind the row on the slow link.
 			const fixId = await fix
-				.getAttribute("data-fix", { timeout: 10_000 })
+				.getAttribute("data-fix", { timeout: 30_000 })
 				.catch(() => null);
 			if (fixId !== "needs.freeSpace")
 				fails.push(`the row offers ${fixId ?? "no fix"}, not Free space`);
