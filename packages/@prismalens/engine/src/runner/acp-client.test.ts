@@ -1218,7 +1218,7 @@ describe("AcpSession authenticate (#1235)", () => {
 		dirname(fileURLToPath(import.meta.url)),
 		"../../../agent-host/src/__fixtures__/method-gate.mjs",
 	);
-	const open = async (authenticate?: string) => {
+	const open = async (authenticate?: { methodId: string; unlisted?: boolean }) => {
 		const wire: string[] = [];
 		const session = new AcpSession({
 			command: process.execPath,
@@ -1246,7 +1246,7 @@ describe("AcpSession authenticate (#1235)", () => {
 	};
 
 	it("sends the advertised method before session/new, and the session opens", async () => {
-		expect(await open("oauth-personal")).toEqual({
+		expect(await open({ methodId: "oauth-personal" })).toEqual({
 			opened: "open",
 			sent: [{ methodId: "oauth-personal" }],
 			sessionId: "s1",
@@ -1254,7 +1254,15 @@ describe("AcpSession authenticate (#1235)", () => {
 	});
 
 	it("never sends a method the agent did not advertise", async () => {
-		const r = await open("cursor_login");
+		const r = await open({ methodId: "cursor_login" });
 		expect([r.sent, r.opened]).toEqual([[], "Authentication required"]);
+	});
+
+	it("sends a method the row marks unlisted though the agent never advertised it (#1236)", async () => {
+		expect(await open({ methodId: "xai.api_key", unlisted: true })).toEqual({
+			opened: "open",
+			sent: [{ methodId: "xai.api_key" }],
+			sessionId: "s1",
+		});
 	});
 });

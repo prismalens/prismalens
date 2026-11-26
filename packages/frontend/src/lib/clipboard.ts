@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { notCopied } from "./clipboard-toast";
+import { toast } from "@/hooks/use-toast";
 
 /** Copies to the clipboard; a blocked clipboard tries the older copy, then offers a file. */
 export async function copyText(text: string, file?: string): Promise<boolean> {
@@ -86,7 +86,23 @@ async function copyWith(
 			() => null,
 		);
 		if (got !== null && legacyCopy(got)) return true;
-		notCopied(got, got === null ? null : () => saveFile(got, file));
+		// The toast's code loads with the first failed copy, not with every page that copies;
+		// when it cannot load either, a plain toast says so and the text is saved as a file.
+		await import("./clipboard-toast").then(
+			({ notCopied }) =>
+				notCopied(got, got === null ? null : () => saveFile(got, file)),
+			() => {
+				if (got !== null) saveFile(got, file);
+				toast({
+					title: "Not copied",
+					description:
+						got === null
+							? "PrismaLens couldn't load the text to copy. Try again."
+							: "The browser kept the clipboard closed, so PrismaLens saved the text as a file.",
+					variant: "destructive",
+				});
+			},
+		);
 		return false;
 	}
 }

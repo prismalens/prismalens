@@ -77,6 +77,36 @@ describe("levels", () => {
 				auto: ["default", null, "acp-mode"],
 				"full-access": ["yolo", null, "acp-mode"],
 			},
+			copilot: {
+				supervised: [null, null, "none"],
+				"auto-edits": [null, null, "none"],
+				auto: [null, null, "none"],
+				"full-access": [null, null, "none"],
+			},
+			kiro: {
+				supervised: [null, null, "none"],
+				"auto-edits": [null, null, "none"],
+				auto: [null, null, "none"],
+				"full-access": [null, null, "none"],
+			},
+			grok: {
+				supervised: [null, null, "none"],
+				"auto-edits": [null, null, "none"],
+				auto: [null, null, "none"],
+				"full-access": [null, null, "none"],
+			},
+			qwen: {
+				supervised: ["default", null, "acp-mode"],
+				"auto-edits": ["auto-edit", null, "acp-mode"],
+				auto: ["auto", null, "acp-mode"],
+				"full-access": ["yolo", null, "acp-mode"],
+			},
+			goose: {
+				supervised: ["approve", null, "acp-mode"],
+				"auto-edits": ["approve", null, "acp-mode"],
+				auto: ["smart_approve", null, "acp-mode"],
+				"full-access": ["auto", null, "acp-mode"],
+			},
 			deepagents: {
 				supervised: [null, null, "none"],
 				"auto-edits": [null, null, "none"],
@@ -236,6 +266,11 @@ describe("agent facts (#1101)", () => {
 			"gemini",
 			"cursor",
 			"antigravity",
+			"copilot",
+			"kiro",
+			"grok",
+			"qwen",
+			"goose",
 			"deepagents",
 		]);
 		const seen = rows.map((id) => {
@@ -301,6 +336,10 @@ describe("agent facts (#1101)", () => {
 			"gemini",
 			"cursor",
 			"antigravity",
+			"copilot",
+			"grok",
+			"qwen",
+			"goose",
 			"deepagents",
 		]);
 	});
