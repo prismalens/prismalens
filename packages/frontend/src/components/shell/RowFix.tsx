@@ -19,7 +19,7 @@ export function RowFix({ node, id }: { node: ListNode; id: ActionId }) {
 				onClick={found.onSelect}
 				className="inline-flex min-h-6 items-center gap-1 rounded-control px-1.5 text-meta text-text-1 outline-none hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50"
 				data-testid="row-fix"
-				data-fix={found.id}
+				data-fix={id}
 			>
 				{found.icon && <found.icon className="size-3.5" aria-hidden />}
 				{found.label}
