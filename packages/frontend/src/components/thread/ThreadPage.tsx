@@ -164,6 +164,7 @@ import {
 	ScheduledFailedDock,
 	signInOf,
 } from "./session/StopDocks";
+import { useSharedSetLine } from "./shared-set-line";
 import { usePageSlots } from "./slots";
 import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
 import { threadLanding } from "./thread-landing";
@@ -842,7 +843,10 @@ export function ThreadPage({ id }: { id: string }) {
 					detail: `Next send switches ${lastModel ? (modelName(harness, lastModel) ?? lastModel) : "its default model"} to ${modelName(harness, nextChoice.model) ?? nextChoice.model}. A new model may not reuse the cached context.`,
 				}
 			: null;
-	const nextLine = run.isActive ? null : (switchLine ?? modelLine);
+	const sharedLine = useSharedSetLine(run.events, inv?.harness);
+	const nextLine = run.isActive
+		? null
+		: (switchLine ?? modelLine ?? sharedLine);
 	// The server refuses a preflight problem too; a failed preview leaves the send to it.
 	const switchBlocked = !previewing
 		? null

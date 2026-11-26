@@ -128,6 +128,7 @@ import {
 } from "./provider-failure.js";
 import {
 	injectedSecrets,
+	RecordScrubber,
 	redactEvent,
 	requestedSecrets,
 	StreamScrubber,
@@ -760,6 +761,7 @@ export type PrepareRunEnvOptions = Pick<
 	| "binaryPath"
 	| "launchArgs"
 	| "gateway"
+	| "shared"
 	| "policy"
 	| "hostEnv"
 	| "subagentLimits"
@@ -846,6 +848,7 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 			: {}),
 		...(opts.subagentLimits ? { subagents: opts.subagentLimits } : {}),
 		...cleanProfileInput(opts),
+		...(opts.shared?.runFile ? { runFile: opts.shared.runFile } : {}),
 		descriptor: { ...AGENT_REGISTRY[opts.harness], ...descriptor },
 	});
 	writeLaunchFiles(plan);
@@ -930,15 +933,88 @@ export async function* runInvestigation(
 				}
 			: {}),
 	};
+	const events = new RecordScrubber<CanonicalEvent>(secrets, eventChannel);
 	try {
-		for await (const ev of runSession(scrubbed)) yield redactEvent(ev, secrets);
+		for await (const ev of runSession(scrubbed)) {
+			const out = events.push(redactEvent(ev, secrets));
+			// Anything else may wait on the person, so it goes out with all before it.
+			yield* CARRIED_EVENTS.has(ev.kind) ? out : [...out, ...events.end()];
+		}
+		yield* events.end();
 	} finally {
 		if (stderr) for (const [out] of chunks.end()) stderr(out ?? "");
 	}
 }
 
+/** The streamed kinds a split value can span; any other releases every event held (§3.3). */
+const CARRIED_EVENTS: ReadonlySet<CanonicalEvent["kind"]> = new Set([
+	"agent_step",
+	"thought",
+	"harness_tool_call",
+	"tool_result",
+]);
+
+/** An event's values, with the agent's words and its thoughts each read as one text. */
+function eventChannel(
+	e: CanonicalEvent,
+	path: readonly (string | number)[],
+): string {
+	if (path.length === 1 && path[0] === "text")
+		return e.kind === "agent_step"
+			? "message"
+			: e.kind === "thought"
+				? "thought"
+				: "";
+	return "";
+}
+
+/** One transcript line; `held` is `parsed` as the scrubber released it. */
+interface WireRecord {
+	t: number;
+	d: "in" | "out";
+	m: string;
+	parsed: unknown;
+	held: unknown;
+}
+
+function parseWire(line: string): unknown {
+	try {
+		return JSON.parse(line) as unknown;
+	} catch {
+		return line;
+	}
+}
+
+/** An inbound record's values, with message and thought chunks each read as one text. */
+function wireChannel(
+	r: WireRecord,
+	path: readonly (string | number)[],
+): string | null {
+	if (r.d === "out" || path[0] !== "held") return null;
+	const update = (
+		r.parsed as { params?: { update?: { sessionUpdate?: unknown } } } | null
+	)?.params?.update?.sessionUpdate;
+	const text = path.slice(-2).join(".") === "content.text";
+	if (text && update === "agent_message_chunk") return "message";
+	if (text && update === "agent_thought_chunk") return "thought";
+	return "";
+}
+
 async function* runSession(
 	opts: RunInvestigationOptions,
+): AsyncGenerator<CanonicalEvent> {
+	const ends: (() => void)[] = [];
+	try {
+		yield* sessionRun(opts, ends);
+	} finally {
+		for (const end of ends) end();
+	}
+}
+
+async function* sessionRun(
+	opts: RunInvestigationOptions,
+	/** Run once the session is over, however it ended. */
+	ends: (() => void)[],
 ): AsyncGenerator<CanonicalEvent> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const adapter = new AcpAdapter({
@@ -980,17 +1056,31 @@ async function* runSession(
 		...(opts.secrets ?? []),
 		...(opts.shared?.hidden ?? []),
 	]);
-	const wire = (direction: "in" | "out", line: string): void => {
-		let m = direction === "out" ? withoutSharedDefs(line) : line;
-		for (const s of hidden) m = m.replaceAll(s, "[redacted]");
+	const write = (r: WireRecord): void => {
+		const m = r.held === r.parsed ? r.m : JSON.stringify(r.held);
 		try {
-			appendFileSync(
-				transcript,
-				`${JSON.stringify({ t: Date.now(), d: direction, m })}\n`,
-			);
+			appendFileSync(transcript, `${JSON.stringify({ t: r.t, d: r.d, m })}\n`);
 		} catch {
 			// best effort (ADR 0002 §6)
 		}
+	};
+	// Inbound records are scrubbed as one stream, so a value split across lines is caught (§3.3).
+	const inbound = new RecordScrubber<WireRecord>(hidden, wireChannel);
+	ends.push(() => {
+		for (const r of inbound.end()) write(r);
+	});
+	const wire = (direction: "in" | "out", line: string): void => {
+		let m = direction === "out" ? withoutSharedDefs(line) : line;
+		for (const s of hidden) m = m.replaceAll(s, "[redacted]");
+		const parsed = direction === "in" ? parseWire(line) : null;
+		for (const r of inbound.push({
+			t: Date.now(),
+			d: direction,
+			m,
+			parsed,
+			held: parsed,
+		}))
+			write(r);
 	};
 
 	const offer = opts.gateway
@@ -1010,6 +1100,10 @@ async function* runSession(
 	// An agent with a system-prompt slot takes the set's instructions there; any other, in its first prompt.
 	const sharedText = opts.shared?.instructions ?? null;
 	let sharedTextOwed = !!sharedText && !inSystemPrompt;
+	const sentRevision = sharedText && opts.shared ? opts.shared.revision : "";
+	// A compaction rebuilds Claude's system prompt from the set this session was given (§3.3).
+	const compactedTo = () =>
+		inSystemPrompt && opts.shared ? { sharedRevision: sentRevision } : {};
 	let loadout: CanonicalEvent | null = null;
 	let loadoutSent = false;
 	/** The session's `agent_loadout`, once, as soon as Claude's init has arrived. */
@@ -1240,6 +1334,7 @@ async function* runSession(
 								...(lastUsed !== undefined && lastUsed !== autoCompactFrom
 									? { after: lastUsed }
 									: {}),
+								...(status === "completed" ? compactedTo() : {}),
 							},
 						);
 						autoCompactFrom = undefined;
@@ -1687,12 +1782,20 @@ async function* runSession(
 		)
 			? "message"
 			: "event";
+		// A reopened session keeps what it holds: Claude its first system prompt, any other agent
+		// the instructions an earlier prompt carried, sent again only once they change (§3.3).
+		const reopened = !!session.reopen && session.reopen !== "fresh";
+		const held = opts.shared?.held ?? "";
+		if (reopened && held === sentRevision) sharedTextOwed = false;
 		yield adapter.sessionOpened(
 			opts.shared
 				? {
 						...opening,
 						sharedSet: {
-							revision: opts.shared.revision,
+							revision:
+								reopened && (inSystemPrompt || !sharedTextOwed)
+									? held
+									: sentRevision,
 							servers: sharedServers.map((s) => s.name),
 						},
 					}
@@ -2034,6 +2137,7 @@ async function* runSession(
 					? { after: lastUsed }
 					: {}),
 				...(instructions ? { instructions } : {}),
+				...(ok ? compactedTo() : {}),
 			});
 			return r;
 		};

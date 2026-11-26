@@ -1738,6 +1738,8 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			instructions: z.string().optional(),
 			/** `summary` only: the summary the fresh session was seeded with (#1166). */
 			summary: z.string().optional(),
+			/** The instructions revision the compacted session's system prompt now holds (#1180 §3.3). */
+			sharedRevision: z.string().optional(),
 		}),
 		z.object({
 			/** The agent's account ran out of usage (#1024). */

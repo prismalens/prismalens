@@ -282,6 +282,8 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 				/** The effort levels the agent offered, by name; null when it offered none. */
 				efforts: z.array(EffortLevelSchema).nullable().default(null),
 				images: z.boolean(),
+				/** ACP `mcpCapabilities.http`: it takes HTTP MCP servers (#1180 §3.3); absent on a check before. */
+				mcpHttp: z.boolean().optional(),
 				sandbox: SandboxChecksSchema.nullable().default(null),
 				/** The agent speaks a protocol version this host does not (#1101 protocol.drift). */
 				protocol: AgentProtocolDriftSchema.nullable().optional(),
@@ -617,6 +619,7 @@ export const HarnessProbeResultSchema = /* @__PURE__ */ lazySchema(() =>
 		modes: z.array(AgentModeOptionSchema).nullable().optional(),
 		efforts: z.array(EffortLevelSchema).nullable().optional(),
 		images: z.boolean().optional(),
+		mcpHttp: z.boolean().optional(),
 		sandbox: SandboxChecksSchema.nullable().optional(),
 		protocol: AgentProtocolDriftSchema.nullable().optional(),
 		account: AgentAccountSchema.nullable().optional(),

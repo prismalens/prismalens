@@ -728,6 +728,7 @@ export class AcpAdapter {
 			after?: number;
 			instructions?: string;
 			summary?: string;
+			sharedRevision?: string;
 		} = {},
 	): CanonicalEvent {
 		return {
@@ -739,6 +740,9 @@ export class AcpAdapter {
 			...(counts.after !== undefined ? { after: counts.after } : {}),
 			...(counts.instructions ? { instructions: counts.instructions } : {}),
 			...(counts.summary !== undefined ? { summary: counts.summary } : {}),
+			...(counts.sharedRevision !== undefined
+				? { sharedRevision: counts.sharedRevision }
+				: {}),
 		};
 	}
 

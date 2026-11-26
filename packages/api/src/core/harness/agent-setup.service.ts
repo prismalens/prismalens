@@ -49,6 +49,7 @@ import { CredentialsService } from "../../modules/integrations/crypto/credential
 import * as clock from "../clock.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { HarnessService } from "./harness.service.js";
+import { HarnessModelsService } from "./harness-models.service.js";
 
 export const SHARED_SERVERS_KEY = "AGENT_SHARED_SERVERS";
 export const SHARED_SET_KEY = "AGENT_SHARED_SET";
@@ -80,7 +81,13 @@ export class AgentSetupService {
 		private readonly prisma: PrismaService,
 		private readonly harness: HarnessService,
 		private readonly credentials: CredentialsService,
+		private readonly models: HarnessModelsService,
 	) {}
+
+	/** Whether the agent's last check said it takes HTTP MCP servers; unknown sends them. */
+	private takesHttp(id: HarnessId): boolean {
+		return this.models.checked(id)?.mcpHttp !== false;
+	}
 
 	// ------------------------------------------------------------ storage
 
@@ -391,7 +398,7 @@ export class AgentSetupService {
 			.filter((i) => i.kind === "mcp")
 			.map((i) => i.name);
 		const shared = await deliverShared(stored, id, {
-			http: true,
+			http: this.takesHttp(id),
 			ownNames,
 			...(HARNESS_REGISTRY[id].gatewayDelivery === "mcp-config-file"
 				? { runFile: true }
@@ -449,7 +456,7 @@ export class AgentSetupService {
 			(await readAgentLoadout(id, runtime, root).catch(() => null)) ?? [];
 		const ownNames = disk.filter((i) => i.kind === "mcp").map((i) => i.name);
 		const shared = await deliverShared(stored, id, {
-			http: true,
+			http: this.takesHttp(id),
 			ownNames,
 			...(HARNESS_REGISTRY[id].gatewayDelivery === "mcp-config-file"
 				? { runFile: true }

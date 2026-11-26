@@ -80,6 +80,7 @@ import type {
 	RunUsage,
 	Urgency,
 } from "@prismalens/contracts/schemas";
+import { heldSharedRevision } from "@prismalens/contracts/schemas";
 import {
 	buildFreshSummary,
 	buildHandoff,
@@ -1345,7 +1346,7 @@ async function runFollowUp(
 		// The new session's first usage lands after the old one is cleared (ruling 13).
 		let handedOff: Promise<void> = Promise.resolve();
 		const usage = usageWriter(ports, id, () => handedOff);
-		const shared = await sharedOf(ports, harness, workspace.cwd);
+		const shared = await sharedOf(ports, harness, workspace.cwd, id);
 		const outcome = await conductRun(
 			{
 				runId: id,
@@ -1992,13 +1993,20 @@ async function sharedOf(
 	ports: RunPorts,
 	harness: HarnessId,
 	cwd: string,
+	/** A follow-up's thread: its session keeps the revision it holds (§3.3). */
+	threadId?: string,
 ): Promise<RunInvestigationOptions["shared"] | null> {
-	return (
+	const shared =
 		(await ports.sharedSet?.(harness, cwd).catch((e) => {
 			logger.warn("Could not read the PrismaLens set", e);
 			return null;
-		})) ?? null
-	);
+		})) ?? null;
+	if (!shared || !threadId) return shared;
+	const held = await ports
+		.events(threadId)
+		.then(heldSharedRevision)
+		.catch(() => null);
+	return { ...shared, held };
 }
 
 async function secretOptions(
@@ -2248,12 +2256,18 @@ export async function sweepRunWorkspaces(
 	const runs = resolve(getAppDataDir(), "runs");
 	if (!existsSync(runs)) return swept.size;
 	for (const entry of readdirSync(runs, { withFileTypes: true })) {
-		if (
-			!entry.isDirectory() ||
-			opts.isLive?.(entry.name) ||
-			opts.isInterrupted?.(entry.name)
-		)
+		if (!entry.isDirectory()) continue;
+		if (opts.isLive?.(entry.name) || opts.isInterrupted?.(entry.name)) {
+			// A kept run's file goes too: each run writes its own again at start (§3.3).
+			try {
+				rmSync(join(runs, entry.name, "config", GATEWAY_RUN_FILE), {
+					force: true,
+				});
+			} catch (e) {
+				logger.warn(`Could not remove the run file of ${entry.name}`, e);
+			}
 			continue;
+		}
 		const dir = join(runs, entry.name);
 		if (RUN_WORKSPACE.some((rel) => existsSync(join(dir, rel)))) {
 			try {

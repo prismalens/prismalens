@@ -2,12 +2,13 @@
 // Copyright 2026 Sumit Patel
 
 // A marker for the isolation rows (#1180): `node marker.mjs <dir> <name>` writes <dir>/<name> and
-// exits, as a hook; with a third argument `mcp` it then serves MCP on stdio with one tool.
+// exits, as a hook; with a third argument `mcp` it then serves MCP on stdio with one tool, named by
+// an optional fourth (`marker` by default), and writes <dir>/<name>.called at each call of it.
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
-const [dir, name, mode] = process.argv.slice(2);
+const [dir, name, mode, tool = "marker"] = process.argv.slice(2);
 appendFileSync(
 	join(dir, name),
 	`${new Date().toISOString()} pid=${process.pid} ppid=${process.ppid}\n`,
@@ -39,13 +40,23 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 			result: {
 				tools: [
 					{
-						name: "marker",
+						name: tool,
 						description: name,
 						inputSchema: { type: "object", properties: {} },
 					},
 				],
 			},
 		});
-	else send({ jsonrpc: "2.0", id: m.id, result: {} });
+	else if (m.method === "tools/call") {
+		appendFileSync(
+			join(dir, `${name}.called`),
+			`${new Date().toISOString()}\n`,
+		);
+		send({
+			jsonrpc: "2.0",
+			id: m.id,
+			result: { content: [{ type: "text", text: `${name} marker called` }] },
+		});
+	} else send({ jsonrpc: "2.0", id: m.id, result: {} });
 });
 process.stdin.on("end", () => process.exit(0));

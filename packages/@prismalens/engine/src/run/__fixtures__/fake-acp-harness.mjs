@@ -87,6 +87,15 @@ if (mode === "unauthenticated") {
 	process.stderr.write("Error: not logged in\n");
 	process.exit(1);
 }
+// FAKE_PID_FILE: where the fake writes its pid, so a test can kill it as a crash would.
+if (process.env.FAKE_PID_FILE)
+	writeFileSync(process.env.FAKE_PID_FILE, String(process.pid));
+// FAKE_STDERR_CHUNKS (a JSON array): stderr in separate chunks at start, in any mode (#1180 §3.3).
+if (process.env.FAKE_STDERR_CHUNKS)
+	for (const part of JSON.parse(process.env.FAKE_STDERR_CHUNKS)) {
+		process.stderr.write(part);
+		await new Promise((r) => setTimeout(r, 50));
+	}
 if (mode === "exit-stderr") {
 	// FAKE_STDERR_PARTS (a JSON array) writes in separate chunks, 50 ms apart.
 	const parts = process.env.FAKE_STDERR_PARTS
@@ -254,6 +263,25 @@ async function turn(sessionId, promptText) {
 	turns += 1;
 	cancelLatched = false;
 	if (mode === "crash") process.exit(3);
+	// FAKE_COMPACT_UPDATE: the agent compacts on its own before answering (#1180 §3.3).
+	if (process.env.FAKE_COMPACT_UPDATE) {
+		notify(sessionId, {
+			sessionUpdate: "compaction_update",
+			status: "in_progress",
+		});
+		notify(sessionId, {
+			sessionUpdate: "compaction_update",
+			status: "completed",
+		});
+	}
+	// FAKE_UPDATES (a JSON array): session updates sent first in every turn.
+	// FAKE_UPDATES_SENT: a file written once they are out.
+	for (const u of JSON.parse(process.env.FAKE_UPDATES ?? "[]")) {
+		notify(sessionId, u);
+		await new Promise((r) => setTimeout(r, 10));
+	}
+	if (process.env.FAKE_UPDATES_SENT)
+		writeFileSync(process.env.FAKE_UPDATES_SENT, "sent");
 	if (mode === "resume" || mode === "continue") {
 		// FAKE_RESUME_CURL: the reopened session queries a host address first (#673 w26).
 		if (process.env.FAKE_RESUME_CURL) {
@@ -687,6 +715,12 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 									{ label: authLabel, email: authEmail ?? null, active: true },
 								],
 							},
+		});
+	} else if (msg.method === "session/new" && process.env.FAKE_NEW_ERROR) {
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			error: { code: -32603, message: process.env.FAKE_NEW_ERROR },
 		});
 	} else if (msg.method === "session/new" && mode === "auth-required") {
 		send({

@@ -24,6 +24,7 @@ const { CredentialsService } = await import(
 const { AgentSetupService, SHARED_SERVERS_KEY } = await import(
 	"./agent-setup.service.js"
 );
+import type { HarnessModelsService } from "./harness-models.service.js";
 import type { HarnessService } from "./harness.service.js";
 
 vi.setConfig({ testTimeout: 15_000 });
@@ -34,6 +35,8 @@ const ARG = "arg-sentinel-path";
 let prisma: InstanceType<typeof PrismaService>;
 let service: InstanceType<typeof AgentSetupService>;
 let installed = ["claude-code", "codex"];
+/** What each agent's last check said of `mcpCapabilities.http`; absent: never checked. */
+const httpById: Record<string, boolean> = {};
 const home = join(env.root, "home");
 const bin = join(env.root, "bin");
 const command = join(bin, "docs-mcp");
@@ -53,7 +56,10 @@ beforeAll(async () => {
 		runtimeFor: async () => ({ env: { HOME: home, USERPROFILE: home } }),
 		installedIds: async () => installed,
 	} as unknown as HarnessService;
-	service = new AgentSetupService(prisma, harness, credentials);
+	const models = {
+		checked: (id: string) => (id in httpById ? { mcpHttp: httpById[id] } : undefined),
+	} as unknown as HarnessModelsService;
+	service = new AgentSetupService(prisma, harness, credentials, models);
 	mkdirSync(bin, { recursive: true });
 	writeFileSync(command, "marker-A");
 	mkdirSync(home, { recursive: true });
@@ -120,6 +126,30 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 		const loadout = await service.loadout({ id: "claude-code" });
 		expect(loadout.items.find((i) => i.name === "pl-web")).toMatchObject({ state: "not-sent", note: "Not sent: needs values" });
 		expect(loadout.items.find((i) => i.name === "pl-docs")).toMatchObject({ state: "loads", scope: "prismalens" });
+	});
+
+	it("an HTTP server shows Not sent: no HTTP, and is not delivered, to an agent whose check said it takes none", async () => {
+		await service.approveSharedServer({
+			name: "web",
+			def: { type: "http", url: "https://mcp.example/v3", query: [], headers: [] },
+			values: {},
+			recipients: ["claude-code", "codex"],
+			from: null,
+		});
+		httpById.codex = false;
+		httpById["claude-code"] = true;
+		try {
+			const items = async (id: string) => (await service.loadout({ id })).items.find((i) => i.name === "pl-web");
+			expect([await items("codex"), await items("claude-code")]).toMatchObject([
+				{ state: "not-sent", note: "Not sent: no HTTP" },
+				{ state: "loads" },
+			]);
+			const run = async (id: "codex" | "claude-code") => (await service.forRun(id, env.root))?.servers.map((s) => s.name);
+			expect([await run("codex"), await run("claude-code")]).toEqual([["pl-docs"], ["pl-docs", "pl-web"]]);
+		} finally {
+			delete httpById.codex;
+			delete httpById["claude-code"];
+		}
 	});
 
 	it("an agent installed after approval is not a recipient until the person adds it", async () => {

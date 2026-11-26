@@ -31,6 +31,8 @@ export interface RowRun {
 	promptTimeoutMs?: number;
 	/** Seeds marker hooks, plugins and MCP servers, fires them once with no isolation, then runs every check path under `probe`, or a session and turn under `clean` (#1180). */
 	isolation?: "probe" | "clean";
+	/** Gives the run a shared stdio marker server, then takes the session up again with `session/load` (#1180 §3.3). */
+	sharedSet?: boolean;
 }
 
 export type Expectation =
@@ -50,7 +52,9 @@ export type Expectation =
 	/** PrismaLens's own tools were called as `gateway` says, and the run reported (#848). */
 	| "gateway"
 	/** No seeded marker fired under isolation, after the same markers fired without it (#1180). */
-	| "no-user-code";
+	| "no-user-code"
+	/** The shared server's tool was called beside PrismaLens's, on the first session and after a load (#1180). */
+	| "shared-set";
 
 /** What a `gateway` row expects PrismaLens's tools to have recorded, in order. */
 export interface GatewayExpectation {

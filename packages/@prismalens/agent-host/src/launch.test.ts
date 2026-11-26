@@ -423,6 +423,29 @@ describe("launch files", () => {
 		}
 	});
 
+	it("writes shared servers into deepagents' run file beside the gateway as env references, with their values in the child env only (#1180 §3.3)", () => {
+		const runDir = mkdtempSync(join(tmpdir(), "ah-runfile-"));
+		dirs.push(runDir);
+		const runFile = {
+			servers: { "pl-docs": { command: "/bin/docs", args: ["--key", "${PL_SV_DOCS_1}"], env: { TOKEN: "${PL_SV_DOCS_2}" } } },
+			env: { PL_SV_DOCS_1: "arg-value-1", PL_SV_DOCS_2: "env-value-2" },
+		};
+		const base = { agent: "deepagents" as const, level: "supervised" as const, policy: POLICY, launch: { command: "dcode" }, cwd: "/w", runDir, hostEnv: HOST };
+		const p = planLaunch({ ...base, runFile, gateway: { url: "http://127.0.0.1:9/mcp", token: "bearer-tok", name: "prismalens-run1" } });
+		const file = join(runDir, "config", GATEWAY_RUN_FILE);
+		expect(p.args).toEqual(["--acp", "--mcp-config", file]);
+		expect([p.env.PL_SV_DOCS_1, p.env.PL_SV_DOCS_2]).toEqual(["arg-value-1", "env-value-2"]);
+		writeLaunchFiles(p);
+		const text = readFileSync(file, "utf8");
+		expect(Object.keys(JSON.parse(text).mcpServers)).toEqual(["pl-docs", "prismalens-run1"]);
+		expect(JSON.parse(text).mcpServers["pl-docs"]).toEqual(runFile.servers["pl-docs"]);
+		expect([text.includes("arg-value-1"), text.includes("env-value-2")]).toEqual([false, false]);
+		const alone = planLaunch({ ...base, runFile });
+		expect([alone.args, Object.keys(JSON.parse(alone.files[file] ?? "{}").mcpServers)]).toEqual([["--acp", "--mcp-config", file], ["pl-docs"]]);
+		const other = planLaunch({ ...base, agent: "codex", launch: { command: "codex-acp" }, runFile });
+		expect([other.env.PL_SV_DOCS_1, other.runEnv.runFileServers]).toEqual([undefined, undefined]);
+	});
+
 	it("gives the gateway only to a row with gatewayDelivery", () => {
 		const gateway = { url: "http://127.0.0.1:9/mcp", token: "t", name: "n" };
 		const p = plan({ gateway });
