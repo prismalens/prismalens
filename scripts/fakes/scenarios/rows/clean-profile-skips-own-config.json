@@ -1,0 +1,26 @@
+{
+	"row": "clean-profile-skips-own-config",
+	"kind": "happy",
+	"title": "A clean profile skips the user's and repo's hooks, plugins and MCP servers",
+	"run": { "isolation": "clean" },
+	"expect": "no-user-code",
+	"markers": {
+		"claude-code": [
+			"mcp-project",
+			"mcp-user",
+			"project-hook",
+			"user-hook",
+			"user-prompt-hook"
+		],
+		"codex": ["mcp-plugin", "mcp-project", "mcp-user"],
+		"opencode": ["mcp-project", "mcp-user", "plugin"],
+		"gemini": ["mcp-project", "mcp-user"]
+	},
+	"na": {
+		"cursor": "no clean profile",
+		"antigravity": "no clean profile",
+		"deepagents": "no clean profile",
+		"local": "no clean profile"
+	},
+	"fixtures": []
+}

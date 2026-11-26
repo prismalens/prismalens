@@ -282,6 +282,11 @@ describe("admission-fake for the tier-2 agents and the signed-out row (#914)", (
 			admission: false,
 			matrix: true,
 		});
+		expect(parseArgs(["codex", ".", "--rows", "a,b", "--require"])).toMatchObject({
+			rows: "a,b",
+			require: true,
+		});
+		expect(parseArgs(["codex", "."])).toMatchObject({ require: false });
 		expect(parseArgs(["nope", "."])).toBeNull();
 		expect(parseArgs(["codex", ".", "--only", "both"])).toBeNull();
 	});

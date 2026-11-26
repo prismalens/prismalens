@@ -5,7 +5,8 @@
  * Runs every behaviour-matrix row (#914) for one agent and prints one line per row:
  *   ROW <row>: pass|fail|n/a (<what the engine saw>)
  * scripts/admission-fake.mjs starts the scripted model and passes its env; on its own:
- *   PL_MATRIX_SIGNED_OUT='{"OPENAI_API_KEY":null}' tsx scripts/acp-matrix.ts codex [--only a,b]
+ *   PL_MATRIX_SIGNED_OUT='{"OPENAI_API_KEY":null}' tsx scripts/acp-matrix.ts codex [--only a,b] [--require]
+ * `--require`: a row named in `--only` that is missing, misspelled or n/a for this agent fails the run.
  */
 import {
 	HARNESS_IDS,
@@ -13,6 +14,7 @@ import {
 	type HarnessId,
 } from "@prismalens/config/harness";
 import { matrixRows } from "../../../../scripts/fakes/scripted-model.mjs";
+import { runIsolationRow } from "./acp-isolation.js";
 import {
 	checkFailure,
 	checkRow,
@@ -28,6 +30,7 @@ if (!HARNESS_IDS.includes(harness)) {
 }
 const onlyAt = process.argv.indexOf("--only");
 const only = onlyAt > -1 ? process.argv[onlyAt + 1]?.split(",") : undefined;
+const required = process.argv.includes("--require");
 
 const overrides = JSON.parse(
 	process.env.PL_MATRIX_SIGNED_OUT ?? "{}",
@@ -40,11 +43,35 @@ for (const [key, value] of Object.entries(overrides)) {
 
 console.log(`SEARCH ${stubSearch(harness) ? "on" : "off"}`);
 let failed = 0;
-for (const row of matrixRows()) {
+const rows = matrixRows();
+if (required)
+	for (const name of only ?? [])
+		if (!rows.some((r) => r.row === name)) {
+			failed++;
+			console.log(`ROW ${name}: fail (no such row, and --require names it)`);
+		}
+for (const row of rows) {
 	if (only && !only.includes(row.row)) continue;
 	const na = row.na?.[harness];
 	if (na) {
-		console.log(`ROW ${row.row}: n/a (${na})`);
+		if (required) failed++;
+		console.log(
+			`ROW ${row.row}: ${required ? "fail" : "n/a"} (${na}${required ? "; --require names it" : ""})`,
+		);
+		continue;
+	}
+	if (row.run.isolation) {
+		const started = Date.now();
+		const { problem, saw } = await runIsolationRow(row, harness).catch(
+			(e: unknown) => ({
+				problem: `the runner threw: ${e instanceof Error ? e.message : String(e)}`,
+				saw: "",
+			}),
+		);
+		if (problem) failed++;
+		console.log(
+			`ROW ${row.row}: ${problem ? `fail (${problem})` : "pass"} [${saw}; ${Math.round((Date.now() - started) / 1000)}s]`,
+		);
 		continue;
 	}
 	const { expect, why, failure } = expectationFor(row, harness);
