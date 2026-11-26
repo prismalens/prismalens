@@ -77,11 +77,12 @@ function madeByUs(dir) {
 		const rel = relative(temp, path);
 		return rel.startsWith("pl-") && !isAbsolute(rel);
 	};
-	if (!isAbsolute(dir) || !under(resolve(dir), resolve(tmpdir()))) return false;
-	return (
-		!existsSync(dir) ||
-		under(realpathSync.native(dir), realpathSync.native(tmpdir()))
-	);
+	// macOS's tmpdir() is a link (/var -> /private/var), so a home may be written as either.
+	const real = realpathSync.native(tmpdir());
+	if (!isAbsolute(dir)) return false;
+	if (!under(resolve(dir), resolve(tmpdir())) && !under(resolve(dir), real))
+		return false;
+	return !existsSync(dir) || under(realpathSync.native(dir), real);
 }
 const refuse = (what) => {
 	throw new Error(`${what}; markers go only in a scratch home`);
@@ -95,9 +96,14 @@ const there = (path) => {
 	}
 };
 
-/** Is `err` a file that vanished, as an agent's per-process temp entries do while it runs. */
+/**
+ * Is `err` a file that vanished, as an agent's per-process temp entries do while it runs. Windows
+ * reports a file pending deletion as EPERM or EBUSY rather than ENOENT.
+ */
+const VANISHED =
+	process.platform === "win32" ? ["ENOENT", "EPERM", "EBUSY"] : ["ENOENT"];
 const gone = (err) =>
-	err instanceof Error && "code" in err && err.code === "ENOENT";
+	err instanceof Error && "code" in err && VANISHED.includes(err.code);
 /**
  * Copies regular files and folders from `src` into `dest`, never through a link. An entry that
  * vanishes mid-copy is skipped: rows before this one leave agents running in the same folder.
