@@ -35,7 +35,9 @@ import {
 	previewRestoreFiles,
 	previewRewindFiles,
 	type RepoOpResult,
+	readScopedChanges,
 	restoreFiles,
+	revertChanges,
 	rewindFiles,
 	type ScopeContext,
 	snapshotNow,
@@ -682,6 +684,44 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 			repo: "repo",
 			reason: "linked",
 			paths: ["sub/f.txt"],
+			kept: [{ path: "a/x.txt", why: "changed-while-rewinding" }],
+		});
+		expect(read("a/x.txt")).toBe("saved meanwhile\n");
+		expect(readFileSync(join(outside, "f.txt"), "utf8")).toBe("OUTSIDE\n");
+	});
+
+	it("a turn revert's link refusal reports the file its rollback left as the user saved it, and keeps that save", async () => {
+		await twoFiles("a/x.txt");
+		const scoped = (await readScopedChanges(ws, "turn", TURN_SEQ, ctx)).repos[0];
+		if (scoped?.state !== "ok" || !scoped.scoped) throw new Error("expected the turn's scoped diff");
+		const outside = join(baseDir, "outside");
+		mkdirSync(outside);
+		writeFileSync(join(outside, "f.txt"), "OUTSIDE\n");
+		onSubCheckAfter("a/x.txt", () => {
+			writeFileSync(join(root, "a", "x.txt"), "saved meanwhile\n");
+			rmSync(join(root, "sub"), { recursive: true });
+			dirLink(outside, join(root, "sub"));
+		});
+
+		const r = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "turn",
+				turn: TURN_SEQ,
+				from: scoped.scoped.from,
+				target: { kind: "turn", seq: TURN_SEQ },
+				expect: {},
+			},
+			ctx,
+		);
+
+		expect(r).toEqual({
+			state: "refused",
+			reason: "linked",
+			paths: ["sub/f.txt"],
+			block: null,
 			kept: [{ path: "a/x.txt", why: "changed-while-rewinding" }],
 		});
 		expect(read("a/x.txt")).toBe("saved meanwhile\n");

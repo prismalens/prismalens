@@ -160,6 +160,16 @@ export const KEEP_WHYS = [
 	"damaged",
 ] as const;
 export type KeepWhy = (typeof KEEP_WHYS)[number];
+/** Each reason's words, after a path: "a.txt (you changed it)". */
+export const KEEP_WORDS: Readonly<Record<KeepWhy, string>> = {
+	yours: "you changed it",
+	both: "you and the agent both changed it",
+	"during-turn": "it changed during the turn",
+	linked: "a link is in its path",
+	filtered: "its git attributes run a filter",
+	"changed-while-rewinding": "it changed while being written",
+	damaged: "it changed after the backup",
+};
 
 /** A rewind's paths: every list names the repo, as a thread may hold several (#1193). */
 export const REWIND_PATHS_MAX = 200;

@@ -362,6 +362,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 			state: "done",
 			revertId: expect.any(String),
 			paths: ["a.txt"],
+			kept: [],
 		});
 		expect(readFileSync(join(root, "a.txt"), "utf8")).toBe(
 			"ONE\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nTEN\n",
@@ -390,8 +391,42 @@ describe("worktree-scopes (#1101 category 16)", () => {
 			state: "done",
 			revertId: expect.any(String),
 			paths: ["new.txt"],
+			kept: [],
 		});
 		expect(existsSync(join(root, "new.txt"))).toBe(false);
+	});
+
+	it("file revert of a path whose attributes run a filter writes nothing and reports it kept as filtered (#1193)", async () => {
+		writeFileSync(join(root, ".gitattributes"), "f.txt filter=pl-none\n");
+		writeFileSync(join(root, "f.txt"), "f0\n");
+		git(["add", "-A"]);
+		git(["commit", "-q", "-m", "attributes"]);
+		ws.repos[0] = { ...(ws.repos[0] as RunWorkspace["repos"][number]), head: git(["rev-parse", "HEAD"]).trim() };
+		writeFileSync(join(root, "f.txt"), "f1\n");
+		const all = (await readScopedChanges(ws, "all", undefined, ctx)).repos[0];
+		if (all?.state !== "ok") throw new Error("not ok");
+		const allScoped = all.scoped as ScopedDiff;
+
+		const rev = await revertChanges(
+			ws,
+			{
+				id: runId,
+				repo: "repo",
+				scope: "all",
+				from: allScoped.from,
+				target: { kind: "file", path: "f.txt" },
+				expect: { "f.txt": allScoped.states["f.txt"] as string },
+			},
+			ctx,
+		);
+
+		expect(rev).toEqual({
+			state: "done",
+			revertId: expect.any(String),
+			paths: [],
+			kept: [{ path: "f.txt", why: "filtered" }],
+		});
+		expect(readFileSync(join(root, "f.txt"), "utf8")).toBe("f1\n");
 	});
 
 	it("turn undo when a turn path changed since the end returns reason conflict with exactly that path, and writes nothing (assert file texts unchanged)", async () => {
@@ -457,6 +492,7 @@ describe("worktree-scopes (#1101 category 16)", () => {
 			state: "done",
 			revertId: expect.any(String),
 			paths: expect.arrayContaining(["a.txt", "new.txt"]),
+			kept: [],
 		});
 		expect(readFileSync(join(root, "a.txt"), "utf8")).toBe(
 			"one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",

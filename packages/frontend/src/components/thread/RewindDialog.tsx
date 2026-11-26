@@ -6,7 +6,7 @@ import type {
 	RewindRepoPreview,
 	RewindRestorePreview,
 } from "@prismalens/contracts";
-import { REWIND_BLOCK_WORDS } from "@prismalens/contracts";
+import { KEEP_WORDS, REWIND_BLOCK_WORDS } from "@prismalens/contracts";
 import { type ReactNode, useId, useState } from "react";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { useFilePatch } from "@/components/thread/diff/use-scoped-changes";
@@ -31,12 +31,6 @@ export const REWIND_SMALL_PRINT = [
 ];
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
-
-const KEEP_WORDS: Record<string, string> = {
-	yours: "you changed it",
-	both: "you and the agent both changed it",
-	linked: "a link is in its path",
-};
 
 const UNAVAILABLE_WORDS: Record<string, string> = {
 	borrowed: "works in your own checkout, so its files stay",
@@ -109,7 +103,7 @@ export function RewindEditFacts({
 	const kept = pathsOf(
 		preview.repos,
 		(r) => r.kept,
-		(k) => `${k.path} (${KEEP_WORDS[k.why] ?? k.why})`,
+		(k) => `${k.path} (${KEEP_WORDS[k.why]})`,
 	);
 	const during = pathsOf(
 		preview.repos,
