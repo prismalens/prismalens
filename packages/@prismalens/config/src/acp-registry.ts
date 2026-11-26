@@ -43,3 +43,32 @@ export function parseAcpRegistry(raw: unknown): AcpRegistryEntry[] {
 
 export const ACP_REGISTRY: readonly AcpRegistryEntry[] =
 	parseAcpRegistry(bundled);
+
+const OS_KEY: Readonly<Record<string, string>> = {
+	win32: "windows",
+	darwin: "darwin",
+	linux: "linux",
+};
+const ARCH_KEY: Readonly<Record<string, string>> = {
+	x64: "x86_64",
+	arm64: "aarch64",
+};
+
+/**
+ * The one install line for the host (Node's `process.platform` and `process.arch`): a package
+ * command runs anywhere, else this platform's archive, glibc before musl (#1180).
+ */
+export function installLineFor(
+	entry: AcpRegistryEntry,
+	os: string,
+	arch: string,
+): { line: string } | { none: string } {
+	const command = entry.install.find((l) => /^(?:npx -y|uvx) /.test(l));
+	if (command) return { line: command };
+	const platform = `${OS_KEY[os] ?? os}-${ARCH_KEY[arch] ?? arch}`;
+	const archive =
+		entry.install.find((l) => l.startsWith(`${platform}: `)) ??
+		entry.install.find((l) => l.startsWith(`${platform}-musl: `));
+	if (archive) return { line: archive.slice(archive.indexOf(": ") + 2) };
+	return { none: `No build for ${platform.replace("-", " ")}` };
+}

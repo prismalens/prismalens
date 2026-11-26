@@ -5,6 +5,7 @@ import { ACP_MARKS } from "@prismalens/config/acp-marks";
 import {
 	ACP_REGISTRY,
 	type AcpRegistryEntry,
+	installLineFor,
 } from "@prismalens/config/acp-registry";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import { CircleDashed, Search } from "lucide-react";
@@ -46,11 +47,20 @@ export function searchRegistry(
  */
 export function AcpRegistrySearch({
 	entries = OTHER_AGENTS,
+	host,
+	onChoose,
 }: {
 	entries?: readonly AcpRegistryEntry[];
+	/** The PrismaLens host's platform; unknown shows every line. */
+	host?: { os: string; arch: string };
+	onChoose?: (id: string | null) => void;
 }) {
 	const [query, setQuery] = useState("");
-	const [chosen, setChosen] = useState<string | null>(null);
+	const [chosen, setChosenState] = useState<string | null>(null);
+	const setChosen = (id: string | null) => {
+		setChosenState(id);
+		onChoose?.(id);
+	};
 	const id = useId();
 	const found = searchRegistry(query, entries);
 	return (
@@ -106,22 +116,57 @@ export function AcpRegistrySearch({
 										Not installed
 									</span>
 								</button>
-								{on && (
-									<div className="mt-1 mb-2 flex min-w-0 flex-col gap-1.5 pl-2.5">
-										{e.install.map((line) => (
-											<CommandChip
-												key={line}
-												command={line}
-												testId="acp-registry-install"
-											/>
-										))}
-									</div>
-								)}
+								{on && <InstallLines entry={e} host={host} />}
 							</li>
 						);
 					})}
 				</ul>
 			)}
+		</div>
+	);
+}
+
+/** This host's one install line, the rest behind Other systems (#1180). */
+function InstallLines({
+	entry,
+	host,
+}: {
+	entry: AcpRegistryEntry;
+	host: { os: string; arch: string } | undefined;
+}) {
+	const [all, setAll] = useState(false);
+	const pick = host ? installLineFor(entry, host.os, host.arch) : null;
+	return (
+		<div className="mt-1 mb-2 flex min-w-0 flex-col gap-1.5 pl-2.5">
+			{pick && "line" in pick && (
+				<CommandChip command={pick.line} testId="acp-registry-install" />
+			)}
+			{pick && "none" in pick && (
+				<p className="text-meta text-text-2" data-testid="acp-registry-none">
+					{pick.none}
+				</p>
+			)}
+			{pick && entry.install.length > 1 && (
+				<button
+					type="button"
+					aria-expanded={all}
+					onClick={() => setAll(!all)}
+					className="self-start text-meta text-text-2 underline-offset-2 hover:underline"
+					data-testid="acp-registry-other"
+				>
+					Other systems
+				</button>
+			)}
+			{(!pick || all) &&
+				entry.install.map((line) => (
+					<CommandChip
+						key={line}
+						command={line}
+						testId={
+							pick ? "acp-registry-install-other" : "acp-registry-install"
+						}
+					/>
+				))}
 		</div>
 	);
 }

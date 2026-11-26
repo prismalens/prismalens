@@ -52,6 +52,7 @@ import {
 import { apiKeyVars, EnvVarNotes } from "./agent-env";
 import { SignInButton } from "./SignInButton";
 import { StepList } from "./SourceConnectDialog";
+import { useAbout } from "./use-about";
 
 const STEPS = ["Agent", "Sign-in", "Config"] as const;
 
@@ -115,6 +116,8 @@ export function AddAgentDialog({
 	const canEdit = settings?.canEditRuntime !== false;
 	const [step, setStep] = useState(0);
 	const [picked, setPicked] = useState<HarnessId | null>(null);
+	const [registryPick, setRegistryPick] = useState<string | null>(null);
+	const runtime = useAbout(open).data?.runtime;
 	const [command, setCommand] = useState("");
 	const [args, setArgs] = useState("");
 	const [apiKey, setApiKey] = useState("");
@@ -285,7 +288,7 @@ export function AddAgentDialog({
 									</p>
 								</div>
 							)}
-							<AcpRegistrySearch />
+							<AcpRegistrySearch host={runtime} onChoose={setRegistryPick} />
 						</div>
 					)}
 
@@ -398,6 +401,14 @@ export function AddAgentDialog({
 							>
 								Back
 							</Button>
+						)}
+						{step === 0 && !picked && registryPick && (
+							<span
+								className="mr-auto text-meta text-text-2"
+								data-testid="add-agent-next-why"
+							>
+								Install it, then pick Local ACP command
+							</span>
 						)}
 						{step < 2 ? (
 							<Button
