@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { GITHUB_TOKEN_VARS } from "@prismalens/agent-host";
+import { CanonicalEventSchema } from "@prismalens/contracts/schemas";
 
 /** Shorter values would redact ordinary words; real tokens and bearers are longer. */
 const MIN_SECRET = 12;
@@ -52,41 +53,130 @@ const FREE_FIELDS = new Set([
 	"journals",
 ]);
 
+type Def = { type: string } & Record<string, unknown>;
+const defOf = (schema: unknown): Def | undefined =>
+	(schema as { _zod?: { def?: Def } } | null)?._zod?.def;
+
+/** The schemas inside `def`, each with the field name it sits under; a record's values have none. */
+function children(def: Def, key: string): [unknown, string][] {
+	const under = (xs: unknown[]) => xs.map((x): [unknown, string] => [x, key]);
+	switch (def.type) {
+		case "object":
+			return Object.entries(def.shape as object).map(([k, v]) => [v, k]);
+		case "record":
+			return [[def.valueType, ""]];
+		case "union":
+			return under(def.options as unknown[]);
+		case "tuple":
+			return under(def.items as unknown[]);
+		case "intersection":
+			return under([def.left, def.right]);
+		case "pipe":
+			return under([def.in, def.out]);
+		case "lazy":
+			return under([(def.getter as () => unknown)()]);
+		case "array":
+			return under([def.element]);
+		default:
+			return "innerType" in def ? under([def.innerType]) : [];
+	}
+}
+
 /**
- * The event with every exact secret value replaced inside its string values; keys and schema
- * `kind` fields are never touched, so redaction cannot change an event's shape (#1180 §3.3).
- * The same object when none occurs.
+ * Read once from the event schema: each field's fixed values (its enums and literals) and every
+ * field name. Redaction keeps these, so a secret equal to `loads` cannot change a state (#1180 §3.3).
+ */
+let schemaWords:
+	| { values: Map<string, Set<string>>; fields: Set<string> }
+	| undefined;
+function words() {
+	if (schemaWords) return schemaWords;
+	const values = new Map<string, Set<string>>();
+	const fields = new Set<string>();
+	const seen = new WeakMap<object, Set<string>>();
+	const add = (key: string, vs: readonly unknown[]) => {
+		const set = values.get(key) ?? new Set<string>();
+		for (const v of vs) if (typeof v === "string") set.add(v);
+		values.set(key, set);
+	};
+	const walk = (schema: unknown, key: string): void => {
+		const def = defOf(schema);
+		if (!def || typeof schema !== "object" || schema === null) return;
+		const keys = seen.get(schema) ?? new Set<string>();
+		if (keys.has(key)) return;
+		seen.set(schema, keys.add(key));
+		if (def.type === "enum") add(key, Object.values(def.entries as object));
+		if (def.type === "literal") add(key, def.values as unknown[]);
+		if (def.type === "object")
+			for (const k of Object.keys(def.shape as object)) fields.add(k);
+		for (const [child, k] of children(def, key)) walk(child, k);
+	};
+	walk(CanonicalEventSchema, "");
+	schemaWords = { values, fields };
+	return schemaWords;
+}
+
+/** `obj`'s entries with each key scrubbed unless `keep` says it is a schema name; clashes stay apart. */
+function scrubKeys(
+	entries: [string, unknown][],
+	all: readonly string[],
+	keep: (k: string) => boolean,
+	onChange: () => void,
+): [string, unknown][] {
+	const taken = new Set<string>();
+	return entries.map(([k, v]) => {
+		let out = keep(k) ? k : scrub(k, all);
+		if (out !== k) onChange();
+		for (let n = 2; taken.has(out); n++) out = `${scrub(k, all)} ${n}`;
+		taken.add(out);
+		return [out, v];
+	});
+}
+
+/**
+ * The event with every exact secret value replaced inside its strings and its keys. A field's own
+ * schema values (a `kind`, a `state`) and schema field names are kept outside free-form data, so
+ * redaction cannot change an event's shape (#1180 §3.3). The same object when none occurs.
  */
 export function redactEvent<T>(event: T, secrets: readonly string[]): T {
 	if (!secrets.length) return event;
 	const all = forms(secrets);
+	const { values, fields } = words();
 	let changed = false;
-	const walk = (
-		v: unknown,
-		key: string | undefined,
-		free: boolean,
-	): unknown => {
+	const touched = () => {
+		changed = true;
+	};
+	const walk = (v: unknown, key: string, free: boolean): unknown => {
 		if (typeof v === "string") {
-			if (key === "kind" && !free) return v;
+			if (!free && values.get(key)?.has(v)) return v;
 			const out = scrub(v, all);
-			if (out !== v) changed = true;
+			if (out !== v) touched();
 			return out;
 		}
-		if (Array.isArray(v)) return v.map((x) => walk(x, undefined, free));
+		if (Array.isArray(v)) return v.map((x) => walk(x, key, free));
 		if (v && typeof v === "object")
 			return Object.fromEntries(
-				Object.entries(v).map(([k, x]) => [
-					k,
-					walk(x, k, free || FREE_FIELDS.has(k)),
-				]),
+				scrubKeys(
+					Object.entries(v).map(([k, x]) => [
+						k,
+						walk(x, k, free || FREE_FIELDS.has(k)),
+					]),
+					all,
+					(k) => !free && fields.has(k),
+					touched,
+				),
 			);
 		return v;
 	};
-	const out = walk(event, undefined, false);
+	const out = walk(event, "", false);
 	return changed ? (out as T) : event;
 }
 
-/** A wire line with each secret replaced inside its JSON string values, or as text when it does not parse. */
+/**
+ * A wire line with each secret replaced in its strings and keys, or as text when it does not
+ * parse. A parsed line is always written back from what was parsed: `JSON.parse` keeps one of
+ * a repeated member, so the original bytes may still hold a secret the walk never saw.
+ */
 export function redactLine(line: string, secrets: readonly string[]): string {
 	if (!secrets.length) return line;
 	const all = forms(secrets);
@@ -96,22 +186,21 @@ export function redactLine(line: string, secrets: readonly string[]): string {
 	} catch {
 		return scrub(line, all);
 	}
-	let changed = false;
 	const walk = (v: unknown): unknown => {
-		if (typeof v === "string") {
-			const out = scrub(v, all);
-			if (out !== v) changed = true;
-			return out;
-		}
+		if (typeof v === "string") return scrub(v, all);
 		if (Array.isArray(v)) return v.map(walk);
 		if (v && typeof v === "object")
 			return Object.fromEntries(
-				Object.entries(v).map(([k, x]) => [k, walk(x)]),
+				scrubKeys(
+					Object.entries(v).map(([k, x]) => [k, walk(x)]),
+					all,
+					() => false,
+					() => undefined,
+				),
 			);
 		return v;
 	};
-	const out = walk(parsed);
-	return changed ? JSON.stringify(out) : line;
+	return JSON.stringify(walk(parsed));
 }
 
 /**
