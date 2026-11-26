@@ -16,10 +16,10 @@ import {
 	AwayList,
 	digestLines,
 } from "@/components/home/AwayView";
-import { HomeNeeds } from "@/components/home/HomeHandover";
 import { unseenLabel } from "@/components/investigation/unseen.surface";
 import { UnseenDivider } from "@/components/investigation/WindowedTranscript";
 import { NotifyChoicesView } from "@/components/settings/NotifyChoices";
+import { NeedsList } from "@/components/shell/NeedsList";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import {
 	type AutoDecision,
@@ -228,18 +228,12 @@ export const attentionGallery: GallerySection[] = [
 	},
 	{
 		id: "home-handover",
-		title: "Home's handover: what needs you, then what changed",
+		title: "Home's handover: what changed",
 		render: () => (
 			<div
 				className="flex max-w-[680px] flex-col gap-6"
 				data-testid="gallery-home-handover"
 			>
-				<HomeNeeds
-					needs={LIST_FIXTURE.model.needs}
-					count={LIST_FIXTURE.model.needsCount}
-					asks={LIST_FIXTURE.asks}
-					now={LIST_FIXTURE.now}
-				/>
 				<AwayDigestCard
 					since={AWAY.since}
 					lines={digestLines(AWAY)}
@@ -250,7 +244,8 @@ export const attentionGallery: GallerySection[] = [
 	},
 	{
 		id: "home-needs-fixes",
-		title: "Needs you by urgency, each card with its status's registered fix",
+		title:
+			"The Needs you badge's list by urgency, each row with its status's registered fix",
 		render: () => {
 			// One card per status and cause, so every fix in `needs.card` is drawn.
 			const seen = new Set<string>();
@@ -265,9 +260,8 @@ export const attentionGallery: GallerySection[] = [
 					className="flex max-w-[680px] flex-col gap-3"
 					data-testid="gallery-home-needs-fixes"
 				>
-					<HomeNeeds
+					<NeedsList
 						needs={one}
-						count={one.length}
 						asks={LIST_FIXTURE.asks}
 						now={LIST_FIXTURE.now}
 					/>
