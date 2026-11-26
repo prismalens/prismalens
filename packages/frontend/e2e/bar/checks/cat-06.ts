@@ -9,6 +9,22 @@ import {
 	settledRows,
 	visitComposer,
 } from "./help-L3";
+import { idle } from "./help-rewind";
+
+/** A thread of the check's own to cite into: the seed threads stay as later checks expect them. */
+async function citingThread(page: Page): Promise<string> {
+	const r = await page.request.post("/api/threads", {
+		data: {
+			subject: { kind: "none" },
+			text: "fake-session:echo A thread to cite into",
+			harness: "claude-code",
+		},
+	});
+	expect(r.ok(), await r.text()).toBe(true);
+	const { investigationId } = (await r.json()) as { investigationId: string };
+	await idle(page, investigationId);
+	return investigationId;
+}
 
 /** The first agent message of a thread with words, as a citation names it (#1195). */
 async function firstAgentMessage(
@@ -621,7 +637,7 @@ export default defineChecks([
 		async run({ page, open, sim }) {
 			const fails: string[] = [];
 			const from = idOf(sim.thread("seed: long-thread"));
-			const to = idOf(sim.thread("huge.diff", 2));
+			const to = await citingThread(page);
 			const msg = await firstAgentMessage(page, from);
 			if (!msg) return notSetUp("the long-thread seed has no agent message");
 			if (!(await sendCitation(page, to, from, msg)))
@@ -691,7 +707,7 @@ export default defineChecks([
 		async run({ page, sim }) {
 			const fails: string[] = [];
 			const from = idOf(sim.thread("seed: long-thread"));
-			const to = idOf(sim.thread("huge.diff", 1));
+			const to = await citingThread(page);
 			const msg = await firstAgentMessage(page, from);
 			if (!msg) return notSetUp("the long-thread seed has no agent message");
 			if (!(await sendCitation(page, to, from, msg)))
