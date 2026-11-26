@@ -288,7 +288,7 @@ export interface ComposerProps {
 	nextSession?: string | null;
 	/** The longer account of `nextSession`, on its hover. */
 	nextSessionDetail?: string | null;
-	/** The run's events, for the PrismaLens set's line when `nextSession` is unset (#1180 §3.3). */
+	/** The run's events, for the PrismaLens set's line while unlocked with no `nextSession` (#1180 §3.3). */
 	sharedEvents?: readonly SharedRevisionEvent[] | null;
 	/** Why nothing can be sent now. */
 	blockedReason?: string | null;
@@ -619,9 +619,10 @@ export function Composer({
 	seed,
 	recallable,
 }: ComposerProps) {
+	const owed = !!sharedEvents && !locked && !otherSession;
 	const shared = useSharedSetLine(
-		sharedEvents ?? NO_EVENTS,
-		sharedEvents ? choice.recorded?.agent : null,
+		owed ? sharedEvents : NO_EVENTS,
+		owed ? choice.recorded?.agent : null,
 	);
 	const nextSession = otherSession ?? shared?.line ?? null;
 	const nextSessionDetail = otherSession ? otherDetail : shared?.detail;

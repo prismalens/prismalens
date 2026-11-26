@@ -2023,7 +2023,7 @@ ${about}`
 						locked={run.isActive}
 						nextSession={nextLine?.line ?? null}
 						nextSessionDetail={nextLine?.detail ?? null}
-						sharedEvents={run.isActive || nextLine ? null : run.events}
+						sharedEvents={run.events}
 						accessHint="Kept from the first message"
 						dock={dock}
 						strip={slots.strip}

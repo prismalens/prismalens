@@ -49,16 +49,10 @@ export const validateSettingsSearch = (
 		tab === "agent" && HARNESS_IDS.includes(search.agent as HarnessId)
 			? (search.agent as HarnessId)
 			: undefined;
-	const source =
-		tab === "sources" && typeof search.source === "string" && search.source
-			? search.source
-			: undefined;
-	const repositoryId =
-		tab === "agent" &&
-		typeof search.repositoryId === "string" &&
-		search.repositoryId
-			? search.repositoryId
-			: undefined;
+	const text = (on: boolean, v: unknown) =>
+		on && typeof v === "string" && v ? v : undefined;
+	const source = text(tab === "sources", search.source);
+	const repositoryId = text(tab === "agent", search.repositoryId);
 	// An old tab survives validation under its own key, so beforeLoad can still move it.
 	const old =
 		typeof search.tab === "string" ? search.tab.replace(/"/g, "") : "";
