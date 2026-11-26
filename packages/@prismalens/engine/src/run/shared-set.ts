@@ -100,7 +100,7 @@ export function refuseValueFiles(
 	values: Readonly<Record<string, string>>,
 ): void {
 	if (def.type !== "stdio") return;
-	for (const a of def.args) {
+	for (const [i, a] of def.args.entries()) {
 		const v = typeof a === "string" ? undefined : values[a.value];
 		let file = false;
 		try {
@@ -111,7 +111,7 @@ export function refuseValueFiles(
 		if (file)
 			throw new ShareRefused(
 				"value-path",
-				"A value names a file; put a path in the definition and a token in env",
+				`Argument ${i + 1} holds a secret that looks like a path; move it to an environment variable`,
 			);
 	}
 }
