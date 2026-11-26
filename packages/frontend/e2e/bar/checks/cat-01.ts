@@ -216,7 +216,7 @@ export default defineChecks([
 
 			return verdict(
 				fails,
-				`needs-you section sits on top with full count ${headerCount} matching ${rowsCount} rows; Home ${homeBeside ? "repeats" : "leaves out"} it beside the sidebar and lists the same ${homeIds.length} threads (count ${homeCount}) with the sidebar hidden; the armed limit thread is out of Needs you`,
+				`needs-you section sits on top with full count ${headerCount} matching ${rowsCount} rows; Home ${homeBeside ? "repeats it" : "leaves it out"} beside the sidebar and lists the same ${homeIds.length} threads (count ${homeCount}) with the sidebar hidden; the armed limit thread is out of Needs you`,
 			);
 		},
 	},
