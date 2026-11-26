@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Sumit Patel
+
 import { describe, expect, it } from "vitest";
 import { isKnownUpdate } from "./acp-client.js";
 
