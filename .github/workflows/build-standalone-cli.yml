@@ -13,7 +13,9 @@ on:
       - "scripts/lib/**"
       - "packages/@prismalens/agent-adapters/scripts/**"
       # The archives install the packed tarball, so any dependency change can grow them (#1269).
-      - "**/package.json"
+      - "package.json"
+      - "packages/**/package.json"
+      - ".nvmrc"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/build-standalone-cli.yml"

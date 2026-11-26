@@ -4,6 +4,7 @@
 // Shared by the desktop staging and the standalone archive: what a shipped node_modules
 // tree keeps, and the licence text every package in it must carry (#830, #906).
 
+import { execFileSync } from "node:child_process";
 import {
 	copyFileSync,
 	existsSync,
@@ -12,7 +13,11 @@ import {
 	rmSync,
 	statSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
+import {
+	NATIVE_COPIES,
+	SDK,
+} from "../../packages/@prismalens/agent-adapters/scripts/pack.mjs";
 
 const LICENCE = /^(licen[cs]e|copying)/i;
 
@@ -174,6 +179,61 @@ export function hollowPackages(root) {
 	};
 	walk(root);
 	return hollow;
+}
+
+/** Native agent copies npm installed, at any depth: PrismaLens runs the user's own agent (#818, #1269). */
+export function nativeCopies(root) {
+	const found = [];
+	const walk = (dir) => {
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			if (!entry.isDirectory()) continue;
+			const path = join(dir, entry.name);
+			const rel = relative(root, path).split(sep).join("/");
+			if (NATIVE_COPIES.test(rel)) found.push(rel);
+			else walk(path);
+		}
+	};
+	walk(root);
+	return found;
+}
+
+/**
+ * Why the SDK engine imports fails to load from where engine sits in an installed app,
+ * or null when it loads or the app does not ship it (an older release, #1269).
+ */
+export function sdkLoadError(appDir) {
+	const manifest = JSON.parse(
+		readFileSync(join(appDir, "package.json"), "utf8"),
+	);
+	if (!manifest.dependencies?.[SDK]) return null;
+	const engine = join(appDir, "node_modules", "@prismalens", "engine");
+	const probe =
+		'import{createRequire}from"node:module";import{pathToFileURL}from"node:url";' +
+		`const m=await import(pathToFileURL(createRequire(process.argv[1]).resolve(${JSON.stringify(SDK)})).href);` +
+		'if(typeof m.query!=="function")throw new Error("the SDK has no query export");';
+	try {
+		execFileSync(
+			process.execPath,
+			["--input-type=module", "-e", probe, join(engine, "package.json")],
+			{ stdio: "pipe" },
+		);
+		return null;
+	} catch (error) {
+		const text = String(error.stderr || error.message);
+		return (
+			text.split(/\r?\n/).find((l) => /^[A-Za-z]*Error\b/.test(l)) ?? text
+		).trim();
+	}
+}
+
+/** What is wrong with the agent SDK in an installed app, checked before it is shipped. */
+export function agentSdkProblems(appDir) {
+	const problems = nativeCopies(appDir).map(
+		(path) => `npm installed a native agent copy: ${path}`,
+	);
+	const load = sdkLoadError(appDir);
+	if (load) problems.push(`${SDK} does not load from engine: ${load}`);
+	return problems;
 }
 
 /**

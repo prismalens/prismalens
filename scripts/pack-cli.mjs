@@ -153,7 +153,7 @@ const NESTED_SHORT = new Set(NESTED.map((n) => n.replace("@prismalens/", "")));
  * from the nested copy at the top of node_modules. From the registry, the Claude Agent
  * SDK pulls a ~370 MB native copy that PrismaLens never runs (#1269).
  */
-function hoistShared(union) {
+function hoistShared(union, workspace) {
 	const hoisted = {};
 	for (const nested of NESTED) {
 		const dir = join(STAGING, "node_modules", ...nested.split("/"));
@@ -169,6 +169,18 @@ function hoistShared(union) {
 					`${entry.requiredBy.join(", ")} want ${name}@${entry.range}, ${nested} ` +
 						`carries ${version}: pin them alike so it ships once`,
 				);
+			// The flat copy runs without its peers (#906); a regular dependency it would lose.
+			const source = realpathSync(
+				join(workspace.get(nested).dir, "node_modules", ...name.split("/")),
+			);
+			const declared = Object.keys(
+				readJson(join(source, "package.json")).dependencies ?? {},
+			);
+			if (declared.length)
+				fail(
+					`${name}@${version} now declares dependencies (${declared.join(", ")}) ` +
+						`that its flat copy in ${nested} drops`,
+				);
 			const to = join(STAGING, "node_modules", ...name.split("/"));
 			mkdirSync(dirname(to), { recursive: true });
 			renameSync(from, to);
@@ -183,37 +195,6 @@ function hoistShared(union) {
 		writeFileSync(manifestPath, `${JSON.stringify(manifest, null, "\t")}\n`);
 	}
 	return hoisted;
-}
-
-/**
- * The peers a hoisted copy's code imports join the union; its manifest drops them
- * (stageAdapters, #906), and an unimported peer such as `@anthropic-ai/sdk` stays out.
- */
-function hoistPeers(hoisted, workspace, union) {
-	const require = createRequire(join(ROOT, "package.json"));
-	const semver = require("semver");
-	for (const [name, { owner }] of Object.entries(hoisted)) {
-		const source = realpathSync(
-			join(workspace.get(owner).dir, "node_modules", ...name.split("/")),
-		);
-		const meta = readJson(join(source, "package.json"));
-		const imported = importedRoots(join(STAGING, "node_modules", name));
-		for (const [peer, range] of Object.entries(meta.peerDependencies ?? {})) {
-			if (meta.peerDependenciesMeta?.[peer]?.optional || !imported.has(peer))
-				continue;
-			const existing = union.get(peer);
-			if (!existing) {
-				union.set(peer, { range, requiredBy: [`${name} (peer)`] });
-				continue;
-			}
-			const floor = semver.minVersion(existing.range);
-			if (!floor || !semver.satisfies(floor, range))
-				fail(
-					`${name} needs its peer ${peer}@${range}; the union has ${existing.range}`,
-				);
-			existing.requiredBy.push(`${name} (peer)`);
-		}
-	}
 }
 
 /**
@@ -556,21 +537,6 @@ function* walkFiles(dir) {
  * is satisfiable. This is the invariant that copying alone cannot give you: it
  * catches a first-party package that grew a dependency nobody hoisted.
  */
-/** The third-party package roots a tree's JS imports. */
-function importedRoots(dir) {
-	const roots = new Set();
-	for (const file of walkFiles(dir)) {
-		if (!/\.[cm]?js$/.test(file)) continue;
-		for (const match of readFileSync(file, "utf8").matchAll(IMPORT_RE)) {
-			const specifier = match[1];
-			if (specifier.startsWith(".") || specifier.startsWith("/")) continue;
-			if (BUILTINS.has(specifier) || !SPECIFIER_RE.test(specifier)) continue;
-			roots.add(rootPackageOf(specifier));
-		}
-	}
-	return roots;
-}
-
 function scanImports(stagedModules, union, copiedNames, optional) {
 	const missing = new Map(); // specifier -> Set(files)
 	for (const file of walkFiles(stagedModules)) {
@@ -1012,8 +978,7 @@ export function packCli() {
 		}
 	}
 
-	const hoisted = hoistShared(union);
-	hoistPeers(hoisted, workspace, union);
+	const hoisted = hoistShared(union, workspace);
 	const vendored = stageVendored(copied, workspace, union);
 	const offenders = nativeCopyOffenders(union, workspace);
 	if (offenders.length)

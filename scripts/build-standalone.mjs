@@ -22,6 +22,7 @@ import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	addLicences,
+	agentSdkProblems,
 	hollowPackages,
 	missingLicences,
 	prune,
@@ -496,6 +497,8 @@ async function main() {
 		if (hollow.length > 0) {
 			throw new Error(`npm left packages empty: ${hollow.join(", ")}`);
 		}
+		const sdk = agentSdkProblems(appDir);
+		if (sdk.length > 0) throw new Error(sdk.join("\n"));
 		const appModules = join(appDir, "node_modules");
 		// --allow-missing-licences: only for an already-published version rebuilt as an upgrade fixture,
 		// whose tree predates licences/ entries added for newer dependencies.
