@@ -6,13 +6,12 @@ import {
 	ComposerDraftSchema,
 	ComposerScopeSchema,
 	PutDraftSchema,
-	messageRefId,
-	parseMessageRefId,
 	QuoteSchema,
 	quoteMarkdown,
 	scopeThreadId,
 	shouldFoldPaste,
 } from "./composer.js";
+import { messageRefId, parseMessageRefId } from "./composer-values.js";
 import {
 	ReferenceSearchInputSchema,
 	referenceKey,

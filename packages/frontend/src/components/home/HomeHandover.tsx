@@ -6,7 +6,8 @@ import * as P from "@radix-ui/react-popover";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { AwayDigest } from "@/components/home/AwayView";
-import { causeOf, useNeedsCtx } from "@/components/home/use-needs-ctx";
+import { causeOf } from "@/components/home/needs-cause";
+import { useNeedsCtx } from "@/components/home/use-needs-ctx";
 import { fact } from "@/components/kit/fact";
 import { ListCard, ListGrid } from "@/components/kit/ListCard";
 import {

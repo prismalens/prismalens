@@ -19,6 +19,7 @@ export * from "./common.js";
 export * from "./common-values.js";
 export * from "./composer.js";
 export * from "./composer-doc.js";
+export * from "./composer-values.js";
 // The PRE-dispatch context pack (ADR-0016 §5) — not ./overlay.js's post-report object.
 export * from "./context-pack.js";
 export * from "./cron.js";
