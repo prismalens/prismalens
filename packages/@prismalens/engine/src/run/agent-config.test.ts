@@ -202,3 +202,24 @@ describe("configFingerprint (#1180 §3.1)", () => {
 		);
 	});
 });
+
+describe("readMcpSource (#1180 §3.3)", () => {
+	it("normalizes a Claude stdio entry and an OpenCode command array, names only for env", async () => {
+		const { readMcpSource } = await import("./agent-config.js");
+		const fs = memoryFs({
+			[h(".claude.json")]: JSON.stringify({ mcpServers: { docs: { command: "docs", args: ["--k", SECRET], env: { TOKEN: SECRET } } } }),
+			[h(".config", "opencode", "opencode.json")]: JSON.stringify({ mcp: { db: { type: "local", command: ["db-mcp", "/data"], environment: { PW: SECRET } } } }),
+			[h(".gemini", "settings.json")]: JSON.stringify({ mcpServers: { web: { httpUrl: "https://u:p@w/x?k=1", headers: { Authorization: SECRET } } } }),
+		});
+		expect(readMcpSource("claude-code", env, h(".claude.json"), "docs", fs)).toEqual({
+			transport: "stdio", command: "docs", args: ["--k", SECRET], url: null, env: ["TOKEN"], headers: [],
+		});
+		expect(readMcpSource("opencode", env, h(".config", "opencode", "opencode.json"), "db", fs)).toEqual({
+			transport: "stdio", command: "db-mcp", args: ["/data"], url: null, env: ["PW"], headers: [],
+		});
+		expect(readMcpSource("gemini", env, h(".gemini", "settings.json"), "web", fs)).toEqual({
+			transport: "http", command: null, args: [], url: "https://u:p@w/x?k=1", env: [], headers: ["Authorization"],
+		});
+		expect(readMcpSource("claude-code", env, r(".mcp.json"), "docs", fs)).toBeNull();
+	});
+});

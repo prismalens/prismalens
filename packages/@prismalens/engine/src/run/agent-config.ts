@@ -357,3 +357,81 @@ export function configFingerprint(
 		.update(JSON.stringify({ agent, rows, policy }))
 		.digest("hex");
 }
+
+/** A user-scope MCP server as a share form starts from it; values are never read (§3.3). */
+export interface McpSource {
+	transport: "stdio" | "http";
+	command: string | null;
+	args: string[];
+	url: string | null;
+	/** Env and header names only. */
+	env: string[];
+	headers: string[];
+}
+
+const strings = (v: unknown): string[] =>
+	Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+const names = (v: unknown): string[] =>
+	isRecord(v)
+		? Object.keys(v)
+		: Array.isArray(v)
+			? v.flatMap((x) =>
+					isRecord(x) && typeof x.name === "string" ? [x.name] : [],
+				)
+			: [];
+
+/** One global MCP server of `agent`'s own config at `path`, normalized across the four formats. */
+export function readMcpSource(
+	agent: string,
+	env: Env,
+	path: string,
+	name: string,
+	fs: ConfigFs = nodeConfigFs,
+): McpSource | null {
+	const layout = layoutOf(agent);
+	for (const entry of layout?.mcp ?? []) {
+		if (entry.scope !== "global") continue;
+		const [resolved] = expand(entry.path, env, null);
+		if (!resolved || resolve(path) !== resolved) continue;
+		const text = fs.text(resolved);
+		const config = text === null ? null : parse(text, entry.format);
+		const value = config ? at(config, entry.key, null) : undefined;
+		const def = isRecord(value) ? value[name] : undefined;
+		if (!isRecord(def)) return null;
+		const url =
+			typeof def.url === "string"
+				? def.url
+				: typeof def.httpUrl === "string"
+					? def.httpUrl
+					: null;
+		if (url)
+			return {
+				transport: "http",
+				command: null,
+				args: [],
+				url,
+				env: [],
+				headers: [...names(def.headers), ...names(def.http_headers)],
+			};
+		// OpenCode keeps the command and its arguments in one array.
+		const cmd = Array.isArray(def.command) ? strings(def.command) : null;
+		return {
+			transport: "stdio",
+			command: cmd
+				? (cmd[0] ?? null)
+				: typeof def.command === "string"
+					? def.command
+					: null,
+			args: cmd ? cmd.slice(1) : strings(def.args),
+			url: null,
+			env: [...names(def.env), ...names(def.environment)],
+			headers: [],
+		};
+	}
+	return null;
+}
+
+/** sha256 of a source entry as it stands, for `Changed in <agent>`. */
+export function mcpSourceHash(source: McpSource | null): string {
+	return createHash("sha256").update(JSON.stringify(source)).digest("hex");
+}
