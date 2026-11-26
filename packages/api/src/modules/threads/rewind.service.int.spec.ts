@@ -55,6 +55,7 @@ const APP_V1 = "line 1\nline 2\ntimeout = 5\nline 4\nline 5\nline 6\nline 7\nlin
 const APP_TURN_1 = APP_V1.replace("retries = 1", "retries = 2");
 const APP_TURN_2 = APP_V1.replace("retries = 1", "retries = 3");
 const HAND_EDIT = "# shop\n\nEdited by hand.\n";
+const FIRST = "fake-session:rewind The checkout client retries too little. Raise the retries step by step.";
 const MESSAGE_2 = "Set the retries to 3";
 let projectId = "";
 
@@ -109,7 +110,7 @@ async function fixture(): Promise<{ id: string; cwd: string }> {
 		method: "POST",
 		body: {
 			subject: { kind: "project", repositoryId: projectId },
-			text: "fake-session:rewind The checkout client retries too little. Raise the retries step by step.",
+			text: FIRST,
 			workIn: "worktree",
 		},
 	});
@@ -662,6 +663,7 @@ describe("RewindService (#1193)", () => {
 		vi.spyOn(dispatch, "admitHeld").mockRejectedValueOnce(new Error("PrismaLens stopped"));
 		const first = doneOf(await rewinds().rewind(input, { kind: "you" }, true));
 		expect(first.sent).toBe(false);
+		await restart();
 
 		const again = await rewinds().rewind(input, { kind: "you" }, true);
 		await idle(id, "the edited message's turn to end");
@@ -672,6 +674,70 @@ describe("RewindService (#1193)", () => {
 		const after = await visible(id);
 		expect(after.filter((e) => e.kind === "thread_rewound").length).toBe(1);
 		expect(after.filter((e) => e.kind === "operator_message" && e.text === input.text).length).toBe(1);
+	});
+
+	/** A rewind whose fold commits but whose edit is never admitted. */
+	async function unsentRewind(id: string, seq: number, text: string) {
+		const rewindId = randomUUID();
+		const p = await rewinds().preview(id, seq, true);
+		const input = { id, seq, text, expect: expectOf(p), include: [], rewindId };
+		const dispatch = pl.resolve<DispatchService>(DispatchService) as DispatchService;
+		vi.spyOn(dispatch, "admitHeld").mockRejectedValueOnce(new Error("PrismaLens stopped"));
+		const first = doneOf(await rewinds().rewind(input, { kind: "you" }, true));
+		expect(first.sent).toBe(false);
+		return { input, first };
+	}
+
+	it("an unsent rewind asked again by a caller who cannot write is refused view-only and sends nothing", async () => {
+		const { id } = await fixture();
+		const { input } = await unsentRewind(id, await seqOf(id, MESSAGE_2), "Set the retries to 5");
+
+		const again = await rewinds().rewind(input, { kind: "you" }, false);
+
+		expect(again).toEqual({ state: "refused", reason: "view-only", paths: [] });
+		expect((await visible(id)).filter((e) => e.kind === "operator_message" && e.text === input.text).length).toBe(0);
+	});
+
+	it("an unsent rewind asked again after the operator sent another message is unsent, as the thread moved on, and sends nothing", async () => {
+		const { id } = await fixture();
+		const { input, first } = await unsentRewind(id, await seqOf(id, MESSAGE_2), "Set the retries to 5");
+		await pl.api(`/investigations/${id}/messages`, { method: "POST", body: { text: "Check the logs first" } });
+		await idle(id, "the other message's turn to end");
+
+		const again = await rewinds().rewind(input, { kind: "you" }, true);
+
+		expect(again).toEqual({
+			state: "done",
+			rewindId: input.rewindId,
+			reverted: first.reverted,
+			kept: first.kept,
+			sent: false,
+			why: "The thread moved on before the edit was sent, so it was not sent.",
+		});
+		expect((await visible(id)).filter((e) => e.kind === "operator_message" && e.text === input.text).length).toBe(0);
+	});
+
+	it("an unsent rewind A asked again after a later unsent rewind B is unsent and sends nothing, while B asked again sends B's edit", async () => {
+		const { id } = await fixture();
+		const a = await unsentRewind(id, await seqOf(id, MESSAGE_2), "Set the retries to 5");
+		const b = await unsentRewind(id, await seqOf(id, FIRST), "Raise the retries to 9");
+
+		const againA = await rewinds().rewind(a.input, { kind: "you" }, true);
+		const againB = await rewinds().rewind(b.input, { kind: "you" }, true);
+		await idle(id, "B's edited message's turn to end");
+
+		expect(againA).toEqual({
+			state: "done",
+			rewindId: a.input.rewindId,
+			reverted: a.first.reverted,
+			kept: a.first.kept,
+			sent: false,
+			why: "The thread moved on before the edit was sent, so it was not sent.",
+		});
+		expect(againB).toEqual({ ...b.first, sent: true, why: null });
+		const after = await visible(id);
+		expect(after.filter((e) => e.kind === "operator_message" && e.text === a.input.text).length).toBe(0);
+		expect(after.filter((e) => e.kind === "operator_message" && e.text === b.input.text).length).toBe(1);
 	});
 
 	it("a rewind whose send fails after the fold committed is done and unsent, and Undo still works", async () => {

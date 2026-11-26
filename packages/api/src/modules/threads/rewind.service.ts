@@ -467,7 +467,10 @@ export class RewindService {
 		const past = this.rewinds(rows).find(
 			(r) => input.rewindId && r.event.rewindId === input.rewindId,
 		);
-		if (past) return this.resumeSend(t, rows, past, input.text, by);
+		if (past)
+			return canWrite
+				? this.resumeSend(t, rows, past, input.text, by)
+				: refused("view-only");
 		const m = this.messageOf(rows, input.seq);
 		if (!m || m.event.kind !== "operator_message") return refused("stale");
 		const look = await this.look(t, rows, m, canWrite);
@@ -568,6 +571,7 @@ export class RewindService {
 				const late = await tx.investigationEvent.findFirst({
 					where: {
 						investigationId: t.id,
+						foldedBy: null,
 						branchId: { in: look.branches },
 						ordinal: { gt: look.preview.revision },
 					},
@@ -660,13 +664,18 @@ export class RewindService {
 			where: { investigationId: t.id },
 			select: { payload: true },
 		});
+		// The message carries no rewind id: the first one after the marker is the edit only if its text is.
+		const next = rows.find(
+			(r) => r.ordinal > row.ordinal && r.event.kind === "operator_message",
+		);
 		const went =
 			job?.payload.includes(event.rewindId) ||
-			rows.some(
-				(r) => r.ordinal > row.ordinal && r.event.kind === "operator_message",
-			);
+			(next?.event.kind === "operator_message" && next.event.text === text);
 		if (went) return { ...stored, sent: true, why: null };
-		if (past.undone || (await this.running(t)))
+		const later = this.rewinds(rows).some(
+			(r) => r.row.ordinal > row.ordinal && !r.undone,
+		);
+		if (past.undone || next || later || (await this.running(t)))
 			return {
 				...stored,
 				sent: false,
