@@ -116,13 +116,13 @@ export class UsageService {
 			const usage = readTurnUsage(e.event);
 			if (!usage) continue;
 			const thread = byId.get(e.investigationId);
-			const agent = thread?.harness ?? null;
 			// The row and the estimate read one identity, so a price lands on its own row.
 			const identity = turnIdentity(
 				usage,
 				contexts.get(e) ?? { harness: null, model: null },
-				agent,
+				thread?.harness ?? null,
 			);
+			const agent = identity.agent.value;
 			const model = identity.model.value ?? "unknown";
 			const key = bucketKey(e.createdAt, span.step);
 			seenThreads.add(e.investigationId);
@@ -248,6 +248,15 @@ export class UsageService {
 			(newest === null || entry.account === newest)
 				? ok
 				: null;
+		// With no account known, the newest run's account stands in, so one row never mixes two.
+		let account = newest;
+		let accountAt = "";
+		if (account === null)
+			for (const run of runs?.values() ?? [])
+				if (run.account && run.at > accountAt) {
+					account = run.account;
+					accountAt = run.at;
+				}
 		const merged = new Map<string, UsageWindow>();
 		for (const w of shown?.windows ?? [])
 			merged.set(w.key, {
@@ -262,7 +271,7 @@ export class UsageService {
 			});
 		for (const run of runs?.values() ?? []) {
 			const eligible = run.account
-				? newest === null || run.account === newest
+				? run.account === account
 				: !(ok?.account && ok.at > run.at);
 			const kept = merged.get(run.key);
 			if (!eligible || (kept && kept.at >= run.at)) continue;

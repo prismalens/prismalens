@@ -11,6 +11,8 @@ import {
 } from "./use-settings-orpc";
 
 const read = vi.hoisted(() => vi.fn());
+const SAVED = { harness: "codex" as const, model: "gpt-x" };
+const save = vi.hoisted(() => vi.fn(async () => ({})));
 
 vi.mock("../orpc-client", () => ({
 	orpc: {
@@ -18,6 +20,7 @@ vi.mock("../orpc-client", () => ({
 			harnesses: {
 				getSettings: {
 					key: () => ["harness", "settings"],
+					queryKey: () => ["harness", "settings"],
 					queryOptions: () => ({
 						queryKey: ["harness", "settings"],
 						queryFn: read,
@@ -25,7 +28,7 @@ vi.mock("../orpc-client", () => ({
 				},
 				getHarnesses: { key: () => ["harness", "status"] },
 				updateSettings: {
-					mutationOptions: () => ({ mutationFn: async () => ({}) }),
+					mutationOptions: () => ({ mutationFn: save }),
 				},
 			},
 		},
@@ -64,6 +67,28 @@ describe("useUpdateHarnessSettings (#1180)", () => {
 		});
 		expect(hook.result.current.settings.data).toEqual({
 			favourites: ["saved"],
+		});
+		await hook.unmount();
+	});
+	it("keeps the saved settings when their read-back fails, so the next save builds on them", async () => {
+		read.mockResolvedValueOnce({ favourites: [] });
+		read.mockRejectedValueOnce(new Error("offline"));
+		save.mockResolvedValueOnce({ favourites: [SAVED] });
+		const hook = await renderHookWithApp(() => ({
+			settings: useHarnessSettings(),
+			update: useUpdateHarnessSettings(),
+		}));
+		await vi.waitFor(() => {
+			if (!hook.result.current.settings.data) throw new Error("not read");
+		});
+		await act(async () => {
+			await hook.result.current.update.mutateAsync({ favourites: [SAVED] });
+		});
+		// The query client tells its observers on a later task.
+		await act(() => new Promise((r) => setTimeout(r, 20)));
+		expect(read).toHaveBeenCalledTimes(2);
+		expect(hook.result.current.settings.data).toEqual({
+			favourites: [SAVED],
 		});
 		await hook.unmount();
 	});

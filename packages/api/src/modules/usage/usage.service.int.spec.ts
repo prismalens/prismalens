@@ -936,6 +936,34 @@ describe("limit reads before a run (#1180)", () => {
 		]);
 	});
 
+	it("with no account known, keeps only the newest run's account in the row", async () => {
+		const svc = new UsageService(prisma);
+		const thread = await prisma.investigation.create({
+			data: { status: "running", kind: "chat", harness: "claude-code" },
+		});
+		const quota = (seq: number, at: string, extra: object) =>
+			prisma.investigationEvent.create({
+				data: {
+					investigationId: thread.id,
+					branchId: "main",
+					seq,
+					createdAt: new Date(at),
+					event: JSON.stringify({
+						kind: "agent_quota",
+						window: "session",
+						type: "five_hour",
+						usedPercent: 40,
+						...extra,
+					}),
+				},
+			});
+		await quota(1, T0, { account: "a@example.test" });
+		await quota(2, T1, { account: "b@example.test", window: "weekly", type: "seven_day" });
+		expect(
+			claudeOf(await svc.limits())?.windows.map((w) => [w.key, w.via]),
+		).toEqual([["seven_day:weekly", "run"]]);
+	});
+
 	it("keeps the checked account's run window when another account reports that window later", async () => {
 		const { source: s } = source({ reads: [read("a@example.test", T0)] });
 		const svc = new UsageService(prisma, undefined, s);
@@ -1143,6 +1171,18 @@ describe("API estimates for unpriced turns (#1180)", () => {
 			data: { model: "claude-opus-5-5" },
 		});
 		expect(await modelRows()).toEqual([["claude-sonnet-5-5", 3]]);
+	});
+
+	it("puts a turn on the agent whose price it took, after the thread moved to another agent", async () => {
+		await new UsageService(prisma).setPrices({
+			prices: [price("claude-code", null, "claude-sonnet-5-5", 3, 15)],
+		});
+		await turn("codex", { inputTokens: 1_000_000 }, [
+			opened("claude-sonnet-5-5"),
+		]);
+		expect(
+			(await summary()).models.map((m) => [m.agent, m.model, m.cost.estimate]),
+		).toEqual([["claude-code", "claude-sonnet-5-5", 3]]);
 	});
 
 	it("prices no turn by a model that an opening with none replaced", async () => {

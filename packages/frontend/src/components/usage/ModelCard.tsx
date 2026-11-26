@@ -13,7 +13,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { PriceForm, useAddPrice } from "./PriceOverrides";
+import { PriceForm, SaveFailed, useAddPrice } from "./PriceOverrides";
 import { UsageChart } from "./UsageChart";
 import {
 	agentName,
@@ -116,7 +116,7 @@ export function ModelCardBody({
 /** An unpriced model's offer of a price, prefilled with its agent and model (#1180). */
 function SetPrice({ agent, model }: { agent: string; model: string }) {
 	const [open, setOpen] = useState(false);
-	const { add, blocked, failed, retry } = useAddPrice();
+	const { add, blocked, failed, saveFailed, retry } = useAddPrice();
 	if (!open)
 		return (
 			<Button
@@ -131,6 +131,7 @@ function SetPrice({ agent, model }: { agent: string; model: string }) {
 	return (
 		<div className="grid min-w-0">
 			{failed && <Problem text="Your prices did not load." onRetry={retry} />}
+			{saveFailed && <SaveFailed />}
 			<PriceForm
 				agents={[agent]}
 				initial={{ agent, model: model === "unknown" ? "" : model }}

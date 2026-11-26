@@ -174,6 +174,19 @@ export function PriceForm({
 	);
 }
 
+/** A save that the server refused; the form or row stays for a retry. */
+export function SaveFailed() {
+	return (
+		<p
+			role="alert"
+			className="text-body text-danger"
+			data-testid="price-save-failed"
+		>
+			Your price did not save.
+		</p>
+	);
+}
+
 /** Adds one price to the stored list; the same agent, route and model replaces the old one. */
 export function useAddPrice() {
 	const query = useUsagePrices();
@@ -185,6 +198,8 @@ export function useAddPrice() {
 		prices,
 		blocked,
 		failed: !prices && query.isError,
+		// Cleared by the next save: mutate resets the mutation's error.
+		saveFailed: save.isError,
 		retry: () => void query.refetch(),
 		add: (p: ModelPrice, then?: () => void) => {
 			if (!prices || save.isPending) return;
@@ -215,7 +230,8 @@ export function useAddPrice() {
 /** Settings → Usage → Prices: API prices for models whose agent reports no cost (#1180). */
 export function PriceOverrides({ agents }: { agents: readonly string[] }) {
 	const s = settingOf("usage.prices");
-	const { prices, add, remove, blocked, failed, retry } = useAddPrice();
+	const { prices, add, remove, blocked, failed, saveFailed, retry } =
+		useAddPrice();
 	const [adding, setAdding] = useState(false);
 	return (
 		<SettingGroup
@@ -237,6 +253,7 @@ export function PriceOverrides({ agents }: { agents: readonly string[] }) {
 		>
 			<Pool>
 				{failed && <Problem text="Your prices did not load." onRetry={retry} />}
+				{saveFailed && <SaveFailed />}
 				{prices?.length === 0 && !adding && <Empty text="No prices yet" />}
 				{prices?.map((p) => (
 					<SettingRow

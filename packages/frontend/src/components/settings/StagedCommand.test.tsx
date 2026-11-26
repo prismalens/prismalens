@@ -2,20 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { StagedCommand } from "./StagedCommand";
 
-const { stage, checkHarness, invalidate } = vi.hoisted(() => ({
+const { stage, checkHarness } = vi.hoisted(() => ({
 	stage: vi.fn(),
 	checkHarness: vi.fn(),
-	invalidate: vi.fn(async () => {}),
-}));
-vi.mock("@tanstack/react-query", async (original) => ({
-	...(await original<typeof import("@tanstack/react-query")>()),
-	useQueryClient: () => ({ invalidateQueries: invalidate }),
 }));
 vi.mock("@/lib/api/orpc-client", () => ({
 	client: { settings: { harnesses: { checkHarness } } },
@@ -42,24 +38,29 @@ afterEach(() => {
 });
 
 async function render() {
+	const client = new QueryClient();
+	client.setQueryData(["harnesses"], []);
 	const host = document.createElement("div");
 	document.body.appendChild(host);
 	const root = createRoot(host);
 	await act(async () =>
 		root.render(
-			<TooltipProvider>
-				<StagedCommand
-					agents={["claude-code", "codex"]}
-					command="npm i -g example"
-					label="Update all"
-					testId="update"
-					copyToo
-				/>
-			</TooltipProvider>,
+			<QueryClientProvider client={client}>
+				<TooltipProvider>
+					<StagedCommand
+						agents={["claude-code", "codex"]}
+						command="npm i -g example"
+						label="Update all"
+						testId="update"
+						copyToo
+					/>
+				</TooltipProvider>
+			</QueryClientProvider>,
 		),
 	);
 	const q = (selector: string) => host.querySelector<HTMLElement>(selector);
-	return { q, root };
+	const stale = () => client.getQueryState(["harnesses"])?.isInvalidated;
+	return { q, root, stale };
 }
 
 describe("StagedCommand (#1180)", () => {
@@ -81,16 +82,16 @@ describe("StagedCommand (#1180)", () => {
 						finish = resolve;
 					}),
 		);
-		const { q, root } = await render();
+		const { q, root, stale } = await render();
 		await act(async () => q('[data-testid="update"]')?.click());
 		const [, { onEnd }] = stage.mock.calls[0] as [
 			string,
 			{ onEnd: () => void },
 		];
 		await act(async () => onEnd());
-		expect(invalidate).not.toHaveBeenCalled();
+		expect(stale()).toBe(false);
 		await act(async () => finish());
-		expect(invalidate.mock.calls).toEqual([[{ queryKey: ["harnesses"] }]]);
+		expect(stale()).toBe(true);
 		await act(async () => root.unmount());
 	});
 });
