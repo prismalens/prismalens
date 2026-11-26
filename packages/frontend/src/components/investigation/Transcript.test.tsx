@@ -675,6 +675,34 @@ describe("Transcript spine (#1020)", () => {
 		).toBe("brief for Run 2");
 	});
 
+	it("names each resume PrismaLens wrote in five words or fewer (#1193)", async () => {
+		const items: TranscriptItem[] = (
+			["limit", "wake", "compact", "idle_compact"] as const
+		).map((cause, i) => ({
+			kind: "operator",
+			key: cause,
+			text: cause,
+			at: `2026-11-03T10:0${i}:00Z`,
+			state: "delivered",
+			mode: "queue",
+			attachments: [],
+			system: cause,
+		}));
+		await show(<Transcript items={items} incidentId={null} agent="Agent" />);
+		expect(
+			[
+				...container.querySelectorAll(
+					'[data-testid="transcript-restart-label"]',
+				),
+			].map((n) => n.textContent),
+		).toEqual([
+			"PrismaLens resumed after limit",
+			"PrismaLens woke the thread",
+			"PrismaLens compacted and resumed",
+			"PrismaLens resumed after idle compaction",
+		]);
+	});
+
 	it("folds a finished turn behind Worked for, and the chevron opens it", async () => {
 		const items: TranscriptItem[] = [
 			op("brief", "started", "2026-11-03T10:00:00Z"),

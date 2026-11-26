@@ -97,6 +97,7 @@ export type AttentionEventsInput = z.infer<typeof AttentionEventsInputSchema>;
 export const AttentionEventsSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		events: z.array(AttentionEventSchema),
+		/** Threads with an unread event, as the list draws one row per thread (#1193). */
 		unread: z.number().int().nonnegative(),
 	}),
 );

@@ -4,17 +4,19 @@
 import type { HarnessId } from "@prismalens/config/harness";
 import type { PendingAsk } from "@prismalens/contracts";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAgentChoice } from "@/components/agent/agent-choice";
 import { fact } from "@/components/kit/fact";
 import { Status } from "@/components/kit/Status";
 import { primeAside } from "@/components/thread/aside-bus";
 import { docksHere } from "@/components/thread/composer/decided";
+import { lazyQuoteIn } from "@/components/thread/composer/QuoteInPart";
 import {
 	openNewThread,
 	type QuoteChip,
 	sendQuote,
 	setNewThreadNavigator,
+	setThreadOpener,
 } from "@/components/thread/composer/quote";
 import { useQuoteTarget } from "@/components/thread/composer/quote-target";
 import { knownAccessLevel } from "@/lib/access-levels";
@@ -54,6 +56,9 @@ const AskDock = lazyPart(
 );
 const DecidedList = lazyPart(() =>
 	import("@/components/thread/composer/AskDock").then((m) => m.DecidedList),
+);
+const QuoteIn = lazyQuoteIn(() =>
+	import("@/components/thread/composer/QuoteIn").then((m) => m.QuoteIn),
 );
 const QuotePopover = lazyPart(() =>
 	import("@/components/thread/composer/QuotePopover").then(
@@ -126,9 +131,27 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 		},
 		[threadId],
 	);
+	const [quoteIn, setQuoteIn] = useState<QuoteChip | null>(null);
+	useEffect(() => {
+		setThreadOpener(
+			(id, key) =>
+				void navigate({
+					to: "/threads/$id",
+					params: { id },
+					...(key ? { hash: `item-${key}` } : {}),
+				}),
+		);
+		return () => setThreadOpener(null);
+	}, [navigate]);
 	useQuoteTarget(
 		threadId
-			? { threadId, quote: onQuote, newThread: onNewThread, aside: onAside }
+			? {
+					threadId,
+					quote: onQuote,
+					newThread: onNewThread,
+					aside: onAside,
+					quoteIn: setQuoteIn,
+				}
 			: null,
 	);
 	if (!threadId) return {};
@@ -177,6 +200,18 @@ export function useComposerSlots(ctx: SlotContext): LaneSlots {
 					}
 				: null,
 		],
-		banner: <QuotePopover threadId={threadId} onQuote={onQuote} />,
+		banner: (
+			<>
+				<QuotePopover threadId={threadId} onQuote={onQuote} />
+				{quoteIn && (
+					<QuoteIn
+						chip={quoteIn}
+						from={threadId}
+						onNewThread={onNewThread}
+						onClose={() => setQuoteIn(null)}
+					/>
+				)}
+			</>
+		),
 	};
 }

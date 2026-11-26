@@ -18,7 +18,7 @@ import {
 import { sizeWord } from "@/lib/evidence-files";
 import { bindingOf } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
-import { scrollToQuote } from "../quote";
+import { showQuoteSource } from "../quote";
 import type { ChipCtx } from "./chip.actions";
 import { chipView } from "./chip-kinds";
 import { chipAttrs, DISCRETE } from "./extensions";
@@ -307,7 +307,7 @@ function Detail({
 				<Button
 					variant="text"
 					size="sm"
-					onClick={() => scrollToQuote(a.quote)}
+					onClick={() => showQuoteSource(a.quote)}
 					className="self-start"
 				>
 					Show source

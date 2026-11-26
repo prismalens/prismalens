@@ -6,12 +6,13 @@ import type { MessageQuote } from "@/components/investigation/message.actions";
 import { type QuoteChip, quoteOf } from "./quote";
 import type { SelectionCtx } from "./selection.actions";
 
-/** Where a quote goes: the open thread's box, a new thread, or an aside. */
+/** Where a quote goes: the open thread's box, a new thread, an aside, or any thread picked (#1195). */
 export interface QuoteTarget {
 	threadId: string;
 	quote: (q: QuoteChip) => void;
 	newThread: (q: QuoteChip) => void;
 	aside?: (q: QuoteChip) => void;
+	quoteIn?: (q: QuoteChip) => void;
 }
 
 let current: QuoteTarget | null = null;
@@ -31,6 +32,7 @@ export function useQuoteTarget(target: QuoteTarget | null) {
 			quote: (q) => latest.current?.quote(q),
 			newThread: (q) => latest.current?.newThread(q),
 			aside: (q) => latest.current?.aside?.(q),
+			quoteIn: (q) => latest.current?.quoteIn?.(q),
 		};
 		current = mine;
 		return () => {
@@ -39,15 +41,24 @@ export function useQuoteTarget(target: QuoteTarget | null) {
 	}, [id]);
 }
 
-/** A whole message, quoted into the open thread's box or a new thread. */
-export function messageQuote(text: string): MessageQuote {
+/** A whole message, quoted into the open thread's box, a new thread or any thread; `key` names it (#1195). */
+export function messageQuote(text: string, key?: string | null): MessageQuote {
 	return {
 		can: () => !!current,
 		run: (to) => {
 			const t = current;
+			const seq = key ? Number(key.split(":").pop()) : Number.NaN;
 			const chip =
-				t && quoteOf(text, { threadId: t.threadId, kind: "transcript" });
-			if (t && chip) (to === "box" ? t.quote : t.newThread)(chip);
+				t &&
+				quoteOf(text, {
+					threadId: t.threadId,
+					kind: "transcript",
+					...(key && Number.isInteger(seq) ? { key, seq } : {}),
+				});
+			if (!t || !chip) return;
+			if (to === "box") t.quote(chip);
+			else if (to === "new") t.newThread(chip);
+			else t.quoteIn?.(chip);
 		},
 	};
 }
@@ -57,6 +68,6 @@ export function selectionCtx(chip: QuoteChip, done: () => void): SelectionCtx {
 		chip,
 		done,
 		to: current,
-		facts: { is: { aside: !!current?.aside } },
+		facts: { is: { aside: !!current?.aside, quoteIn: !!current?.quoteIn } },
 	};
 }

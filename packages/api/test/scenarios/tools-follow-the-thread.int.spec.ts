@@ -7,6 +7,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	defaultSpec,
+	messageRefId,
+	rowKey,
 	type Schedule,
 	type ScheduleDetail,
 	type ThreadSubjectKind,
@@ -22,7 +24,13 @@ const pl = new ScenarioApp();
 const SERVICE = "cart-api";
 const RUNBOOK = "runbooks/restart.md";
 /** The latest run of each subject, and an earlier thread it may read. */
-type Seeded = { id: string; other?: string; file?: string; runbook?: unknown };
+type Seeded = {
+	id: string;
+	other?: string;
+	file?: string;
+	runbook?: unknown;
+	cite?: { threadId: string; key: string };
+};
 const runs = new Map<ThreadSubjectKind, Seeded>();
 
 const PR_URL = "https://github.com/acme/cart/pull/1";
@@ -139,6 +147,31 @@ runs.set("schedule", { id: check, other: s1.id });
 		other: first.investigationId,
 		file: file.id,
 	});
+
+	// pl_citation_read answers only for a message the user cited into the thread (#1195): each run sends one.
+	for (const run of runs.values()) {
+		const source = run.other ?? p2.id;
+		const rows = await (await pl.prisma()).investigationEvent.findMany({
+			where: { investigationId: source },
+			orderBy: { ordinal: "asc" },
+			select: { branchId: true, seq: true, event: true },
+		});
+		const row = rows.find((r) => {
+			const e = JSON.parse(r.event) as { kind: string; text?: string };
+			return (e.kind === "agent_step" || e.kind === "operator_message") && Boolean(e.text?.trim());
+		});
+		if (!row) throw new Error(`thread ${source} holds no message to cite`);
+		const key = rowKey(row.branchId, row.seq);
+		await pl.api(`/investigations/${run.id}/messages`, {
+			method: "POST",
+			body: {
+				text: "Does that message change the answer?",
+				references: [{ kind: "message", id: messageRefId(source, key), label: "cited" }],
+			},
+		});
+		await settled(run.id);
+		run.cite = { threadId: source, key };
+	}
 }, 240_000);
 
 afterAll(async () => {
@@ -192,6 +225,8 @@ function inputFor(tool: string, run: Seeded) {
 			return { schedule: "0 9 * * *", prompt: "Check the cart rollout" };
 		case "pl_cron_delete":
 			return { id: "none" };
+		case "pl_citation_read":
+			return run.cite ?? {};
 		case "pl_secret_request":
 			return { name: "CART_TOKEN", reason: "Read the cart admin API" };
 		default:
