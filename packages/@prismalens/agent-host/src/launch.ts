@@ -211,6 +211,8 @@ export interface PlanLaunchInput {
 	userConfig?: JsonObject;
 	/** The product's MCP gateway; reaches the run only on a row with `gatewayDelivery` (#848). */
 	gateway?: AgentRunEnv["gateway"];
+	/** Shared servers by name; reach the run only on a row that reads them from its run file. */
+	runFile?: AgentRunEnv["runFile"];
 	/** Sub-agent limits the user set; each reaches only a row with a key for it (#1024 spec B). */
 	subagents?: SubagentLimits;
 	/** Swap the row's facts, as tests and a `local` command do. */
@@ -489,6 +491,11 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 			: {}),
 		...(input.launch.shipped ? { shipped: true } : {}),
 		...(input.gateway && row.gatewayDelivery ? { gateway: input.gateway } : {}),
+		...(input.runFile &&
+		Object.keys(input.runFile).length &&
+		row.gatewayDelivery === "mcp-config-file"
+			? { runFile: input.runFile }
+			: {}),
 	};
 
 	const own =

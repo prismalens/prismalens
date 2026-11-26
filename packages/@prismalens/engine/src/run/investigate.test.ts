@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { AGENT_REGISTRY, GATEWAY_RUN_FILE } from "@prismalens/agent-host";
 import { HARNESS_REGISTRY } from "@prismalens/config/harness";
 import type {
 	CanonicalEvent,
@@ -2926,6 +2927,40 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		expect([await opened(false), await opened(true)]).toEqual([
 			[["pl-docs"], ["pl-docs"]],
 			[["pl-docs", "pl-web"], ["pl-docs", "pl-web"]],
+		]);
+	});
+
+	it("writes the set's servers into a run-file agent's file beside no ACP server, and records them in session history", async () => {
+		const record = join(tmp("rec"), "record.json");
+		const web = { type: "http" as const, name: "pl-web", url: "https://mcp.example/v1", headers: [] };
+		const docs = { name: "pl-docs", command: "/bin/docs-mcp", args: ["--root", "/srv"], env: [] };
+		const { events, runDir } = await collect("ok", {
+			harness: "deepagents",
+			descriptor: {
+				binary: process.execPath,
+				acpArgs: () => [FAKE],
+				acpEnv: () => ({}),
+				configFiles: AGENT_REGISTRY.deepagents.configFiles,
+				gatewayDelivery: "mcp-config-file",
+			},
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD: record, FAKE_MCP_HTTP: "1" },
+			shared: { ...shared, hidden: [], servers: [docs, web] },
+		});
+		const file = JSON.parse(readFileSync(join(runDir, "config", GATEWAY_RUN_FILE), "utf8"));
+		const opened = events.find((e) => e.kind === "session_opened");
+		expect([
+			file,
+			(JSON.parse(readFileSync(record, "utf8")) as { mcpServers: unknown[] }).mcpServers,
+			opened && "sharedSet" in opened ? opened.sharedSet?.servers : null,
+		]).toEqual([
+			{
+				mcpServers: {
+					"pl-docs": { command: "/bin/docs-mcp", args: ["--root", "/srv"], env: {} },
+					"pl-web": { type: "http", url: "https://mcp.example/v1", headers: {} },
+				},
+			},
+			[],
+			["pl-docs", "pl-web"],
 		]);
 	});
 

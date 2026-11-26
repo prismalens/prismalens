@@ -765,7 +765,26 @@ export type PrepareRunEnvOptions = Pick<
 	| "hostEnv"
 	| "subagentLimits"
 	| "cleanProfile"
+	| "shared"
 >;
+
+/** The shared servers in a run file's `mcpServers` shape, by name; the set sends such a row no value. */
+function runFileServers(
+	servers: NonNullable<PrepareRunEnvOptions["shared"]>["servers"],
+): Record<string, unknown> {
+	const pairs = (xs: { name: string; value: string }[]) =>
+		Object.fromEntries(xs.map((x) => [x.name, x.value]));
+	return Object.fromEntries(
+		servers.map((s) => [
+			s.name,
+			"type" in s && s.type === "http"
+				? { type: "http", url: s.url, headers: pairs(s.headers) }
+				: "command" in s
+					? { command: s.command, args: s.args, env: pairs(s.env) }
+					: s,
+		]),
+	);
+}
 
 /** The clean profile's isolation input to `planLaunch`; none unless asked for. */
 function cleanProfileInput(
@@ -848,6 +867,9 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 				}
 			: {}),
 		...(opts.subagentLimits ? { subagents: opts.subagentLimits } : {}),
+		...(opts.shared?.servers.length
+			? { runFile: runFileServers(opts.shared.servers) }
+			: {}),
 		...cleanProfileInput(opts),
 		descriptor: { ...AGENT_REGISTRY[opts.harness], ...descriptor },
 	});
@@ -1016,16 +1038,21 @@ async function* runSession(
 		: null;
 	const sharedServers = opts.shared?.servers ?? [];
 	const sharedNames = new Set(sharedServers.map((s) => s.name));
-	/** The shared servers the session was handed once its capabilities were known; history records these. */
-	let sharedSent: string[] | null = null;
+	// A run-file row reads every shared server from its file (`prepareRunEnv`), never from ACP.
+	const fromFile = descriptor.gatewayDelivery === "mcp-config-file";
+	/** The shared servers the session was handed; history records these. */
+	let sharedSent: string[] | null = fromFile
+		? sharedServers.map((s) => s.name)
+		: null;
 	const sentOf = <T extends { name: string }>(picked: T[]): T[] => {
-		sharedSent = picked.map((s) => s.name).filter((n) => sharedNames.has(n));
+		if (!fromFile)
+			sharedSent = picked.map((s) => s.name).filter((n) => sharedNames.has(n));
 		return picked;
 	};
 	const mcpServers = offer
 		? (caps: Parameters<typeof offer.pick>[0]) =>
 				sentOf(offer.pick(caps, sharedServers))
-		: sharedServers.length
+		: sharedServers.length && !fromFile
 			? (caps: Parameters<ReturnType<typeof gatewayOffer>["pick"]>[0]) =>
 					sentOf(
 						sharedServers.filter((s) => caps?.http === true || !("type" in s)),

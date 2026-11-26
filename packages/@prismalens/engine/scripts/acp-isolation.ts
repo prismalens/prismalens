@@ -137,11 +137,26 @@ export const probeProblem = (
 		? null
 		: `the probe ended ${r.outcome}: ${r.detail}`;
 
+/** What a row starts on the agent; tests swap in fakes. */
+export interface RowPaths {
+	session: typeof isolatedSession;
+	probe: typeof probeHarness;
+	title: typeof nameThread;
+	limits: typeof readAgentLimits;
+}
+const REAL: RowPaths = {
+	session: isolatedSession,
+	probe: probeHarness,
+	title: nameThread,
+	limits: readAgentLimits,
+};
+
 /** Runs one isolation row; a problem, or null on a pass, and what it saw. */
 export async function runIsolationRow(
 	row: Row,
 	harness: HarnessId,
 	given: NodeJS.ProcessEnv = process.env,
+	on: RowPaths = REAL,
 ): Promise<{ problem: string | null; saw: string }> {
 	const env = scratchEnv(harness, given);
 	const key = configVar(harness);
@@ -161,7 +176,7 @@ export async function runIsolationRow(
 			};
 		const workspace = mkdtempSync(join(tmpdir(), "pl-matrix-iso-ws-"));
 		const control = async () => {
-			await isolatedSession(
+			await on.session(
 				harness,
 				env,
 				workspace,
@@ -186,20 +201,20 @@ export async function runIsolationRow(
 				? [
 						[
 							"clean session and turn",
-							() => isolatedSession(harness, env, workspace, "clean", true),
+							() => on.session(harness, env, workspace, "clean", true),
 						],
 					]
 				: [
 						[
 							"isolated session",
-							() => isolatedSession(harness, env, workspace, "probe", false),
+							() => on.session(harness, env, workspace, "probe", false),
 						],
 						[
 							"background pass",
 							async () => {
 								try {
 									return probeProblem(
-										await probeHarness(harness, {
+										await on.probe(harness, {
 											requireIsolation: true,
 											mcp: FOUND_MCP,
 											seedWorkspace: seed,
@@ -217,7 +232,7 @@ export async function runIsolationRow(
 							"Check",
 							async () =>
 								probeProblem(
-									await probeHarness(harness, {
+									await on.probe(harness, {
 										mcp: FOUND_MCP,
 										seedWorkspace: seed,
 										sandbox: async () => ({}),
@@ -227,19 +242,21 @@ export async function runIsolationRow(
 						[
 							"title",
 							async () => {
-								await nameThread(harness, {
-									prompt: "Name this thread.",
-									mcp: FOUND_MCP,
-									seedWorkspace: seed,
-									timeoutMs: 60_000,
-								}).catch(() => undefined);
+								await on
+									.title(harness, {
+										prompt: "Name this thread.",
+										mcp: FOUND_MCP,
+										seedWorkspace: seed,
+										timeoutMs: 60_000,
+									})
+									.catch(() => undefined);
 								return null;
 							},
 						],
 						[
 							"limit read",
 							async () => {
-								await readAgentLimits(harness).catch(() => null);
+								await on.limits(harness).catch(() => null);
 								return null;
 							},
 						],

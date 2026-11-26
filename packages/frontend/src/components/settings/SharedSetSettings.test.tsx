@@ -284,6 +284,28 @@ describe("ShareServerForm", () => {
 		).toEqual([["tickets", ["codex"]]]);
 	});
 
+	it("Copy again keeps the selected server as the one replaced when its name is edited", async () => {
+		const knowledge: SharedSource = {
+			agent: "codex",
+			path: "~/.codex/config.toml",
+			key: "knowledge",
+		};
+		await renderForm(
+			knowledge,
+			{ ...httpPreview, source: knowledge },
+			{ name: "tickets", recipients: ["codex"] },
+		);
+		await type("share-name", "other-server");
+		await click("share-path-reveal");
+		await click("share-path-confirm");
+		await click("share-approve");
+		expect([
+			onApprove.mock.calls.map(([input]) => input.name),
+			(byId("share-name") as HTMLInputElement).value,
+			(byId("share-name") as HTMLInputElement).readOnly,
+		]).toEqual([["tickets"], "tickets", true]);
+	});
+
 	it("names a secret argument's value apart from an env var the source already calls ARG_1", async () => {
 		await renderForm(stdioSource, {
 			...stdioPreview,

@@ -2,10 +2,11 @@
 // Copyright 2026 Sumit Patel
 
 /** What loads and the PrismaLens set (#1180 §3.1, §3.3) over a temp SQLite database and scratch agent homes. */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { mcpSourceHash, readMcpSource } from "@prismalens/engine";
+import { GATEWAY_RUN_FILE } from "@prismalens/agent-host";
+import { mcpSourceHash, prepareRunEnv, readMcpSource } from "@prismalens/engine";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const env = await vi.hoisted(async () => {
@@ -305,13 +306,26 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 		expect(await names()).toEqual([]);
 	});
 
-	it("What loads uses the run's delivery: a server with values is not sent to deepagents, a value-free one is", async () => {
+	it("What loads uses the run's delivery: a server with values is not sent to deepagents, a value-free one is, and its run file holds exactly that one", async () => {
 		await approveDocs(["deepagents"]);
 		await approveWeb("/v1", {}, ["deepagents"], []);
 		const view = await service.loadout({ id: "deepagents" });
-		expect(view.items.filter((i) => i.scope === "prismalens").map((i) => [i.name, i.state, i.note ?? null])).toEqual([
-			["pl-docs", "not-sent", "Not supported for deepagents"],
-			["pl-web", "loads", null],
+		const cwd = join(env.root, "deepagents-ws");
+		const runDir = join(env.root, "deepagents-run");
+		mkdirSync(cwd, { recursive: true });
+		const run = prepareRunEnv({ harness: "deepagents", cwd, runDir, shared: await service.forRun("deepagents", cwd), hostEnv: {} });
+		const file = JSON.parse(readFileSync(join(runDir, "config", GATEWAY_RUN_FILE), "utf8")) as { mcpServers: object };
+		expect([
+			view.items.filter((i) => i.scope === "prismalens").map((i) => [i.name, i.state, i.note ?? null]),
+			Object.keys(file.mcpServers),
+			run.args,
+		]).toEqual([
+			[
+				["pl-docs", "not-sent", "Not supported for deepagents"],
+				["pl-web", "loads", null],
+			],
+			["pl-web"],
+			["--acp", "--mcp-config", join(runDir, "config", GATEWAY_RUN_FILE)],
 		]);
 	});
 });

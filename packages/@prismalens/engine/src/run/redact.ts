@@ -184,7 +184,7 @@ export function redactLine(line: string, secrets: readonly string[]): string {
 	try {
 		parsed = JSON.parse(line);
 	} catch {
-		return scrub(line, all);
+		return scrubUnparsed(line, all);
 	}
 	const walk = (v: unknown): unknown => {
 		if (typeof v === "string") return scrub(v, all);
@@ -201,6 +201,64 @@ export function redactLine(line: string, secrets: readonly string[]): string {
 		return v;
 	};
 	return JSON.stringify(walk(parsed));
+}
+
+const ESCAPES = new Map([
+	['"', '"'],
+	["\\", "\\"],
+	["/", "/"],
+	["b", "\b"],
+	["f", "\f"],
+	["n", "\n"],
+	["r", "\r"],
+	["t", "\t"],
+]);
+
+/** `text` with its JSON string escapes decoded; `starts[i]` and `ends[i]` bound unit i's source. */
+function decodeEscapes(text: string) {
+	let out = "";
+	const starts: number[] = [];
+	const ends: number[] = [];
+	for (let i = 0; i < text.length; ) {
+		const next = text[i + 1] ?? "";
+		const hex = text.slice(i + 2, i + 6);
+		const [unit, len]: [string, number] =
+			text[i] !== "\\"
+				? [text[i] as string, 1]
+				: next === "u" && /^[0-9a-fA-F]{4}$/.test(hex)
+					? [String.fromCharCode(Number.parseInt(hex, 16)), 6]
+					: [ESCAPES.get(next) ?? "\\", ESCAPES.has(next) ? 2 : 1];
+		out += unit;
+		starts.push(i);
+		ends.push(i + len);
+		i += len;
+	}
+	return { out, starts, ends };
+}
+
+/**
+ * A line that does not parse, with every secret replaced as written or as its JSON escapes
+ * decode (`\\u0073`), so a truncated record cannot spell one past the scrub. Overlaps merge.
+ */
+function scrubUnparsed(line: string, all: readonly string[]): string {
+	const { out, starts, ends } = decodeEscapes(line);
+	const hits: [number, number][] = [];
+	const find = (
+		text: string,
+		s: string,
+		at: (i: number) => [number, number],
+	) => {
+		for (let i = text.indexOf(s); i !== -1; i = text.indexOf(s, i + 1))
+			hits.push(at(i));
+	};
+	for (const s of all.filter((x) => x.length)) {
+		find(line, s, (i) => [i, i + s.length]);
+		find(out, s, (i) => [
+			starts[i] ?? 0,
+			ends[i + s.length - 1] ?? line.length,
+		]);
+	}
+	return masked(line, hits);
 }
 
 /**
