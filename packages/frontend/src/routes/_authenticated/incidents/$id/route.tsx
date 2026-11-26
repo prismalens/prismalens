@@ -26,6 +26,7 @@ import {
 } from "@/components/incidents/record-context";
 import { openRun } from "@/components/incidents/run-facts";
 import { useInvestigationRun } from "@/components/investigation/useInvestigationRun";
+import { PAGE_ACTS, type PageAct } from "@/components/run/page-acts";
 import { Loading, NotFound, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -45,9 +46,12 @@ import type { RunVerb } from "@/lib/run-verb";
 export const Route = createFileRoute("/_authenticated/incidents/$id")({
 	validateSearch: (
 		search: Record<string, unknown>,
-	): { investigation?: string } => ({
+	): { investigation?: string; act?: PageAct } => ({
 		...(typeof search.investigation === "string"
 			? { investigation: search.investigation }
+			: {}),
+		...(PAGE_ACTS.includes(search.act as PageAct)
+			? { act: search.act as PageAct }
 			: {}),
 	}),
 	component: IncidentLayout,

@@ -53,7 +53,8 @@ describe("an incident page's ⋯ (#1101: only status and the primary action stay
 
 	it("puts the same rows in ⋯ and on right-click", () => {
 		expect(incidentHeader.menus.context).toEqual(incidentHeader.menus.more);
-		expect(incidentHeader.menus.more?.slice(0, 3)).toEqual([
+		expect(incidentHeader.menus.more?.slice(0, 4)).toEqual([
+			"incident.open",
 			"incident.details",
 			"incident.runs",
 			"incident.newConversation",
