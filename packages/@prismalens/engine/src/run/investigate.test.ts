@@ -403,6 +403,34 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(none).toEqual([]);
 	});
 
+	it("records the account the agent pushed on each usage window it reports (#1180)", async () => {
+		const { events } = await collect("ok", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_USAGE: "1",
+				FAKE_RATE_LIMIT: "1",
+				FAKE_AUTH_STATUS: "account",
+				FAKE_AUTH_LABEL: "Claude Max",
+				FAKE_AUTH_EMAIL: "dev@example.test",
+			},
+		});
+		const quotas = events
+			.filter((e) => e.kind === "agent_quota")
+			.map(({ window, type, usedPercent, status, account }) => ({ window, type, usedPercent, status, account }));
+		expect(quotas).toEqual([
+			{ window: "session", type: "five_hour", usedPercent: 40, status: "allowed", account: "dev@example.test" },
+		]);
+	});
+
+	it("records no account on a usage window when the agent pushed none", async () => {
+		const { events } = await collect("ok", {
+			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_USAGE: "1", FAKE_RATE_LIMIT: "1" },
+		});
+		const quota = events.find((e) => e.kind === "agent_quota");
+		expect(quota && "account" in quota ? quota.account : "absent").toBe("absent");
+	});
+
 	it("retries once in the same session when the first report is invalid", async () => {
 		const { events } = await collect("retry");
 		expect(events.at(-1)?.kind).toBe("report");

@@ -1840,6 +1840,8 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			resetsAt: z.string().datetime().optional(),
 			/** The agent's word for the window's state: `allowed`, `allowed_warning`, `rejected`. */
 			status: z.string().max(100).optional(),
+			/** The account the run's last `_auth/status_update` named: its email, else its label (#1180). */
+			account: z.string().max(320).optional(),
 		}),
 		z.object({
 			/**

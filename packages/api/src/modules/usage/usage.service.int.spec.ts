@@ -758,9 +758,6 @@ describe("limit reads before a run (#1180)", () => {
 		const runtime = opts.runtime ?? (() => "rt-1");
 		const read = vi.fn(async () => opts.reads.shift() ?? null);
 		const models = {
-			snapshot: () => ({
-				agents: { "claude-code": { runtime: runtime() } },
-			}),
 			checked: () =>
 				opts.check
 					? {
@@ -775,6 +772,7 @@ describe("limit reads before a run (#1180)", () => {
 		};
 		const harness = {
 			runtimeFor: async () => ({ env: {}, note: null }),
+			runtimeKey: () => runtime(),
 		};
 		return { source: harnessLimitSource(harness, models, read), read };
 	}

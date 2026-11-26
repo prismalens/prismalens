@@ -54,16 +54,12 @@ export function CheckTimes({ agent }: { agent: HarnessStatus }) {
 	);
 }
 
-/** Checks every installed agent that is on, one at a time; ones with no safe check are listed, not started. */
-export function CheckAllButton({
-	agents,
-}: {
-	agents: readonly HarnessStatus[];
-}) {
+/** Check all's half of the list context: the run, and whether it is busy or has nothing safe to check. */
+export function useCheckAll(agents: readonly HarnessStatus[]) {
 	const checkAll = useCheckAllHarnesses();
 	const installed = agents.filter((a) => a.installed && !a.off);
 	const skipped = installed.filter((a) => !safeCheck(a.id as HarnessId));
-	const ctx: AgentCtx = {
+	const part = {
 		checkAll: () => checkAll.mutate(undefined),
 		facts: {
 			is: {
@@ -71,6 +67,24 @@ export function CheckAllButton({
 				nothingToCheck: installed.length === skipped.length,
 			},
 		},
+	};
+	return { checkAll, installed, skipped, part };
+}
+
+/** Checks every installed agent that is on, one at a time; ones with no safe check are listed, not started. */
+export function CheckAllButton({
+	agents,
+}: {
+	agents: readonly HarnessStatus[];
+}) {
+	const { checkAll, installed, skipped, part } = useCheckAll(agents);
+	const none = () => {};
+	const ctx: AgentCtx = {
+		update: none,
+		signOut: none,
+		changeAccount: none,
+		updateAll: none,
+		...part,
 	};
 	return (
 		<span className="inline-flex flex-wrap items-center gap-2">

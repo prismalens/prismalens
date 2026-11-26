@@ -834,6 +834,7 @@ export class AcpAdapter {
 		usedPercent?: number;
 		resetsAt?: string;
 		status?: string;
+		account?: string;
 	}): CanonicalEvent {
 		return { kind: "agent_quota", ...this.base(), ...quota };
 	}

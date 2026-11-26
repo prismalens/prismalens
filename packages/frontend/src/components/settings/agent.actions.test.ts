@@ -7,8 +7,17 @@ import { agentCheckAll } from "./agent.actions";
 describe("agent.actions.ts", () => {
 	it("agent.checkAll runs the list's Check all, and is off while checking or with nothing to check", () => {
 		const checkAll = vi.fn();
-		agentCheckAll.run({ checkAll, facts: {} });
+		const none = vi.fn();
+		agentCheckAll.run({
+			update: none,
+			signOut: none,
+			changeAccount: none,
+			updateAll: none,
+			checkAll,
+			facts: {},
+		});
 		expect(checkAll).toHaveBeenCalledTimes(1);
+		expect(none).not.toHaveBeenCalled();
 		expect(agentCheckAll.disabled?.({ is: { checking: true } })).toBe(true);
 		expect(agentCheckAll.disabled?.({ is: { nothingToCheck: true } })).toBe(true);
 		expect(agentCheckAll.disabled?.({ is: {} })).toBe(false);

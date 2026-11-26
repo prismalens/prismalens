@@ -3,7 +3,7 @@
 
 import type { HarnessId } from "@prismalens/config/harness";
 import { runnableCommand } from "@prismalens/contracts";
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useContext } from "react";
 import { RunInTerminalSent } from "@/components/terminal/RunInTerminal";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,10 @@ import { cn } from "@/lib/utils";
 
 /** Each agent checked again once its staged command's tab ends (#1171, #1180). */
 export function useRecheck(ids: readonly string[]) {
-	const queryClient = useQueryClient();
+	return recheckWith(useQueryClient(), ids);
+}
+
+export function recheckWith(queryClient: QueryClient, ids: readonly string[]) {
 	return () =>
 		void Promise.all(
 			ids.map((id) =>
