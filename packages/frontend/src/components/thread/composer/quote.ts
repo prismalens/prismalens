@@ -121,7 +121,11 @@ const heldKey = (threadId: string) => `pl.quotesFor.${threadId}`;
 export function holdForThread(threadId: string, q: QuoteChip) {
 	try {
 		const held = heldForThread(threadId);
-		if (held.some((h) => h.quote.text === q.quote.text)) return;
+		const same = (h: QuoteChip) =>
+			h.quote.text === q.quote.text &&
+			h.quote.source.threadId === q.quote.source.threadId &&
+			h.quote.source.key === q.quote.source.key;
+		if (held.some(same)) return;
 		sessionStorage.setItem(heldKey(threadId), JSON.stringify([...held, q]));
 	} catch {
 		// No storage: the quote is lost, as a closed tab's would be.
@@ -163,10 +167,20 @@ export function openThreadAt(threadId: string, key?: string) {
 		);
 }
 
-/** A quote's source: scrolled to on its own thread's page, opened at the message from anywhere else. */
+type ItemJumper = (key: string) => void | Promise<void>;
+let jumpToItem: ItemJumper | null = null;
+
+/** The thread page's jump to a message by key, which loads the page around it when it is not rendered. */
+export function setItemJumper(next: ItemJumper | null) {
+	jumpToItem = next;
+}
+
+/** A quote's source: its message on its own thread's page, opened at the message from anywhere else. */
 export function showQuoteSource(q: Quote) {
-	if (window.location.pathname.includes(q.source.threadId)) scrollToQuote(q);
-	else openThreadAt(q.source.threadId, q.source.key);
+	if (!window.location.pathname.includes(q.source.threadId))
+		return openThreadAt(q.source.threadId, q.source.key);
+	if (q.source.key && jumpToItem) void jumpToItem(q.source.key);
+	else scrollToQuote(q);
 }
 
 /** Scrolls the transcript to the message a quote came from, found by its first line. */
