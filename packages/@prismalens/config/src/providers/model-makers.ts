@@ -84,4 +84,71 @@ export function providerFacts(
 	return name || pages ? { id, name: name ?? id, ...pages } : null;
 }
 
+/** How one identity field is known, as `ModelIdentitySchema` in contracts records it. */
+export type IdentitySource =
+	| "reported"
+	| "selected"
+	| "inferred"
+	| "thread"
+	| "unknown";
+export type Known = { value: string | null; source: IdentitySource };
+export interface ModelIdentityShape {
+	agent: Known;
+	provider: Known;
+	maker: Known;
+	model: Known;
+}
+
+/** What the resolver reads of an agent's registry row. */
+export interface IdentityAgentFacts {
+	vendor?: string;
+	routingEnvKeys?: readonly string[];
+	catalogue?: { prefixed?: boolean };
+}
+
+export interface IdentityEvidence {
+	agent: Known;
+	model: Known;
+	/** A provider the agent itself reported for the session. */
+	reportedProvider?: string | null;
+	/** The run's env and the `env` of the settings files it read; null when not known, as at read time. */
+	env: Readonly<Record<string, string | undefined>> | null;
+	/** The listed entry's or the catalogue's maker for the model. */
+	maker?: string | null;
+}
+
+const UNKNOWN: Known = { value: null, source: "unknown" };
+
+/**
+ * One rule per field, from evidence only (#1180). Provider: the agent's own report or its
+ * prefixed id; else its vendor, only when the run env is known to hold none of its routing keys.
+ */
+export function modelIdentity(
+	facts: IdentityAgentFacts | null,
+	evidence: IdentityEvidence,
+): ModelIdentityShape {
+	const model = evidence.model.value;
+	const prefix =
+		facts?.catalogue?.prefixed && model ? modelProvider(model) : null;
+	const reported = evidence.reportedProvider ?? prefix;
+	const env = evidence.env;
+	const routed =
+		!env ||
+		!facts?.routingEnvKeys ||
+		facts.routingEnvKeys.some((k) => env[k] !== undefined && env[k] !== "");
+	const provider: Known = reported
+		? { value: reported, source: "reported" }
+		: facts?.vendor && !routed
+			? { value: facts.vendor, source: "inferred" }
+			: UNKNOWN;
+	return {
+		agent: evidence.agent,
+		provider,
+		maker: evidence.maker
+			? { value: evidence.maker, source: "inferred" }
+			: UNKNOWN,
+		model: evidence.model,
+	};
+}
+
 export const MODEL_MAKERS_AS_OF: string = snapshot.updatedAt;

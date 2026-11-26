@@ -56,6 +56,7 @@ export const codex = defineAgent({
 		acpRegistryIds: ["codex-acp"],
 		vendor: "openai",
 		usageReports: ["cache"],
+		limitsBeforeRun: "codex-app-server",
 		settingsFile: "~/.codex/config.toml",
 		ownSettingsNote: (c) =>
 			c?.modes && !offers(c, "workspace-write")

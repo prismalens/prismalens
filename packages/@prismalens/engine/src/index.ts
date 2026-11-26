@@ -18,6 +18,7 @@ export * from "./run/gateway.js";
 export * from "./run/handoff.js";
 export * from "./run/harness-doctor.js";
 export * from "./run/investigate.js";
+export * from "./run/limits-read.js";
 export * from "./run/local-default.js";
 export * from "./run/name-thread.js";
 export * from "./run/permission.js";

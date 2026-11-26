@@ -89,6 +89,8 @@ export interface AgentFacts {
 	loginEnvKeys?: readonly string[];
 	/** Its adapter reports usage-limit windows on a run (#1171). */
 	reportsLimits?: true;
+	/** How PrismaLens reads its plan limits before any run, through its own CLI (#1180); absent, only runs report them. */
+	limitsBeforeRun?: "codex-app-server" | "claude-sdk";
 	/** The model PrismaLens asks for when the operator set none: the id the compatibility run passed on (#337 run e). */
 	defaultModel?: string;
 	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. */
@@ -127,6 +129,8 @@ export interface AgentFacts {
 	permissionRulesNote?: string;
 	/** The provider that makes and bills its models, by its models.dev id (`providerFacts`). */
 	vendor?: string;
+	/** Env vars that send its model calls through another provider; with none set, `vendor` serves them (#1180). */
+	routingEnvKeys?: readonly string[];
 	/** Where its fallback model list comes from in the models.dev snapshot (`catalogue-sources.json`). */
 	catalogue?: CatalogueSource;
 	/** What its adapter forwards over ACP besides tokens (pattern sheet §7); absent, unknown. */

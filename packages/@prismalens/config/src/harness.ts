@@ -66,9 +66,15 @@ export {
 	pickModelCatalogue,
 } from "./providers/model-catalogue.js";
 export {
+	type IdentityAgentFacts,
+	type IdentityEvidence,
+	type IdentitySource,
+	type Known,
 	MODEL_MAKERS_AS_OF,
+	type ModelIdentityShape,
 	type ModelMaker,
 	makerLetters,
+	modelIdentity,
 	modelMaker,
 	modelProvider,
 	PROVIDER_ACCOUNTS,
