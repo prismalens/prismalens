@@ -55,6 +55,14 @@ export const claudeCode = {
 			where:
 				"src/v1/acp-agent.ts perTaskStopAffordance, stopsWorkflowsOnCancel",
 		},
+		// Forks at the message only on this adapter, and only past the loaded-tail check (#1193 R1).
+		rewindVia: {
+			value: "fork-at-message",
+			via: "source",
+			verifiedAt: { cli: "2.1.329", adapter: "0.109.0" },
+			where:
+				"dist/fork-session.js forkPoint, forkTranscript; dist/sdk-to-acp.js applyMessageId",
+		},
 	},
 	providerKeys: [
 		"ANTHROPIC_API_KEY",

@@ -13,12 +13,15 @@ const h = vi.hoisted(() => ({
 	isLoading: false,
 	isError: false,
 	catchUp: vi.fn(async () => {}),
+	/** Succeeded mutations by key, as useMutationState reads them. */
+	succeeded: {} as Record<string, number[]>,
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => ({
 	...(await importOriginal<typeof import("@tanstack/react-query")>()),
 	useQueryClient: () => ({ invalidateQueries: vi.fn() }),
-	useMutationState: () => [],
+	useMutationState: (o: { filters: { mutationKey: string[] } }) =>
+		h.succeeded[o.filters.mutationKey[0] ?? ""] ?? [],
 	useQuery: () => ({
 		data: { id: "inv", status: h.status, workspace: null },
 		isLoading: false,
@@ -33,6 +36,10 @@ vi.mock("@/lib/api/orpc-client", () => ({
 			getStatus: { queryOptions: () => ({}) },
 			// The hook reads answered asks to catch the page up after one (#1101).
 			answerAsk: { mutationKey: () => ["answerAsk"] },
+		},
+		threads: {
+			rewindUndo: { mutationKey: () => ["rewindUndo"] },
+			rewindRestore: { mutationKey: () => ["rewindRestore"] },
 		},
 	},
 }));
@@ -69,6 +76,12 @@ vi.mock("@/lib/api/hooks/use-incidents-orpc", () => ({
 
 function Probe() {
 	useInvestigationRun("inv");
+	return null;
+}
+
+let captured: ReturnType<typeof useInvestigationRun> | undefined;
+function Capture() {
+	captured = useInvestigationRun("inv");
 	return null;
 }
 
@@ -126,11 +139,6 @@ describe("useInvestigationRun: a run that ends with its stream down", () => {
 	});
 
 	it("exposes eventsLoading and eventsError from history (#848)", async () => {
-		let captured: ReturnType<typeof useInvestigationRun> | undefined;
-		function Capture() {
-			captured = useInvestigationRun("inv");
-			return null;
-		}
 		const root = createRoot(document.createElement("div"));
 		h.isLoading = true;
 		h.isError = false;
@@ -145,4 +153,45 @@ describe("useInvestigationRun: a run that ends with its stream down", () => {
 		expect(captured?.eventsError).toBe(true);
 		await act(async () => root.unmount());
 	});
+});
+
+describe("useInvestigationRun: an ended thread's own rows (#1193)", () => {
+	const KIND: Record<string, string> = {
+		answerAsk: "permission_answer",
+		rewindUndo: "rewind_undone",
+		rewindRestore: "rewind_restored",
+	};
+	const row = (key: string) => ({
+		kind: KIND[key],
+		runId: "inv",
+		branchId: "rewinds",
+		path: [],
+		seq: 9,
+		ts: "2026-11-26T05:00:00.000Z",
+	});
+	it.each(["answerAsk", "rewindUndo", "rewindRestore"])(
+		"exposes the row the record holds once %s succeeds, since no stream carries it",
+		async (key) => {
+			const root = createRoot(document.createElement("div"));
+			h.status = "completed";
+			h.history = [];
+			h.succeeded = {};
+			await act(async () => root.render(<Capture />));
+			h.catchUp.mockReset();
+			// The catch-up reads the record: the server's row lands in the history.
+			h.catchUp.mockImplementation(async () => {
+				h.history = [row(key)];
+			});
+
+			h.succeeded = { [key]: [1] };
+			await act(async () => root.render(<Capture />));
+			await act(async () => root.render(<Capture />));
+
+			expect(captured?.events).toEqual([row(key)]);
+			h.succeeded = {};
+			h.catchUp.mockReset();
+			h.catchUp.mockResolvedValue();
+			await act(async () => root.unmount());
+		},
+	);
 });

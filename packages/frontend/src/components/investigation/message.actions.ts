@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { REWIND_BLOCK_WORDS, type RewindBlock } from "@prismalens/contracts";
 import {
 	Copy,
 	GitFork,
@@ -21,6 +22,21 @@ import { copyPending } from "@/lib/clipboard";
 /** The markdown pipeline loads on the first copy, not at startup (#1125, kernel plan §5). */
 const markdown = () => import("@/lib/markdown");
 
+/** What the message menu can tell about Edit before the server's preview (#1193). */
+type EditState =
+	| "editable"
+	| "editRunning"
+	| "editQueued"
+	| "editReport"
+	| "editViewOnly";
+type MessageState = "forkable" | "quotable" | EditState;
+
+/** A user's sent message: Edit opens it in place, or why it can't now. */
+export interface MessageEdit {
+	block: RewindBlock | null;
+	run: () => void;
+}
+
 /** A transcript message: its text, and Fork where the response row offers it. */
 export interface MessageCtx {
 	text: string;
@@ -28,7 +44,9 @@ export interface MessageCtx {
 	onCopied?: () => void;
 	/** Quotes the whole message into the open thread's box or a new thread. */
 	quote?: MessageQuote;
-	facts: Facts<"forkable" | "quotable">;
+	/** Set on the user's own sent messages only (#1193). */
+	edit?: MessageEdit;
+	facts: Facts<MessageState>;
 }
 
 export interface MessageQuote {
@@ -37,9 +55,7 @@ export interface MessageQuote {
 }
 
 /** The message object: the context its actions run with and the states they test. */
-export const messageObject = defineObject<MessageCtx, "forkable" | "quotable">(
-	"message",
-);
+export const messageObject = defineObject<MessageCtx, MessageState>("message");
 
 /** The markdown as `text/plain` and the rendered message as `text/html` (#1101). */
 export const messageCopy = defineAction({
@@ -96,6 +112,25 @@ export const messageQuoteIn = defineAction({
 	run: (c) => c.quote?.run("in"),
 });
 
+/** Edit a sent message and run it again (#1193): the turns after it fold, the agent's files go back. */
+export const messageEdit = defineAction({
+	id: "message.edit",
+	label: "Edit",
+	icon: Pencil,
+	when: (f) => !!f.is?.editable,
+	disabled: (f) =>
+		f.is?.editViewOnly
+			? REWIND_BLOCK_WORDS["view-only"]
+			: f.is?.editRunning
+				? REWIND_BLOCK_WORDS.running
+				: f.is?.editQueued
+					? REWIND_BLOCK_WORDS.queued
+					: f.is?.editReport
+						? REWIND_BLOCK_WORDS["before-report"]
+						: false,
+	run: (c) => c.edit?.run(),
+});
+
 export const messageFork = defineAction({
 	id: "message.fork",
 	label: "Fork from here",
@@ -110,16 +145,27 @@ export function messageCtx(
 	onFork?: () => void,
 	onCopied?: () => void,
 	quote?: MessageQuote,
+	edit?: MessageEdit,
 ): MessageCtx {
 	return {
 		text,
 		onFork,
 		onCopied,
 		quote,
+		...(edit ? { edit } : {}),
 		// Read when a menu opens: the thread's box registers after the first render.
 		facts: {
 			get is() {
-				return { forkable: !!onFork, quotable: !!text && !!quote?.can() };
+				const b = edit?.block;
+				return {
+					forkable: !!onFork,
+					quotable: !!text && !!quote?.can(),
+					editable: !!edit,
+					editRunning: b === "running",
+					editQueued: b === "queued",
+					editReport: b === "before-report",
+					editViewOnly: b === "view-only",
+				};
 			},
 		},
 	};

@@ -260,7 +260,7 @@ packages/api/src/modules/investigations/subagent-sessions.spec.ts	as-never	17
 packages/api/src/modules/investigations/thread-window/thread-search.service.ts	biome-ignore	2
 packages/api/src/modules/investigations/tool-asks.service.spec.ts	T2	1
 packages/api/src/modules/investigations/tool-asks.service.spec.ts	as-never	15
-packages/api/src/modules/investigations/worktree-changes.int.spec.ts	T1	3
+packages/api/src/modules/investigations/worktree-changes.int.spec.ts	T1	2
 packages/api/src/modules/investigations/worktree-changes.int.spec.ts	T2	6
 packages/api/src/modules/investigations/worktree-changes.int.spec.ts	T3	1
 packages/api/src/modules/push/push.service.int.spec.ts	as-never	6
@@ -375,7 +375,7 @@ packages/api/test/scenarios/thread-tree.int.spec.ts	T1	1
 packages/api/test/scenarios/thread-tree.int.spec.ts	T2	4
 packages/api/test/scenarios/thread-tree.int.spec.ts	as-never	2
 packages/api/test/scenarios/tools-follow-the-thread.int.spec.ts	T1	1
-packages/api/test/scenarios/tools-follow-the-thread.int.spec.ts	T2	4
+packages/api/test/scenarios/tools-follow-the-thread.int.spec.ts	T2	1
 packages/api/test/scenarios/update-draining.int.spec.ts	T2	2
 packages/api/test/scenarios/vendor-alert-sources.int.spec.ts	T2	1
 packages/api/test/scenarios/wakeup.int.spec.ts	T2	2

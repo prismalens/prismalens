@@ -227,12 +227,37 @@ function inputFor(tool: string, run: Seeded) {
 			return { id: "none" };
 		case "pl_citation_read":
 			return run.cite ?? {};
+		// An earlier thread this one can read; a no-subject thread reads none, so it asks for its `starter`.
+		case "pl_thread_rewind":
+			return { id: run.other ?? "starter", text: "Check the cart pods instead.", requestId: "cov-rewind" };
 		case "pl_secret_request":
 			return { name: "CART_TOKEN", reason: "Read the cart admin API" };
 		default:
 			return {};
 	}
 }
+
+/** The card an edit of a person's only message opens: nothing in the worktree changed since it (#1193). */
+const REWIND_CARD = [
+	"Folds 1 turn.",
+	"Sets back: none.",
+	"Keeps: none.",
+	"Changed during a turn, kept: none.",
+	"Stays: Commands' effects outside the worktree, Pushes and other threads, Watches, links and the thread's PRs.",
+	"A new session starts.",
+].join("\n");
+
+/**
+ * What pl_thread_rewind answers each subject: a card on an earlier thread a person wrote in;
+ * a refusal for an investigation nobody messaged, and for a thread nobody started.
+ */
+const REWIND = {
+	project: { answer: "ok", cards: [REWIND_CARD] },
+	service: { answer: "ok", cards: [REWIND_CARD] },
+	schedule: { answer: "ok", cards: [REWIND_CARD] },
+	incident: { answer: "invalid_input", cards: [] },
+	none: { answer: "invalid_input", cards: [] },
+} as const;
 
 describe("Tools follow the thread (#1020): no offered tool always fails", () => {
 	it("Given a project thread with history, When it lists threads, Then it gets the earlier thread, not not_found", async () => {
@@ -247,8 +272,9 @@ describe("Tools follow the thread (#1020): no offered tool always fails", () => 
 		expect(JSON.stringify(r)).toContain(project?.other);
 	});
 
-	for (const subject of ["incident", "project", "service", "schedule", "none"] as const)
-		it(`Given a seeded ${subject} thread, Then every tool its view offers answers something other than not_found`, async () => {
+	it.each(["incident", "project", "service", "schedule", "none"] as const)(
+		"Given a seeded %s thread, Then every tool its view offers answers something other than not_found",
+		async (subject) => {
 			const g = await pl.gateway();
 			const run = runs.get(subject);
 			if (!run) throw new Error(`no ${subject} run was seeded`);
@@ -305,5 +331,11 @@ describe("Tools follow the thread (#1020): no offered tool always fails", () => 
 			// The reads that follow the subject answer with data, not a refusal.
 			for (const name of ["pl_thread_list", "pl_thread_read", "pl_attachment_read", "pl_runbooks_read", "pl_fixes_list", "pl_changes_list"])
 				if (name in answers) expect(`${name}: ${answers[name]}`).toBe(`${name}: ok`);
-		});
+			expect(answers.pl_thread_rewind).toBe(REWIND[subject].answer);
+			const asked = await prisma.pendingAction.findMany({
+				where: { callerId: run.id, tool: "pl_thread_rewind" },
+			});
+			expect(asked.map((a) => (JSON.parse(a.args) as { card: string }).card)).toEqual(REWIND[subject].cards);
+		},
+	);
 });

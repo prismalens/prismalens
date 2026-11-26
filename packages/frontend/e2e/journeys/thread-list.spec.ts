@@ -567,7 +567,7 @@ test.describe("#1020 — thread list and Home", () => {
 		});
 
 		// The Threads page is gone (#1101 sheet §1): the count opens the menu, where Needs you heads the list.
-		test("g2. the strip shows what waits on you and leads to it", async ({
+		test("g2. the strip shows what waits on you and lists it by urgency", async ({
 			page,
 		}) => {
 			await serveFeed(page, () => [
@@ -580,14 +580,13 @@ test.describe("#1020 — thread list and Home", () => {
 			]);
 			await page.goto("/incidents");
 			const waiting = page.getByTestId("strip-waiting");
-			// The count is the ask mark and a number; its words are the label (e0ee7d639).
+			// The count is the most urgent status's mark and a number; its words are the label (#1247 D25).
 			await expect(waiting).toHaveText("1");
 			await expect(waiting).toHaveAttribute("aria-label", "1 waiting for you");
+			await expect(waiting).toHaveAttribute("data-urgent", "approval");
 			await waiting.tap();
-			const needs = page
-				.getByTestId("phone-menu")
-				.getByTestId("thread-section-needs");
-			await expect(needs.getByTestId("thread-row")).toHaveAttribute(
+			const needs = page.getByTestId("needs-popover");
+			await expect(needs.getByTestId("needs-row")).toHaveAttribute(
 				"data-id",
 				RUN_ID,
 			);

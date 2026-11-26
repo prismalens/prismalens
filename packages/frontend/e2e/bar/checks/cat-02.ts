@@ -1,8 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { expect, test } from "@playwright/test";
 import { defineChecks, notSetUp, verdict } from "../bar";
+
+const ROOT = resolve(import.meta.dirname, "../../../../..");
+
+/** Fires the sim's stalled case again (its control-page trigger); returns the new thread's id. */
+function freshStalled(url: string): string | null {
+	const dir = resolve(process.env.BAR_SIM_DIR ?? join(ROOT, ".sim-checks"));
+	const { workspace } = JSON.parse(
+		readFileSync(join(dir, "state.json"), "utf8"),
+	) as { workspace: string };
+	const out = execFileSync(
+		process.execPath,
+		[
+			"scripts/fakes/failure-case.mjs",
+			"live-stuck",
+			"--url",
+			url,
+			"--stamp",
+			"agent.stalled",
+		],
+		{
+			cwd: ROOT,
+			encoding: "utf8",
+			env: { ...process.env, PRISMALENS_WORKSPACE_DIR: workspace },
+		},
+	);
+	return /\/threads\/([0-9a-f-]{36})/.exec(out)?.[1] ?? null;
+}
 
 /** #1101 category 2, Thread statuses. */
 export default defineChecks([
@@ -253,18 +283,45 @@ export default defineChecks([
 	{
 		item: "2.5",
 		async run({ page, open, sim }) {
-			const path = sim.thread("agent.stalled");
-			const threadId = path.split("/").pop();
+			// The fixture reads quiet 5 min after its last event and fails at the 15-min run limit:
+			// wait for that window, or fire a fresh one when the staged one has ended (#1193).
+			test.setTimeout(12 * 60_000);
+			const status = async (id: string) =>
+				(
+					(await (
+						await page.request.post("/api/threads/statuses", {
+							data: { ids: [id] },
+						})
+					).json()) as {
+						statuses: Record<string, { status: string; quietSince?: string }>;
+					}
+				).statuses[id];
+			let path = sim.thread("agent.stalled");
+			let threadId = path.split("/").pop() ?? "";
+			if ((await status(threadId))?.status !== "working") {
+				const fresh = freshStalled(sim.url);
+				if (!fresh)
+					return notSetUp(
+						"the staged stalled thread has ended and a fresh one could not be fired",
+					);
+				threadId = fresh;
+				path = `/threads/${fresh}`;
+			}
+			await expect
+				.poll(async () => (await status(threadId))?.quietSince ?? null, {
+					timeout: 7 * 60_000,
+					intervals: [10_000],
+				})
+				.not.toBeNull();
 
 			await open("/new");
 			const tree = page.getByTestId("thread-tree");
 			await expect(tree).toBeVisible();
-
-			const rowData = await page.evaluate((id) => {
-				const el = document.querySelector(
-					`[data-testid="thread-row"][data-id="${id}"]`,
-				);
-				if (!el) return null;
+			const row = page.locator(
+				`[data-testid="thread-row"][data-id="${threadId}"]`,
+			);
+			await expect(row).toBeVisible({ timeout: 30_000 });
+			const rowData = await row.evaluate((el) => {
 				const wrap = el.closest('[data-testid="thread-row-wrap"]') ?? el;
 				const detail =
 					wrap
@@ -276,32 +333,7 @@ export default defineChecks([
 						?.textContent?.trim() ?? "";
 				const status = el.getAttribute("data-state") ?? "";
 				return { detail, cause, status };
-			}, threadId);
-
-			// The fixture goes quiet after 5 min and fails at its 15-min run limit.
-			if (!rowData)
-				return notSetUp(
-					"the stalled fixture is no longer among the sidebar's shown rows, where a Working thread sits: it has failed at its 15-minute limit",
-				);
-			if (rowData.status !== "working")
-				return notSetUp(
-					`the stalled fixture is "${rowData.status}" by now (${rowData.detail || rowData.cause}): it fails at its 15-minute limit`,
-				);
-
-			// The fixture's agent goes silent 5 minutes in and reads quiet once it has been silent 5 more.
-			if (!/Working,\s*quiet for\s*\d+\s*min/i.test(rowData.detail)) {
-				const record = await (
-					await page.request.get(`/api/investigations/${threadId}`)
-				).text();
-				const started = /"startedAt":"([^"]+)"/.exec(record)?.[1];
-				const minutes = started
-					? (Date.now() - Date.parse(started)) / 60_000
-					: 0;
-				if (minutes < 11)
-					return notSetUp(
-						`the stalled fixture is ${Math.round(minutes)} min old, so it has not been silent for 5 min yet and reads "${rowData.detail}"; it reads quiet from about its 10th minute and fails at its 15-minute limit`,
-					);
-			}
+			});
 
 			await open(path);
 			const pageEl = page.getByTestId("thread-page");
@@ -323,6 +355,10 @@ export default defineChecks([
 			// Transcript check
 			const thinking = page.getByTestId("transcript-thinking");
 			if (await thinking.isVisible().catch(() => false)) {
+				// The line takes the thread's status once it loads; read it after, not on first paint.
+				await expect(thinking)
+					.toContainText("Quiet", { timeout: 15_000 })
+					.catch(() => undefined);
 				const thinkingText = (await thinking.textContent())?.trim() ?? "";
 				if (!thinkingText.toLowerCase().includes("quiet")) {
 					fails.push(

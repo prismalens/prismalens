@@ -104,6 +104,8 @@ export interface AcpUpdate {
 	_meta?: unknown;
 	/** `plan`: the whole plan, replacing the last one. */
 	entries?: unknown;
+	/** Message and thought chunks: the agent message they belong to (#1193). */
+	messageId?: string | null;
 }
 
 /** A call Claude Code's own permission rules refused: no ask reached PrismaLens or the user (#673 w7-6). */
@@ -116,6 +118,8 @@ interface Lane {
 	/** Characters of a sub-agent's text kept so far, against SUBAGENT_TEXT_CAP. */
 	kept: number;
 	capped: boolean;
+	/** The last ACP `messageId` among the chunks not yet flushed (#1193). */
+	messageId?: string;
 }
 
 interface Subagent {
@@ -213,8 +217,10 @@ export class AcpAdapter {
 		try {
 			// Thinking is kept for the main agent only; a sub-agent's view shows its words and steps.
 			if (u.sessionUpdate === "agent_thought_chunk") {
-				if (this.lane === this.top)
+				if (this.lane === this.top) {
 					this.addThought(flattenAcpContent(u.content));
+					if (u.messageId) this.top.messageId = u.messageId.slice(0, 200);
+				}
 				return [];
 			}
 			if (this.lane !== this.top) return this.laneEvents(u);
@@ -261,8 +267,17 @@ export class AcpAdapter {
 				const entries = planEntries(u.entries);
 				return entries ? [{ kind: "plan", ...this.base(), entries }] : [];
 			}
-			case "agent_message_chunk":
-				return this.addText(flattenAcpContent(u.content));
+			case "agent_message_chunk": {
+				// A step's text must be its message's own: a fork point checks the pair (#1193).
+				const id = u.messageId?.slice(0, 200);
+				const prior =
+					id && this.lane.messageId && id !== this.lane.messageId
+						? this.flushLane(this.lane)
+						: null;
+				if (id) this.lane.messageId = id;
+				const out = this.addText(flattenAcpContent(u.content));
+				return prior ? [prior, ...out] : out;
+			}
 			case "tool_call": {
 				const step = this.toolCall(u);
 				const done = isTerminal(u.status) ? this.toolResult(u) : null;
@@ -358,10 +373,18 @@ export class AcpAdapter {
 		if (lane.text.length === 0) return null;
 		const text = lane.text;
 		lane.text = "";
+		const acpMessageId = lane.messageId;
+		lane.messageId = undefined;
 		const was = this.lane;
 		this.lane = lane;
 		try {
-			return { kind: "agent_step", ...this.base(), text, toolCalls: [] };
+			return {
+				kind: "agent_step",
+				...this.base(),
+				text,
+				toolCalls: [],
+				...(acpMessageId ? { acpMessageId } : {}),
+			};
 		} finally {
 			this.lane = was;
 		}
@@ -849,11 +872,14 @@ export class AcpAdapter {
 		// The text the model produced before deciding on this call becomes the step's text.
 		const text = this.lane.text;
 		this.lane.text = "";
+		const acpMessageId = this.lane.messageId;
+		this.lane.messageId = undefined;
 		return {
 			kind: "agent_step",
 			...this.base(),
 			text,
 			toolCalls: [{ toolCallId, name, args: toArgs(u.rawInput) }],
+			...(acpMessageId ? { acpMessageId } : {}),
 		};
 	}
 

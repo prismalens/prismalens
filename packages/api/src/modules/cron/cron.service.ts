@@ -333,6 +333,7 @@ export class CronService implements OnModuleInit, OnModuleDestroy {
 		);
 		const rows = await this.prisma.investigationEvent.findMany({
 			where: {
+				foldedBy: null,
 				investigationId: threadId,
 				event: { contains: '"kind":"operator_message"' },
 			},

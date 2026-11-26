@@ -33,6 +33,8 @@ export const ASK_CLOSED_OUTCOMES = [
 	"answered",
 	"declined",
 	"expired",
+	/** A rewind folded the turn that asked; it stays closed whichever way the fold goes (#1193). */
+	"superseded",
 ] as const;
 export type AskClosedOutcome = (typeof ASK_CLOSED_OUTCOMES)[number];
 

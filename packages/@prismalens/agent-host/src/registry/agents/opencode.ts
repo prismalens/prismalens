@@ -83,5 +83,12 @@ export const opencode = {
 			verifiedAt: { cli: "1.19.6", adapter: null },
 			where: "packages/opencode/src/tool/task.ts onAbort, background.start",
 		},
+		rewindVia: {
+			value: "replay",
+			via: "source",
+			verifiedAt: { cli: "1.19.6", adapter: null },
+			where:
+				"packages/opencode/src/acp/service.ts forkSession: session.fork has no point",
+		},
 	},
 } satisfies AgentDescriptor;
