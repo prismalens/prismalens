@@ -41,9 +41,6 @@ export const qwen = defineAgent({
 							"Modifying, copying, leasing, selling, distributing, or manipulating our Service; using bots to access the Service.",
 						readOn: "2026-11-26",
 					},
-					gaps: [
-						"qwen.ai/termsservice renders only with JavaScript: read from its bundle g.alicdn.com/qwenweb/qwen-ai-fe/0.0.91/js/9253.js, no browser read",
-					],
 				},
 			},
 			codingPlan(["OPENAI_API_KEY"], "OPENAI_BASE_URL"),

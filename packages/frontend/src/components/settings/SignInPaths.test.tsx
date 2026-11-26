@@ -59,7 +59,10 @@ describe("SignInPaths (#1252)", () => {
 		]).toEqual(["Your runs only", "Your runs only", "Alerts and schedules"]);
 		expect(text("agent-sign-in-api-key")).toContain("Runs use this one here.");
 		expect(text("agent-sign-in-login")).toContain(
-			"“Modifying, copying, leasing, selling, distributing, or manipulating our Service; using bots to access the Service.” qwen.ai, read 2026-11-26. Not read: qwen.ai/termsservice renders only with JavaScript: read from its bundle g.alicdn.com/qwenweb/qwen-ai-fe/0.0.91/js/9253.js, no browser read.",
+			"“Modifying, copying, leasing, selling, distributing, or manipulating our Service; using bots to access the Service.” qwen.ai, read 2026-11-26.",
+		);
+		expect(text("agent-sign-in-api-key")).toContain(
+			"Not read: Alibaba Cloud Model Studio's legal agreement.",
 		);
 	});
 });

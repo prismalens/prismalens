@@ -71,6 +71,6 @@ test("the shipped registry answers for Qwen Code's own sign-in", async () => {
 		"qwen",
 		"  login (Qwen account): interactive-only",
 		'    "Modifying, copying, leasing, selling, distributing, or manipulating our Service; using bots to access the Service." https://qwen.ai/termsservice (read 2026-11-26)',
-		"    not read: qwen.ai/termsservice renders only with JavaScript: read from its bundle g.alicdn.com/qwenweb/qwen-ai-fe/0.0.91/js/9253.js, no browser read",
+		"  coding-plan (Alibaba Coding Plan key (sk-sp-)): interactive-only",
 	]);
 });
