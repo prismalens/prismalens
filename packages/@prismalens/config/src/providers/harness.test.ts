@@ -68,14 +68,14 @@ describe("harness config (#817: the repo's own agent config loads)", () => {
 		expect(HARNESS_REGISTRY.codex.acpEnv(runEnv).INITIAL_AGENT_MODE).toBeUndefined();
 	});
 
-	it("deepagents takes the gateway as an --mcp-config run file, and never --no-mcp (#848)", () => {
+	it("deepagents takes the gateway as an --mcp-config run file once launch marks it, and never --no-mcp (#848)", () => {
 		const d = HARNESS_REGISTRY.deepagents;
 		expect(d.binary).toBe("dcode");
 		expect(d.gatewayDelivery).toBe("mcp-config-file");
 		expect(d.acpArgs(runEnv)).toEqual(["--acp"]);
 		expect(d.configFiles?.(runEnv)).toEqual({});
 		const gateway = { url: "http://127.0.0.1:3001/api/mcp/runs/r1", token: "tok", name: "prismalens-abcdefgh23" };
-		const args = d.acpArgs({ ...runEnv, gateway });
+		const args = d.acpArgs({ ...runEnv, gateway, runFile: true });
 		expect(args.slice(0, 2)).toEqual(["--acp", "--mcp-config"]);
 		expect(args[2]).toContain(GATEWAY_RUN_FILE);
 		expect(args).not.toContain("--trust-project-mcp");
