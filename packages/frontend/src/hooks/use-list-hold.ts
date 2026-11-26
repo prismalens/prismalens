@@ -16,6 +16,7 @@ import {
 	heldModel,
 	layoutOf,
 	rebase,
+	sectionOf,
 } from "@/lib/thread-hold";
 import type { ThreadListModel } from "@/lib/thread-list";
 
@@ -99,9 +100,14 @@ export function useListHold(
 		}, RELEASE_MS);
 	}, [engaged, release]);
 
-	const own = ownMoves();
-	const base =
-		held.current && own.size ? rebase(held.current, live, own) : held.current;
+	// A move the reader made applies once the live list shows it in its new section.
+	const heldNow = held.current;
+	const own = new Set(
+		[...ownMoves()].filter(
+			(id) => heldNow && sectionOf(heldNow, id) !== sectionOf(live, id),
+		),
+	);
+	const base = heldNow && own.size ? rebase(heldNow, live, own) : heldNow;
 	const tail = Date.now() < moreUntil.current;
 	const result: Held = base
 		? heldModel(live, base, tail)

@@ -272,4 +272,17 @@ describe("useListHold keeps the list still while the reader is in it (#1247 D25)
 			pending: 1,
 		});
 	});
+	it("keeps the reader's exemption until their move reaches the list, though the list draws first", async () => {
+		await draw(firstWithC);
+		await pointer("pointerenter");
+		userMovedThreads(["a"]);
+		// The list redraws before the pin or archive has reached the live model.
+		await draw(firstWithC);
+		await draw(third);
+		expect(seen).toMatchObject({
+			needs: ["a"],
+			active: ["b", "c"],
+			pending: 1,
+		});
+	});
 });

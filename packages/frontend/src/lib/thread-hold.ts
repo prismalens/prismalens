@@ -115,3 +115,19 @@ export function rebase(
 		if (!SECTIONS.some((s) => order[s].includes(id))) nodes.delete(id);
 	return { order, nodes };
 }
+
+/** The section a row sits in, in a held layout or a live list; null when it is in neither. */
+export function sectionOf(
+	at: HeldLayout | ThreadListModel,
+	id: string,
+): HoldSection | null {
+	const order = "order" in at ? at.order : null;
+	for (const s of SECTIONS)
+		if (
+			order
+				? order[s].includes(id)
+				: (at as ThreadListModel)[s].some((n) => n.id === id)
+		)
+			return s;
+	return null;
+}
