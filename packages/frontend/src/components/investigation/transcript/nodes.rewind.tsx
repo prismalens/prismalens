@@ -1,16 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import {
-	type CanonicalEvent,
-	CanonicalEventSchema,
-} from "@prismalens/contracts";
+import type { CanonicalEvent } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { History, TriangleAlert, Undo2 } from "lucide-react";
-import { createContext, type ReactNode, useContext, useState } from "react";
+import {
+	createContext,
+	type ReactNode,
+	useContext,
+	useEffect,
+	useState,
+} from "react";
 import type { RewindTarget } from "@/components/thread/use-rewind";
 import { Button } from "@/components/ui/button";
 import { orpc } from "@/lib/api/orpc-client";
+import {
+	loadThreadSchemas,
+	threadSchemas,
+	useThreadSchemasReady,
+} from "@/lib/thread-schemas-load";
 import type { TranscriptNodeProps, TranscriptNodes } from "./types";
 
 /** What the page tells the rewind rows: which edit is the latest, and how to open its dialog. */
@@ -79,13 +87,19 @@ function FoldedTurns({
 			input: { id: threadId, rewindId },
 		}),
 	);
-	if (q.isPending) return <p className="text-meta text-text-3">Loading</p>;
+	const ready = useThreadSchemasReady();
+	useEffect(() => {
+		void loadThreadSchemas().catch(() => {});
+	}, []);
+	const schemas = ready ? threadSchemas() : null;
+	if (q.isPending || !schemas)
+		return <p className="text-meta text-text-3">Loading</p>;
 	if (q.isError)
 		return (
 			<p className="text-meta text-danger">Couldn't read the folded turns</p>
 		);
 	const lines = q.data.events.flatMap((raw, i) => {
-		const p = CanonicalEventSchema.safeParse(raw);
+		const p = schemas.CanonicalEventSchema.safeParse(raw);
 		if (!p.success) return [];
 		const e = p.data;
 		if (e.kind === "operator_message")

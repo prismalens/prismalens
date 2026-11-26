@@ -157,7 +157,6 @@ import { prAnswersOf } from "./panel/pr-answers";
 import { detailsOf } from "./panel/thread-details";
 import { useDetailsCard } from "./panel/use-details-card";
 import { useThreadPanes } from "./panel/use-thread-panes";
-import { RewindDialog } from "./RewindDialog";
 import {
 	FailedDock,
 	failedCause,
@@ -169,6 +168,13 @@ import { headerPr, PrSurface, ThreadPrChip } from "./ThreadPrChip";
 import { threadLanding } from "./thread-landing";
 import { useRewind } from "./use-rewind";
 import { useTranscriptJumps } from "./use-transcript-jumps";
+
+/** The confirm loads when an edit, undo or restore opens it, not with the thread's first paint. */
+const RewindDialog = lazyPart(
+	() => import("./RewindDialog").then((m) => m.RewindDialog),
+	null,
+	{ now: true },
+);
 
 // The thread's first frame is its header, the folded transcript and a stand-in box; the
 // composer, docks, rail and menus load after it (#1101 category 12).
@@ -1897,12 +1903,14 @@ export function ThreadPage({ id }: { id: string }) {
 			<div className="shrink-0 px-4 pt-2 pb-3 max-md:pb-[calc(0.75rem+var(--kb-inset,0px))]">
 				<div className="relative mx-auto w-full max-w-(--lane-w)">
 					<AsideHost threadId={inv.id} />
-					<RewindDialog
-						threadId={inv.id}
-						target={rewind.target}
-						onClose={rewind.close}
-						onKept={rewind.setKept}
-					/>
+					{rewind.target && (
+						<RewindDialog
+							threadId={inv.id}
+							target={rewind.target}
+							onClose={rewind.close}
+							onKept={rewind.setKept}
+						/>
+					)}
 					<Composer
 						state={state}
 						onSend={(env, now) => {

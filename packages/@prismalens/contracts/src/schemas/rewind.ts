@@ -17,31 +17,7 @@ import {
 	MESSAGE_TEXT_MAX,
 	REWIND_PATHS_MAX,
 } from "./investigation-values.js";
-
-/** Why a message can't be edited now, in the order they are checked. */
-export const REWIND_BLOCKS = [
-	"view-only",
-	"not-yours",
-	"running",
-	"queued",
-	"before-report",
-] as const;
-export type RewindBlock = (typeof REWIND_BLOCKS)[number];
-
-/** Each block's words, for the menu's hint and the refusal. */
-export const REWIND_BLOCK_WORDS: Readonly<Record<RewindBlock, string>> = {
-	"view-only": "This device can view and answer, not edit",
-	"not-yours": "Only your own messages can be edited",
-	running: "Stop the thread first",
-	queued: "Send or withdraw your queued messages first",
-	"before-report":
-		"Messages before the report can't be edited. Fork from here instead.",
-};
-
-/** The branches a rewind folds: the edited message's own, and the asks it raised. */
-export function CONVERSATION_BRANCHES(messageBranch: string): string[] {
-	return [messageBranch, "asks"];
-}
+import { REWIND_BLOCKS } from "./rewind-values.js";
 
 export const RewindPreviewInputSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
@@ -52,15 +28,17 @@ export const RewindPreviewInputSchema = /* @__PURE__ */ lazySchema(() =>
 );
 export type RewindPreviewInput = z.infer<typeof RewindPreviewInputSchema>;
 
-const RepoUnavailableReason = z.enum([
-	"borrowed",
-	"folder",
-	"running",
-	"view-only",
-	"no-snapshot",
-	"removed",
-	"linked",
-]);
+const RepoUnavailableReason = /* @__PURE__ */ lazySchema(() =>
+	z.enum([
+		"borrowed",
+		"folder",
+		"running",
+		"view-only",
+		"no-snapshot",
+		"removed",
+		"linked",
+	]),
+);
 
 export const RewindRepoPreviewSchema = /* @__PURE__ */ lazySchema(() =>
 	z.discriminatedUnion("state", [
