@@ -38,7 +38,7 @@ import { getErrorMessage } from "@/lib/get-error-message";
 import { lazyPart } from "@/lib/lazy";
 import { settleEndsLine } from "@/lib/settle-holds";
 import { threadLink } from "@/lib/thread-rows";
-import { rowSettleable } from "@/lib/thread-status";
+import { rowSettleable, rowSettled } from "@/lib/thread-status";
 import type {
 	PageState,
 	ThreadCtx,
@@ -73,7 +73,9 @@ export type MenuThread = Pick<
 	| "pinnedAt"
 	| "archivedAt"
 > &
-	Partial<Pick<ThreadRow, "state" | "waitingAsk" | "awaitingApprovalAt">>;
+	Partial<
+		Pick<ThreadRow, "section" | "state" | "waitingAsk" | "awaitingApprovalAt">
+	>;
 
 /** Why an item cannot run now, or null when it can. */
 export function disabledWhy(
@@ -285,7 +287,7 @@ export function useThreadCtx(
 				archived: !!thread.archivedAt,
 				live: isWorkflowLive(thread.status),
 				settleable: !!onSettle && (!row || rowSettleable(thread)),
-				settled: !!thread.settledAt,
+				settled: rowSettled(thread),
 				standalone,
 				naming,
 				project: standalone && !!thread.repositoryId,

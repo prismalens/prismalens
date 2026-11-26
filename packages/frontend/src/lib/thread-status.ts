@@ -224,7 +224,13 @@ export function infoReason(info: ThreadStatusInfo, now: number): string | null {
 
 /** What a row's own Settle reads: its run, its settle time and whether it waits on an answer. */
 export type SettleFields = Pick<ThreadRow, "status" | "settledAt"> &
-	Partial<Pick<ThreadRow, "state" | "waitingAsk" | "awaitingApprovalAt">>;
+	Partial<
+		Pick<ThreadRow, "section" | "state" | "waitingAsk" | "awaitingApprovalAt">
+	>;
+
+/** Settled by its row's section: activity newer than settledAt brings a thread back (#1101 cat 2.2). */
+export const rowSettled = (t: Pick<SettleFields, "section" | "settledAt">) =>
+	t.section ? t.section === "settled" : !!t.settledAt;
 
 /** A row offers Settle when it is idle, not settled and not waiting on the reader's answer. */
 export function rowSettleable(t: SettleFields): boolean {
@@ -239,7 +245,7 @@ export function rowSettleable(t: SettleFields): boolean {
 				: null);
 	return (
 		!isWorkflowLive(t.status) &&
-		!t.settledAt &&
+		!rowSettled(t) &&
 		asks !== "approval" &&
 		asks !== "question"
 	);
