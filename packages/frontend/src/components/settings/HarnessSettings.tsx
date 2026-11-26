@@ -23,7 +23,7 @@ import {
 import { ACCESS_LEVEL_LABEL, type HarnessStatus } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import {
 	AgentModelPicker,
@@ -32,6 +32,7 @@ import {
 } from "@/components/agent/AgentPicker";
 import { AddAgentDialog } from "./AddAgentDialog";
 import { agentState, testedHint, versionText } from "./AgentDetail";
+import { UpdateAllButton, useAgentListCtx } from "./AgentLines";
 import {
 	ColdResumeRow,
 	CompactIdleRow,
@@ -46,6 +47,7 @@ export { testedHint, versionText };
 const HOST_ONLY = "Only the computer running PrismaLens can change this.";
 
 import { settingOf } from "@/components/kit/registry";
+import { Surface } from "@/components/kit/Surface";
 import { AdvancedFold } from "@/components/shared/AdvancedFold";
 import { MutationError } from "@/components/shared/MutationError";
 import { Pool, Row } from "@/components/shared/Row";
@@ -134,7 +136,9 @@ export function HarnessSettings() {
 				title={settingOf("agent.agents").label}
 				count={listed.length || undefined}
 				testId={settingOf("agent.agents").anchor}
-				actions={addAgent}
+				actions={
+					<AgentListActions agents={listed}>{addAgent}</AgentListActions>
+				}
 			>
 				{adding && <AddAgentDialog open onOpenChange={setAdding} />}
 				{listed.length === 0 ? (
@@ -805,5 +809,24 @@ function LimitSelect({
 				))}
 			</SelectContent>
 		</Select>
+	);
+}
+
+/** The Agents header as the `agent.list` surface: Update all once two or more agents show Update (#1180). */
+function AgentListActions({
+	agents,
+	children,
+}: {
+	agents: HarnessStatus[];
+	children: ReactNode;
+}) {
+	const ctx = useAgentListCtx(agents);
+	return (
+		<Surface id="agent.list" ctx={ctx}>
+			<span className="flex items-center gap-2">
+				<UpdateAllButton agents={agents} />
+				{children}
+			</span>
+		</Surface>
 	);
 }

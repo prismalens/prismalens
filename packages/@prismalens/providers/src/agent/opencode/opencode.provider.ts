@@ -103,6 +103,8 @@ export const opencode = defineAgent({
 		},
 		loginHint: "`opencode auth login`, or a provider key in env",
 		signInArgs: ["auth", "login"],
+		signOutArgs: ["auth", "logout"],
+		updateArgs: ["upgrade"],
 		providerAuth: { args: ["auth", "list"], keyless: ["opencode"] },
 		loginEnvKeys: ["XDG_DATA_HOME", "OPENCODE_DB"],
 	},

@@ -110,7 +110,19 @@ export const claudeCode = defineAgent({
 		},
 		loginHint: "`claude auth login`, or `ANTHROPIC_API_KEY` in env",
 		signInArgs: ["auth", "login"],
+		signOutArgs: ["auth", "logout"],
+		switchAccountArgs: ["auth", "login"],
+		updateArgs: ["update"],
 		loginEnvKeys: ["CLAUDE_CONFIG_DIR"],
 		reportsLimits: true,
+		limitsBeforeRun: "claude-sdk",
+		// claude-agent-acp 0.109.0 `session-fast-mode.js`.
+		fastModeOption: "fast",
+		routingEnvKeys: [
+			"ANTHROPIC_BASE_URL",
+			"CLAUDE_CODE_USE_BEDROCK",
+			"CLAUDE_CODE_USE_VERTEX",
+			"CLAUDE_CODE_USE_FOUNDRY",
+		],
 	},
 });

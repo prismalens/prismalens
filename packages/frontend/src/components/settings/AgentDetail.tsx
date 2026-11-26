@@ -8,10 +8,23 @@
  */
 
 import type { HarnessId } from "@prismalens/config/harness";
-import { type HarnessStatus, RUNTIME_HOST_ONLY } from "@prismalens/contracts";
+import {
+	type CustomModel,
+	customModelsOf,
+	type HarnessStatus,
+	RUNTIME_HOST_ONLY,
+} from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { ArrowDown, ArrowLeft, ArrowUp, Star, X } from "lucide-react";
-import { type FormEvent, useRef, useState } from "react";
+import {
+	ArrowDown,
+	ArrowLeft,
+	ArrowUp,
+	Heart,
+	Pencil,
+	Star,
+	X,
+} from "lucide-react";
+import { type FormEvent, type ReactElement, useRef, useState } from "react";
 import { parse, quote } from "shell-quote";
 import { AgentMark, MakerMark } from "@/components/agent/AgentMark";
 import {
@@ -20,9 +33,19 @@ import {
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import { providerState } from "@/components/agent/agent-choice";
-import { agentModels, makerOf, move } from "@/components/agent/model-list";
+import {
+	agentModels,
+	filterModels,
+	isFavourite,
+	makerOf,
+	modelLabels,
+	move,
+	providerOf,
+	toggleFavourite,
+} from "@/components/agent/model-list";
 import { fact } from "@/components/kit/fact";
 import { Mark } from "@/components/kit/Mark";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
 import { InlineCode } from "@/components/shared/InlineCode";
@@ -33,6 +56,7 @@ import { Loading } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { AgentLimitsRow } from "@/components/usage/UsageLimitsPanel";
 import { agentFacts } from "@/lib/agent-facts";
 import {
 	useCheckHarness,
@@ -42,7 +66,9 @@ import {
 } from "@/lib/api/hooks";
 import { notSignedIn, signInNext } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
+import { AccountButtons, UpdateButton, useAgentCtx } from "./AgentLines";
 import { EnvVarNotes, envStateWord } from "./agent-env";
+import { CustomModelDialog } from "./CustomModelDialog";
 import { SignInButton } from "./SignInButton";
 import { CredentialChip, StatePill, type Word } from "./source-words";
 import { accountLine, useForNewRuns } from "./use-for-new-runs";
@@ -144,44 +170,48 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 				<p className="text-body text-text-2">This agent is not known here.</p>
 			) : (
 				<>
-					<div className="mb-3 flex min-w-0 flex-wrap items-center gap-3">
-						<AgentMark id={agent.id} className="size-5" />
-						<h2
-							className="text-title font-semibold text-text-1"
-							data-testid="agent-detail-title"
-						>
-							{agent.label}
-						</h2>
-						<StatePill
-							word={
-								check.isPending
-									? { text: "Checking", tone: "neutral" }
-									: agentState(agent)
-							}
-							testId="agent-detail-state"
-						/>
-						{agent.installed && versionText(agent) && (
-							<Hint label={testedHint(agent)} meta={agent.tested?.date}>
-								<span
-									className="font-mono text-meta text-text-3"
-									data-testid={`harness-tested-${agent.id}`}
-								>
-									{versionText(agent)}
-								</span>
-							</Hint>
-						)}
-						<span className="flex-1" />
-						<SignInButton agent={agent} />
-						<Button
-							variant="secondary"
-							size="sm"
-							disabled={check.isPending}
-							onClick={() => check.mutate({ id })}
-							data-testid="agent-detail-check"
-						>
-							{check.isPending ? "Checking" : "Check"}
-						</Button>
-					</div>
+					<AgentSurface agent={agent}>
+						<div className="mb-3 flex min-w-0 flex-wrap items-center gap-3">
+							<AgentMark id={agent.id} className="size-5" />
+							<h2
+								className="text-title font-semibold text-text-1"
+								data-testid="agent-detail-title"
+							>
+								{agent.label}
+							</h2>
+							<StatePill
+								word={
+									check.isPending
+										? { text: "Checking", tone: "neutral" }
+										: agentState(agent)
+								}
+								testId="agent-detail-state"
+							/>
+							{agent.installed && versionText(agent) && (
+								<Hint label={testedHint(agent)} meta={agent.tested?.date}>
+									<span
+										className="font-mono text-meta text-text-3"
+										data-testid={`harness-tested-${agent.id}`}
+									>
+										{versionText(agent)}
+									</span>
+								</Hint>
+							)}
+							<span className="flex-1" />
+							<SignInButton agent={agent} />
+							<UpdateButton agent={agent} />
+							<Button
+								variant="secondary"
+								size="sm"
+								disabled={check.isPending}
+								onClick={() => check.mutate({ id })}
+								data-testid="agent-detail-check"
+							>
+								{check.isPending ? "Checking" : "Check"}
+							</Button>
+							<AgentMore agent={agent} />
+						</div>
+					</AgentSurface>
 					<div className="mb-6 flex flex-col gap-1 text-body text-text-2">
 						{checked && (
 							<p data-testid="agent-detail-check-line">
@@ -193,13 +223,18 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 							</p>
 						)}
 						{account && (
-							<p data-testid="agent-detail-account">
+							<div
+								className="flex flex-wrap items-center gap-2"
+								data-testid="agent-detail-account"
+							>
 								<span className="text-text-1">{account.label}</span>
 								{account.email && (
-									<span className="ml-2 text-text-3">{account.email}</span>
+									<span className="text-text-3">{account.email}</span>
 								)}
-							</p>
+								<AccountButtons agent={agent} />
+							</div>
 						)}
+						{agent.installed && <AgentLimitsRow agent={agent.id} />}
 						{checked?.lastTry && (
 							// Shown in the line itself, so a keyboard reaches it with no hint to focus.
 							<p className="text-warn" data-testid="agent-detail-last-try">
@@ -257,6 +292,28 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 			)}
 		</div>
 	);
+}
+
+/** The header as the `agent.detail` surface: right-click lists the agent's own lines (#1180). */
+function AgentSurface({
+	agent,
+	children,
+}: {
+	agent: HarnessStatus;
+	children: ReactElement;
+}) {
+	return (
+		<Surface id="agent.detail" ctx={useAgentCtx(agent)}>
+			{children}
+		</Surface>
+	);
+}
+
+/** The header's ⋯, shown only while the agent has a line to offer. */
+function AgentMore({ agent }: { agent: HarnessStatus }) {
+	const ctx = useAgentCtx(agent);
+	if (!Object.values(ctx.facts.is ?? {}).some(Boolean)) return null;
+	return <SurfaceMore id="agent.detail" ctx={ctx} />;
 }
 
 /**
@@ -351,11 +408,15 @@ export function modelsLine(
 }
 
 /** Show or hide, star, reorder and add models; one PATCH per change (#907 decision 2). */
-function ModelsSection({ agent }: { agent: HarnessStatus }) {
+export function ModelsSection({ agent }: { agent: HarnessStatus }) {
 	const id = agent.id as HarnessId;
 	const { customModels, hiddenModels, modelOrder, models } = useAgentChoice();
+	const favourites = useHarnessSettings().data?.favourites ?? [];
 	const update = useUpdateHarnessSettings();
-	const custom = customModels[id] ?? [];
+	const stored = customModels[id] ?? [];
+	const custom = customModelsOf(stored);
+	const idOf = (m: string | CustomModel) => (typeof m === "string" ? m : m.id);
+	const [editing, setEditing] = useState<CustomModel | null>(null);
 	const hidden = hiddenModels[id] ?? [];
 	const list = agentModels(agent, {
 		custom,
@@ -364,6 +425,17 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 	});
 	const ids = list.map((m) => m.id);
 	const shown = list.filter((m) => !m.hidden).length;
+	const [query, setQuery] = useState("");
+	const nameOf = (m: string) =>
+		custom.find((c) => c.id === m)?.name || (modelName(agent, m) ?? m);
+	const visible = filterModels(
+		list.map((m) => ({
+			...m,
+			name: nameOf(m.id),
+			provider: providerOf(id, m.id),
+		})),
+		query,
+	);
 	const [draft, setDraft] = useState("");
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [removing, setRemoving] = useState<string | null>(null);
@@ -381,7 +453,7 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 		}
 		setRefusal(null);
 		update.mutate(
-			{ customModels: { [id]: [...custom, model] } },
+			{ customModels: { [id]: [...stored, model] } },
 			{ onSuccess: () => setDraft("") },
 		);
 	};
@@ -408,9 +480,25 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 			}
 			description={modelsLine(agent, models[id])}
 		>
+			{list.length > 0 && (
+				<Input
+					value={query}
+					onChange={(e) => setQuery(e.target.value)}
+					placeholder="Filter models"
+					aria-label="Filter models"
+					className="mb-2 h-8 w-72 max-md:w-full"
+					data-testid="agent-models-filter"
+				/>
+			)}
 			<Pool>
-				{list.map((m, i) => {
-					const name = modelName(agent, m.id) ?? m.id;
+				{visible.map((m) => {
+					const name = m.name;
+					const i = ids.indexOf(m.id);
+					const favourite = isFavourite(favourites, id, m.id);
+					const labels = modelLabels(agent.id, m.id, {
+						custom: custom.find((c) => c.id === m.id),
+						fastModel: agent.checked?.fastModel,
+					});
 					return (
 						<Row
 							key={m.id}
@@ -443,6 +531,21 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 										className="size-3.5"
 									/>
 									<span {...fact("model")}>{name}</span>
+									{labels.map((l) => (
+										<span
+											key={l.label}
+											className="text-meta font-normal text-text-3"
+										>
+											<Mark
+												id="modelCapability"
+												state={l.label}
+												word={l.word}
+												testId={`agent-model-label-${l.label}`}
+											>
+												{l.word}
+											</Mark>
+										</span>
+									))}
 									{m.custom && (
 										<span className="text-meta font-normal text-text-3">
 											Added by you
@@ -453,6 +556,43 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 							meta={<Mono>{m.id}</Mono>}
 							trailing={
 								<span className="flex items-center gap-1">
+									<Button
+										variant="ghost"
+										size="icon"
+										aria-label={`Favourite ${name}`}
+										aria-pressed={favourite}
+										// Not `disabled`, which would drop keyboard focus mid-save.
+										aria-disabled={update.isPending}
+										onClick={() => {
+											if (update.isPending) return;
+											update.mutate({
+												favourites: toggleFavourite(favourites, id, m.id),
+											});
+										}}
+										data-testid="agent-model-favourite"
+									>
+										<Heart
+											className={cn(
+												"size-3.5",
+												favourite && "fill-current text-text-1",
+											)}
+										/>
+									</Button>
+									{m.custom && (
+										<Button
+											variant="ghost"
+											size="icon"
+											aria-label={`Edit name and options of ${m.id}`}
+											onClick={() =>
+												setEditing(
+													custom.find((c) => c.id === m.id) ?? { id: m.id },
+												)
+											}
+											data-testid="custom-model-edit"
+										>
+											<Pencil className="size-3.5" />
+										</Button>
+									)}
 									{m.custom && (
 										<Button
 											variant="ghost"
@@ -546,6 +686,27 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 					}
 				/>
 			</Pool>
+			<CustomModelDialog
+				model={editing}
+				onOpenChange={(open) => !open && setEditing(null)}
+				isPending={update.isPending}
+				onSave={(next) =>
+					update.mutate(
+						{
+							customModels: {
+								[id]: stored.map((m) =>
+									idOf(m) !== next.id
+										? m
+										: next.name || next.labels
+											? next
+											: next.id,
+								),
+							},
+						},
+						{ onSuccess: () => setEditing(null) },
+					)
+				}
+			/>
 			<DestructiveConfirm
 				open={removing !== null}
 				onOpenChange={(open) => !open && setRemoving(null)}
@@ -556,7 +717,9 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 				error={update.error}
 				onConfirm={() =>
 					update.mutateAsync({
-						customModels: { [id]: custom.filter((m) => m !== removing) },
+						customModels: {
+							[id]: stored.filter((m) => idOf(m) !== removing),
+						},
 					})
 				}
 			/>

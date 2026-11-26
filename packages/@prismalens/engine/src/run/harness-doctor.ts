@@ -69,6 +69,8 @@ export interface HarnessProbeResult {
 	models?: AcpOfferedModel[];
 	/** What it reported as its current model, its effort option and whether it takes images (R4.2, R4.3). */
 	servedModel?: string | null;
+	/** The served model, when the agent's own config options list a Fast mode for it (#1180). */
+	fastModel?: string;
 	effort?: AcpOfferedEffort | null;
 	/** The agent's own permission modes and effort levels, by its names (#673 w21); null when it offered none. */
 	modes?: AcpOfferedMode[] | null;
@@ -254,6 +256,7 @@ export async function probeHarness(
 			| "companionBinary"
 			| "adapterPackage"
 			| "providerAuth"
+			| "fastModeOption"
 		>;
 		budgets?: ProbeInput["budgets"];
 		sandbox?: typeof checkSandbox;
@@ -318,6 +321,7 @@ export async function probeHarness(
 			};
 		}
 		const options = probed.raw.session.configOptions;
+		const fastModel = fastModelOf(options, descriptor);
 		const models = offeredModels(options);
 		const effort = offeredEffort(options);
 		const modes = offeredModes(probed.raw.session).modes;
@@ -343,6 +347,7 @@ export async function probeHarness(
 			companionVersion: await companion(),
 			...(models.length ? { models } : {}),
 			servedModel: selectedModel(options),
+			...(fastModel ? { fastModel } : {}),
 			effort,
 			modes: modes.length ? modes : null,
 			efforts: effortLevels(effort),
@@ -382,4 +387,16 @@ export async function probeHarness(
 	} finally {
 		removeRunDir(runDir);
 	}
+}
+
+/** The current model when the session lists the option the agent's row names as its Fast mode (#1180). */
+export function fastModelOf(
+	options: unknown,
+	row: { fastModeOption?: string },
+): string | undefined {
+	if (!row.fastModeOption || !Array.isArray(options)) return undefined;
+	const listed = options.some(
+		(o: { id?: unknown } | null) => o?.id === row.fastModeOption,
+	);
+	return listed ? (selectedModel(options) ?? undefined) : undefined;
 }

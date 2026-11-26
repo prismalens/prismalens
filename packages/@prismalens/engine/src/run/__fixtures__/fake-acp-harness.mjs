@@ -21,7 +21,8 @@
 // FAKE_MODELS / FAKE_EFFORTS offer model and thought_level options that session/set_config_option
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
 // FAKE_MODES offers modes for session/new and session/load (first is currentModeId);
-// FAKE_USAGE=1 sends one usage_update before the final message.
+// FAKE_USAGE=1 sends one usage_update before the final message; FAKE_RATE_LIMIT=1 adds
+// Claude Code's `_claude/rateLimit` five-hour window to it.
 // FAKE_FAIL_ON=<prefix> answers any prompt starting with it with an RPC error.
 // FAKE_SESSION_DELAY_MS delays the session/new answer in any mode.
 // FAKE_ADDITIONAL_DIRS=1 advertises sessionCapabilities.additionalDirectories.
@@ -39,6 +40,8 @@
 // FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing. It also advertises
 // ACP auth.status and answers auth/status: none is unauthenticated, silent unknown, else authenticated.
 // FAKE_AUTH_LABEL / FAKE_AUTH_EMAIL name the account it pushes and answers.
+// FAKE_AUTH_SWITCH_EMAIL=<email> follows the usage_update, in one write, with a push of that
+// account and the same usage_update again.
 // FAKE_MODE_FILE=<path>: the file's text, when present, replaces FAKE_ACP_MODE at startup.
 // FAKE_READ_DIR=<dir under cwd>: "resume" and "continue" first read every file there with a `read`
 // tool call whose output is the file's text, as an agent reading the pre-run copies would.
@@ -549,13 +552,47 @@ async function turn(sessionId, promptText) {
 			sessionUpdate: "agent_message_chunk",
 			content: { type: "text", text: `Heard: ${promptText}\n` },
 		});
-	if (process.env.FAKE_USAGE)
-		notify(sessionId, {
+	if (process.env.FAKE_USAGE) {
+		const usage = {
 			sessionUpdate: "usage_update",
 			used: 182000,
 			size: 440000,
 			cost: { amount: 1.25, currency: "USD" },
-		});
+			...(process.env.FAKE_RATE_LIMIT
+				? {
+						_meta: {
+							"_claude/rateLimit": {
+								rateLimitType: "five_hour",
+								utilization: 0.4,
+								status: "allowed",
+							},
+						},
+					}
+				: {}),
+		};
+		const switched = process.env.FAKE_AUTH_SWITCH_EMAIL;
+		if (!switched) notify(sessionId, usage);
+		else {
+			const update = {
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: { sessionId, update: usage },
+			};
+			const push = {
+				jsonrpc: "2.0",
+				method: "_auth/status_update",
+				params: {
+					authStatus: {
+						kind: process.env.FAKE_AUTH_STATUS,
+						account: { email: switched },
+					},
+				},
+			};
+			process.stdout.write(
+				[update, push, update].map((m) => `${JSON.stringify(m)}\n`).join(""),
+			);
+		}
+	}
 	const valid =
 		mode === "ok" ||
 		mode === "elicit" ||

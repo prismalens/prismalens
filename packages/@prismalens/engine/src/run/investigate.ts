@@ -1072,7 +1072,10 @@ async function* runSession(
 					];
 					if (typeof model === "string" && model) lastModel = model;
 					// A window's state is recorded only when it changes (#1101).
-					const quota = quotaOf(u._meta);
+					const read = quotaOf(u._meta);
+					const quota = read
+						? { ...read, ...(item.account ? { account: item.account } : {}) }
+						: null;
 					const key = quota ? JSON.stringify(quota) : null;
 					if (quota && key !== lastQuota) {
 						lastQuota = key;

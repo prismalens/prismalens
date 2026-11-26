@@ -116,6 +116,19 @@ vi.mock("@/lib/api/hooks", () => ({
 		isPending: false,
 	}),
 }));
+vi.mock("./use-about", () => ({
+	useAbout: () => ({
+		// As About sends it: `os` is for reading, `platform` is Node's name.
+		data: {
+			runtime: {
+				node: "v24",
+				os: "Windows_NT 10.0.22631",
+				platform: "win32",
+				arch: "x64",
+			},
+		},
+	}),
+}));
 vi.mock("@tanstack/react-router", () => ({
 	useNavigate: () => navigate,
 	Link: () => null,
@@ -229,6 +242,39 @@ describe("Add agent tiles (#907)", () => {
 		expect(names.some((n) => n?.startsWith("Codex"))).toBe(false);
 	});
 
+	it("a registry agent shows this host's one install line and why Next is off (#1180)", async () => {
+		await render();
+		await typeInto("acp-registry-search", "amp");
+		await click("acp-registry-entry");
+		const lines = Array.from(
+			document.body.querySelectorAll('[data-testid="acp-registry-install"]'),
+		).map((e) => e.textContent);
+		expect(lines).toEqual([
+			expect.stringContaining(
+				"https://github.com/tao12345666333/amp-acp/releases/download/v0.13.0/amp-acp-windows-x86_64.zip",
+			),
+		]);
+		expect(lines[0]).not.toContain("windows-x86_64:");
+		expect(q("acp-registry-install-other")).toBeNull();
+		await click("acp-registry-other");
+		expect(
+			document.body.querySelectorAll(
+				'[data-testid="acp-registry-install-other"]',
+			),
+		).toHaveLength(5);
+		expect((q("add-agent-next") as HTMLButtonElement).disabled).toBe(true);
+		expect(q("add-agent-next-why")?.textContent).toBe(
+			"Install it, then pick Local ACP command",
+		);
+	});
+
+	it("an uninstalled tile keeps Next on, for its binary path step (#1180)", async () => {
+		await render();
+		await click("add-agent-tile-opencode");
+		expect((q("add-agent-next") as HTMLButtonElement).disabled).toBe(false);
+		expect(q("add-agent-next-why")).toBeNull();
+	});
+
 	it("opens a ready agent's page at once", async () => {
 		await render();
 		await click("add-agent-tile-claude-code");
@@ -236,6 +282,42 @@ describe("Add agent tiles (#907)", () => {
 			to: "/settings",
 			search: { tab: "agent", agent: "claude-code" },
 		});
+	});
+});
+
+describe("Add agent after a reset (#1180)", () => {
+	function Reopens() {
+		const [open, setOpen] = useState(true);
+		return (
+			<>
+				<button
+					type="button"
+					data-testid="reopen"
+					onClick={() => setOpen(true)}
+				>
+					Reopen
+				</button>
+				<AddAgentDialog open={open} onOpenChange={setOpen} />
+			</>
+		);
+	}
+
+	it("forgets the registry agent picked before it was closed", async () => {
+		await act(async () => root.render(<Reopens />));
+		await typeInto("acp-registry-search", "amp");
+		await click("acp-registry-entry");
+		await click("add-agent-tile-local");
+		await typeInto("add-agent-command", "/usr/bin/node");
+		await click("add-agent-next");
+		await act(async () => {
+			document.activeElement?.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+			);
+		});
+		expect(q("add-agent-dialog")).toBeNull();
+		await click("reopen");
+		expect(q("acp-registry")).not.toBeNull();
+		expect(q("add-agent-next-why")).toBeNull();
 	});
 });
 

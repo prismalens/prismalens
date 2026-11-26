@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
 	ACP_REGISTRY,
 	AcpRegistrySchema,
+	installLineFor,
 	parseAcpRegistry,
 } from "./acp-registry.js";
 import bundled from "./acp-registry.json" with { type: "json" };
@@ -142,5 +143,51 @@ describe("acpRegistryIds (#911)", () => {
 		);
 		expect(named.length).toBeGreaterThan(0);
 		for (const id of named) expect(ids.has(id)).toBe(true);
+	});
+});
+
+describe("installLineFor (#1180)", () => {
+	const goose = {
+		id: "goose",
+		name: "goose",
+		description: "",
+		install: [
+			"darwin-aarch64: https://example.test/goose-aarch64-apple-darwin.tar.bz2",
+			"linux-x86_64-musl: https://example.test/goose-x86_64-unknown-linux-musl.tar.bz2",
+			"linux-x86_64: https://example.test/goose-x86_64-unknown-linux-gnu.tar.bz2",
+			"linux-aarch64-musl: https://example.test/goose-aarch64-unknown-linux-musl.tar.bz2",
+			"windows-x86_64: https://example.test/goose-x86_64-pc-windows-msvc.zip",
+		],
+	};
+
+	it("gives this host's archive, glibc before musl, musl when it is the only build", () => {
+		expect(installLineFor(goose, "linux", "x64")).toEqual({
+			line: "https://example.test/goose-x86_64-unknown-linux-gnu.tar.bz2",
+		});
+		expect(installLineFor(goose, "darwin", "arm64")).toEqual({
+			line: "https://example.test/goose-aarch64-apple-darwin.tar.bz2",
+		});
+		expect(installLineFor(goose, "win32", "x64")).toEqual({
+			line: "https://example.test/goose-x86_64-pc-windows-msvc.zip",
+		});
+		expect(installLineFor(goose, "linux", "arm64")).toEqual({
+			line: "https://example.test/goose-aarch64-unknown-linux-musl.tar.bz2",
+		});
+	});
+
+	it("names the host when it has no build", () => {
+		expect(installLineFor(goose, "win32", "arm64")).toEqual({
+			none: "No build for windows aarch64",
+		});
+	});
+
+	it("prefers a package command, which runs on any host", () => {
+		expect(
+			installLineFor(
+				{ ...goose, install: [goose.install[0] as string, "npx -y @x/agent@1.0.0"] },
+				"win32",
+				"arm64",
+			),
+		).toEqual({ line: "npx -y @x/agent@1.0.0" });
 	});
 });

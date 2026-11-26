@@ -66,9 +66,17 @@ export function useUpdateHarnessSettings() {
 
 	return useMutation({
 		...orpc.settings.harnesses.updateSettings.mutationOptions(),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: harnessKeys.settings() });
-			queryClient.invalidateQueries({ queryKey: harnessKeys.status() });
+		// The save answers the saved settings: cached first, so a next list builds on them even
+		// when the read-back fails; pending until that read-back settles (#1180).
+		onSuccess: async (saved) => {
+			queryClient.setQueryData(
+				orpc.settings.harnesses.getSettings.queryKey({ input: {} }),
+				saved,
+			);
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: harnessKeys.settings() }),
+				queryClient.invalidateQueries({ queryKey: harnessKeys.status() }),
+			]);
 		},
 	});
 }

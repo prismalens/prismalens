@@ -92,6 +92,11 @@ export const gemini = defineAgent({
 		},
 		loginHint: "`gemini` sign-in, or `GEMINI_API_KEY` in env",
 		signInArgs: [],
+		// No Sign out: with stale credentials Gemini opens its sign-in dialog before an `-i` prompt runs (#1180).
+		switchAccountArgs: ["-i", "/auth signin"],
+		brew: { formula: "gemini-cli" },
+		updateLine:
+			"Download the latest release from github.com/google-gemini/gemini-cli/releases",
 		loginEnvKeys: ["GEMINI_CLI_HOME"],
 		// No trust command is quoted: Gemini's own one is unconfirmed (#848 §11 Q4).
 		toolsHint: {

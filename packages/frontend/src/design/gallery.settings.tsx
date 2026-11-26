@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { HarnessStatus } from "@prismalens/contracts";
+import {
+	AccountButtons,
+	UpdateAllButton,
+	UpdateButton,
+} from "@/components/settings/AgentLines";
 import { ThreadTitleOptions } from "@/components/settings/ModelsSettings";
 import { SettingsResults } from "@/components/settings/SettingsSearch";
 import { Keys } from "@/components/settings/ShortcutsSettings";
@@ -10,10 +16,51 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { GallerySection } from "./gallery";
 
+/** An installed agent a release behind, with its own sign-out and account lines (#1180). */
+const behind = (id: string, label: string, command: string): HarnessStatus =>
+	({
+		id,
+		label,
+		binary: id,
+		installed: true,
+		versionVsTested: "older",
+		newerRelease: null,
+		update: { command },
+		signOut: { command: `${id} logout` },
+		switchAccount: { command: `${id} login` },
+	}) as HarnessStatus;
+const codex = behind("codex", "Codex", "npm i -g @openai/codex@latest");
+const claude = behind("claude-code", "Claude Code", "claude update");
+
 const noop = () => {};
 
 /** Settings states (#1101 cat 18): search, Reset, host-only, a dangerous row and a remap. */
 export const settingsGallery: GallerySection[] = [
+	{
+		id: "agent-detail-actions",
+		title: "Agent page: Update when behind, Change account and Sign out",
+		render: () => (
+			<div className="flex max-w-[42rem] flex-wrap items-center gap-2">
+				<UpdateButton agent={codex} />
+				<AccountButtons agent={codex} />
+				<UpdateButton
+					agent={{
+						...codex,
+						update: { line: "Update it the way you installed it" },
+					}}
+				/>
+			</div>
+		),
+	},
+	{
+		id: "agent-list-actions",
+		title: "Agents list: Update all for two agents behind",
+		render: () => (
+			<div className="max-w-[42rem]">
+				<UpdateAllButton agents={[claude, codex]} />
+			</div>
+		),
+	},
 	{
 		id: "settings-thread-titles",
 		title: "Models settings: Thread titles",

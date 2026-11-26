@@ -47,6 +47,7 @@ import {
 	Info,
 	KeyRound,
 	Layers,
+	LightbulbOff,
 	Link2,
 	ListEnd,
 	LockOpen,
@@ -78,6 +79,7 @@ import {
 	Wifi,
 	WifiOff,
 	Wrench,
+	Zap,
 } from "lucide-react";
 import type { FactId } from "@/registry/closed/fact";
 
@@ -667,6 +669,19 @@ export const MARKS = {
 			failed: "danger",
 			cancelled: "muted",
 		},
+	}),
+	/** What a model is known to be, from the person's word or the agent's own options (#1180). */
+	modelCapability: defineMark({
+		id: "modelCapability",
+		icon: Layers,
+		icons: { "no-reasoning": LightbulbOff, fast: Zap },
+		label: "Model",
+		words: {
+			"no-reasoning": "No reasoning",
+			fast: "Fast",
+			"large-context": "Large context",
+		},
+		tones: { "no-reasoning": "muted", fast: "muted", "large-context": "muted" },
 	}),
 } as const satisfies Readonly<Record<string, MarkDef>>;
 

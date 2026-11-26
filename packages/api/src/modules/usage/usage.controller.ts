@@ -30,6 +30,15 @@ export class UsageController {
 			limits: implement(usageContract.limits).handler(() =>
 				this.usage.limits(),
 			),
+			readLimits: implement(usageContract.readLimits).handler(({ input }) =>
+				this.usage.readLimits(input.agent),
+			),
+			prices: implement(usageContract.prices).handler(() =>
+				this.usage.prices(),
+			),
+			setPrices: implement(usageContract.setPrices).handler(({ input }) =>
+				this.usage.setPrices(input),
+			),
 			enforcement: implement(usageContract.enforcement).handler(() =>
 				this.usage.enforcement(),
 			),

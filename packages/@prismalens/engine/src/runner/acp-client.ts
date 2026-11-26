@@ -56,8 +56,16 @@ import { turnUsageOf } from "../run/usage.js";
 import { usageLimitText } from "../run/usage-limit.js";
 
 export type AcpStreamItem =
-	/** `sessionId` is set only for a sub-agent's session, never the main one (#1025). */
-	| { kind: "update"; update: AcpUpdate; sessionId?: string }
+	/**
+	 * `sessionId` is set only for a sub-agent's session, never the main one (#1025);
+	 * `account` is the one signed in when a `usage_update` was queued (#1180).
+	 */
+	| {
+			kind: "update";
+			update: AcpUpdate;
+			sessionId?: string;
+			account?: string;
+	  }
 	/** The agent asked; the turn waits until a `permission` item answers `askId`. */
 	| {
 			kind: "permission_asked";
@@ -682,6 +690,8 @@ export class AcpSession {
 	pushesAuthStatus = false;
 	/** The `kind` of the last `_auth/status_update` (`"none"` is signed out); null before any. */
 	authStatusKind: string | null = null;
+	/** The account the last push named, as a limit read keys it: its email, else its label (#1180). */
+	authAccount: string | null = null;
 	private authStatusSeen: (() => void) | null = null;
 
 	constructor(private readonly config: AcpSessionConfig) {
@@ -1438,12 +1448,25 @@ export class AcpSession {
 					kind: "update",
 					update: update as AcpUpdate,
 					...(child ? { sessionId: child } : {}),
+					...(u.sessionUpdate === "usage_update" && this.authAccount
+						? { account: this.authAccount }
+						: {}),
 				});
 			}
 		} else if (msg.method === AUTH_STATUS_UPDATE) {
-			const status = msg.params?.authStatus as { kind?: unknown } | undefined;
+			const status = msg.params?.authStatus as
+				| { kind?: unknown; label?: unknown; account?: { email?: unknown } }
+				| undefined;
 			if (typeof status?.kind === "string") {
 				this.authStatusKind = status.kind;
+				const email = status.account?.email;
+				const named =
+					typeof email === "string" && email
+						? email
+						: typeof status.label === "string" && status.label
+							? status.label
+							: null;
+				this.authAccount = status.kind === "none" ? null : named;
 				this.authStatusSeen?.();
 			}
 		}

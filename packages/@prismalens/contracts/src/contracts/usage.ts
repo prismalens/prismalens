@@ -4,7 +4,9 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import {
+	AgentLimitsSchema,
 	EnforcementSchema,
+	ModelPricesSchema,
 	UsageLimitsSchema,
 	UsageQuerySchema,
 	UsageSummarySchema,
@@ -30,6 +32,35 @@ export const usageContract = {
 		})
 		.input(z.object({}))
 		.output(UsageLimitsSchema),
+	readLimits: oc
+		.route({
+			method: "POST",
+			path: "/usage/limits/read",
+			summary:
+				"Read one agent's plan limits now, through its own CLI, with no run",
+			tags: ["usage"],
+		})
+		.input(z.object({ agent: z.string().min(1).max(100) }))
+		.output(AgentLimitsSchema),
+	prices: oc
+		.route({
+			method: "GET",
+			path: "/usage/prices",
+			summary:
+				"The API prices the person set for models agents report no cost for",
+			tags: ["usage"],
+		})
+		.input(z.object({}))
+		.output(ModelPricesSchema),
+	setPrices: oc
+		.route({
+			method: "PUT",
+			path: "/usage/prices",
+			summary: "Replace the person's API prices",
+			tags: ["usage"],
+		})
+		.input(ModelPricesSchema)
+		.output(ModelPricesSchema),
 	enforcement: oc
 		.route({
 			method: "GET",

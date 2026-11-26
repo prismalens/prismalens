@@ -82,6 +82,7 @@ export class HarnessProbeService {
 					version: result.version ?? null,
 					companionVersion: result.companionVersion ?? null,
 					servedModel: result.servedModel ?? null,
+					...(result.fastModel ? { fastModel: result.fastModel } : {}),
 					effort,
 					modes: result.modes ?? null,
 					efforts: result.efforts ?? null,

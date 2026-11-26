@@ -96,10 +96,26 @@ export interface AgentFacts {
 	loginHint: string;
 	/** Arguments to its own CLI that sign it in, staged in the terminal (#1171); absent, none. */
 	signInArgs?: readonly string[];
+	/** Arguments to its own CLI that sign it out, staged like Sign in (#1180); absent, none. */
+	signOutArgs?: readonly string[];
+	/** Arguments to its own CLI that sign in as another account (#1180); absent, none. */
+	switchAccountArgs?: readonly string[];
+	/** Arguments to its own updater, which updates whatever install runs (#1180); absent, the install channel decides. */
+	updateArgs?: readonly string[];
+	/** Its own updater when no npm or Homebrew install is found; a found channel updates through itself (#1180). */
+	updateFallbackArgs?: readonly string[];
+	/** Its Homebrew names, so an install under `Caskroom/<cask>` or `Cellar/<formula>` updates through brew (#1180). */
+	brew?: { cask?: string; formula?: string };
+	/** The agent's documented update route, shown as text when no channel is known (#1180). */
+	updateLine?: string;
 	/** Env vars that move where its login lives; a stored one leaves Sign in to the copied hint (#1171). */
 	loginEnvKeys?: readonly string[];
 	/** Its adapter reports usage-limit windows on a run (#1171). */
 	reportsLimits?: true;
+	/** How PrismaLens reads its plan limits before any run, through its own CLI (#1180); absent, only runs report them. */
+	limitsBeforeRun?: "codex-app-server" | "claude-sdk";
+	/** The ACP config option it lists only while the current model has a Fast mode (#1180). */
+	fastModeOption?: string;
 	/** The model PrismaLens asks for when the operator set none: the id the compatibility run passed on (#337 run e). */
 	defaultModel?: string;
 	/** The version a compatibility run passed on (ADR 0003 §10), or absent: never run. */
@@ -138,6 +154,8 @@ export interface AgentFacts {
 	permissionRulesNote?: string;
 	/** The provider that makes and bills its models, by its models.dev id (`providerFacts`). */
 	vendor?: string;
+	/** Env vars that send its model calls through another provider; with none set, `vendor` serves them (#1180). */
+	routingEnvKeys?: readonly string[];
 	/** Where its fallback model list comes from in the models.dev snapshot (`catalogue-sources.json`). */
 	catalogue?: CatalogueSource;
 	/** What its adapter forwards over ACP besides tokens (pattern sheet §7); absent, unknown. */

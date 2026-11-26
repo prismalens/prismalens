@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-export { signInCommand, versionVsTested } from "./providers/agent-status.js";
+export {
+	agentCommand,
+	type CommandOpts,
+	type FoundBinary,
+	type FoundChannel,
+	installChannelOf,
+	signInCommand,
+	UPDATE_FALLBACK_LINE,
+	updateRoute,
+	versionVsTested,
+} from "./providers/agent-status.js";
 export {
 	ACCESS_LEVELS,
 	type AccessLevel,
@@ -76,9 +86,15 @@ export {
 	pickModelCatalogue,
 } from "./providers/model-catalogue.js";
 export {
+	type IdentityAgentFacts,
+	type IdentityEvidence,
+	type IdentitySource,
+	type Known,
 	MODEL_MAKERS_AS_OF,
+	type ModelIdentityShape,
 	type ModelMaker,
 	makerLetters,
+	modelIdentity,
 	modelMaker,
 	modelProvider,
 	PROVIDER_ACCOUNTS,

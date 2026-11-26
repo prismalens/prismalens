@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { pathToFileURL } from "node:url";
 import {
 	fetchLatestVersion,
+	refreshAgentReleases,
 	isExactVersion,
 	readCache,
 	refreshUpdateCache,
@@ -194,5 +195,72 @@ describe("releaseReady (#717)", () => {
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("refreshAgentReleases (#1180)", () => {
+	const DAY = 24 * 60 * 60 * 1000;
+	const npm = (version: string) => {
+		const urls: string[] = [];
+		const fetchImpl = (async (url: string | URL | Request) => {
+			urls.push(String(url));
+			return new Response(JSON.stringify({ version }), { status: 200 });
+		}) as typeof fetch;
+		return { urls, fetchImpl };
+	};
+
+	it("fetches nothing while Check for updates is off", async () => {
+		const { urls, fetchImpl } = npm("0.200.0");
+		const cache = { "@openai/codex": { checkedAt: 0, latest: "0.171.0" } };
+		const next = await refreshAgentReleases(["@openai/codex"], cache, {
+			enabled: false,
+			now: 10 * DAY,
+			fetchImpl,
+		});
+		expect(urls).toEqual([]);
+		expect(next).toBe(cache);
+	});
+
+	it("reads each package's latest from the npm registry once a day", async () => {
+		const { urls, fetchImpl } = npm("0.200.0");
+		const next = await refreshAgentReleases(
+			["@openai/codex", "@google/gemini-cli", "@openai/codex"],
+			{ "@google/gemini-cli": { checkedAt: DAY, latest: "0.70.0" } },
+			{ enabled: true, now: DAY + DAY - 1, fetchImpl },
+		);
+		expect(urls).toEqual(["https://registry.npmjs.org/@openai/codex/latest"]);
+		expect(next).toEqual({
+			"@openai/codex": { checkedAt: 2 * DAY - 1, latest: "0.200.0" },
+			"@google/gemini-cli": { checkedAt: DAY, latest: "0.70.0" },
+		});
+	});
+
+	it("reads a package again once its entry is a day old", async () => {
+		const { urls, fetchImpl } = npm("0.200.0");
+		const next = await refreshAgentReleases(
+			["@google/gemini-cli"],
+			{ "@google/gemini-cli": { checkedAt: DAY, latest: "0.70.0" } },
+			{ enabled: true, now: 2 * DAY, fetchImpl },
+		);
+		expect(urls).toEqual([
+			"https://registry.npmjs.org/@google/gemini-cli/latest",
+		]);
+		expect(next).toEqual({
+			"@google/gemini-cli": { checkedAt: 2 * DAY, latest: "0.200.0" },
+		});
+	});
+
+	it.each([
+		["refused", 403, '{"version":"1.2.3"}'],
+		["malformed", 200, "{}"],
+	])("a %s answer records null", async (_, status, body) => {
+		const fetchImpl = (async () =>
+			new Response(body, { status })) as unknown as typeof fetch;
+		const next = await refreshAgentReleases(["opencode-ai"], {}, {
+			enabled: true,
+			now: 5,
+			fetchImpl,
+		});
+		expect(next).toEqual({ "opencode-ai": { checkedAt: 5, latest: null } });
 	});
 });

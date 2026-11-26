@@ -84,6 +84,23 @@ const DEFAULT_PREFS: StoredPrefs = {
 	checkForUpdates: true,
 };
 
+/** About's update preferences; the agents' release check reads the same switch (#1180). */
+export async function updatePrefs(
+	prisma: Pick<PrismaService, "setting">,
+): Promise<StoredPrefs> {
+	const row = await prisma.setting.findUnique({ where: { key: PREFS_KEY } });
+	if (!row) return DEFAULT_PREFS;
+	try {
+		const raw = JSON.parse(row.value) as Partial<StoredPrefs>;
+		return {
+			autoInstall: raw.autoInstall === "idle" ? "idle" : "notify",
+			checkForUpdates: raw.checkForUpdates !== false,
+		};
+	} catch {
+		return DEFAULT_PREFS;
+	}
+}
+
 @Injectable()
 export class UpdateService implements OnModuleInit, OnModuleDestroy {
 	private readonly logger = new Logger(UpdateService.name);
@@ -129,19 +146,7 @@ export class UpdateService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	async prefs(): Promise<StoredPrefs> {
-		const row = await this.prisma.setting.findUnique({
-			where: { key: PREFS_KEY },
-		});
-		if (!row) return DEFAULT_PREFS;
-		try {
-			const raw = JSON.parse(row.value) as Partial<StoredPrefs>;
-			return {
-				autoInstall: raw.autoInstall === "idle" ? "idle" : "notify",
-				checkForUpdates: raw.checkForUpdates !== false,
-			};
-		} catch {
-			return DEFAULT_PREFS;
-		}
+		return updatePrefs(this.prisma);
 	}
 
 	async setPrefs(input: UpdatePrefs, host: boolean): Promise<About> {

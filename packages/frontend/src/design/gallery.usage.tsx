@@ -41,7 +41,13 @@ function bucket(
 			cacheWrite,
 			total: input + output + cacheRead + cacheWrite,
 		},
-		cost: { amount: cost, currency: "USD", unpricedTurns },
+		cost: {
+			amount: cost,
+			currency: "USD",
+			unpricedTurns,
+			estimate: null,
+			estimatedTurns: 0,
+		},
 	};
 }
 

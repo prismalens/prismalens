@@ -86,15 +86,17 @@ export type PermissionPolicy = (
 	ctx: AskContext,
 ) => PermissionDecision | Promise<PermissionDecision>;
 
-/** The option of `kind` (`allow` or `reject`), the once-only one first. */
+/**
+ * The option of `kind`, the once-only one first. An allow is once-only or nothing: a standing
+ * `allow_always` widens past the one call that was approved (#1180).
+ */
 export function optionOf(
 	req: PermissionRequest,
 	kind: "allow" | "reject",
 ): PermissionOption | undefined {
-	return (
-		req.options.find((o) => o.kind === `${kind}_once`) ??
-		req.options.find((o) => o.kind?.startsWith(kind))
-	);
+	const once = req.options.find((o) => o.kind === `${kind}_once`);
+	if (once || kind === "allow") return once;
+	return req.options.find((o) => o.kind?.startsWith(kind));
 }
 
 /** A denial: the agent's own reject option when it offered one, else ACP's cancelled outcome. */
@@ -510,11 +512,18 @@ export function createAskChannel(
 			const entry = waiting.get(askId);
 			if (!entry || answer.kind !== "permission") return null;
 			const approve = answer.decision === "approve";
+			const always = entry.req.options.find((o) => o.kind === "allow_always");
+			if (
+				approve &&
+				answer.scope !== "always" &&
+				!optionOf(entry.req, "allow") &&
+				always
+			)
+				return "invalid";
 			// The answer goes back as one of the agent's own options (ACP session/request_permission).
 			const allow = approve
-				? ((answer.scope === "always"
-						? entry.req.options.find((o) => o.kind === "allow_always")
-						: undefined) ?? optionOf(entry.req, "allow"))
+				? ((answer.scope === "always" ? always : undefined) ??
+					optionOf(entry.req, "allow"))
 				: undefined;
 			entry.settle(
 				allow

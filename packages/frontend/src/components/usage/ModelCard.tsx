@@ -2,7 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import type { UsageModel } from "@prismalens/contracts";
+import { useState } from "react";
 import { type FactId, fact } from "@/components/kit/fact";
+import { Problem } from "@/components/shared/State";
+import { Button } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -10,6 +13,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { PriceForm, SaveFailed, useAddPrice } from "./PriceOverrides";
 import { UsageChart } from "./UsageChart";
 import {
 	agentName,
@@ -63,6 +67,13 @@ export function ModelCardBody({
 					label="Cost, estimate"
 					value={formatCost(cost.amount, cost.currency)}
 				/>
+				{cost.estimate !== null && (
+					<Fact
+						id="cost"
+						label="API estimate"
+						value={formatCost(cost.estimate, cost.currency)}
+					/>
+				)}
 				<Fact
 					id="cost"
 					label="Per million tokens"
@@ -88,12 +99,45 @@ export function ModelCardBody({
 					estimate leaves them out.
 				</p>
 			)}
+			{cost.unpricedTurns > 0 && model.agent && (
+				<SetPrice agent={model.agent} model={model.model} />
+			)}
 			<UsageChart
 				days={model.days}
 				step={step}
 				measure="tokens"
 				height={120}
 				label={`Tokens over time for ${modelName(model.model)}`}
+			/>
+		</div>
+	);
+}
+
+/** An unpriced model's offer of a price, prefilled with its agent and model (#1180). */
+function SetPrice({ agent, model }: { agent: string; model: string }) {
+	const [open, setOpen] = useState(false);
+	const { add, blocked, failed, saveFailed, retry } = useAddPrice();
+	if (!open)
+		return (
+			<Button
+				variant="secondary"
+				className="justify-self-start"
+				onClick={() => setOpen(true)}
+				data-testid="price-offer"
+			>
+				Set a price
+			</Button>
+		);
+	return (
+		<div className="grid min-w-0">
+			{failed && <Problem text="Your prices did not load." onRetry={retry} />}
+			{saveFailed && <SaveFailed />}
+			<PriceForm
+				agents={[agent]}
+				initial={{ agent, model: model === "unknown" ? "" : model }}
+				saving={blocked}
+				onSave={(p) => add(p, () => setOpen(false))}
+				onCancel={() => setOpen(false)}
 			/>
 		</div>
 	);

@@ -3,7 +3,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
-import type { HarnessStatus } from "@prismalens/contracts";
+import type { CustomModel, HarnessStatus } from "@prismalens/contracts";
 import type React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentDetail, parseArgs } from "./AgentDetail";
 
 const mutateSpy = vi.fn();
+let mockSaving = false;
 let mockSettings: Record<string, unknown> = { harness: "claude-code" };
 let mockSelection: { harness?: string } = { harness: "claude-code" };
 const mutateAsyncSpy = vi.fn();
@@ -98,7 +99,7 @@ vi.mock("@/lib/api/hooks", () => ({
 	useUpdateHarnessSettings: () => ({
 		mutate: mutateSpy,
 		mutateAsync: mutateAsyncSpy,
-		isPending: false,
+		isPending: mockSaving,
 		error: null,
 	}),
 	useCheckHarness: () => ({
@@ -106,6 +107,27 @@ vi.mock("@/lib/api/hooks", () => ({
 		mutateAsync: vi.fn(),
 		isPending: false,
 	}),
+}));
+
+const { stageSpy, checkHarnessSpy, invalidateSpy } = vi.hoisted(() => ({
+	stageSpy: vi.fn(),
+	checkHarnessSpy: vi.fn(async () => ({})),
+	invalidateSpy: vi.fn(async () => {}),
+}));
+vi.mock("@tanstack/react-query", async (original) => ({
+	...(await original<typeof import("@tanstack/react-query")>()),
+	useQueryClient: () => ({ invalidateQueries: invalidateSpy }),
+}));
+vi.mock("@/lib/api/orpc-client", () => ({
+	client: { settings: { harnesses: { checkHarness: checkHarnessSpy } } },
+}));
+vi.mock("@/lib/terminal/use-terminal-availability", () => ({
+	useTerminalAvailability: () => ({ available: true }),
+}));
+vi.mock("@/lib/terminal/store", () => ({
+	terminalStore: { stage: stageSpy },
+	useTerminalState: (pick: (s: { hosts: number }) => unknown) =>
+		pick({ hosts: 1 }),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -133,7 +155,10 @@ let mockChoice = {
 		accessLevels: {} as Partial<Record<HarnessId, AccessLevel>>,
 	},
 	setting: "claude-code",
-	customModels: { "claude-code": ["gw-a"] } as Record<string, string[]>,
+	customModels: { "claude-code": ["gw-a"] } as Record<
+		string,
+		(string | CustomModel)[]
+	>,
 	hiddenModels: {} as Record<string, string[]>,
 	modelOrder: {} as Record<string, string[]>,
 	models: {} as Record<string, string>,
@@ -141,6 +166,9 @@ let mockChoice = {
 	isError: false,
 };
 
+vi.mock("@/components/usage/UsageLimitsPanel", () => ({
+	AgentLimitsRow: () => null,
+}));
 vi.mock("@/components/agent/AgentPicker", () => ({
 	useAgentChoice: () => mockChoice,
 	modelName: (_h: unknown, id: string) => id,
@@ -783,5 +811,270 @@ describe("AgentDetail: which agent runs next", () => {
 				?.textContent,
 		).toBe("Signed in to Ollama Cloud, Google");
 		mockHarnesses[2].checked = null;
+	});
+});
+
+describe("AgentDetail models: filter, favourites, names and labels (#1180)", () => {
+	const listed = {
+		source: "harness" as const,
+		asOf: "",
+		entries: [
+			{ id: "opus", name: "Opus", status: null },
+			{ id: "sonnet[1m]", name: "Sonnet", status: null },
+		],
+	};
+	const rows = () =>
+		Array.from(container.querySelectorAll('[data-testid^="agent-model-"]'))
+			.map((el) => el.getAttribute("data-testid"))
+			.filter((t) => /^agent-model-(?!add|star|show|fav|label)/.test(t ?? ""));
+
+	it("Filter models narrows the rows by id; clearing it shows them all", async () => {
+		mockHarnesses[0].models = listed;
+		try {
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			expect(rows()).toEqual([
+				"agent-model-gw-a",
+				"agent-model-opus",
+				"agent-model-sonnet[1m]",
+			]);
+			const filter = container.querySelector(
+				'[data-testid="agent-models-filter"]',
+			) as HTMLInputElement;
+			expect(filter.placeholder).toBe("Filter models");
+			const type = async (v: string) =>
+				act(async () => {
+					const set = Object.getOwnPropertyDescriptor(
+						HTMLInputElement.prototype,
+						"value",
+					)?.set;
+					set?.call(filter, v);
+					filter.dispatchEvent(new Event("input", { bubbles: true }));
+				});
+			await type("SONNET");
+			expect(rows()).toEqual(["agent-model-sonnet[1m]"]);
+			await type("");
+			expect(rows()).toHaveLength(3);
+		} finally {
+			mockHarnesses[0].models = { source: "harness", asOf: "", entries: [] };
+		}
+	});
+
+	it("Favourite adds to the list apart from the star and keeps other agents' favourites", async () => {
+		mockHarnesses[0].models = listed;
+		mockSettings = {
+			harness: "claude-code",
+			favourites: [{ harness: "codex", model: "gpt-6" }],
+		};
+		mockChoice.models = { "claude-code": "sonnet[1m]" };
+		try {
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			const fav = container.querySelector(
+				'[aria-label="Favourite opus"]',
+			) as HTMLButtonElement;
+			expect(fav.getAttribute("aria-pressed")).toBe("false");
+			await act(async () => fav.click());
+			expect(mutateSpy).toHaveBeenCalledTimes(1);
+			expect(mutateSpy).toHaveBeenLastCalledWith({
+				favourites: [
+					{ harness: "codex", model: "gpt-6" },
+					{ harness: "claude-code", model: "opus" },
+				],
+			});
+			// The star stays the default for this agent.
+			expect(
+				container
+					.querySelector('[aria-label="Unstar sonnet[1m]"]')
+					?.getAttribute("aria-pressed"),
+			).toBe("true");
+		} finally {
+			mockHarnesses[0].models = { source: "harness", asOf: "", entries: [] };
+		}
+	});
+
+	it("takes no favourite while the last change is still saving", async () => {
+		mockHarnesses[0].models = listed;
+		mockSaving = true;
+		mutateSpy.mockClear();
+		try {
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			const heart = container.querySelector(
+				'[data-testid="agent-model-opus"] [data-testid="agent-model-favourite"]',
+			) as HTMLButtonElement;
+			expect(heart.getAttribute("aria-disabled")).toBe("true");
+			await act(async () => heart.click());
+			expect(mutateSpy).not.toHaveBeenCalled();
+		} finally {
+			mockSaving = false;
+			mockHarnesses[0].models = { source: "harness", asOf: "", entries: [] };
+		}
+	});
+
+	it("a custom model shows its own name and labels; a stored bare id still renders; a listed model shows none", async () => {
+		mockHarnesses[0].models = listed;
+		mockChoice.customModels = {
+			"claude-code": [
+				"gw-a",
+				{ id: "gw-b", name: "Gateway B", labels: ["no-reasoning"] },
+			],
+		};
+		try {
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			const row = (id: string) =>
+				container.querySelector(`[data-testid="agent-model-${id}"]`);
+			expect(row("gw-a")?.textContent).toContain("gw-a");
+			expect(row("gw-b")?.textContent).toContain("Gateway B");
+			expect(
+				row("gw-b")?.querySelector(
+					'[data-testid="agent-model-label-no-reasoning"]',
+				)?.textContent,
+			).toBe("No reasoning");
+			expect(
+				row("sonnet[1m]")?.querySelector(
+					'[data-testid="agent-model-label-large-context"]',
+				)?.textContent,
+			).toBe("1M context");
+			expect(
+				row("opus")?.querySelector('[data-mark="modelCapability"]'),
+			).toBeNull();
+		} finally {
+			mockHarnesses[0].models = { source: "harness", asOf: "", entries: [] };
+		}
+	});
+});
+
+describe("AgentDetail update, sign-out and change account (#1180)", () => {
+	const reset = () => {
+		const h = mockHarnesses[0];
+		h.update = undefined;
+		h.versionVsTested = undefined;
+		h.newerRelease = undefined;
+		h.signOut = undefined;
+		h.switchAccount = undefined;
+		h.checked = null;
+		stageSpy.mockClear();
+		checkHarnessSpy.mockClear();
+	};
+	const q = (id: string) =>
+		container.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+
+	it("Update stages the exact command in a fresh terminal, offers it to copy, and checks again when it ends", async () => {
+		Object.assign(mockHarnesses[0], {
+			update: { command: "claude update" },
+			versionVsTested: "older",
+		});
+		try {
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			expect(q("update-claude-code-copy")?.textContent).toContain(
+				"claude update",
+			);
+			await act(async () => q("update-claude-code")?.click());
+			expect(stageSpy).toHaveBeenCalledTimes(1);
+			const [line, opts] = stageSpy.mock.calls[0] as [
+				string,
+				{ fresh: boolean; onEnd: () => void },
+			];
+			expect(line).toBe("claude update; exit");
+			expect(opts.fresh).toBe(true);
+			await act(async () => opts.onEnd());
+			expect(checkHarnessSpy).toHaveBeenCalledWith({ id: "claude-code" });
+		} finally {
+			reset();
+		}
+	});
+
+	it("no Update button while the agent is current; a newer release shows it; a line is copy-only", async () => {
+		Object.assign(mockHarnesses[0], {
+			update: { command: "claude update" },
+			versionVsTested: "same",
+		});
+		try {
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			expect(q("update-claude-code")).toBeNull();
+			Object.assign(mockHarnesses[0], { newerRelease: "2.2.0" });
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			expect(q("update-claude-code")?.textContent).toBe("Update");
+			Object.assign(mockHarnesses[0], {
+				update: { line: "Download the latest release" },
+			});
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			expect(q("update-claude-code")).toBeNull();
+			expect(q("update-line-claude-code")?.textContent).toContain(
+				"Download the latest release",
+			);
+		} finally {
+			reset();
+		}
+	});
+
+	it("Sign out and Change account stage their exact commands and check again when each ends", async () => {
+		Object.assign(mockHarnesses[0], {
+			checked: {
+				outcome: "answers-acp",
+				detail: "answers ACP",
+				account: {
+					label: "Max plan",
+					email: "o@example.com",
+					organization: null,
+				},
+			},
+			signOut: { command: "claude auth logout" },
+			switchAccount: { command: "claude auth login" },
+		});
+		try {
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			await act(async () => q("sign-out-claude-code")?.click());
+			await act(async () => q("change-account-claude-code")?.click());
+			expect(stageSpy.mock.calls.map((c) => c[0])).toEqual([
+				"claude auth logout; exit",
+				"claude auth login; exit",
+			]);
+			const [signedOut, changed] = stageSpy.mock.calls.map(
+				(c) => (c[1] as { onEnd: () => void }).onEnd,
+			);
+			await act(async () => signedOut?.());
+			expect(checkHarnessSpy.mock.calls).toEqual([[{ id: "claude-code" }]]);
+			checkHarnessSpy.mockClear();
+			await act(async () => changed?.());
+			expect(checkHarnessSpy.mock.calls).toEqual([[{ id: "claude-code" }]]);
+		} finally {
+			reset();
+		}
+	});
+
+	it("Edit name and options writes the exact customModels patch, keeping other entries", async () => {
+		mockChoice.customModels = { "claude-code": ["gw-a", "gw-z"] };
+		await act(async () => root.render(<AgentDetail id="claude-code" />));
+		await act(async () =>
+			(
+				container.querySelector(
+					'[aria-label="Edit name and options of gw-a"]',
+				) as HTMLButtonElement
+			).click(),
+		);
+		const name = document.body.querySelector(
+			'[data-testid="custom-model-name"]',
+		) as HTMLInputElement;
+		await act(async () => {
+			Object.getOwnPropertyDescriptor(
+				HTMLInputElement.prototype,
+				"value",
+			)?.set?.call(name, "Gateway A");
+			name.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		await act(async () =>
+			(
+				document.body.querySelector(
+					'[data-testid="custom-model-save"]',
+				) as HTMLButtonElement
+			).click(),
+		);
+		expect(mutateSpy).toHaveBeenLastCalledWith(
+			{
+				customModels: {
+					"claude-code": [{ id: "gw-a", name: "Gateway A" }, "gw-z"],
+				},
+			},
+			expect.objectContaining({ onSuccess: expect.any(Function) }),
+		);
 	});
 });
