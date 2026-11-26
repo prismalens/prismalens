@@ -41,7 +41,7 @@ function service(rows: Record<string, unknown>, platform: NodeJS.Platform) {
 		urls.push(String(url));
 		return new Response(JSON.stringify({ version: "0.200.0" }));
 	}) as typeof fetch;
-	return { svc, urls, upsert };
+	return { svc, urls, upsert, prisma };
 }
 
 const npmCodex = {
@@ -109,8 +109,7 @@ describe("AgentUpdatesService.releases (#1180)", () => {
 
 	it("a refresh that fails is logged, and the next read tries again", async () => {
 		const rows: Record<string, unknown> = {};
-		const { svc, urls } = service(rows, "linux");
-		const { prisma } = svc as unknown as { prisma: PrismaService };
+		const { svc, urls, prisma } = service(rows, "linux");
 		const real = prisma.setting.findUnique.bind(prisma.setting);
 		let locked = true;
 		prisma.setting.findUnique = ((args) => {
@@ -136,6 +135,27 @@ describe("AgentUpdatesService.releases (#1180)", () => {
 			});
 		} finally {
 			warn.mockRestore();
+		}
+	});
+
+	it("a stored-releases read that fails is logged and answers no releases", async () => {
+		const { svc, prisma } = service({}, "linux");
+		const real = prisma.setting.findUnique.bind(prisma.setting);
+		prisma.setting.findUnique = ((args) =>
+			args.where.key === "AGENT_RELEASES"
+				? Promise.reject(new Error("database is locked"))
+				: real(args)) as typeof real;
+		const warn = vi
+			.spyOn(Logger.prototype, "warn")
+			.mockImplementation(() => {});
+		try {
+			expect(await svc.releases(["codex"])).toEqual({});
+			expect(warn.mock.calls[0]).toEqual([
+				"Could not read agent releases: Error: database is locked",
+			]);
+		} finally {
+			warn.mockRestore();
+			await svc.settled();
 		}
 	});
 
