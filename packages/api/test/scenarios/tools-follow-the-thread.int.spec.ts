@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	defaultSpec,
+	INVESTIGATION_REPORT_BRANCH,
 	type Schedule,
 	type ScheduleDetail,
 	type ThreadSubjectKind,
@@ -22,7 +23,13 @@ const pl = new ScenarioApp();
 const SERVICE = "cart-api";
 const RUNBOOK = "runbooks/restart.md";
 /** The latest run of each subject, and an earlier thread it may read. */
-type Seeded = { id: string; other?: string; file?: string; runbook?: unknown };
+type Seeded = {
+	id: string;
+	other?: string;
+	file?: string;
+	runbook?: unknown;
+	cite?: { threadId: string; key: string };
+};
 const runs = new Map<ThreadSubjectKind, Seeded>();
 
 const PR_URL = "https://github.com/acme/cart/pull/1";
@@ -192,6 +199,8 @@ function inputFor(tool: string, run: Seeded) {
 			return { schedule: "0 9 * * *", prompt: "Check the cart rollout" };
 		case "pl_cron_delete":
 			return { id: "none" };
+		case "pl_citation_read":
+			return run.cite ?? {};
 		case "pl_secret_request":
 			return { name: "CART_TOKEN", reason: "Read the cart admin API" };
 		default:
@@ -246,6 +255,18 @@ describe("Tools follow the thread (#1020): no offered tool always fails", () => 
 					since: new Date(),
 				},
 			});
+			// pl_citation_read answers only for a message the user cited into this thread (#1195).
+			const source = run.other ?? (runs.get("project")?.id as string);
+			const cited = await prisma.investigationEvent.findFirstOrThrow({
+				where: { investigationId: source },
+				orderBy: { ordinal: "asc" },
+				select: { branchId: true, seq: true },
+			});
+			const key = `${cited.branchId === INVESTIGATION_REPORT_BRANCH ? "report" : cited.branchId}:${cited.seq}`;
+			await prisma.messageCitation.create({
+				data: { threadId: run.id, sourceThreadId: source, sourceKey: key, sourceTurn: 1 },
+			});
+			run.cite = { threadId: source, key };
 			const owes = row.kind === "chat" ? "answer" : "report";
 			await g.lease(run.id, "prismalens-coverage", undefined, undefined, { subject, owes });
 			const offered = servedTo(g.tools, { subject, owes });
