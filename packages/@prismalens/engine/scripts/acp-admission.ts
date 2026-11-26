@@ -434,7 +434,7 @@ const r11 = await (async (): Promise<string> => {
 		};
 		const authenticateOf = (env: Record<string, string | undefined>) => {
 			const method = authenticateMethod(HARNESS_REGISTRY[harness], env);
-			return method ? { authenticate: method.methodId } : {};
+			return method ? { authenticate: method } : {};
 		};
 		const first = new AcpSession({
 			command: prep.launch.command,
