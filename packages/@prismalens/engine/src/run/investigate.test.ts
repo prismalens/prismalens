@@ -2856,6 +2856,29 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		expect([wire.includes('{\\"name\\":\\"pl-docs\\",\\"type\\":\\"stdio\\"}'), wire.includes("secret-arg-path"), wire.includes(VALUE)]).toEqual([true, false, false]);
 	});
 
+	it("keeps a shared value with a quote and a backslash out of every inbound wire record, raw and JSON-escaped", async () => {
+		const quoted = 'sv-"quoted"\\path-0123456789';
+		const { runDir } = await collect("ok", {
+			harness: "claude-code",
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_MODES: "default=Default,acceptEdits=Accept edits",
+				FAKE_SDK_INIT: JSON.stringify({ mcp_servers: [{ name: quoted, status: "connected", source: "user" }] }),
+			},
+			shared: { ...shared, hidden: [quoted] },
+		});
+		const lines = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => (JSON.parse(l) as { m: string }).m);
+		const escaped = JSON.stringify(quoted).slice(1, -1);
+		expect([
+			lines.some((m) => m.includes("_claude/sdkMessage") && m.includes("[redacted]")),
+			lines.some((m) => m.includes(quoted) || m.includes(escaped)),
+		]).toEqual([true, false]);
+	});
+
 	it("puts the instructions at the start of the first prompt for an agent other than Claude Code, and only the first", async () => {
 		const prompts = join(tmp("rec"), "prompts.jsonl");
 		await collect("ok", { env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD_PROMPT: prompts }, shared });

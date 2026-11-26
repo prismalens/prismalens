@@ -129,6 +129,7 @@ import {
 import {
 	injectedSecrets,
 	redactEvent,
+	redactLine,
 	requestedSecrets,
 	StreamScrubber,
 	scrub,
@@ -996,8 +997,10 @@ async function* runSession(
 		...(opts.shared?.hidden ?? []),
 	]);
 	const wire = (direction: "in" | "out", line: string): void => {
-		let m = direction === "out" ? withoutSharedDefs(line) : line;
-		for (const s of hidden) m = m.replaceAll(s, "[redacted]");
+		const m = redactLine(
+			direction === "out" ? withoutSharedDefs(line) : line,
+			hidden,
+		);
 		try {
 			appendFileSync(
 				transcript,

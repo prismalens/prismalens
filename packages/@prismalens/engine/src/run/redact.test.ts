@@ -128,4 +128,14 @@ describe("shared values never reach a stream, even split across pieces (#1180 §
 			nested: [{ text: "x [redacted] y" }],
 		});
 	});
+
+	it("redactEvent scrubs a kind inside a tool's input or arguments, which the agent wrote, while the event's own kind stays", () => {
+		const secret = "shared-value-0123456789";
+		const call = { kind: "harness_tool_call", input: { kind: secret, deep: [{ kind: secret }] } };
+		const step = { kind: "agent_step", toolCalls: [{ toolCallId: "t1", name: "x", args: { kind: secret } }] };
+		expect([redactEvent(call, [secret]), redactEvent(step, [secret])]).toEqual([
+			{ kind: "harness_tool_call", input: { kind: "[redacted]", deep: [{ kind: "[redacted]" }] } },
+			{ kind: "agent_step", toolCalls: [{ toolCallId: "t1", name: "x", args: { kind: "[redacted]" } }] },
+		]);
+	});
 });
