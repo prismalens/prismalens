@@ -22,6 +22,7 @@ import {
 	useUsageLimits,
 	useUsageSummary,
 } from "@/lib/api/hooks/use-usage-orpc";
+import { PriceOverrides } from "./PriceOverrides";
 import {
 	AgentGap,
 	UsageLimitsPanel,
@@ -74,6 +75,8 @@ export function UsagePanel({
 	limits,
 	now,
 	waiting,
+	readOnOpen = false,
+	prices,
 }: {
 	range: UsageRange;
 	onRangeChange: (range: UsageRange) => void;
@@ -87,6 +90,10 @@ export function UsagePanel({
 	limits: Loadable<UsageLimits>;
 	now: number;
 	waiting?: readonly WaitingThread[];
+	/** The live view reads limits again on open (#1180); the gallery does not. */
+	readOnOpen?: boolean;
+	/** Settings → Usage → Prices under the Cost tab, drawn by the live view. */
+	prices?: ReactNode;
 }) {
 	const scope = summary.status === "ready" ? summary.data : undefined;
 	return (
@@ -155,11 +162,17 @@ export function UsagePanel({
 						<Loaded state={summary} what="Usage">
 							{(s) => <UsageCost summary={s} />}
 						</Loaded>
+						{prices}
 					</TabPanel>
 					<TabPanel value="limits">
 						<Loaded state={limits} what="Limits">
 							{(l) => (
-								<UsageLimitsPanel limits={l} now={now} waiting={waiting} />
+								<UsageLimitsPanel
+									limits={l}
+									now={now}
+									waiting={waiting}
+									readOnOpen={readOnOpen}
+								/>
 							)}
 						</Loaded>
 					</TabPanel>
@@ -238,6 +251,8 @@ export function UsageView() {
 			limits={toLoadable(limits)}
 			now={now}
 			waiting={waiting}
+			readOnOpen
+			prices={<PriceOverrides agents={summary.data?.agents ?? []} />}
 		/>
 	);
 }

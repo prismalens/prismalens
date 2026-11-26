@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import {
+	type AgentLimits,
 	type ThreadRow,
 	type UsageLimits,
 	type UsageWindow,
@@ -13,9 +14,14 @@ import { useEffect, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { fact } from "@/components/kit/fact";
 import { markLook } from "@/components/kit/marks";
+import { Time } from "@/components/kit/Time";
 import { Hint } from "@/components/shared/Hint";
 import { Empty } from "@/components/shared/State";
-import { useUsageLimits } from "@/lib/api/hooks/use-usage-orpc";
+import { agentFacts } from "@/lib/agent-facts";
+import {
+	useLimitReadsOnOpen,
+	useUsageLimits,
+} from "@/lib/api/hooks/use-usage-orpc";
 import { formatClock } from "@/lib/format-time";
 import { cn } from "@/lib/utils";
 import {
@@ -344,20 +350,68 @@ function WaitingThreads({
 	);
 }
 
+/** When the shown limit read ran, and a failed try after it (#1180). */
+function CheckedTime({ a, now }: { a: AgentLimits; now: number }) {
+	return (
+		<>
+			{a.checkedAt && (
+				<Time
+					at={a.checkedAt}
+					now={now}
+					prefix="Checked"
+					past
+					ago
+					className="text-meta text-text-3"
+					testId={`limits-checked-${a.agent}`}
+				/>
+			)}
+			{a.triedAt && (
+				<Time
+					at={a.triedAt}
+					now={now}
+					prefix="Last try failed"
+					past
+					ago
+					className="text-meta text-text-3"
+					testId={`limits-tried-${a.agent}`}
+				/>
+			)}
+		</>
+	);
+}
+
+function AgentWindows({ a, now }: { a: AgentLimits; now: number }) {
+	return (
+		<div className="grid grid-cols-[repeat(auto-fill,minmax(220px,280px))] gap-x-3 max-sm:grid-cols-1 gap-y-1">
+			{a.windows.map((w) => (
+				<WindowTile
+					key={w.key ?? `${w.type ?? ""}:${w.window ?? ""}`}
+					w={w}
+					now={now}
+				/>
+			))}
+		</div>
+	);
+}
+
 /** Each agent's usage windows as it last reported them; `now` is passed so fixtures hold still. */
 export function UsageLimitsPanel({
 	limits,
 	now,
 	waiting = [],
+	readOnOpen = false,
 }: {
 	limits: UsageLimits;
 	now: number;
 	/** Threads that wait on a limit now, from the thread list's feed. */
 	waiting?: readonly WaitingThread[];
+	/** Read limits again on open where the newest read is old (#1180); off in the gallery. */
+	readOnOpen?: boolean;
 }) {
 	if (limits.agents.length === 0) return <Empty text="No agent installed" />;
 	return (
 		<div className="grid min-w-0 gap-4" data-testid="usage-limits">
+			{readOnOpen && <ReadOnOpen limits={limits} />}
 			{limits.agents.map((a) => {
 				const name = agentName(a.agent);
 				const held = waiting.filter((t) => t.harness === a.agent);
@@ -372,7 +426,7 @@ export function UsageLimitsPanel({
 						aria-label={name}
 						data-testid="usage-agent"
 					>
-						<div className="flex min-w-0 items-center gap-2">
+						<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
 							<AgentMark id={a.agent} className="size-4" />
 							<h3
 								className="text-body font-medium text-text-1"
@@ -380,13 +434,16 @@ export function UsageLimitsPanel({
 							>
 								{name}
 							</h3>
-							{latest && (
-								<Hint label={`Reported ${formatClock(latest)}`}>
-									<span className="text-meta text-text-3 tabular-nums">
-										{formatClock(latest)}
-									</span>
-								</Hint>
-							)}
+							{a.checkedAt
+								? null
+								: latest && (
+										<Hint label={`Reported ${formatClock(latest)}`}>
+											<span className="text-meta text-text-3 tabular-nums">
+												{formatClock(latest)}
+											</span>
+										</Hint>
+									)}
+							<CheckedTime a={a} now={now} />
 							{a.windows.length === 0 && (
 								<span data-testid={`limits-empty-${a.agent}`}>
 									<AgentGap
@@ -400,21 +457,48 @@ export function UsageLimitsPanel({
 								</span>
 							)}
 						</div>
-						{a.windows.length > 0 && (
-							<div className="grid grid-cols-[repeat(auto-fill,minmax(220px,280px))] gap-x-3 max-sm:grid-cols-1 gap-y-1">
-								{a.windows.map((w) => (
-									<WindowTile
-										key={`${w.type ?? ""}:${w.window ?? ""}`}
-										w={w}
-										now={now}
-									/>
-								))}
-							</div>
-						)}
+						{a.windows.length > 0 && <AgentWindows a={a} now={now} />}
 						{held.length > 0 && <WaitingThreads threads={held} now={now} />}
 					</section>
 				);
 			})}
+		</div>
+	);
+}
+
+function ReadOnOpen({ limits }: { limits: UsageLimits }) {
+	useLimitReadsOnOpen(limits);
+	return null;
+}
+
+/** AgentDetail's limits row: this agent's windows and Checked time, read again on open (#1180). */
+export function AgentLimitsRow({ agent }: { agent: string }) {
+	const facts = agentFacts(agent);
+	const shows = !!(facts?.limitsBeforeRun || facts?.reportsLimits);
+	const limits = useUsageLimits(shows).data;
+	const a = limits?.agents.find((x) => x.agent === agent);
+	const own = a ? { agents: [a] } : undefined;
+	useLimitReadsOnOpen(own);
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		const t = setInterval(() => setNow(Date.now()), 30_000);
+		return () => clearInterval(t);
+	}, []);
+	if (!shows || !a) return null;
+	return (
+		<div className="grid min-w-0 gap-1" data-testid="agent-limits">
+			<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+				<CheckedTime a={a} now={now} />
+				{a.windows.length === 0 && (
+					<AgentGap
+						agent={a.agent}
+						text={
+							a.empty === "no-run-yet" ? "Shows after a run" : "Not reported"
+						}
+					/>
+				)}
+			</div>
+			{a.windows.length > 0 && <AgentWindows a={a} now={now} />}
 		</div>
 	);
 }
