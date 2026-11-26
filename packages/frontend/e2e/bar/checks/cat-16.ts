@@ -504,7 +504,9 @@ export default defineChecks([
 			await expect(page.getByTestId("composer-stop")).toBeVisible({
 				timeout: 30_000,
 			});
+			// In the transcript: the rail's screen-reader links carry the same text.
 			const sent = page
+				.getByTestId("transcript")
 				.getByText("Check the retries again, take your time")
 				.first();
 			await sent.click({ button: "right" });
@@ -552,6 +554,7 @@ export default defineChecks([
 			const before = await stateOf(page, fx.id, fx.cwd);
 			await open(fx.path, "thread-page");
 			await page
+				.getByTestId("transcript")
 				.getByText(MESSAGE_2, { exact: true })
 				.first()
 				.click({ button: "right" });
@@ -605,6 +608,7 @@ export default defineChecks([
 			const rowsBefore = (await eventsOf(page, fx.id)).length;
 			await open(fx.path, "thread-page");
 			await page
+				.getByTestId("transcript")
 				.getByText(MESSAGE_2, { exact: true })
 				.first()
 				.click({ button: "right" });
