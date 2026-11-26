@@ -138,4 +138,15 @@ describe("shared values never reach a stream, even split across pieces (#1180 §
 			{ kind: "agent_step", toolCalls: [{ toolCallId: "t1", name: "x", args: { kind: "[redacted]" } }] },
 		]);
 	});
+
+	it("redactEvent scrubs a form field named kind in an ask's answer, and keeps the answer's own kind", () => {
+		const secret = "shared-value-0123456789";
+		const closed = { kind: "ask_closed", askId: "a1", outcome: "answered", answer: { kind: "input", values: { kind: secret, other: secret } } };
+		expect(redactEvent(closed, [secret])).toEqual({
+			kind: "ask_closed",
+			askId: "a1",
+			outcome: "answered",
+			answer: { kind: "input", values: { kind: "[redacted]", other: "[redacted]" } },
+		});
+	});
 });
