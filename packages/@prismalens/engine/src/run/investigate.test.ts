@@ -2912,7 +2912,7 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		expect(sent.slice(1).includes("Always cite the runbook.")).toBe(false);
 	});
 
-	it("on Claude Code asks for the init, appends the instructions to the system prompt, and records one agent_loadout", async () => {
+	it("on Claude Code asks for the init, appends the instructions to the system prompt, and records one agent_loadout after session_opened, even when the init comes first", async () => {
 		const record = join(tmp("rec"), "record.json");
 		const { events } = await collect("ok", {
 			harness: "claude-code",
@@ -2922,6 +2922,7 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 				FAKE_RECORD: record,
 				FAKE_MODES: "default=Default,acceptEdits=Accept edits",
 				FAKE_SDK_INIT: JSON.stringify({ mcp_servers: [{ name: "docs", status: "connected", source: "user" }], skills: ["triage"] }),
+				FAKE_SDK_INIT_EARLY: "1",
 			},
 			shared,
 		});
@@ -2934,5 +2935,7 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		expect(loadouts.map((e) => (e.kind === "agent_loadout" ? [e.profile, e.fingerprint, e.items.map((i) => [i.kind, i.name, i.state])] : null))).toEqual([
 			["own", "fp-1", [["mcp", "docs", "loads"], ["skill", "triage", "loads"]]],
 		]);
+		const opened = events.find((e) => e.kind === "session_opened");
+		expect([events.indexOf(opened as CanonicalEvent) < events.indexOf(loadouts[0] as CanonicalEvent), (opened?.seq ?? 0) < (loadouts[0]?.seq ?? 0)]).toEqual([true, true]);
 	});
 });

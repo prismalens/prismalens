@@ -1028,13 +1028,13 @@ async function* runSession(
 	// An agent with a system-prompt slot takes the set's instructions there; any other, in its first prompt.
 	const sharedText = opts.shared?.instructions ?? null;
 	let sharedTextOwed = !!sharedText && !inSystemPrompt;
-	let loadout: CanonicalEvent | null = null;
+	let loadout: Parameters<typeof adapter.agentLoadout>[0] | null = null;
 	let loadoutSent = false;
-	/** The session's `agent_loadout`, once, as soon as Claude's init has arrived. */
+	/** The session's `agent_loadout`, once, as soon as Claude's init has arrived; its seq is taken here. */
 	const loadoutDue = (): CanonicalEvent | null => {
 		if (!loadout || loadoutSent) return null;
 		loadoutSent = true;
-		return loadout;
+		return adapter.agentLoadout(loadout);
 	};
 	// The brief rides the session, new and load alike, so the first prompt carries only the turn (#817).
 	const brief =
@@ -1154,12 +1154,12 @@ async function* runSession(
 						const init =
 							method === CLAUDE_SDK_MESSAGE && !loadout ? initOf(params) : null;
 						if (init && opts.shared)
-							loadout = adapter.agentLoadout({
+							loadout = {
 								profile: opts.shared.profile,
 								cwd: opts.cwd,
 								fingerprint: opts.shared.fingerprint,
 								items: initItems(init),
-							});
+							};
 					},
 				}
 			: {}),
