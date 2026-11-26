@@ -1875,6 +1875,7 @@ async function* runSession(
 		};
 		const turn = async function* (
 			parts: PromptPart[],
+			command = false,
 		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			const receipt = carried;
 			carried = [];
@@ -1884,8 +1885,9 @@ async function* runSession(
 			yield* recordQueued();
 			if (turns++ > 0 && opts.effort && !(await sendEffort()))
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
-			// The set's instructions open the first prompt after the session opens (§3.3, `first-message`).
-			if (sharedTextOwed && sharedText) {
+			// The set's instructions open the first prompt after the session opens (§3.3, `first-message`);
+			// a command keeps its turn to itself.
+			if (sharedTextOwed && sharedText && !command) {
 				parts = [{ type: "text", text: sharedText }, ...parts];
 				sharedTextOwed = false;
 			}
@@ -2007,7 +2009,13 @@ async function* runSession(
 				...(context?.addendum ? [context.addendum] : []),
 				...after,
 			];
-			if (frame.wrap || before.length || extra.length || attachments?.length) {
+			if (
+				frame.wrap ||
+				before.length ||
+				extra.length ||
+				attachments?.length ||
+				sharedTextOwed
+			) {
 				const lead = yield* turn(
 					promptParts(
 						wrap([...before, COMMAND_LEAD, ...extra].join("\n\n")),
@@ -2020,7 +2028,7 @@ async function* runSession(
 			}
 			const record = frame.beforeCommand?.();
 			if (record) yield record;
-			return yield* turn([{ type: "text", text: command }]);
+			return yield* turn([{ type: "text", text: command }], true);
 		};
 
 		/** The agent's own compact command as a turn, between two boundary events (#1024). */
@@ -2039,12 +2047,15 @@ async function* runSession(
 			compacting = true;
 			let r: TurnEnd;
 			try {
-				r = yield* turn([
-					{
-						type: "text",
-						text: `/${c.command}${instructions ? ` ${instructions}` : ""}`,
-					},
-				]);
+				r = yield* turn(
+					[
+						{
+							type: "text",
+							text: `/${c.command}${instructions ? ` ${instructions}` : ""}`,
+						},
+					],
+					true,
+				);
 			} finally {
 				compacting = false;
 			}

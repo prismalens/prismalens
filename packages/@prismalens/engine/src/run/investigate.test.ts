@@ -2483,6 +2483,31 @@ describe("a command turn (#1024)", () => {
 		expect(prompts[1]).toEqual([{ type: "text", text: "/review fix the tests" }]);
 	});
 
+	const set = { servers: [], hidden: [], revision: "rev-1", instructions: "Always cite the runbook.", fingerprint: "fp", profile: "own" as const };
+	it("the PrismaLens set's instructions go in a lead turn before a first command, never beside it (#1180 §3.3)", async () => {
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "/review fix the tests", mode: "queue", heads: [] },
+			shared: set,
+		});
+		expect(promptsSent(runDir)).toEqual([
+			[
+				{ type: "text", text: "Always cite the runbook." },
+				{ type: "text", text: COMMAND_LEAD },
+			],
+			[{ type: "text", text: "/review fix the tests" }],
+		]);
+	});
+
+	it("a first compact turn goes alone; the PrismaLens set's instructions wait for a normal prompt (#1180 §3.3)", async () => {
+		const { runDir } = await collect("resume", {
+			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
+			resume: { sessionId: "ses_old", text: "/compact", mode: "queue", heads: [], compact: { command: "compact", only: true } },
+			shared: set,
+		});
+		expect(promptsSent(runDir)).toEqual([[{ type: "text", text: "/compact" }]]);
+	});
+
 	it("after a restart, the restart note goes in the turn before the command", async () => {
 		const { runDir } = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
