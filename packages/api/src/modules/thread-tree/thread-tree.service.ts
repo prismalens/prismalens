@@ -469,7 +469,7 @@ export class ThreadTreeService
 						)
 					: (rewindBlockFailure(result.reason) ??
 						fail("internal", "The edit did not run.", "Continue without it."));
-		const line = `Rewound ${threadLink(target)}: ${args.turns} turn${args.turns === 1 ? "" : "s"} folded, ${result.reverted.length} file${result.reverted.length === 1 ? "" : "s"} set back, ${result.kept.length} kept. It continues from the edited message.`;
+		const line = `Rewound ${threadLink(target)}: ${args.turns} turn${args.turns === 1 ? "" : "s"} folded, ${result.reverted.length} file${result.reverted.length === 1 ? "" : "s"} set back, ${result.kept.length} kept. ${result.sent ? "It continues from the edited message." : (result.why ?? "The edited message was not sent.")}`;
 		return {
 			value: {
 				status: result.sent ? "rewound" : "rewound_not_sent",

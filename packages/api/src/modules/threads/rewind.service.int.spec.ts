@@ -495,6 +495,24 @@ describe("RewindService (#1193)", () => {
 		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
 	});
 
+	it("an Undo whose read of the edited message fails after its files went back is refused interrupted and marks its operation interrupted", async () => {
+		const { id, cwd } = await fixture();
+		const r = doneOf(await rewindAt(id, await seqOf(id, MESSAGE_2)));
+		await idle(id, "the edited message's turn to end");
+		const find = vi.spyOn((await pl.prisma()).investigationEvent, "findFirst");
+		vi.mocked(undoRewindFiles).mockImplementationOnce(async (...a) => {
+			const done = await actual.undoRewindFiles(...a);
+			find.mockRejectedValueOnce(new Error("database is locked"));
+			return done;
+		});
+
+		const u = await rewinds().undo(id, r.rewindId, true);
+
+		expect(u).toEqual({ state: "refused", reason: "interrupted", paths: [] });
+		expect(await interruptedOf(id)).toEqual(["undo"]);
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
+	});
+
 	it("a rewind asked again with a rewind id that already committed returns that rewind, unsent, without running it again", async () => {
 		const { id } = await fixture();
 		const seq = await seqOf(id, MESSAGE_2);
@@ -512,7 +530,7 @@ describe("RewindService (#1193)", () => {
 			reverted: first.reverted,
 			kept: first.kept,
 			sent: false,
-			why: "PrismaLens restarted during this edit, so the edited message may not have been sent. Send it again or Undo.",
+			why: "PrismaLens restarted during this edit, so the edited message may already have been sent. Check the thread before sending it again, or Undo.",
 		});
 		expect((await visible(id)).filter((e) => e.kind === "thread_rewound").length).toBe(1);
 	});

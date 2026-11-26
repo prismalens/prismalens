@@ -970,11 +970,15 @@ export async function writeStates(
 		const undo = async () => {
 			// A linked ancestor mid-operation: what this call wrote goes back to the backup's states.
 			const back = await scratchIndex();
+			const stuck: string[] = [];
 			try {
 				await store.git(["read-tree", o.base], { index: back.path });
 				for (const r of receipt) {
 					const was = o.backup.get(r.path) ?? "absent";
-					if (!(await ancestorsPlain(store.root, r.path))) continue;
+					if (!(await ancestorsPlain(store.root, r.path))) {
+						stuck.push(r.path);
+						continue;
+					}
 					if ((await stateOnDisk(store, r.path)) !== r.wrote) {
 						kept.push({ path: r.path, why: "changed-while-rewinding" });
 						continue;
@@ -991,6 +995,11 @@ export async function writeStates(
 			} finally {
 				await back.done();
 			}
+			// A write the rollback could not reach stays on disk: the op must stay for Restore.
+			if (stuck.length)
+				throw new Error(
+					`Rollback could not set back ${stuck.join(", ")}: a folder above it became a link`,
+				);
 		};
 		for (const p of paths) {
 			if (filtered.has(p)) {
@@ -1282,6 +1291,8 @@ export type RepoOpResult =
 			repo: string;
 			reason: RewindRepoRefusal;
 			paths: string[];
+			/** Paths a link refusal's rollback left as the user saved them. */
+			kept?: RewindKeep[];
 	  };
 
 /** Commits every target blob is present: a pruned object fails here, before any write. */
@@ -1450,6 +1461,7 @@ export async function rewindFiles(
 				repo: repoName,
 				reason: "linked",
 				paths: [written.linked],
+				kept: written.kept,
 			};
 		await finish(store, o.op, written);
 		return {
@@ -1562,6 +1574,7 @@ export async function undoRewindFiles(
 				repo: repoName,
 				reason: "linked",
 				paths: [written.linked],
+				kept: written.kept,
 			};
 		await finish(store, o.op, written);
 		return {
@@ -1757,6 +1770,7 @@ export async function restoreFiles(
 				repo: repoName,
 				reason: "linked",
 				paths: [written.linked],
+				kept: written.kept,
 			};
 		await finish(store, o.op, written);
 		return {

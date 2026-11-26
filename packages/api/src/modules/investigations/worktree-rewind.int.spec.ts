@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { REWIND_PATHS_MAX, type RunWorkspace } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -45,9 +45,15 @@ import {
 	writeStates,
 } from "./worktree-scopes.js";
 
+/** Runs before each lstat the code under test makes, so a test can act at a check. */
+const fsHooks = vi.hoisted(() => ({ lstat: null as ((path: string) => void) | null }));
 vi.mock("node:fs/promises", async (importOriginal) => {
 	const fs = await importOriginal<typeof import("node:fs/promises")>();
-	return { ...fs, unlink: vi.fn(fs.unlink) };
+	const lstat = (...a: Parameters<typeof fs.lstat>) => {
+		fsHooks.lstat?.(String(a[0]));
+		return fs.lstat(...a);
+	};
+	return { ...fs, unlink: vi.fn(fs.unlink), lstat };
 });
 
 vi.setConfig({ testTimeout: 50_000 }); // slowest test 16448 ms; 3x, rounded up to the second, at least 5 s (#1154)
@@ -151,6 +157,7 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 	});
 
 	afterEach(() => {
+		fsHooks.lstat = null;
 		rmSync(baseDir, { recursive: true, force: true });
 	});
 
@@ -620,6 +627,150 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 			"meta",
 			"target",
 		]);
+	});
+
+	/** Two named files the agent's turn changed: `first` is written before `sub/f.txt`'s link check. */
+	const twoFiles = async (first: string) => {
+		mkdirSync(join(root, "sub"));
+		mkdirSync(join(root, dirname(first)), { recursive: true });
+		writeFileSync(join(root, first), "x0\n");
+		writeFileSync(join(root, "sub", "f.txt"), "s0\n");
+		git(["add", "-A"]);
+		git(["commit", "-q", "-m", "two"]);
+		ws.repos[0] = { ...(ws.repos[0] as RunWorkspace["repos"][number]), head: git(["rev-parse", "HEAD"]) };
+		const named: NamedPaths[] = [{ seq: TURN_SEQ, paths: [first, "sub/f.txt"] }];
+		await turn(TURN_SEQ, () => {
+			writeFileSync(join(root, first), "x1\n");
+			writeFileSync(join(root, "sub", "f.txt"), "s1\n");
+		});
+		return { named, preview: await okPreview(named) };
+	};
+	/** Runs `swap` once, when the writer checks `sub` after it has set `first` back. */
+	const onSubCheckAfter = (first: string, swap: () => void) => {
+		let fired = false;
+		fsHooks.lstat = (p) => {
+			const at = p.replaceAll("\\", "/");
+			if (!fired && at.endsWith(`/pl-${runId}/sub`) && read(first) === "x0\n") {
+				fired = true;
+				swap();
+			}
+		};
+	};
+
+	it("a link refusal reports the file its rollback left as the user saved it, and keeps that save", async () => {
+		const { named, preview } = await twoFiles("a/x.txt");
+		const outside = join(baseDir, "outside");
+		mkdirSync(outside);
+		writeFileSync(join(outside, "f.txt"), "OUTSIDE\n");
+		onSubCheckAfter("a/x.txt", () => {
+			writeFileSync(join(root, "a", "x.txt"), "saved meanwhile\n");
+			rmSync(join(root, "sub"), { recursive: true });
+			dirLink(outside, join(root, "sub"));
+		});
+
+		const r = await rewindFiles(ws, "repo", ctx, {
+			op: randomUUID(),
+			rewindId: randomUUID(),
+			fromSeq: MESSAGE_SEQ,
+			named,
+			include: new Set(),
+			expect: { head: preview.head, tree: preview.tree },
+		});
+
+		expect(r).toEqual({
+			state: "refused",
+			repo: "repo",
+			reason: "linked",
+			paths: ["sub/f.txt"],
+			kept: [{ path: "a/x.txt", why: "changed-while-rewinding" }],
+		});
+		expect(read("a/x.txt")).toBe("saved meanwhile\n");
+		expect(readFileSync(join(outside, "f.txt"), "utf8")).toBe("OUTSIDE\n");
+	});
+
+	it("a written file whose folder also became a link stops the rollback with an error and leaves the operation recoverable", async () => {
+		const { named, preview } = await twoFiles("d/x.txt");
+		const outside = join(baseDir, "outside");
+		const outsideD = join(baseDir, "outside-d");
+		mkdirSync(outside);
+		mkdirSync(outsideD);
+		writeFileSync(join(outside, "f.txt"), "OUTSIDE\n");
+		writeFileSync(join(outsideD, "x.txt"), "OUT\n");
+		onSubCheckAfter("d/x.txt", () => {
+			rmSync(join(root, "d"), { recursive: true });
+			dirLink(outsideD, join(root, "d"));
+			rmSync(join(root, "sub"), { recursive: true });
+			dirLink(outside, join(root, "sub"));
+		});
+		const op = randomUUID();
+
+		await expect(
+			rewindFiles(ws, "repo", ctx, {
+				op,
+				rewindId: randomUUID(),
+				fromSeq: MESSAGE_SEQ,
+				named,
+				include: new Set(),
+				expect: { head: preview.head, tree: preview.tree },
+			}),
+		).rejects.toThrow("Rollback could not set back d/x.txt: a folder above it became a link");
+
+		expect(readFileSync(join(outsideD, "x.txt"), "utf8")).toBe("OUT\n");
+		const { gitDir } = await store();
+		expect([...((await storeOps(gitDir)).get(op)?.refs ?? [])].toSorted()).toEqual([
+			"backup",
+			"meta",
+			"target",
+		]);
+	});
+
+	it("an Undo that fails between its writes leaves its operation recoverable, and Restore puts the written file back", async () => {
+		writeFileSync(join(root, "b.txt"), "b0\n");
+		git(["add", "-A"]);
+		git(["commit", "-q", "-m", "b"]);
+		ws.repos[0] = { ...(ws.repos[0] as RunWorkspace["repos"][number]), head: git(["rev-parse", "HEAD"]) };
+		const named: NamedPaths[] = [{ seq: TURN_SEQ, paths: ["a.txt", "b.txt"] }];
+		await turn(TURN_SEQ, () => {
+			writeFileSync(join(root, "a.txt"), A1);
+			rmSync(join(root, "b.txt"));
+		});
+		const p = await okPreview(named);
+		const rewound = done(
+			await rewindFiles(ws, "repo", ctx, {
+				op: randomUUID(),
+				rewindId: randomUUID(),
+				fromSeq: MESSAGE_SEQ,
+				named,
+				include: new Set(),
+				expect: { head: p.head, tree: p.tree },
+			}),
+		);
+		expect([read("a.txt"), read("b.txt")]).toEqual([A0, "b0\n"]);
+		const undoOp = randomUUID();
+		// Undo writes a.txt back to A1, then fails to delete b.txt.
+		vi.mocked(unlink).mockRejectedValueOnce(
+			Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }),
+		);
+
+		await expect(
+			undoRewindFiles(ws, "repo", ctx, { op: undoOp, of: rewound.op, rewindId: randomUUID(), afterSeq: 100 }),
+		).rejects.toThrow("EACCES");
+
+		expect([read("a.txt"), read("b.txt")]).toEqual([A1, "b0\n"]);
+		const { gitDir } = await store();
+		expect(await interruptedWritten(gitDir, undoOp, await snapshotNow(ws, "repo", ctx))).toEqual(["a.txt"]);
+		const plan = await previewRestoreFiles(ws, "repo", ctx, undoOp);
+		if (typeof plan === "string") throw new Error(`expected a plan, got ${plan}`);
+		const r = done(
+			await restoreFiles(ws, "repo", ctx, {
+				op: randomUUID(),
+				of: undoOp,
+				expect: { head: plan.head, tree: plan.tree },
+				include: new Set(),
+			}),
+		);
+		expect(r.reverted).toEqual(["a.txt"]);
+		expect([read("a.txt"), read("b.txt")]).toEqual([A0, "b0\n"]);
 	});
 
 	it("a changed path under a folder the user replaced by a link makes the preview unavailable and refuses the rewind as linked, writing nothing (R17)", async () => {

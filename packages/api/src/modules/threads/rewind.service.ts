@@ -111,6 +111,11 @@ class Refuse extends Error {
 
 const pathsOf = (repo: string, ps: readonly string[]): RewindPath[] =>
 	ps.map((path) => ({ repo, path }));
+/** A refusal's paths, with any its rollback left as the user saved them. */
+const refusedPaths = (r: Extract<RepoOpResult, { state: "refused" }>) => [
+	...r.paths,
+	...(r.kept ?? []).map((k) => k.path),
+];
 const keptOf = (
 	repo: string,
 	ks: readonly { path: string; why: KeepWhy }[],
@@ -469,7 +474,7 @@ export class RewindService {
 				reverted: past.reverted,
 				kept: past.kept,
 				sent: false,
-				why: "PrismaLens restarted during this edit, so the edited message may not have been sent. Send it again or Undo.",
+				why: "PrismaLens restarted during this edit, so the edited message may already have been sent. Check the thread before sending it again, or Undo.",
 			};
 		const m = this.messageOf(rows, input.seq);
 		if (!m || m.event.kind !== "operator_message") return refused("stale");
@@ -541,7 +546,7 @@ export class RewindService {
 					r.reason === "stale" || r.reason === "too-many"
 						? "stale"
 						: "conflict",
-					pathsOf(repo.repo, r.paths),
+					pathsOf(repo.repo, refusedPaths(r)),
 				);
 			}
 			done.push(r);
@@ -823,20 +828,20 @@ export class RewindService {
 				await markOp(ws, repo, ctx, op, "dropped").catch(() => {});
 				if (r.reason === "gone" || r.reason === "no-snapshot") continue;
 				if (done.length) return interrupted();
-				return refused("stale", pathsOf(repo, r.paths));
+				return refused("stale", pathsOf(repo, refusedPaths(r)));
 			}
 			done.push(r);
 		}
 		const restored = done.flatMap((d) => pathsOf(d.repo, d.reverted));
 		const kept = done.flatMap((d) => keptOf(d.repo, d.kept));
-		const edited = await this.prisma.investigationEvent.findFirst({
-			// The edited message itself is folded: read it on purpose for its branch.
-			where: { investigationId: id, ordinal: marker.messageOrdinal },
-			select: { branchId: true },
-		});
-		const branches = CONVERSATION_BRANCHES(edited?.branchId ?? "run");
 		let events: CanonicalEvent[];
 		try {
+			const edited = await this.prisma.investigationEvent.findFirst({
+				// The edited message itself is folded: read it on purpose for its branch.
+				where: { investigationId: id, ordinal: marker.messageOrdinal },
+				select: { branchId: true },
+			});
+			const branches = CONVERSATION_BRANCHES(edited?.branchId ?? "run");
 			events = await this.prisma.$transaction(async (tx) => {
 				const now = await tx.investigation.findUnique({
 					where: { id },
