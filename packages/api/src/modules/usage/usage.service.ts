@@ -116,13 +116,13 @@ export class UsageService {
 			const usage = readTurnUsage(e.event);
 			if (!usage) continue;
 			const thread = byId.get(e.investigationId);
-			const agent = thread?.harness ?? null;
 			// The row and the estimate read one identity, so a price lands on its own row.
 			const identity = turnIdentity(
 				usage,
 				contexts.get(e) ?? { harness: null, model: null },
-				agent,
+				thread?.harness ?? null,
 			);
+			const agent = identity.agent.value;
 			const model = identity.model.value ?? "unknown";
 			const key = bucketKey(e.createdAt, span.step);
 			seenThreads.add(e.investigationId);
