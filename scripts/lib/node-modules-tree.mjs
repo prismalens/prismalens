@@ -207,21 +207,23 @@ export function nativeCopies(root) {
  * Why the SDK fails agent-sdk-probe.mjs in an installed app, or null when it passes or
  * the app does not ship it (an older release, #1269).
  */
-export function sdkLoadError(appDir) {
+export function sdkLoadError(appDir, { timeout = 120_000 } = {}) {
 	const manifest = JSON.parse(
 		readFileSync(join(appDir, "package.json"), "utf8"),
 	);
 	if (!manifest.dependencies?.[SDK]) return null;
 	try {
-		execFileSync(process.execPath, [PROBE, appDir], {
-			stdio: "pipe",
-			timeout: 120_000,
-		});
+		execFileSync(process.execPath, [PROBE, appDir], { stdio: "pipe", timeout });
 		return null;
 	} catch (error) {
-		const text = String(error.stderr || error.message);
-		const fail = text.indexOf("AGENT SDK PROBE FAIL: ");
-		return (fail >= 0 ? text.slice(fail + 22) : text).trim();
+		// A probe killed on its timeout leaves an empty stderr Buffer, which is truthy.
+		const stderr = String(error.stderr ?? "").trim();
+		const fail = stderr.indexOf("AGENT SDK PROBE FAIL: ");
+		if (fail >= 0) return stderr.slice(fail + 22).trim();
+		return (
+			stderr ||
+			`${error.code === "ETIMEDOUT" ? `timed out after ${timeout} ms: ` : ""}${error.message || "the probe failed with no output"}`
+		);
 	}
 }
 

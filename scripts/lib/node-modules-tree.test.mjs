@@ -8,7 +8,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { agentSdkProblems, nativeCopies } from "./node-modules-tree.mjs";
+import {
+	agentSdkProblems,
+	nativeCopies,
+	sdkLoadError,
+} from "./node-modules-tree.mjs";
 
 const SDK = "@anthropic-ai/claude-agent-sdk";
 
@@ -94,6 +98,21 @@ test("agentSdkProblems skips the load check for an app that does not ship the SD
 	try {
 		writePackage(app, { name: "prismalens", dependencies: {} });
 		assert.deepEqual(agentSdkProblems(app), []);
+	} finally {
+		rmSync(app, { recursive: true, force: true });
+	}
+});
+
+test("sdkLoadError reports a probe killed on its timeout instead of passing it", () => {
+	// An SDK whose import never settles keeps the probe alive until execFileSync kills it.
+	const app = installedApp({
+		sdkSource: "setInterval(() => {}, 1000); await new Promise(() => {});",
+	});
+	try {
+		assert.match(
+			sdkLoadError(app, { timeout: 1500 }),
+			/^timed out after 1500 ms: .*ETIMEDOUT/,
+		);
 	} finally {
 		rmSync(app, { recursive: true, force: true });
 	}
