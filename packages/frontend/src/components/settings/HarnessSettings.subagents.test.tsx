@@ -295,6 +295,11 @@ describe("which agents take a sub-agent limit (#1024)", () => {
 			gemini: { depth: false, concurrency: false },
 			cursor: { depth: false, concurrency: false },
 			antigravity: { depth: false, concurrency: false },
+			copilot: { depth: false, concurrency: false },
+			kiro: { depth: false, concurrency: false },
+			grok: { depth: false, concurrency: false },
+			qwen: { depth: false, concurrency: false },
+			goose: { depth: false, concurrency: false },
 			deepagents: { depth: false, concurrency: false },
 			local: { depth: false, concurrency: false },
 		});
