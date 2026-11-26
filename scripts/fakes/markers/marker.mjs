@@ -10,7 +10,7 @@ import { createInterface } from "node:readline";
 const [dir, name, mode] = process.argv.slice(2);
 appendFileSync(
 	join(dir, name),
-	`${new Date().toISOString()} pid=${process.pid}\n`,
+	`${new Date().toISOString()} pid=${process.pid} ppid=${process.ppid}\n`,
 );
 if (mode !== "mcp") process.exit(0);
 const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
