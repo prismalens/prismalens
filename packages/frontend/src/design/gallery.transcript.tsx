@@ -14,6 +14,7 @@ import {
 } from "@/components/investigation/transcript/ThreadCards";
 import type { RunStep } from "@/components/run/run-steps";
 import { StepCard } from "@/components/run/StepCard";
+import { CitedInLine } from "@/components/thread/composer/citations";
 import { SubagentNode } from "@/components/thread/SubagentNode";
 import {
 	ContextMeter,
@@ -325,6 +326,38 @@ const PLACED: TranscriptItem[] = [
 	},
 ];
 
+/** A message quoting another thread's reply and citing a second one by `#` (#1195). */
+const CITED: TranscriptItem[] = [
+	{
+		kind: "operator",
+		key: "cite",
+		text: "Does this explain the 502s here?",
+		at: AT,
+		state: "delivered",
+		mode: "queue",
+		attachments: [],
+		quotes: [
+			{
+				source: {
+					threadId: "22222222-2222-4222-8222-222222222222",
+					kind: "transcript",
+					key: "run:42",
+					seq: 42,
+					turn: 3,
+				},
+				text: "The pool caps at 5, so checkout waits for a connection.",
+			},
+		],
+		references: [
+			{
+				kind: "message",
+				id: "33333333-3333-4333-8333-333333333333/run:7",
+				label: "Retries double the load on the pool",
+			},
+		],
+	},
+];
+
 const BREAKDOWN = contextBreakdown(EVENTS, { used: 164_000, size: 200_000 });
 
 export const transcriptGallery: GallerySection[] = [
@@ -594,6 +627,35 @@ export const transcriptGallery: GallerySection[] = [
 			<div className="flex flex-col gap-2">
 				<CompactionDivider event={compaction("completed")} incidentId={null} />
 				<CompactionDivider event={compaction("failed")} incidentId={null} />
+			</div>
+		),
+	},
+	{
+		id: "cited-message",
+		title:
+			"A message cited from another thread, and where a message was cited (#1195)",
+		render: () => (
+			<div className="flex flex-col gap-2">
+				<div className="h-[160px] rounded-pool bg-canvas">
+					<Transcript
+						items={CITED}
+						incidentId={null}
+						agent="The agent"
+						runId="11111111-1111-4111-8111-111111111111"
+					/>
+				</div>
+				<CitedInLine
+					by={[
+						{
+							threadId: "22222222-2222-4222-8222-222222222222",
+							title: "Pool size review",
+						},
+						{
+							threadId: "33333333-3333-4333-8333-333333333333",
+							title: "Payments 502s",
+						},
+					]}
+				/>
 			</div>
 		),
 	},

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ChipAttrs } from "@prismalens/contracts";
+import { type ChipAttrs, chipText } from "@prismalens/contracts";
 import { closeHistory } from "@tiptap/pm/history";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { UnfoldVertical, X } from "lucide-react";
@@ -18,7 +18,7 @@ import {
 import { sizeWord } from "@/lib/evidence-files";
 import { bindingOf } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
-import { scrollToQuote } from "../quote";
+import { showQuoteSource } from "../quote";
 import type { ChipCtx } from "./chip.actions";
 import { chipView } from "./chip-kinds";
 import { chipAttrs, DISCRETE } from "./extensions";
@@ -101,6 +101,7 @@ export function ChipView({ node, selected, editor, getPos }: NodeViewProps) {
 	const chipCtx: ChipCtx = {
 		open: () => setOpen(true),
 		remove,
+		text: chipText(a),
 		expand: () => {
 			setOpen(false);
 			if (a.chip === "file") ctx.pasteAsText(a.key);
@@ -307,7 +308,7 @@ function Detail({
 				<Button
 					variant="text"
 					size="sm"
-					onClick={() => scrollToQuote(a.quote)}
+					onClick={() => showQuoteSource(a.quote)}
 					className="self-start"
 				>
 					Show source

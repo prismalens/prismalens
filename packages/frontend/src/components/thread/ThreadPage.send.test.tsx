@@ -102,6 +102,12 @@ const forkThread = vi.hoisted(() =>
 	vi.fn().mockResolvedValue({ investigationId: "inv-fork" }),
 );
 const navigate = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+/** The URL's search, the side panel's tab actions, and the layout updates the page made. */
+const panelState = vi.hoisted(() => ({
+	search: {} as Record<string, unknown>,
+	paneCtx: null as null | ((p: string) => { closeTab: () => void }),
+	layouts: [] as ((l: { closed: string[]; split: string | null }) => unknown)[],
+}));
 const invState = vi.hoisted(() => ({
 	investigation: {
 		id: "inv-1",
@@ -248,7 +254,7 @@ vi.mock("@/hooks/use-page-title", () => ({
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ children }: { children: ReactNode }) => children,
-	useSearch: () => ({}),
+	useSearch: () => panelState.search,
 	useNavigate: () => navigate,
 }));
 
@@ -276,15 +282,31 @@ vi.mock("@/components/shell/PanelShell", () => ({
 }));
 
 vi.mock("./panel/ThreadSidePanel", () => ({
-	ThreadSidePanel: () => <div data-testid="thread-panel" />,
+	ThreadSidePanel: (props: {
+		paneCtx?: (p: string) => { closeTab: () => void };
+	}) => {
+		panelState.paneCtx = props.paneCtx ?? null;
+		return <div data-testid="thread-panel" />;
+	},
 	PanelStack: ({ children }: { children: ReactNode }) => children,
 }));
 
 vi.mock("./panel/use-thread-panes", () => ({
 	useThreadPanes: () => ({
 		tools: [],
-		layout: { split: null, ratio: 0.5, opened: [], browserUrl: null },
-		setLayout: () => {},
+		layout: {
+			split: null,
+			ratio: 0.5,
+			opened: [],
+			closed: [],
+			order: [],
+			browserUrl: null,
+		},
+		setLayout: (
+			u: (l: { closed: string[]; split: string | null }) => unknown,
+		) => {
+			panelState.layouts.push(u);
+		},
 		open: () => {},
 	}),
 }));
@@ -331,6 +353,9 @@ beforeEach(() => {
 	sendMessage.mockClear();
 	forkThread.mockClear();
 	navigate.mockClear();
+	panelState.search = {};
+	panelState.paneCtx = null;
+	panelState.layouts = [];
 	container = document.createElement("div");
 	document.body.appendChild(container);
 	root = createRoot(container);
@@ -603,6 +628,31 @@ describe("ThreadPage send handling (#1024)", () => {
 				),
 			).rejects.toThrow("Files can't start a new thread from here yet.");
 			expect(forkThread).not.toHaveBeenCalled();
+		});
+	});
+});
+
+describe("ThreadPage pane tabs (#1199)", () => {
+	it("closing the split's tab drops split from the URL and keeps the tab closed", async () => {
+		panelState.search = { panel: "thread", split: "files" };
+		await act(async () => {
+			root.render(<ThreadPage id="inv-1" />);
+		});
+		const ctx = panelState.paneCtx;
+		if (!ctx) throw new Error("ThreadPage did not render the side panel");
+		await act(async () => ctx("files").closeTab());
+		const nav = navigate.mock.calls.at(-1)?.[0] as {
+			search: (s: Record<string, unknown>) => Record<string, unknown>;
+		};
+		expect(nav.search({ panel: "thread", split: "files" })).toMatchObject({
+			panel: "thread",
+			split: undefined,
+		});
+		const layout = { closed: [] as string[], split: "files" as string | null };
+		// The last update is the close's; the first is the mount reopening the asked panes.
+		expect(panelState.layouts.at(-1)?.(layout)).toMatchObject({
+			closed: ["files"],
+			split: null,
 		});
 	});
 });

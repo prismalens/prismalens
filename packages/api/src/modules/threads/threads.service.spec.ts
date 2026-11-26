@@ -94,7 +94,7 @@ describe("ThreadsService (#1020)", () => {
 			attachments as never,
 			integrations as never,
 			{ consume: async () => "none", withDrafts: async () => new Set() } as never,
-			{ compose: async () => undefined } as never,
+			{ compose: async () => undefined, cite: async () => undefined } as never,
 			{ rowGlyphs: async () => new Map() } as never,
 			lifecycle as never,
 		);
@@ -354,7 +354,7 @@ describe("ThreadsService (#1020)", () => {
 				attachments as never,
 				integrations as never,
 				{ consume: c } as never,
-				{ compose: async () => undefined } as never,
+				{ compose: async () => undefined, cite: async () => undefined } as never,
 				{} as never,
 				{} as never,
 			);
@@ -380,7 +380,7 @@ describe("ThreadsService (#1020)", () => {
 			attachments as never,
 			integrations as never,
 			{ consume: async () => { throw new Error("db locked"); } } as never,
-			{ compose: async () => undefined } as never,
+			{ compose: async () => undefined, cite: async () => undefined } as never,
 			{} as never,
 			{} as never,
 		);
@@ -664,7 +664,7 @@ describe("ThreadsService.settle (#1020)", () => {
 				{} as never,
 				{} as never,
 				{ consume: async () => "none", withDrafts: async () => new Set() } as never,
-				{ compose: async () => undefined } as never,
+				{ compose: async () => undefined, cite: async () => undefined } as never,
 				{} as never,
 				lifecycle as never,
 			),

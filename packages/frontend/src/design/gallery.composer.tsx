@@ -25,6 +25,7 @@ import {
 	ChipView,
 } from "@/components/thread/composer/editor/ChipView";
 import { composerExtensions } from "@/components/thread/composer/editor/extensions";
+import { QuotePicker } from "@/components/thread/composer/QuoteIn";
 import type { GallerySection } from "./gallery";
 
 const THREAD = "00000000-0000-4000-8000-000000000001";
@@ -425,6 +426,7 @@ export const composerGallery: GallerySection[] = [
 						ctx={{
 							open: noop,
 							remove: noop,
+							text: "Pasted text",
 							expand: noop,
 							facts: { is: { folded: true, overLimit: false } },
 						}}
@@ -554,5 +556,25 @@ export const composerGallery: GallerySection[] = [
 		id: "composer-conflict",
 		title: "Draft changed elsewhere",
 		render: () => <ConflictLine onKeepMine={noop} onUseTheirs={noop} />,
+	},
+	{
+		id: "quote-in",
+		title: "Quote in another thread: New thread, then any thread (#1195)",
+		render: () => (
+			<div className="max-w-[520px] rounded-pool bg-surface-2">
+				<QuotePicker
+					threads={[
+						{ id: "t1", title: "Checkout p99 after deploy", kind: "chat" },
+						{ id: "t2", title: "Pool size review", kind: "investigation" },
+						{ id: "t3", title: "Payments 502s", kind: "chat" },
+					]}
+					loading={false}
+					query=""
+					onQuery={noop}
+					onNew={noop}
+					onPick={noop}
+				/>
+			</div>
+		),
 	},
 ];

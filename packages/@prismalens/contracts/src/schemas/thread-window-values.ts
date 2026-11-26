@@ -182,9 +182,19 @@ export function stopMark(mode: FailureMode): RailMark {
 	}
 }
 
+/** Resume causes whose message PrismaLens wrote; a `compact` resume carries the user's own words. */
+const SYSTEM_CAUSES = new Set(["limit", "idle_compact", "wake"]);
+
+/** PrismaLens wrote this message (a restart, a limit's resume, a wake), so it is never the user's (#1193). */
+export function systemWritten(
+	e: Extract<CanonicalEvent, { kind: "operator_message" }>,
+): boolean {
+	return !!e.via?.restart || SYSTEM_CAUSES.has(e.via?.cause ?? "");
+}
+
 /** Who opens a turn, when the event does; null when it does not start one. */
 export function turnAuthorOf(e: CanonicalEvent): IndexAuthor | null {
-	if (e.kind === "operator_message") return e.via?.restart ? "system" : "you";
+	if (e.kind === "operator_message") return systemWritten(e) ? "system" : "you";
 	if (e.kind === "thread_message" && e.direction === "received")
 		return "thread";
 	return null;

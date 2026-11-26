@@ -6,11 +6,13 @@ import {
 	ComposerDraftSchema,
 	ComposerScopeSchema,
 	PutDraftSchema,
+	messageRefId,
 	QuoteSchema,
 	quoteMarkdown,
 	scopeThreadId,
 	shouldFoldPaste,
 } from "./composer.js";
+import { parseMessageRefId } from "./composer-values.js";
 import {
 	ReferenceSearchInputSchema,
 	referenceKey,
@@ -130,7 +132,7 @@ describe("reference search input (#1024)", () => {
 		expect(TRIGGER_KINDS["@"]).toEqual(
 			expect.arrayContaining(["file", "thread", "incident", "schedule", "alert"]),
 		);
-		expect(TRIGGER_KINDS["#"]).toEqual(["thread", "incident", "pull_request", "issue"]);
+		expect(TRIGGER_KINDS["#"]).toEqual(["thread", "message", "incident", "pull_request", "issue"]);
 	});
 
 	it("reads #123, !123 and a tracker key; words are not a number", () => {
@@ -148,5 +150,53 @@ describe("reference search input (#1024)", () => {
 		);
 		expect(ReferenceSearchInputSchema.safeParse({ limit: 51 }).success).toBe(false);
 		expect(ReferenceSearchInputSchema.parse({})).toMatchObject({ q: "", limit: 20 });
+	});
+});
+
+const KEY_ISSUE = String.raw`Invalid string: must match pattern /^[\w.-]{1,120}:\d{1,9}$/`;
+
+describe("a message cited from another thread (#1195)", () => {
+	const quote = (key: unknown, turn?: unknown) =>
+		QuoteSchema.safeParse({
+			source: { threadId: ID, kind: "transcript", key, turn },
+			text: "pool exhausted",
+		});
+
+	it("a quote names its message by branch and sequence, and keeps the turn it sits in", () => {
+		const ok = quote("main:12", 3);
+		expect(ok.success && ok.data.source).toEqual({
+			threadId: ID,
+			kind: "transcript",
+			key: "main:12",
+			turn: 3,
+		});
+	});
+
+	it.each([
+		["no sequence", "main:"],
+		["no branch", ":4"],
+		["a space in the branch", "my branch:4"],
+		["a sequence of ten digits", "main:1234567890"],
+		["a non-numeric sequence", "main:x"],
+	])("a quote refuses a key with %s, naming source.key", (_what, key) => {
+		const r = quote(key);
+		expect(r.success).toBe(false);
+		expect(!r.success && r.error.issues.map((i) => [i.path.join("."), i.message])).toEqual([
+			["source.key", KEY_ISSUE],
+		]);
+	});
+
+	it("a quote refuses a turn below 1", () => {
+		const r = quote("main:1", 0);
+		expect(!r.success && r.error.issues.map((i) => [i.path.join("."), i.message])).toEqual([
+			["source.turn", "Too small: expected number to be >=1"],
+		]);
+	});
+
+	it("a message reference id round-trips its thread and key, and reads null when either part is malformed", () => {
+		expect(parseMessageRefId(messageRefId(ID, "main:12"))).toEqual({ threadId: ID, key: "main:12" });
+		expect(parseMessageRefId(`${ID}/main:`)).toBeNull();
+		expect(parseMessageRefId(`not-a-uuid/main:12`)).toBeNull();
+		expect(parseMessageRefId(ID)).toBeNull();
 	});
 });

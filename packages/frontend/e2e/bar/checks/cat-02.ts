@@ -348,4 +348,47 @@ export default defineChecks([
 			);
 		},
 	},
+	{
+		item: "2.6",
+		async run({ page, open, sim }) {
+			// The full-disk thread: one stop that every surface reads as one state.
+			const path = sim.thread("git.worktree-disk");
+			const id = path.split("/").pop() ?? "";
+			await open(path);
+			await expect(page.getByTestId("thread-page")).toBeVisible({
+				timeout: 45_000,
+			});
+			const fails: string[] = [];
+			const header = page.getByTestId("thread-state").first();
+			await expect(header).not.toHaveAttribute("data-state", "loading", {
+				timeout: 30_000,
+			});
+			const said = ((await header.textContent()) ?? "").trim();
+			if (!/Blocked/.test(said))
+				fails.push(`the header reads "${said}", not Blocked`);
+			const transcript = page.getByTestId("transcript-scroller");
+			await expect(transcript).toBeVisible({ timeout: 30_000 });
+			const text = (await transcript.textContent()) ?? "";
+			if (/Failed:|refused/i.test(text))
+				fails.push(
+					`the transcript says "${/Failed:[^.]*|[^.]*refused[^.]*/i.exec(text)?.[0]?.trim()}" for a Blocked thread`,
+				);
+			const row = page.locator(`[data-testid="thread-row"][data-id="${id}"]`);
+			await expect(row).toBeVisible({ timeout: 30_000 });
+			const state = await row.getAttribute("data-state");
+			if (state !== "blocked")
+				fails.push(`the row reads ${state}, not blocked`);
+			const wrap = page.getByTestId("thread-row-wrap").filter({ has: row });
+			const fix = wrap.getByTestId("row-fix");
+			const fixId = await fix
+				.getAttribute("data-fix", { timeout: 10_000 })
+				.catch(() => null);
+			if (fixId !== "needs.freeSpace")
+				fails.push(`the row offers ${fixId ?? "no fix"}, not Free space`);
+			return verdict(
+				fails,
+				`the full-disk thread reads Blocked in the header, the row and the transcript, and its row offers ${fixId}`,
+			);
+		},
+	},
 ]);

@@ -27,6 +27,17 @@ export function whyAsked(
 	if (ask.permission?.variant === "plan")
 		return "The agent finished planning and waits for your go.";
 	const mode = level ? ACCESS_LEVEL_LABEL[level] : null;
+	// The run's own reason when it kept one (#1193): the thread's mode alone can't explain a card in Full access.
+	switch (ask.permission?.why) {
+		case "not_an_edit":
+			return `Asked because ${mode ?? "this thread's mode"} runs only file edits by itself.`;
+		case "wait_for_me":
+			return "Asked because Wait for me is on: every action waits for you.";
+		case "unattended":
+			return "Asked because this run had nobody watching, so it waits for you.";
+		case "no_allow_option":
+			return "Asked because the agent offered no way to allow it by itself.";
+	}
 	return mode
 		? `Asked because this thread runs in ${mode}.`
 		: "Asked because the agent's own mode asks first.";

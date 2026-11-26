@@ -684,7 +684,12 @@ Then(
 		await expect(section(page, "No report")).toContainText(
 			"The run failed before it reported.",
 		);
-		await expect(page.getByTestId("transcript-end")).toBeVisible();
+		// The fake's 401 is a provider stop (#1171): its own line ends the conversation, said once,
+		// with no "Failed" end beside it (#1193, sheet §10).
+		await expect(page.getByTestId("node-provider_blocked")).toContainText(
+			"API key was rejected",
+		);
+		await expect(page.getByTestId("transcript-end")).toHaveCount(0);
 		await expect(page.getByTestId("transcript-tools").first()).toBeVisible();
 	},
 );

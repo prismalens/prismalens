@@ -14,6 +14,7 @@ export const messageSurface = defineSurface({
 			"-",
 			"message.quote",
 			"message.askNew",
+			"message.quoteIn",
 			"message.fork",
 		],
 		more: ["message.copy", "message.fork"],

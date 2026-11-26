@@ -25,7 +25,7 @@ export function lazyPart<P extends object>(
 		afterFirstContent?: boolean;
 		now?: boolean;
 		/** Shown when the code fails to load; `retry` loads it again. Without it, the fallback stays. */
-		failed?: (retry: () => void) => ReactNode;
+		failed?: (retry: () => void, props: P) => ReactNode;
 	} = {},
 ): ComponentType<P> & { preload: (now?: boolean) => Promise<unknown> } {
 	let pending: Promise<ComponentType<P>> | null = null;
@@ -80,7 +80,7 @@ export function lazyPart<P extends object>(
 			};
 		}, [Part, broke]);
 		if (Part) return <Part {...props} />;
-		if (broke && opts.failed) return opts.failed(() => setBroke(false));
+		if (broke && opts.failed) return opts.failed(() => setBroke(false), props);
 		return held(props);
 	}
 	function AfterFirstContent(props: P) {

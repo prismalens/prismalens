@@ -23,6 +23,7 @@ import type {
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import type {
 	Artifact,
+	AskWhy,
 	PermissionAskOutcome,
 	RecordedFinding,
 	RunFailure,
@@ -43,6 +44,7 @@ import {
 } from "../run/elicitation.js";
 import type { GatewayCall } from "../run/gateway.js";
 import {
+	type AskContext,
 	type HeldOutcome,
 	newAskId,
 	type PermissionDecision,
@@ -63,6 +65,8 @@ export type AcpStreamItem =
 			request: PermissionRequest;
 			/** The ask's window, when the run's wall clock shortened it (#673 w21). */
 			window?: { timeoutMs: number; clamped: boolean };
+			/** Why the run asked instead of answering by its level (#1193). */
+			why?: AskWhy;
 	  }
 	| {
 			kind: "permission";
@@ -1477,14 +1481,15 @@ export class AcpSession {
 			let verdict: PermissionDecision | Promise<PermissionDecision>;
 			this.asks.add(controller);
 			if (child) this.askSessions.set(controller, child);
+			const askCtx: AskContext = {
+				askId,
+				signal: controller.signal,
+				...(window
+					? { timeoutMs: window.timeoutMs, clamped: window.clamped }
+					: {}),
+			};
 			try {
-				verdict = this.config.permission(request, {
-					askId,
-					signal: controller.signal,
-					...(window
-						? { timeoutMs: window.timeoutMs, clamped: window.clamped }
-						: {}),
-				});
+				verdict = this.config.permission(request, askCtx);
 			} catch (err) {
 				verdict = refused(err);
 			}
@@ -1501,6 +1506,7 @@ export class AcpSession {
 				askId,
 				request,
 				...(window ? { window } : {}),
+				...(askCtx.why ? { why: askCtx.why } : {}),
 			});
 			Promise.resolve(verdict)
 				.catch(refused)

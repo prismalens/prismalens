@@ -55,3 +55,21 @@ export const STOP_REASONS: Readonly<Record<ThreadStopReason, StopReasonDef>> = {
 		status: "blocked",
 	}),
 };
+
+/** The text a run whose agent process died ends with (engine `acp-client`). */
+const CRASH = /^harness exited early/;
+
+/** The reason an ended run stopped, or null for a normal finish or a run still going. */
+export function stopReasonOf(r: {
+	status: string;
+	endReason: string | null;
+	error?: string | null;
+}): ThreadStopReason | null {
+	if (r.status === "cancelled") return "user_stop";
+	if (r.status !== "failed") return null;
+	if (r.endReason === "limited") return "usage_limit";
+	if (r.endReason === "blocked") return "provider_failure";
+	if (r.endReason === "disk_full") return "disk_full";
+	if (r.endReason === "interrupted") return "interrupted";
+	return r.error && CRASH.test(r.error) ? "crashed" : "error";
+}

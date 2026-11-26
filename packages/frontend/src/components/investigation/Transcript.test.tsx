@@ -675,6 +675,34 @@ describe("Transcript spine (#1020)", () => {
 		).toBe("brief for Run 2");
 	});
 
+	it("names each resume PrismaLens wrote in five words or fewer (#1193)", async () => {
+		const items: TranscriptItem[] = (
+			["limit", "wake", "compact", "idle_compact"] as const
+		).map((cause, i) => ({
+			kind: "operator",
+			key: cause,
+			text: cause,
+			at: `2026-11-03T10:0${i}:00Z`,
+			state: "delivered",
+			mode: "queue",
+			attachments: [],
+			system: cause,
+		}));
+		await show(<Transcript items={items} incidentId={null} agent="Agent" />);
+		expect(
+			[
+				...container.querySelectorAll(
+					'[data-testid="transcript-restart-label"]',
+				),
+			].map((n) => n.textContent),
+		).toEqual([
+			"PrismaLens resumed after limit",
+			"PrismaLens woke the thread",
+			"PrismaLens compacted and resumed",
+			"PrismaLens resumed after idle compaction",
+		]);
+	});
+
 	it("folds a finished turn behind Worked for, and the chevron opens it", async () => {
 		const items: TranscriptItem[] = [
 			op("brief", "started", "2026-11-03T10:00:00Z"),
@@ -842,5 +870,41 @@ describe("Transcript spine (#1020)", () => {
 		const changesEl = container.querySelector('[data-testid="turn-changes"]');
 		expect(changesEl).not.toBeNull();
 		expect(changesEl?.textContent).toContain("Changed 1 file");
+	});
+});
+
+describe("the user's own message (#1193)", () => {
+	it("is the message menu's trigger: it carries the message surface and right-click opens the menu", async () => {
+		const items: TranscriptItem[] = [
+			{
+				kind: "operator",
+				key: "mine",
+				text: "Raise the retries",
+				at: "2026-11-03T10:00:00Z",
+				state: "delivered",
+				mode: "queue",
+				attachments: [],
+			},
+		];
+		await show(
+			<Transcript items={items} incidentId={null} agent="Claude Code" />,
+		);
+		const own = container.querySelector('[data-testid="transcript-operator"]');
+		expect(own?.getAttribute("data-surface")).toBe("message");
+		await act(async () => {
+			own?.dispatchEvent(
+				new MouseEvent("contextmenu", {
+					bubbles: true,
+					cancelable: true,
+					clientX: 10,
+					clientY: 10,
+				}),
+			);
+		});
+		await vi.waitFor(() =>
+			expect(
+				document.querySelector('[role="menu"] [data-testid="menu-copy"]'),
+			).not.toBeNull(),
+		);
 	});
 });

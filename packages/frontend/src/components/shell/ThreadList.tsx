@@ -59,6 +59,7 @@ import {
 	useThreadFeed,
 } from "@/lib/api/hooks/use-threads-orpc";
 import { orpc } from "@/lib/api/orpc-client";
+import { setNeedsCount } from "@/lib/attention/needs-count";
 import { formatElapsed } from "@/lib/format-time";
 import { lazyPart } from "@/lib/lazy";
 import { rowWhen } from "@/lib/thread-groups";
@@ -340,6 +341,11 @@ export function ThreadList() {
 	const { model, units, feed, isLoading } = useThreadListModel();
 	const asks = useAsksByThread();
 	const now = useNow(30_000) ?? 0;
+	// The tab title reads the list's own count as soon as the list has it, not after the deferred attention code (#1101 bar 4.3).
+	const listed = !!feed.data;
+	useEffect(() => {
+		if (listed) setNeedsCount(model.needsCount);
+	}, [listed, model.needsCount]);
 	// Selected fields only: a thread page's own search (a diff file pick) must not redraw the list.
 	const pathname = useLocation({ select: (l) => l.pathname });
 	const investigation = useLocation({

@@ -3,7 +3,7 @@
 
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { defineChecks, notSetUp, verdict } from "../bar";
 import {
 	clearComposer,
@@ -23,6 +23,19 @@ import {
 } from "./help-L4";
 
 const idOf = (url: string) => url.split("?")[0]?.split("/").pop() ?? "";
+
+/** The open menu's row ids (`menu-<id>` less its keys and why parts), from the kit menu (#1127). */
+async function menuRows(page: Page): Promise<string[]> {
+	const menu = page.getByRole("menu").last();
+	await expect(menu).toBeVisible({ timeout: 15_000 });
+	return menu
+		.locator("[data-testid^='menu-']")
+		.evaluateAll((els) =>
+			els
+				.map((e) => (e.getAttribute("data-testid") ?? "").slice(5))
+				.filter((id) => id && !id.endsWith("-keys") && !id.endsWith("-why")),
+		);
+}
 
 /** #1101 category 7: Chips, attachments and editing keys. */
 const checks = defineChecks([
@@ -1272,6 +1285,40 @@ const checks = defineChecks([
 			return verdict(
 				fails,
 				`draft survived reload (text: "${reloadedText}", 1 chip) and synced to second device (text: "${phoneText}", 1 chip)`,
+			);
+		},
+	},
+	{
+		item: "7.5",
+		async run({ page, open, context }) {
+			await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+			await visitComposer(page, open);
+			const fails: string[] = [];
+			const lines = Array.from({ length: 45 }, (_, i) => `row ${i + 1}`).join(
+				"\n",
+			);
+			await pasteText(page, lines);
+			const chip = page.locator(".composer-chip").first();
+			await expect(chip).toBeVisible({ timeout: 5000 });
+
+			await chip.click({ button: "right" });
+			const rows = await menuRows(page);
+			for (const id of ["open", "copy", "remove"])
+				if (!rows.includes(id)) fails.push(`chip menu lacks ${id} (${rows})`);
+			await page.getByTestId("menu-copy").click();
+			const copied = await page.evaluate(() => navigator.clipboard.readText());
+			if (!copied.includes("row 45"))
+				fails.push(`Copy put "${copied.slice(0, 40)}" on the clipboard`);
+
+			await chip.click({ button: "right" });
+			await menuRows(page);
+			await page.getByTestId("menu-remove").click();
+			await expect(page.locator(".composer-chip")).toHaveCount(0);
+
+			await clearComposer(page);
+			return verdict(
+				fails,
+				`a pasted chip's right-click lists ${rows.join(", ")}; Copy copied ${copied.split("\n").length} lines; Remove took the chip out`,
 			);
 		},
 	},
