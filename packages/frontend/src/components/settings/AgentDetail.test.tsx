@@ -1052,3 +1052,44 @@ describe("AgentDetail update, sign-out and change account (#1180)", () => {
 		);
 	});
 });
+
+describe("AgentDetail Clean profile (#1180 §3.4)", () => {
+	afterEach(() => {
+		delete mockHarnesses[0].cleanProfile;
+	});
+
+	it("where it holds, the switch writes cleanProfile for this agent", async () => {
+		mockHarnesses[0].cleanProfile = { offered: true, on: false };
+		await act(async () => {
+			root.render(<AgentDetail id="claude-code" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-clean-profile-row"]')
+				?.textContent,
+		).toBe("Clean profile");
+		await act(async () => {
+			(
+				container.querySelector(
+					'[data-testid="agent-clean-profile"]',
+				) as HTMLButtonElement
+			).click();
+		});
+		expect(mutateSpy).toHaveBeenCalledWith({
+			cleanProfile: { "claude-code": true },
+		});
+	});
+
+	it("is absent where it is not offered", async () => {
+		mockHarnesses[0].cleanProfile = {
+			offered: false,
+			on: false,
+			reason: "Your Claude settings carry sign-in",
+		};
+		await act(async () => {
+			root.render(<AgentDetail id="claude-code" />);
+		});
+		expect(
+			container.querySelector('[data-testid="agent-clean-profile"]'),
+		).toBeNull();
+	});
+});

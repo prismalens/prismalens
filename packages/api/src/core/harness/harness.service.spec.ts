@@ -960,13 +960,13 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		expect((await svc.runtimeFor("claude-code")).env.ANTHROPIC_BASE_URL).toBe("https://mine.example");
 	});
 
-	it("forgets the agent's check after a runtime save, then checks it with the new runtime", async () => {
+	it("forgets the agent's check after a runtime save, then checks it isolated with the new runtime", async () => {
 		const { svc, models, forget, check } = runtimeService();
 		models.rememberCheck("codex", { outcome: "answers-acp", detail: "answers ACP", servedModel: null, effort: null, images: false });
 		await svc.updateSettings({ env: { codex: { OPENAI_API_KEY: "sk-1" } } });
 		expect(forget).toHaveBeenCalledWith("codex");
 		await vi.waitFor(() => expect(check).toHaveBeenCalled());
-		expect(check).toHaveBeenCalledWith("codex", expect.objectContaining({ env: expect.objectContaining({ OPENAI_API_KEY: "sk-1" }) }), expect.anything(), expect.anything());
+		expect(check).toHaveBeenCalledWith("codex", expect.objectContaining({ env: expect.objectContaining({ OPENAI_API_KEY: "sk-1" }) }), expect.anything(), expect.anything(), { requireIsolation: true });
 		await svc.updateSettings({ hiddenModels: { codex: ["gpt-5"] } });
 		expect(forget).toHaveBeenCalledTimes(1);
 	});
@@ -1126,7 +1126,7 @@ describe("HarnessService agent runtime settings (#907)", () => {
 		}
 	});
 
-	it("updateSettings off:true resets stored harness to auto, and off:false triggers a check (#1171)", async () => {
+	it("updateSettings off:true resets stored harness to auto, and off:false triggers an isolated check (#1171)", async () => {
 		const { svc, check } = runtimeService();
 		await svc.updateSettings({ harness: "codex" });
 		expect((await svc.getSettings()).harness).toBe("codex");
@@ -1137,7 +1137,7 @@ describe("HarnessService agent runtime settings (#907)", () => {
 
 		await svc.updateSettings({ off: { codex: false } });
 		await vi.advanceTimersByTimeAsync(10);
-		expect(check).toHaveBeenCalledWith("codex", expect.anything(), expect.anything(), expect.anything());
+		expect(check).toHaveBeenCalledWith("codex", expect.anything(), expect.anything(), expect.anything(), { requireIsolation: true });
 	});
 
 	it("ensureReady refuses an off agent unless env names it (#1171)", async () => {

@@ -34,6 +34,13 @@ import { AddAgentDialog } from "./AddAgentDialog";
 import { agentState, testedHint, versionText } from "./AgentDetail";
 import { UpdateAllButton, useAgentListCtx } from "./AgentLines";
 import {
+	CheckAllButton,
+	CheckEveryRow,
+	CheckTimes,
+	safeCheck,
+	UNSAFE_CHECK_HINT,
+} from "./agent-checks";
+import {
 	ColdResumeRow,
 	CompactIdleRow,
 	ResumeAfterLimitRow,
@@ -49,6 +56,7 @@ const HOST_ONLY = "Only the computer running PrismaLens can change this.";
 import { settingOf } from "@/components/kit/registry";
 import { Surface } from "@/components/kit/Surface";
 import { AdvancedFold } from "@/components/shared/AdvancedFold";
+import { Hint } from "@/components/shared/Hint";
 import { MutationError } from "@/components/shared/MutationError";
 import { Pool, Row } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
@@ -137,7 +145,10 @@ export function HarnessSettings() {
 				count={listed.length || undefined}
 				testId={settingOf("agent.agents").anchor}
 				actions={
-					<AgentListActions agents={listed}>{addAgent}</AgentListActions>
+					<AgentListActions agents={listed}>
+						<CheckAllButton agents={listed} />
+						{addAgent}
+					</AgentListActions>
 				}
 			>
 				{adding && <AddAgentDialog open onOpenChange={setAdding} />}
@@ -170,6 +181,9 @@ export function HarnessSettings() {
 						))}
 					</Pool>
 				)}
+				<Pool>
+					<CheckEveryRow />
+				</Pool>
 			</SettingGroup>
 
 			<SubagentsGroup />
@@ -514,7 +528,11 @@ function AgentRow({
 				</span>
 			}
 			meta={
-				(note || account || version || checkHarness.error) && (
+				(note ||
+					account ||
+					version ||
+					harness.checked ||
+					checkHarness.error) && (
 					<span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 whitespace-normal">
 						{account && (
 							<span data-testid={`harness-account-${harness.id}`}>
@@ -532,6 +550,7 @@ function AgentRow({
 						{note && (
 							<span data-testid={`harness-note-${harness.id}`}>{note}</span>
 						)}
+						<CheckTimes agent={harness} />
 						{signIn && <SignInButton agent={harness} className="max-w-full" />}
 						<MutationError error={checkHarness.error} />
 					</span>
@@ -552,16 +571,18 @@ function AgentRow({
 						</Button>
 					)}
 					{harness.installed && (
-						<Button
-							variant="secondary"
-							size="sm"
-							className="relative z-10"
-							onClick={() => checkHarness.mutate({ id: harnessId })}
-							disabled={checking}
-							data-testid={`harness-check-${harness.id}`}
-						>
-							{checking ? "Checking" : "Check"}
-						</Button>
+						<Hint label={UNSAFE_CHECK_HINT} when={!safeCheck(harnessId)}>
+							<Button
+								variant="secondary"
+								size="sm"
+								className="relative z-10"
+								onClick={() => checkHarness.mutate({ id: harnessId })}
+								disabled={checking}
+								data-testid={`harness-check-${harness.id}`}
+							>
+								{checking ? "Checking" : "Check"}
+							</Button>
+						</Hint>
 					)}
 					<ChevronRight className="size-4 text-text-3" aria-hidden />
 				</span>
@@ -823,7 +844,7 @@ function AgentListActions({
 	const ctx = useAgentListCtx(agents);
 	return (
 		<Surface id="agent.list" ctx={ctx}>
-			<span className="flex items-center gap-2">
+			<span className="flex flex-wrap items-center gap-2">
 				<UpdateAllButton agents={agents} />
 				{children}
 			</span>

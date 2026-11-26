@@ -42,6 +42,11 @@ vi.mock("@/lib/api/hooks", () => ({
 		isPending: false,
 		error: null,
 	}),
+	useCheckAllHarnesses: () => ({
+		mutate: vi.fn(),
+		isPending: false,
+		isSuccess: false,
+	}),
 	useCheckHarness: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 vi.mock("@tanstack/react-router", () => ({

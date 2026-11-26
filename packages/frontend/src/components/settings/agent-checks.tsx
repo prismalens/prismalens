@@ -7,13 +7,19 @@
  */
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import type { HarnessStatus } from "@prismalens/contracts/schemas";
-import { runAction } from "@/components/kit/registry";
+import { runAction, settingOf } from "@/components/kit/registry";
 import { Surface } from "@/components/kit/Surface";
 import { Time } from "@/components/kit/Time";
+import { SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
-import { useCheckAllHarnesses } from "@/lib/api/hooks";
+import {
+	useCheckAllHarnesses,
+	useHarnessSettings,
+	useUpdateHarnessSettings,
+} from "@/lib/api/hooks";
 import type { AgentCtx } from "./agent.actions";
+import { AxisSelect } from "./HarnessSettings";
 
 /** Its check runs isolated, so Check all and a background pass start it. */
 export function safeCheck(id: HarnessId): boolean {
@@ -108,5 +114,44 @@ export function CheckAllButton({
 				</span>
 			)}
 		</span>
+	);
+}
+
+const CHECK_EVERY = [
+	{ value: "0", label: "Off" },
+	{ value: "5", label: "5 min" },
+	{ value: "15", label: "15 min" },
+	{ value: "30", label: "30 min" },
+	{ value: "60", label: "60 min" },
+] as const;
+type CheckEvery = (typeof CHECK_EVERY)[number]["value"];
+
+/** Settings → Agents → Check every: the background refresh; absent is 15 minutes. */
+export function CheckEveryRow() {
+	const { data } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	const s = settingOf("agent.checkEvery");
+	const minutes = data?.refreshMinutes ?? 15;
+	return (
+		<SettingRow
+			label={s.label}
+			description={s.sentence}
+			testId={s.anchor}
+			changed={minutes !== 15}
+			onReset={() => update.mutate({ refreshMinutes: 15 })}
+		>
+			<AxisSelect<CheckEvery>
+				value={String(minutes) as CheckEvery}
+				options={CHECK_EVERY}
+				label={s.label}
+				testId="harness-check-every"
+				disabled={update.isPending || data?.canEditRuntime === false}
+				onChange={(v) =>
+					update.mutate({
+						refreshMinutes: Number(v) as 0 | 5 | 15 | 30 | 60,
+					})
+				}
+			/>
+		</SettingRow>
 	);
 }

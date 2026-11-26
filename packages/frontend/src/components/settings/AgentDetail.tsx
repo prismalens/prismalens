@@ -45,6 +45,7 @@ import {
 } from "@/components/agent/model-list";
 import { fact } from "@/components/kit/fact";
 import { Mark } from "@/components/kit/Mark";
+import { settingOf } from "@/components/kit/registry";
 import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
 import { Hint } from "@/components/shared/Hint";
@@ -344,6 +345,34 @@ function AgentMore({ agent }: { agent: HarnessStatus }) {
  * On or off, and Remove from list for an agent listed only because Add agent saved it (#1171).
  * Off keeps every setting; auto and new runs skip it.
  */
+/** Shown only where this agent's clean profile holds here (#1180 §3.4). */
+function CleanProfileRow({
+	on,
+	pending,
+	onChange,
+}: {
+	on: boolean;
+	pending: boolean;
+	onChange: (on: boolean) => void;
+}) {
+	const s = settingOf("agent.cleanProfile");
+	return (
+		<SettingRow
+			label={<label htmlFor="agent-clean-profile">{s.label}</label>}
+			description={s.sentence}
+			testId={s.anchor}
+		>
+			<Switch
+				id="agent-clean-profile"
+				checked={on}
+				disabled={pending}
+				onCheckedChange={onChange}
+				data-testid="agent-clean-profile"
+			/>
+		</SettingRow>
+	);
+}
+
 function UseGroup({ agent }: { agent: HarnessStatus }) {
 	const id = agent.id as HarnessId;
 	const settings = useHarnessSettings().data;
@@ -375,6 +404,13 @@ function UseGroup({ agent }: { agent: HarnessStatus }) {
 						data-testid="agent-detail-on"
 					/>
 				</SettingRow>
+				{agent.cleanProfile?.offered && (
+					<CleanProfileRow
+						on={agent.cleanProfile.on}
+						pending={update.isPending}
+						onChange={(on) => update.mutate({ cleanProfile: { [id]: on } })}
+					/>
+				)}
 				{agent.runnable && (
 					<SettingRow
 						label="Use for new runs"

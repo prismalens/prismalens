@@ -1886,6 +1886,7 @@ function runOptionsOf(runtime: AgentRuntime, data: InvestigationJobData) {
 		...(runtime.subagentLimits
 			? { subagentLimits: runtime.subagentLimits }
 			: {}),
+		...(runtime.cleanProfile ? { cleanProfile: runtime.cleanProfile } : {}),
 	};
 }
 

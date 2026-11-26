@@ -14,8 +14,10 @@ import { pathToFileURL } from "node:url";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import {
 	AGENT_REGISTRY,
+	AgentHostError,
 	authenticateMethod,
 	type LaunchPolicy,
+	type PlanLaunchInput,
 	planLaunch,
 	writeLaunchFiles,
 } from "@prismalens/agent-host";
@@ -385,6 +387,11 @@ export interface RunInvestigationOptions {
 		concurrency?: number;
 		onStop?: "stop" | "finish";
 	};
+	/**
+	 * Settings → Agent → Clean profile (#1180 §3.4): the row's `cleanProfile` switches, each found
+	 * MCP server off by name; a clean profile that cannot hold refuses the run.
+	 */
+	cleanProfile?: { version?: string | null; mcp?: readonly string[] };
 	/** Stops one sub-agent the agent granted cancel for; the handler answers false otherwise (#1025). */
 	subagents?: {
 		onCancel(handler: (sessionId: string) => boolean): () => void;
@@ -745,7 +752,25 @@ export type PrepareRunEnvOptions = Pick<
 	| "policy"
 	| "hostEnv"
 	| "subagentLimits"
+	| "cleanProfile"
 >;
+
+/** The clean profile's isolation input to `planLaunch`; none unless asked for. */
+function cleanProfileInput(
+	opts: PrepareRunEnvOptions,
+): Pick<PlanLaunchInput, "isolation" | "agentVersion"> {
+	if (!opts.cleanProfile) return {};
+	const use = AGENT_REGISTRY[opts.harness]?.cleanProfile;
+	if (!use)
+		throw new AgentHostError(
+			"isolation-unavailable",
+			`${AGENT_REGISTRY[opts.harness]?.label ?? opts.harness} has no clean profile`,
+		);
+	return {
+		isolation: [{ use, mcp: opts.cleanProfile.mcp ?? [] }],
+		agentVersion: opts.cleanProfile.version ?? null,
+	};
+}
 
 /** Materialise the per-run config and data dirs, and the child's env, from the agent-host launch plan (#916). */
 export function prepareRunEnv(opts: PrepareRunEnvOptions): {
@@ -809,6 +834,7 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 				}
 			: {}),
 		...(opts.subagentLimits ? { subagents: opts.subagentLimits } : {}),
+		...cleanProfileInput(opts),
 		descriptor: { ...AGENT_REGISTRY[opts.harness], ...descriptor },
 	});
 	writeLaunchFiles(plan);
