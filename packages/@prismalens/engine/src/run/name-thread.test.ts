@@ -2,7 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { claudeProbeIsolation } from "@prismalens/agent-host";
+import {
+	claudeProbeIsolation,
+	codexProbeIsolation,
+} from "@prismalens/agent-host";
 import { CheckNotIsolatedError } from "./harness-doctor.js";
 import { nameThread } from "./name-thread.js";
 
@@ -75,6 +78,15 @@ describe("nameThread (#1171)", () => {
 			},
 		});
 		expect(mocks.configs[0]?.env.ENABLE_CLAUDEAI_MCP_SERVERS).toBe("false");
+	});
+
+	it("on Codex, whose switches do not hold through a turn, starts nothing and throws (#1180 R1)", async () => {
+		await expect(
+			nameThread("codex", { prompt: "p", probeIsolation: codexProbeIsolation }),
+		).rejects.toEqual(
+			new CheckNotIsolatedError("codex", "its switches do not hold through a turn"),
+		);
+		expect(mocks.configs).toEqual([]);
 	});
 
 	it("on an agent with no check isolation starts nothing and throws, so the thread keeps its title (#1180 R1)", async () => {

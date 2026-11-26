@@ -31,6 +31,8 @@ export interface Isolation {
 	unavailable?: (ctx: IsolationContext) => string | null;
 	/** It reads `ctx.version`, so the caller reads the agent CLI's version first. */
 	versioned?: true;
+	/** Its switches hold at `session/new` but not once a turn starts, so it isolates checks only. */
+	holdsThroughTurn?: false;
 	/** Deep-merged into the `session/new` `_meta`. */
 	meta?: (ctx: IsolationContext) => Record<string, unknown>;
 	env?: (ctx: IsolationContext) => Record<string, string>;
@@ -249,15 +251,21 @@ export function codexConfigArgs(mcp: readonly string[]): string[] {
 /** codex-acp reads its config overrides from this env var, not `-c`. */
 export const CODEX_CONFIG_ENV = "CODEX_CONFIG";
 
+/**
+ * Codex 0.171.0 (codex-acp 2.8.0) honours it at `session/new`, then starts the user's, the repo's
+ * and plugins' MCP servers at the first turn anyway (matrix row, #1180): checks only, no clean profile.
+ */
 export const codexProbeIsolation: Isolation = {
 	config: { key: CODEX_CONFIG_ENV, patch: (ctx) => codexCheckConfig(ctx.mcp) },
+	holdsThroughTurn: false,
 };
-
-export const codexCleanIsolation: Isolation = codexProbeIsolation;
 
 // ---------------------------------------------------------------- OpenCode
 
-/** `OPENCODE_PURE` empties the external plugin list in 1.19.6 and is gone in 2.4.1. */
+/**
+ * `OPENCODE_PURE` empties the external plugin list in 1.19.6 and is gone in 2.4.1. In 1.19.6 it holds
+ * at `session/new`, but plugins load at the first turn anyway (matrix row, #1180): checks only.
+ */
 export function opencodeHonoursPure(
 	version: string | null | undefined,
 ): boolean {
@@ -274,6 +282,7 @@ const opencodeMcpOff = (mcp: readonly string[]): JsonObject =>
 
 export const opencodeProbeIsolation: Isolation = {
 	versioned: true,
+	holdsThroughTurn: false,
 	unavailable: (ctx) =>
 		opencodeHonoursPure(ctx.version)
 			? null
@@ -283,11 +292,6 @@ export const opencodeProbeIsolation: Isolation = {
 		key: "OPENCODE_CONFIG_CONTENT",
 		patch: (ctx) => opencodeMcpOff(ctx.mcp),
 	},
-};
-
-export const opencodeCleanIsolation: Isolation = {
-	...opencodeProbeIsolation,
-	env: () => ({ OPENCODE_PURE: "1", OPENCODE_DISABLE_CLAUDE_CODE: "1" }),
 };
 
 // ---------------------------------------------------------------- Gemini CLI

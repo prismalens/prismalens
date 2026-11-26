@@ -56,6 +56,11 @@ export async function nameThread(
 			? opts.probeIsolation
 			: checkIsolationOf(harness);
 	if (!use) throw new CheckNotIsolatedError(harness, "no safe check");
+	if (use.holdsThroughTurn === false)
+		throw new CheckNotIsolatedError(
+			harness,
+			"its switches do not hold through a turn",
+		);
 	const runDir = mkdtempSync(join(tmpdir(), RUN_DIR_PREFIX));
 	const cwd = join(runDir, "workspace");
 	mkdirSync(cwd, { recursive: true });

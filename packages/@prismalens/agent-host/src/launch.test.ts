@@ -20,13 +20,11 @@ import { AgentHostError } from "./errors.js";
 import {
 	claudeCleanIsolation,
 	claudeProbeIsolation,
-	codexCleanIsolation,
 	codexProbeIsolation,
 	GATEWAY_RUN_FILE,
 	geminiCleanIsolation,
 	geminiProbeIsolation,
 	type Isolation,
-	opencodeCleanIsolation,
 	opencodeProbeIsolation,
 } from "./registry/index.js";
 import {
@@ -719,12 +717,6 @@ describe("planLaunch isolation (#1180 R1, §3.4)", () => {
 	};
 	it.each([
 		["claude-code", claudeCleanIsolation, ["ENABLE_CLAUDEAI_MCP_SERVERS"]],
-		["codex", codexCleanIsolation, ["CODEX_CONFIG"]],
-		[
-			"opencode",
-			opencodeCleanIsolation,
-			["OPENCODE_CONFIG_CONTENT", "OPENCODE_DISABLE_CLAUDE_CODE", "OPENCODE_PURE"],
-		],
 		[
 			"gemini",
 			geminiCleanIsolation,
