@@ -83,6 +83,7 @@ import {
 	ageWord,
 	elapsedWord,
 	infoReason,
+	rowSettled,
 	statusReason,
 } from "@/lib/thread-status";
 import { readableTitle } from "@/lib/title";
@@ -592,8 +593,8 @@ function ListRowView({
 	const quiet = recedes(node) && !on;
 	const settleable =
 		!isWorkflowLive(t.status) &&
-		// A thread settled before newer activity is back in Threads and settles again (#1101 cat 2.2).
-		node.unit.section !== "settled" &&
+		// The thread's own section, as its menu reads it: an incident's unit can mix both (#1101 cat 2.2).
+		!rowSettled(t) &&
 		node.info.status !== "approval" &&
 		node.info.status !== "question";
 	const open = () => void navigate(link);
