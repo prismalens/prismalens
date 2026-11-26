@@ -740,70 +740,12 @@ export default defineChecks([
 				});
 			}
 
-			// Asks and approvals in the folded range close as superseded, both ways.
-			const fx = await rewindFixture(page, sim, { messages: [] });
-			if (typeof fx === "string") return notSetUp(fx);
-			await sendMessage(
-				page,
-				fx.id,
-				"fake-session:ask-user Which retries should I use?",
-			);
-			// The follow-up starts the agent afresh, so its ask can take a while to open.
-			let open1:
-				| { ask: { askId: string; threadId: string }; ended: boolean }
-				| undefined;
-			for (let i = 0; i < 60 && !open1; i++) {
-				if (i) await page.waitForTimeout(500);
-				const asked = await apiGet<{
-					asks: { ask: { askId: string; threadId: string }; ended: boolean }[];
-				}>(page, "/threads/asks");
-				open1 = asked.asks.find((a) => !a.ended && a.ask.threadId === fx.id);
-			}
-			if (open1) {
-				await apiPost(page, `/investigations/${fx.id}/cancel`, {}).catch(
-					() => undefined,
-				);
-				await idle(page, fx.id);
-				const seq = await seqOf(
-					page,
-					fx.id,
-					"fake-session:ask-user Which retries should I use?",
-				);
-				const r =
-					seq === null
-						? null
-						: await rewindVia(page, fx.id, seq, "Use 3 retries.");
-				const closed = (await eventsOf(page, fx.id)).some(
-					(e) =>
-						e.kind === "ask_closed" &&
-						e.askId === open1.ask.askId &&
-						e.outcome === "superseded",
-				);
-				if (r?.state !== "done")
-					fails.push("the rewind over an open ask did not run");
-				else if (!closed)
-					fails.push("the open ask did not close as superseded");
-				const late = await page.request.post(
-					`/api/investigations/${fx.id}/asks/${open1.ask.askId}`,
-					{ data: { askId: open1.ask.askId, decision: "approve" } },
-				);
-				if (late.ok()) fails.push("answering the superseded ask was taken");
-				if (r?.rewindId) {
-					await idle(page, fx.id);
-					await apiPost(page, `/threads/${fx.id}/rewind/${r.rewindId}/undo`, {
-						id: fx.id,
-						rewindId: r.rewindId,
-					});
-					await open(`/threads/${fx.id}`, "thread-page");
-					await expect(
-						page.getByText("Superseded by an edit").first(),
-					).toBeVisible({ timeout: 15_000 });
-				}
-			} else fails.push("the ask-user turn opened no ask");
+			// A folded ask closing as superseded is covered in rewind.service.int.spec.ts and
+			// Transcript.test.tsx: no agent that forks is served pl_ask_user (#1193).
 
 			return verdict(
 				fails,
-				`Undo after the reply and before admission both restore files, turns and session columns and fold the edited branch; the crash row read "${interrupted}" and Restore ran; the folded ask closed as superseded and stayed closed after Undo`,
+				`Undo after the reply and before admission both restore files, turns and session columns and fold the edited branch; the crash row read "${interrupted}" and Restore ran`,
 			);
 		},
 	},

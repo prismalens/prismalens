@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import type { CanonicalEvent } from "@prismalens/contracts";
 import { act, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { formatElapsed } from "@/lib/format-time";
-import type { TranscriptItem } from "@/lib/investigation-events";
+import {
+	deriveTranscript,
+	type TranscriptItem,
+} from "@/lib/investigation-events";
 import type { AskRecord } from "@/lib/run-asks";
 import { type RenderedApp, renderWithApp } from "@/test/render";
 import { Transcript } from "./Transcript";
@@ -906,5 +910,73 @@ describe("the user's own message (#1193)", () => {
 				document.querySelector('[role="menu"] [data-testid="menu-copy"]'),
 			).not.toBeNull(),
 		);
+	});
+});
+
+describe("an ask a rewind superseded (#1193)", () => {
+	const RUN = "00000000-0000-0000-0000-0000000000aa";
+	const event = (e: Record<string, unknown>, seq: number) =>
+		({
+			runId: RUN,
+			branchId: "asks",
+			path: [],
+			seq,
+			ts: "2026-11-26T05:00:00.000Z",
+			...e,
+		}) as unknown as CanonicalEvent;
+	const opened = event(
+		{
+			kind: "ask_opened",
+			ask: {
+				askId: "ask-1",
+				kind: "question",
+				requiresHost: false,
+				source: { kind: "tool", tool: "pl_ask_user", requestId: "ask-1" },
+				title: "Set the retries to 3 or 5?",
+				questions: [
+					{
+						id: "q1",
+						prompt: "Set the retries to 3 or 5?",
+						multiSelect: false,
+						allowOther: true,
+						options: [
+							{ id: "o1", label: "3" },
+							{ id: "o2", label: "5" },
+						],
+					},
+				],
+			},
+		},
+		1,
+	);
+	const superseded = event(
+		{ kind: "ask_closed", askId: "ask-1", outcome: "superseded" },
+		2,
+	);
+
+	it("reads one line, Superseded by an edit", async () => {
+		const items = deriveTranscript([opened, superseded], {
+			run: { id: RUN, status: "completed", live: false },
+		});
+		await show(
+			<Transcript
+				items={items}
+				incidentId="inc-1"
+				agent="OpenCode"
+				steps={{
+					all: [],
+					open: new Set<number>(),
+					onToggle: () => {},
+					highlight: null,
+					flagged: new Set<number>(),
+					asks: [],
+				}}
+			/>,
+		);
+		expect(
+			[...container.querySelectorAll('[data-testid="transcript-line"]')].map(
+				(l) => l.textContent,
+			),
+		).toEqual(["Superseded by an edit"]);
 	});
 });

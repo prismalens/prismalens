@@ -20,6 +20,7 @@ import { eventually, ScenarioApp } from "../../../test/scenarios/support/scenari
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { rewindFiles, storeOps } from "../investigations/worktree-scopes.js";
 import { snapshotStores, storeGit } from "../investigations/worktree-snapshots.js";
+import { ToolAsksService } from "../investigations/tool-asks.service.js";
 import { RewindService } from "./rewind.service.js";
 
 vi.setConfig({ testTimeout: 30_000 }); // slowest test 9903 ms; 3x, rounded up to the second, at least 5 s (#1154)
@@ -185,6 +186,51 @@ describe("RewindService (#1193)", () => {
 		expect(after).toEqual(shown);
 		expect(await sessionsOf(id)).toEqual(sessions);
 		expect(await rewinds().undo(id, r.rewindId, true)).toEqual({ state: "refused", reason: "already-undone", paths: [] });
+	});
+
+	it("an open pl_ask_user ask in the folded range closes superseded, and stays closed after Undo", async () => {
+		const { id } = await fixture();
+		const seq = await seqOf(id, MESSAGE_2);
+		// The service pl_ask_user calls: no agent that forks is served the tool itself.
+		const asks = pl.resolve<ToolAsksService>(ToolAsksService) as ToolAsksService;
+		const asked = await asks.question(id, [
+			{
+				id: "q1",
+				prompt: "Set the retries to 3 or 5?",
+				multiSelect: false,
+				allowOther: true,
+				required: true,
+				options: [
+					{ id: "o1", label: "3" },
+					{ id: "o2", label: "5" },
+				],
+			},
+		]);
+		if ("error" in asked) throw new Error(asked.error);
+		const closedOf = async () =>
+			(await visible(id)).flatMap((e) =>
+				e.kind === "ask_closed" && e.askId === asked.askId ? [e.outcome] : [],
+			);
+		const rowOf = async () =>
+			(await pl.prisma()).toolAsk.findUniqueOrThrow({
+				where: { askId: asked.askId },
+				select: { status: true, outcome: true },
+			});
+		const p = await rewinds().preview(id, seq, true);
+
+		const r = await rewinds().rewind(
+			{ id, seq, text: "Set the retries to 5", expect: expectOf(p), include: [] },
+			{ kind: "you" },
+			true,
+		);
+		if (r.state !== "done") throw new Error(`expected done, got ${JSON.stringify(r)}`);
+
+		expect(await closedOf()).toEqual(["superseded"]);
+		expect(await rowOf()).toEqual({ status: "closed", outcome: "superseded" });
+		await idle(id, "the edited message's turn to end");
+		expect(await rewinds().undo(id, r.rewindId, true)).toMatchObject({ state: "done" });
+		expect(await closedOf()).toEqual(["superseded"]);
+		expect(await rowOf()).toEqual({ status: "closed", outcome: "superseded" });
 	});
 
 	it("a stale preview is refused stale and writes nothing", async () => {
