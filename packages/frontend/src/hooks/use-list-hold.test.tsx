@@ -3,7 +3,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { ThreadRow, ThreadUnit } from "@prismalens/contracts";
-import { act, createElement, useRef } from "react";
+import { act, createElement, Suspense, startTransition, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type ThreadListModel, threadList } from "@/lib/thread-list";
@@ -55,6 +55,30 @@ const next = threadList([
 	unit("b", "working", "2026-11-12T11:30:00.000Z"),
 ]);
 
+// c starts waiting too, on its own: nothing the reader did.
+const third = threadList([
+	unit("a", "question", "2026-11-12T11:00:00.000Z"),
+	unit("b", "working", "2026-11-12T11:30:00.000Z"),
+	unit("c", "question", "2026-11-12T09:00:00.000Z"),
+]);
+const firstWithC = threadList([
+	unit("a", "working", "2026-11-12T11:00:00.000Z"),
+	unit("b", "working", "2026-11-12T10:00:00.000Z"),
+	unit("c", "working", "2026-11-12T09:00:00.000Z"),
+]);
+// d arrives, so the count of held moves changes.
+const withD = threadList([
+	unit("a", "question", "2026-11-12T11:00:00.000Z"),
+	unit("b", "working", "2026-11-12T11:30:00.000Z"),
+	unit("c", "question", "2026-11-12T09:00:00.000Z"),
+	unit("d", "working", "2026-11-12T08:00:00.000Z"),
+]);
+// b starts waiting after a's move was applied.
+const fourth = threadList([
+	unit("a", "question", "2026-11-12T11:00:00.000Z"),
+	unit("b", "question", "2026-11-12T11:30:00.000Z"),
+]);
+
 let container: HTMLDivElement;
 let root: Root;
 let seen: {
@@ -64,7 +88,13 @@ let seen: {
 	update: () => void;
 };
 
-function Probe({ model }: { model: ThreadListModel }) {
+function Probe({
+	model,
+	loading = false,
+}: {
+	model: ThreadListModel;
+	loading?: boolean;
+}) {
 	const ref = useRef<HTMLDivElement>(null);
 	const held = useListHold(ref, model);
 	seen = {
@@ -73,6 +103,7 @@ function Probe({ model }: { model: ThreadListModel }) {
 		pending: held.pending,
 		update: held.update,
 	};
+	if (loading) return createElement("p", null, "Loading");
 	return createElement(
 		"div",
 		{ ref, "data-testid": "list" },
@@ -80,8 +111,8 @@ function Probe({ model }: { model: ThreadListModel }) {
 	);
 }
 
-const draw = (model: ThreadListModel) =>
-	act(async () => root.render(createElement(Probe, { model })));
+const draw = (model: ThreadListModel, loading = false) =>
+	act(async () => root.render(createElement(Probe, { model, loading })));
 const list = () =>
 	container.querySelector('[data-testid="list"]') as HTMLElement;
 const pointer = (type: string, pointerType = "mouse") =>
@@ -148,13 +179,78 @@ describe("useListHold keeps the list still while the reader is in it (#1247 D25)
 		await draw(next);
 		await act(async () => seen.update());
 		expect(seen).toMatchObject({ needs: ["a"], active: ["b"], pending: 0 });
+		await draw(fourth);
+		expect(seen).toMatchObject({ needs: ["a"], active: ["b"], pending: 1 });
 	});
 
-	it("applies a move the reader caused (pin, archive) though the pointer is in the list", async () => {
+	it("applies only the move the reader caused (pin, archive); another thread's move still waits", async () => {
+		await draw(firstWithC);
+		await pointer("pointerenter");
+		userMovedThreads(["a"]);
+		await draw(third);
+		expect(seen).toMatchObject({
+			needs: ["a"],
+			active: ["b", "c"],
+			pending: 1,
+		});
+	});
+
+	it("holds a list that mounts after a loading render", async () => {
+		await draw(first, true);
 		await draw(first);
 		await pointer("pointerenter");
-		userMovedThreads();
 		await draw(next);
+		expect(seen).toMatchObject({ needs: [], active: ["a", "b"], pending: 1 });
+		await pointer("pointerleave");
+		await act(async () => vi.advanceTimersByTime(RELEASE_MS));
 		expect(seen).toMatchObject({ needs: ["a"], active: ["b"], pending: 0 });
+	});
+
+	it("keeps the release 600 ms after the reader left though more moves arrive meanwhile", async () => {
+		await draw(firstWithC);
+		await pointer("pointerenter");
+		await draw(next);
+		await pointer("pointerleave");
+		await act(async () => vi.advanceTimersByTime(RELEASE_MS - 100));
+		await draw(withD);
+		expect(seen.active).toEqual(["a", "b", "c"]);
+		expect(seen.pending).toBe(3);
+		await act(async () => vi.advanceTimersByTime(100));
+		expect(seen).toMatchObject({
+			needs: ["c", "a"],
+			active: ["b", "d"],
+			pending: 0,
+		});
+	});
+
+	it("holds from what was on screen, not from a render React set aside", async () => {
+		let resume = () => {};
+		const gate = new Promise<void>((r) => {
+			resume = r;
+		});
+		let waiting = false;
+		function Gate() {
+			if (waiting) throw gate;
+			return null;
+		}
+		const tree = (model: ThreadListModel) =>
+			createElement(
+				Suspense,
+				{ fallback: null },
+				createElement(Probe, { model }),
+				createElement(Gate),
+			);
+		await act(async () => root.render(tree(first)));
+		// The new list renders inside a transition that suspends: the screen keeps the first.
+		waiting = true;
+		await act(async () => startTransition(() => root.render(tree(next))));
+		await pointer("pointerenter");
+		waiting = false;
+		await act(async () => {
+			resume();
+			await gate;
+		});
+		await act(async () => root.render(tree(next)));
+		expect(seen).toMatchObject({ needs: [], active: ["a", "b"], pending: 1 });
 	});
 });

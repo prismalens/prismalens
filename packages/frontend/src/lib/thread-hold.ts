@@ -74,3 +74,32 @@ export function heldModel(live: ThreadListModel, held: HeldLayout): Held {
 	pending += moving.size;
 	return { model: { ...live, ...out }, moving, pending };
 }
+
+/**
+ * The held layout with `ids` where the live list has them: a move the reader made applies
+ * at once while the rest of the list stays held. Each lands after the live row before it.
+ */
+export function rebase(
+	held: HeldLayout,
+	live: ThreadListModel,
+	ids: ReadonlySet<string>,
+): HeldLayout {
+	const order = {} as Record<HoldSection, string[]>;
+	for (const s of SECTIONS)
+		order[s] = held.order[s].filter((id) => !ids.has(id));
+	const nodes = new Map(held.nodes);
+	for (const s of SECTIONS)
+		live[s].forEach((n, i) => {
+			if (!ids.has(n.id)) return;
+			const before = live[s]
+				.slice(0, i)
+				.map((m) => m.id)
+				.filter((id) => order[s].includes(id))
+				.at(-1);
+			order[s].splice(before ? order[s].indexOf(before) + 1 : 0, 0, n.id);
+			nodes.set(n.id, n);
+		});
+	for (const id of ids)
+		if (!SECTIONS.some((s) => order[s].includes(id))) nodes.delete(id);
+	return { order, nodes };
+}

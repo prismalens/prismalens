@@ -168,7 +168,7 @@ export function useThreadCtx(
 	};
 	const doArchive = () => {
 		const on = !thread.archivedAt;
-		userMovedThreads();
+		userMovedThreads([thread.id]);
 		archive(on).then(
 			() =>
 				on &&
@@ -219,7 +219,7 @@ export function useThreadCtx(
 		}),
 		togglePin: done(() => {
 			// The reader moved this row: the list applies it now, not after they leave (#1247 D25).
-			userMovedThreads();
+			userMovedThreads([thread.id]);
 			void threadMenuMutations
 				.pin(queryClient)
 				.mutate({ id: thread.id, on: !thread.pinnedAt })

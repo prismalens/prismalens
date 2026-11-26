@@ -8,12 +8,14 @@ import {
 	useLayoutEffect,
 	useReducer,
 	useRef,
+	useState,
 } from "react";
 import {
 	type Held,
 	type HeldLayout,
 	heldModel,
 	layoutOf,
+	rebase,
 } from "@/lib/thread-hold";
 import type { ThreadListModel } from "@/lib/thread-list";
 
@@ -22,12 +24,18 @@ export const RELEASE_MS = 600;
 /** A touch or a scroll keeps the list still this long after it. */
 export const TOUCH_MS = 2000;
 const SLIDE_MS = 180;
+/** How long a move the reader made waits to reach the list before it counts as any other. */
+const OWN_MS = 5000;
 
-let actedAt = 0;
-/** A move the reader caused (pin, archive) applies at once, with whatever else waited. */
-export const userMovedThreads = () => {
-	actedAt = Date.now();
+const moved = new Map<string, number>();
+/** Threads the reader moved (pin, archive): their move applies at once; the rest stay held. */
+export const userMovedThreads = (ids: readonly string[]) => {
+	for (const id of ids) moved.set(id, Date.now());
 };
+const ownMoves = () =>
+	new Set(
+		[...moved].filter(([, at]) => Date.now() - at <= OWN_MS).map(([id]) => id),
+	);
 
 /** Open menus, peeks and ask cards inside the list keep it still. */
 const OPEN = '[data-state="open"], [data-card-open]';
@@ -41,13 +49,15 @@ export function useListHold(
 	ref: RefObject<HTMLElement | null>,
 	live: ThreadListModel,
 ): Held & { update: () => void } {
+	// The list can mount after a loading render, so the listeners follow the element.
+	const [el, setEl] = useState<HTMLElement | null>(null);
 	const inside = useRef(false);
 	const touchedAt = useRef(0);
-	const shown = useRef<HeldLayout>(layoutOf(live));
+	const shown = useRef<HeldLayout | null>(null);
 	const held = useRef<HeldLayout | null>(null);
+	const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const slideFrom = useRef<Map<string, number> | null>(null);
 	const latest = useRef(live);
-	latest.current = live;
 	const [, redraw] = useReducer((n: number) => n + 1, 0);
 
 	const engaged = useCallback(() => {
@@ -63,43 +73,59 @@ export function useListHold(
 
 	const release = useCallback(() => {
 		if (!held.current) return;
-		const el = ref.current;
 		slideFrom.current = new Map(
 			Array.from(
-				el?.querySelectorAll<HTMLElement>('[data-testid="thread-row"]') ?? [],
+				ref.current?.querySelectorAll<HTMLElement>(
+					'[data-testid="thread-row"]',
+				) ?? [],
 			).map((r) => [r.dataset.id ?? "", r.getBoundingClientRect().top]),
 		);
 		// What the reader sees next is the live list; a reader still inside holds from there.
 		shown.current = layoutOf(latest.current);
-		held.current = null;
+		held.current = engaged() ? shown.current : null;
 		redraw();
-	}, [ref]);
+	}, [ref, engaged]);
 
-	// The hold starts from what the reader last saw, the moment they enter the list.
-	if (!held.current && engaged() && Date.now() - actedAt > 5000)
-		held.current = shown.current;
-	if (held.current && Date.now() - actedAt <= 5000) held.current = null;
-	const result: Held = held.current
-		? heldModel(live, held.current)
+	// The deadline runs from the reader's last activity; more moves arriving don't push it.
+	const settle = useCallback(() => {
+		clearTimeout(timer.current);
+		timer.current = setTimeout(() => {
+			timer.current = undefined;
+			if (!held.current) return;
+			if (engaged()) settle();
+			else release();
+		}, RELEASE_MS);
+	}, [engaged, release]);
+
+	const own = ownMoves();
+	const base =
+		held.current && own.size ? rebase(held.current, live, own) : held.current;
+	const result: Held = base
+		? heldModel(live, base)
 		: { model: live, moving: new Map(), pending: 0 };
-	if (!held.current) shown.current = layoutOf(live);
 	const pending = result.pending;
 
+	// Only a committed render sets what the reader saw, and a move they made joins the hold.
+	useLayoutEffect(() => {
+		if (ref.current !== el) setEl(ref.current);
+		latest.current = live;
+		if (held.current && base !== held.current) {
+			held.current = base;
+			for (const id of own) moved.delete(id);
+		}
+		if (!held.current) shown.current = layoutOf(live);
+	});
+
 	useEffect(() => {
-		const el = ref.current;
 		if (!el) return;
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		const settle = () => {
-			clearTimeout(timer);
-			timer = setTimeout(() => {
-				if (!held.current) return;
-				if (engaged()) settle();
-				else release();
-			}, RELEASE_MS);
+		// The hold starts from what the reader last saw, the moment they enter the list.
+		const begin = () => {
+			if (!held.current && shown.current) held.current = shown.current;
 		};
 		const enter = (e: PointerEvent) => {
 			if (e.pointerType === "touch") touchedAt.current = Date.now();
 			else inside.current = true;
+			begin();
 		};
 		const leave = (e: PointerEvent) => {
 			if (e.pointerType !== "touch") inside.current = false;
@@ -107,6 +133,7 @@ export function useListHold(
 		};
 		const touch = () => {
 			touchedAt.current = Date.now();
+			begin();
 			settle();
 		};
 		const onScroll = (e: Event) => {
@@ -115,22 +142,26 @@ export function useListHold(
 		el.addEventListener("pointerenter", enter);
 		el.addEventListener("pointerleave", leave);
 		el.addEventListener("touchstart", touch, { passive: true });
+		el.addEventListener("focusin", begin);
 		el.addEventListener("focusout", settle);
 		document.addEventListener("scroll", onScroll, {
 			capture: true,
 			passive: true,
 		});
-		if (pending) settle();
 		return () => {
-			clearTimeout(timer);
 			el.removeEventListener("pointerenter", enter);
 			el.removeEventListener("pointerleave", leave);
 			el.removeEventListener("touchstart", touch);
+			el.removeEventListener("focusin", begin);
 			el.removeEventListener("focusout", settle);
 			document.removeEventListener("scroll", onScroll, { capture: true });
 		};
-	}, [ref, engaged, release, pending]);
+	}, [el, settle]);
 
+	useEffect(() => {
+		if (pending && !timer.current) settle();
+	}, [pending, settle]);
+	useEffect(() => () => clearTimeout(timer.current), []);
 	// The moved rows slide from where they were; reduced motion shows the end at once.
 	useLayoutEffect(() => {
 		const from = slideFrom.current;

@@ -266,4 +266,26 @@ describe("Settled remembers whether it is open (#1247 D25)", () => {
 		expect(toggle.getAttribute("aria-expanded")).toBe("false");
 		expect(localStorage.getItem("pl.threads.settledOpen")).toBe("0");
 	});
+	it("stays, with its held row marked moving and the live count 0, while its last row moves to Threads", async () => {
+		localStorage.setItem("pl.threads.settledOpen", "1");
+		const held = threadList(
+			[
+				{
+					...unit("s", "done", "2026-11-12T08:00:00.000Z"),
+					section: "settled",
+				},
+			],
+			0,
+			1,
+		);
+		await draw({
+			model: { ...held, settledCount: 0 },
+			moving: new Map([["s", "active"]]),
+		});
+		expect(q("settled-toggle")?.textContent).toBe("Settled0");
+		const row = q("thread-section-settled")?.querySelector(
+			'[data-moving="active"] [data-testid="thread-row"]',
+		);
+		expect(row?.getAttribute("data-id")).toBe("s");
+	});
 });

@@ -112,6 +112,10 @@ const tiers = () =>
 	Array.from(document.querySelectorAll('[data-testid="needs-tier"]')).map(
 		(t) => ({
 			label: t.getAttribute("aria-label"),
+			icons: Array.from(t.querySelectorAll('h3 [role="img"]')).map((i) =>
+				i.getAttribute("aria-label"),
+			),
+			count: t.querySelector("h3")?.textContent,
 			rows: Array.from(t.querySelectorAll('[data-testid="needs-row"]')).map(
 				(r) => r.getAttribute("data-id"),
 			),
@@ -128,8 +132,18 @@ describe("the Needs you list groups waiting threads by the status registry's urg
 		]);
 		await list(model.needs);
 		expect(tiers()).toEqual([
-			{ label: "Question, Approval needed: 2", rows: ["q", "a"] },
-			{ label: "Interrupted, Blocked: 2", rows: ["i", "b"] },
+			{
+				label: "Question, Approval needed: 2",
+				icons: ["Question", "Approval needed"],
+				count: "2",
+				rows: ["q", "a"],
+			},
+			{
+				label: "Interrupted, Blocked: 2",
+				icons: ["Interrupted", "Blocked"],
+				count: "2",
+				rows: ["i", "b"],
+			},
 		]);
 	});
 
@@ -243,5 +257,38 @@ describe("the Needs you badge (#1247 D25)", () => {
 		expect(
 			popover()?.querySelectorAll('[data-testid="needs-tier"]').length,
 		).toBe(2);
+	});
+	it("stays closed after Escape though focus returns to the badge", async () => {
+		vi.useFakeTimers();
+		listed = threadList([unit(thread("q", "question"))]);
+		await NeedsBadgePart.preload(true);
+		await draw();
+		const popover = () =>
+			document.querySelector(
+				'[data-testid="needs-popover"][data-state="open"]',
+			);
+		// A keyboard press, so focus that lands on the badge matches :focus-visible.
+		await act(async () => {
+			document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }));
+			badge().focus();
+			vi.advanceTimersByTime(150);
+		});
+		expect(popover()).not.toBeNull();
+		await act(async () => badge().click());
+		// The reader tabs into the list, then presses Escape there.
+		const link = popover()?.querySelector("a") as HTMLAnchorElement;
+		await act(async () => link.focus());
+		expect(document.activeElement).toBe(link);
+		await act(async () => {
+			link.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+			);
+			vi.advanceTimersByTime(150);
+		});
+		// Radix gives focus back to the badge on the next tick.
+		await act(async () => vi.advanceTimersByTime(1));
+		expect(document.activeElement).toBe(badge());
+		await act(async () => vi.advanceTimersByTime(300));
+		expect(popover()).toBeNull();
 	});
 });

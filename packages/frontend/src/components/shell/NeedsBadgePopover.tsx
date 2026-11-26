@@ -31,6 +31,8 @@ export function NeedsBadgePopover({
 }: BadgeProps & BadgeFaceProps) {
 	const [open, setOpen] = useState(false);
 	const pinned = useRef(false);
+	// Focus the closing list hands back to the badge must not open it again.
+	const returning = useRef(false);
 	const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 	useEffect(() => () => clearTimeout(timer.current), []);
 	const later = (next: boolean) => {
@@ -58,7 +60,10 @@ export function NeedsBadgePopover({
 					aria-label={badgeLabel(count)}
 					onPointerEnter={hoverIn}
 					onPointerLeave={hoverOut}
-					onFocus={(e) => e.target.matches(":focus-visible") && later(true)}
+					onFocus={(e) => {
+						if (returning.current) returning.current = false;
+						else if (e.target.matches(":focus-visible")) later(true);
+					}}
 					onClick={(e) => {
 						// A click keeps the list open; Radix's own toggle runs after this.
 						if (open && !pinned.current) {
@@ -83,6 +88,12 @@ export function NeedsBadgePopover({
 					onPointerEnter={() => clearTimeout(timer.current)}
 					onPointerLeave={hoverOut}
 					onOpenAutoFocus={(e) => !pinned.current && e.preventDefault()}
+					onCloseAutoFocus={() => {
+						returning.current = true;
+						setTimeout(() => {
+							returning.current = false;
+						});
+					}}
 					data-float="pop"
 					className={cn(
 						SURFACE,

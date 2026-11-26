@@ -406,7 +406,8 @@ export function ThreadTreeView({
 					/>
 				)}
 			</Section>
-			{model.settledCount > 0 && (
+			{/* A held list can keep a row here that the live list has moved out (#1247 D25). */}
+			{(model.settledCount > 0 || model.settled.length > 0) && (
 				<section
 					aria-label="Settled"
 					className="flex flex-col gap-px"
