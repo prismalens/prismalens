@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eventually, ScenarioApp } from "../../../test/scenarios/support/scenario-app.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
-import { rewindFiles, storeOps, undoRewindFiles } from "../investigations/worktree-scopes.js";
+import { restoreFiles, rewindFiles, storeOps, undoRewindFiles } from "../investigations/worktree-scopes.js";
 import { snapshotStores, storeGit } from "../investigations/worktree-snapshots.js";
 import { ToolAsksService } from "../investigations/tool-asks.service.js";
 import { RewindService } from "./rewind.service.js";
@@ -36,7 +36,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 });
 vi.mock("../investigations/worktree-scopes.js", async (importOriginal) => {
 	const m = await importOriginal<typeof import("../investigations/worktree-scopes.js")>();
-	return { ...m, rewindFiles: vi.fn(m.rewindFiles), undoRewindFiles: vi.fn(m.undoRewindFiles) };
+	return {
+		...m,
+		rewindFiles: vi.fn(m.rewindFiles),
+		undoRewindFiles: vi.fn(m.undoRewindFiles),
+		restoreFiles: vi.fn(m.restoreFiles),
+	};
 });
 const actual = await vi.importActual<typeof import("../investigations/worktree-scopes.js")>(
 	"../investigations/worktree-scopes.js",
@@ -486,26 +491,30 @@ describe("RewindService (#1193)", () => {
 		expect(await interruptedOf(id)).toEqual(["undo"]);
 	});
 
-	it("an Undo whose record fails after its files went back is refused interrupted and marks its operation interrupted, not dropped", async () => {
+	it("an Undo whose record fails after its files went back sets them back through Restore's writer, keeps the thread rewound, and leaves nothing for Restore", async () => {
 		const { id, cwd } = await fixture();
 		const r = doneOf(await rewindAt(id, await seqOf(id, MESSAGE_2)));
 		await idle(id, "the edited message's turn to end");
 		const tx = vi.spyOn(await pl.prisma(), "$transaction");
+		let undone = "";
 		vi.mocked(undoRewindFiles).mockImplementationOnce(async (...a) => {
 			const done = await actual.undoRewindFiles(...a);
+			undone = read(cwd, "src/app.txt");
 			tx.mockRejectedValueOnce(new Error("database is locked"));
 			return done;
 		});
 
-		const u = await rewinds().undo(id, r.rewindId, true);
+		await expect(rewinds().undo(id, r.rewindId, true)).rejects.toThrow("database is locked");
 
-		expect(u).toEqual({ state: "refused", reason: "interrupted", paths: [] });
+		expect(undone).toBe(APP_TURN_2);
 		expect((await visible(id)).some((e) => e.kind === "rewind_undone")).toBe(false);
-		expect(await interruptedOf(id)).toEqual(["undo"]);
+		expect(await interruptedOf(id)).toEqual([]);
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_1);
+		expect(doneOf(await rewinds().undo(id, r.rewindId, true)).restored).toEqual([{ repo: "repo", path: "src/app.txt" }]);
 		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
 	});
 
-	it("an Undo whose read of the edited message fails after its files went back is refused interrupted and marks its operation interrupted", async () => {
+	it("an Undo whose read of the edited message fails after its files went back sets them back and leaves nothing for Restore", async () => {
 		const { id, cwd } = await fixture();
 		const r = doneOf(await rewindAt(id, await seqOf(id, MESSAGE_2)));
 		await idle(id, "the edited message's turn to end");
@@ -515,6 +524,24 @@ describe("RewindService (#1193)", () => {
 			find.mockRejectedValueOnce(new Error("database is locked"));
 			return done;
 		});
+
+		await expect(rewinds().undo(id, r.rewindId, true)).rejects.toThrow("database is locked");
+
+		expect(await interruptedOf(id)).toEqual([]);
+		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_1);
+	});
+
+	it("an Undo whose record fails and whose setting back fails is refused interrupted and marks its operation interrupted for Restore", async () => {
+		const { id, cwd } = await fixture();
+		const r = doneOf(await rewindAt(id, await seqOf(id, MESSAGE_2)));
+		await idle(id, "the edited message's turn to end");
+		const tx = vi.spyOn(await pl.prisma(), "$transaction");
+		vi.mocked(undoRewindFiles).mockImplementationOnce(async (...a) => {
+			const done = await actual.undoRewindFiles(...a);
+			tx.mockRejectedValueOnce(new Error("database is locked"));
+			return done;
+		});
+		vi.mocked(restoreFiles).mockRejectedValueOnce(new Error("disk full"));
 
 		const u = await rewinds().undo(id, r.rewindId, true);
 

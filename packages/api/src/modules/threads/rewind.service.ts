@@ -799,7 +799,22 @@ export class RewindService {
 		const ws = this.ws(t);
 		const ctx = this.ctx(t, canWrite);
 		const done: Extract<RepoOpResult, { state: "done" }>[] = [];
-		// Files some repos already got back stay for Restore: never dropped, marked now.
+		/** Puts each repo this Undo wrote back to its backup through Restore's writer; false when one could not be. */
+		const compensate = async (): Promise<boolean> => {
+			let all = true;
+			for (const d of done) {
+				if (!ws) break;
+				const back = await this.restoreBackup(ws, d.repo, ctx, d.op);
+				if (!back) {
+					all = false;
+					continue;
+				}
+				await markOp(ws, d.repo, ctx, d.op, "dropped").catch(() => {});
+				await markOp(ws, d.repo, ctx, back, "dropped").catch(() => {});
+			}
+			return all;
+		};
+		// What compensation could not set back stays for Restore: marked now, never dropped.
 		const interrupted = async () => {
 			await this.markInterrupted(id);
 			return refused("interrupted");
@@ -824,10 +839,14 @@ export class RewindService {
 				} as RepoOpResult;
 			});
 			if (r.state === "refused") {
-				if (threw) return interrupted();
+				// A throw may have written some of this repo's files: its op stays for Restore.
+				if (threw) {
+					await compensate();
+					return interrupted();
+				}
 				await markOp(ws, repo, ctx, op, "dropped").catch(() => {});
 				if (r.reason === "gone" || r.reason === "no-snapshot") continue;
-				if (done.length) return interrupted();
+				if (!(await compensate())) return interrupted();
 				return refused("stale", pathsOf(repo, refusedPaths(r)));
 			}
 			done.push(r);
@@ -894,7 +913,7 @@ export class RewindService {
 				return out;
 			});
 		} catch (e) {
-			if (done.length) return interrupted();
+			if (!(await compensate())) return interrupted();
 			if (e instanceof Refuse) return refused("running");
 			throw e;
 		}
@@ -923,6 +942,35 @@ export class RewindService {
 				return [];
 			}
 		});
+	}
+
+	/** Restores `of`'s backup for the paths still at its target; the new op's id, or null when it could not. */
+	private async restoreBackup(
+		ws: RunWorkspace,
+		repo: string,
+		ctx: ScopeContext,
+		of: string,
+	): Promise<string | null> {
+		const op = randomUUID();
+		try {
+			const plan = await previewRestoreFiles(ws, repo, ctx, of);
+			if (typeof plan === "string") return null;
+			// Created and damaged paths are the user's since the backup: never ticked here.
+			const r = await restoreFiles(ws, repo, ctx, {
+				op,
+				of,
+				expect: { head: plan.head, tree: plan.tree },
+				include: new Set(),
+			});
+			if (r.state === "done") return op;
+			await markOp(ws, repo, ctx, op, "dropped").catch(() => {});
+			return null;
+		} catch (e) {
+			logger.warn(
+				`Setting back ${repo} after a failed Undo failed: ${(e as Error).message}`,
+			);
+			return null;
+		}
 	}
 
 	private async interrupted(id: string, op: string) {
