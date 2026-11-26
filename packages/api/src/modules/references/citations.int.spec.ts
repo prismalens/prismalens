@@ -447,9 +447,15 @@ ${"b".repeat(1999)}…
 		});
 	};
 
-	it("keeps no citation that a reset lands between reading the cited message and writing it", async () => {
+	it("never writes a citation that a reset and its replacement under the same key land in the middle of", async () => {
 		const src = await thread("Reset mid-cite", [ask(0, "First attempt")]);
 		const reader = await thread("Mid-cite reader", [ask(0, "Read it")]);
+		// Every citation row ever inserted, so a row written and later deleted still shows.
+		const { prisma: raw } = await import("@prismalens/database");
+		await raw.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS cite_log (src TEXT)");
+		await raw.$executeRawUnsafe(
+			"CREATE TRIGGER IF NOT EXISTS cite_log_ins AFTER INSERT ON message_citations BEGIN INSERT INTO cite_log VALUES (NEW.sourceThreadId); END",
+		);
 		const read = citations.message.bind(citations);
 		const spy = vi.spyOn(citations, "message").mockImplementationOnce(async (t, k) => {
 			const m = await read(t, k);
@@ -460,7 +466,35 @@ ${"b".repeat(1999)}…
 			references: [{ kind: "message", id: messageRefId(src, "main:0"), label: "first" }],
 		});
 		spy.mockRestore();
+		const logged = await raw.$queryRawUnsafe<{ n: number | bigint }[]>(
+			"SELECT count(*) AS n FROM cite_log WHERE src = ?",
+			src,
+		);
+		expect(logged.map((r) => Number(r.n))).toEqual([0]);
 		expect(await citations.list(reader)).toEqual({ cites: [], citedIn: [] });
+		const r = await tool()(reader, { threadId: src, key: "main:0" });
+		expect(r.body.error).toBe("not_found");
+	});
+
+	it("reads a 300-row turn whole when the cited message sits past its opening half", async () => {
+		const prisma = await pl.prisma();
+		const mid = await thread("Mid cite", [ask(0, "Go")]);
+		await prisma.investigationEvent.createMany({
+			data: Array.from({ length: 299 }, (_, i) => ({
+				investigationId: mid,
+				seq: i + 1,
+				branchId: "main",
+				event: JSON.stringify(answer(i + 1, `step ${i + 1}`)),
+			})),
+		});
+		await svc.cite(citing, {
+			references: [{ kind: "message", id: messageRefId(mid, "main:251"), label: "mid" }],
+		});
+		const body = (await tool()(citing, { threadId: mid, key: "main:251" })).body.body as string;
+		expect(body).toContain("Agent said:\nstep 225\n");
+		expect(body).toContain("Agent said (the cited message):\nstep 251\n");
+		expect(body).toContain("Agent said:\nstep 299\n");
+		expect(body).not.toContain("left out");
 	});
 
 	it("reads nothing when a reset lands between finding the citation and reading its turn", async () => {
