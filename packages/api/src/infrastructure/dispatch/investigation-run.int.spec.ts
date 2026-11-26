@@ -1028,6 +1028,67 @@ describe("runInvestigationJob schema validation", () => {
 			expect.objectContaining({ status: "failed", error: "No coding agent found on PATH." }),
 		);
 	});
+
+	// #1252: an alert run on a sign-in whose terms bar unattended use fails before the agent starts.
+	describe("sign-in terms", () => {
+		const QWEN_REFUSAL =
+			'Alert and scheduled runs can\'t use Qwen Code on Qwen account: its terms say "Modifying, copying, leasing, selling, distributing, or manipulating our Service; using bots to access the Service." (https://qwen.ai/termsservice). Start it yourself, or use OPENAI_API_KEY, OPENAI_MODEL and OPENAI_BASE_URL instead.';
+		const qwenPorts = (
+			env: Record<string, string>,
+			updateStatus = vi.fn(async () => true),
+			requestedSecrets?: RunPorts["requestedSecrets"],
+		) =>
+			fakePorts({
+				updateStatus,
+				...(requestedSecrets ? { requestedSecrets } : {}),
+				agentRuntime: vi.fn(async () => ({ env, note: null })),
+				resolveHarness: vi.fn(async () => ({
+					selection: { runnable: true as const, harness: "qwen" as const, auto: false },
+				})),
+			});
+		const run = (ports: RunPorts, data: Partial<InvestigationJobData>) =>
+			runInvestigationJob(
+				{ id: "job-1", investigationId: "inv-1", attempts: 1 },
+				{ investigationId: "inv-1", incidentId: "inc-1", ...data },
+				{ emit: vi.fn(), streamDone: vi.fn(), signal: new AbortController().signal },
+				ports,
+			);
+
+		beforeEach(() => {
+			vi.stubEnv("OPENAI_API_KEY", "");
+			mocks.conductRun.mockReset();
+			mocks.conductRun.mockImplementation(async (_o, io: { store: { create(): Promise<void> } }) => {
+				await io.store.create();
+				return { report: { summary: "done", rootCause: null, nextSteps: [] } };
+			});
+		});
+		afterEach(() => vi.unstubAllEnvs());
+
+		it("fails an alert run on Qwen Code's own sign-in with the clause, and never starts the agent", async () => {
+			const updateStatus = vi.fn(async () => true);
+			await expect(run(qwenPorts({}, updateStatus), { unattended: true })).rejects.toThrow(QWEN_REFUSAL);
+			expect(updateStatus).toHaveBeenCalledWith("inv-1", expect.objectContaining({ status: "failed", error: QWEN_REFUSAL }));
+			expect(mocks.conductRun).not.toHaveBeenCalled();
+		});
+
+		it("starts the same alert run on an OPENAI_API_KEY from Settings, and a person's run on the sign-in", async () => {
+			await run(qwenPorts({ OPENAI_API_KEY: "sk-live" }), { unattended: true });
+			await run(qwenPorts({}), {});
+			expect(mocks.conductRun.mock.calls.map(([o]) => (o as { harness: string; termsWarning?: string }).harness)).toEqual([
+				"qwen",
+				"qwen",
+			]);
+		});
+
+		it("judges the key a secret the thread was given puts in the run's env, not the one in Settings", async () => {
+			const refusal = `Alert and scheduled runs can't use Qwen Code on Alibaba Coding Plan key (sk-sp-): its terms say "Do not use the plan's API key for automated scripts, application backends, or other non-interactive scenarios." (https://www.alibabacloud.com/help/en/model-studio/coding-plan). Start it yourself, or replace the plan key in OPENAI_API_KEY with a key from outside the plan.`;
+			const updateStatus = vi.fn(async () => true);
+			const ports = qwenPorts({ OPENAI_API_KEY: "sk-live" }, updateStatus, vi.fn(async () => ({ OPENAI_API_KEY: "sk-sp-given" })));
+			await expect(run(ports, { unattended: true })).rejects.toThrow(refusal);
+			expect(updateStatus).toHaveBeenCalledWith("inv-1", expect.objectContaining({ status: "failed", error: refusal }));
+			expect(mocks.conductRun).not.toHaveBeenCalled();
+		});
+	});
 });
 
 /**
@@ -1554,6 +1615,32 @@ describe("follow-up on a finished run (#747)", () => {
 		expect(opts.resume.afterRestart).toBeUndefined();
 		expect(opts.resume.via.restart).toMatchObject({ by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z" });
 		expect(restartAlerts).toHaveBeenCalledWith("inc-1", new Date("2026-10-28T08:52:00.000Z"), expect.any(Date), new Date("2026-10-28T08:52:00.000Z"));
+	});
+
+	it("a scheduled run recovered after a restart is held to the schedule's terms, though it waits for asks (#1252)", async () => {
+		const ports = followUpPorts({
+			agentRuntime: vi.fn(async () => ({ env: { ANTHROPIC_API_KEY: "sk-sp-1" }, note: null })),
+		});
+		const recovery: InvestigationJobData = {
+			...data,
+			startedBy: "schedule",
+			waitForAsks: true,
+			resume: {
+				text: "PrismaLens restarted.",
+				mode: "queue",
+				kind: "continue",
+				restore: { status: "failed", completedAt: null, error: "API restarted while the run was in flight" },
+				restart: { attempt: 1, by: "auto", stoppedAt: "2026-10-28T08:52:00.000Z", lastActivityAt: "2026-10-28T08:51:00.000Z" },
+			},
+		};
+
+		await runInvestigationJob({ id: "job-r3", investigationId: "inv-1", attempts: 1 }, recovery, io(), ports);
+
+		expect(mocks.conductRun).not.toHaveBeenCalled();
+		expect(vi.mocked(ports.settleFollowUp).mock.calls[0]?.[1]).toMatchObject({
+			status: "failed",
+			error: `Not resumed: Alert and scheduled runs can't use OpenCode on Alibaba Coding Plan key (sk-sp-): its terms say "Do not use the plan's API key for automated scripts, application backends, or other non-interactive scenarios." (https://www.alibabacloud.com/help/en/model-studio/coding-plan). Start it yourself, or replace the plan key in ANTHROPIC_API_KEY with a key from outside the plan.`,
+		});
 	});
 
 	it("a recovery that fails before reaching its agent ends saying why it didn't resume (#981 OBJ-020)", async () => {

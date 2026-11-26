@@ -42,13 +42,36 @@ export const cursor = defineAgent({
 				id: "login",
 				label: "Cursor account",
 				steps: ["terminal", "browser"],
-				unattended: true,
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://cursor.com/docs/cli/headless",
+						clause:
+							"Use Cursor CLI in scripts and automation workflows for code analysis, generation, and refactoring tasks.",
+						readOn: "2026-11-26",
+					},
+					gaps: [
+						"cursor.com/acceptable-use: renders no text without JavaScript",
+					],
+				},
 			},
 			{
 				id: "api-key",
 				label: "CURSOR_API_KEY or CURSOR_AUTH_TOKEN",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "CURSOR_API_KEY" }, { name: "CURSOR_AUTH_TOKEN" }],
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://cursor.com/docs/cli/reference/authentication",
+						clause:
+							"For automation, scripts, or CI environments, use API key authentication",
+						readOn: "2026-11-26",
+					},
+					gaps: [
+						"cursor.com/acceptable-use: renders no text without JavaScript",
+					],
+				},
 			},
 		],
 	},
