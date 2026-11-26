@@ -23,7 +23,7 @@ export function CommandChip({
 	/** Shown in place of `command`; Copy and Run in terminal still use `command`. */
 	display?: string;
 	run?: ReactNode;
-	/** A path to copy, not a command: no Run in terminal. */
+	/** Copy only, with no Run in terminal: a path, or a command another button runs. */
 	path?: boolean;
 	/** Show the whole command over several lines instead of truncating it. */
 	wrap?: boolean;

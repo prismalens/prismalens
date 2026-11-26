@@ -89,9 +89,9 @@ const dirOf = (p: string, platform: string) =>
 	norm(p, platform).replace(/\/[^/]*$/, "");
 
 /**
- * npm when the binary sits in npm's global bin folder (`{prefix}` on Windows,
- * `{prefix}/bin` elsewhere, npm docs "folders") or resolves into its global
- * modules; Homebrew when it resolves under `Caskroom/<cask>` or `Cellar/<formula>`.
+ * Homebrew when the binary resolves under `Caskroom/<cask>` or `Cellar/<formula>`, asked
+ * first since npm may share its prefix; else npm when it sits in npm's global bin folder
+ * (`{prefix}` on Windows, `{prefix}/bin` elsewhere) or resolves into its global modules.
  */
 export function installChannelOf(
 	bin: FoundBinary,
@@ -100,6 +100,18 @@ export function installChannelOf(
 	platform: string,
 ): FoundChannel {
 	const { npmPrefix, brewPrefix } = where;
+	if (
+		brewPrefix &&
+		brew?.cask &&
+		under(`${brewPrefix}/Caskroom/${brew.cask}`, bin.realPath, platform)
+	)
+		return { cask: brew.cask };
+	if (
+		brewPrefix &&
+		brew?.formula &&
+		under(`${brewPrefix}/Cellar/${brew.formula}`, bin.realPath, platform)
+	)
+		return { formula: brew.formula };
 	if (npmPrefix) {
 		const win = platform === "win32";
 		const binDir = win ? npmPrefix : `${npmPrefix}/bin`;
@@ -113,18 +125,6 @@ export function installChannelOf(
 		)
 			return "npm";
 	}
-	if (
-		brewPrefix &&
-		brew?.cask &&
-		under(`${brewPrefix}/Caskroom/${brew.cask}`, bin.realPath, platform)
-	)
-		return { cask: brew.cask };
-	if (
-		brewPrefix &&
-		brew?.formula &&
-		under(`${brewPrefix}/Cellar/${brew.formula}`, bin.realPath, platform)
-	)
-		return { formula: brew.formula };
 	return null;
 }
 

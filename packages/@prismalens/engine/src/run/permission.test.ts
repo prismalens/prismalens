@@ -997,9 +997,9 @@ describe("AskChannel answers (#1024)", () => {
 	});
 
 	it("a level's auto-approval never picks allow_always; with no allow_once the card asks the person (#1180)", async () => {
-		const card = vi.fn(() => ({ allow: false, outcome: "denied" }) as const);
+		const channel = createAskChannel({ timeoutMs: 5000 });
 		const ctx: AskContext = { askId: "a", signal: new AbortController().signal };
-		const verdict = await levelPolicy("full-access", { policy: card })(
+		const verdict = levelPolicy("full-access", { policy: channel.policy })(
 			{
 				toolCall: { title: "Edit file", kind: "edit" },
 				options: [
@@ -1009,9 +1009,11 @@ describe("AskChannel answers (#1024)", () => {
 			} as PermissionRequest,
 			ctx,
 		);
-		expect(verdict).toEqual({ allow: false, outcome: "denied" });
-		expect(card).toHaveBeenCalledTimes(1);
+		expect(channel.pending().map((a) => a.askId)).toEqual(["a"]);
 		expect(ctx.why).toBe("no_allow_option");
+		expect(channel.answer("a", DENY)).toEqual({ outcome: "denied" });
+		expect(await verdict).toMatchObject({ allow: false, optionId: "reject" });
+		channel.close();
 	});
 
 	it("a deny with a reason returns the reason for the host to queue", async () => {

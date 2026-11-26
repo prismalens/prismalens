@@ -6,6 +6,7 @@ import type { HarnessStatus } from "@prismalens/contracts";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ModelChip } from "./AgentPicker";
 
 const GOOGLE_MODEL = "google/gemini-4-neon";
@@ -36,6 +37,11 @@ const opencode: HarnessStatus = {
 	checked: null,
 };
 
+let mockSettings: Record<string, unknown> = {
+	harness: "opencode",
+	models: {},
+};
+
 vi.mock("@/lib/api/hooks", () => ({
 	useHarnesses: () => ({
 		data: {
@@ -46,7 +52,7 @@ vi.mock("@/lib/api/hooks", () => ({
 		isError: false,
 	}),
 	useHarnessSettings: () => ({
-		data: { harness: "opencode", models: {} },
+		data: mockSettings,
 		isLoading: false,
 	}),
 	useUpdateHarnessSettings: () => ({ mutate: vi.fn(), isPending: false }),
@@ -85,6 +91,50 @@ describe("ModelChip", () => {
 				.querySelector("[data-testid=agent-picker]")
 				?.getAttribute("aria-label"),
 		).toBe("Model: Gemini 4 Neon · via OpenCode");
+	});
+
+	it("names a custom model by the person's name, on the chip and on its rows", async () => {
+		mockSettings = {
+			harness: "opencode",
+			models: { opencode: "gw-a" },
+			customModels: { opencode: [{ id: "gw-a", name: "Gateway A" }] },
+		};
+		const host = document.createElement("div");
+		document.body.appendChild(host);
+		const root = createRoot(host);
+		try {
+			await act(async () =>
+				root.render(
+					<TooltipProvider>
+						<ModelChip harness={opencode} model="gw-a" onPick={vi.fn()} />
+					</TooltipProvider>,
+				),
+			);
+			const chip = host.querySelector(
+				"[data-testid=agent-picker]",
+			) as HTMLButtonElement;
+			expect(chip.getAttribute("aria-label")).toBe(
+				"Model: Gateway A \u00b7 via OpenCode",
+			);
+			await act(async () => chip.click());
+			const rows = () =>
+				Array.from(
+					document.body.querySelectorAll("[data-testid=model-option]"),
+				).map((r) => r.textContent);
+			expect(rows()).toEqual(["Gateway A", "Gemini 4 Neon"]);
+			await act(async () =>
+				(
+					document.body.querySelector(
+						"[data-testid=rail-starred]",
+					) as HTMLButtonElement
+				).click(),
+			);
+			expect(rows()).toEqual(["Gateway A"]);
+		} finally {
+			await act(async () => root.unmount());
+			mockSettings = { harness: "opencode", models: {} };
+			document.body.innerHTML = "";
+		}
 	});
 
 	it("shows the OpenCode logo when the model names no maker", () => {

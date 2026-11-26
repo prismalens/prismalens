@@ -9,7 +9,7 @@ import { Picker } from "@/components/kit/Picker";
 import { settingOf } from "@/components/kit/registry";
 import { Pool } from "@/components/shared/Row";
 import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
-import { Empty } from "@/components/shared/State";
+import { Empty, Problem } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -39,6 +39,9 @@ const num = (v: string): number | undefined => {
 	return Number.isFinite(n) && n >= 0 ? n : undefined;
 };
 
+/** An optional price: empty falls back, anything else must be a price. */
+const blankOrPrice = (v: string) => v.trim() === "" || num(v) !== undefined;
+
 /** One price to add: agent, model, route and dollars per million tokens. */
 export function PriceForm({
 	agents,
@@ -64,7 +67,12 @@ export function PriceForm({
 	const inP = num(input);
 	const outP = num(output);
 	const ready =
-		!!agent && model.trim() !== "" && inP !== undefined && outP !== undefined;
+		!!agent &&
+		model.trim() !== "" &&
+		inP !== undefined &&
+		outP !== undefined &&
+		blankOrPrice(cacheRead) &&
+		blankOrPrice(cacheWrite);
 	const field = (
 		label: string,
 		value: string,
@@ -168,11 +176,18 @@ export function PriceForm({
 
 /** Adds one price to the stored list; the same agent, route and model replaces the old one. */
 export function useAddPrice() {
-	const prices = useUsagePrices().data?.prices ?? [];
+	const query = useUsagePrices();
 	const save = useSetUsagePrices();
+	const prices = query.data?.prices;
+	// A save replaces the whole list, so it needs the stored one and no save in flight.
+	const blocked = !prices || save.isPending;
 	return {
-		saving: save.isPending,
-		add: (p: ModelPrice, then?: () => void) =>
+		prices,
+		blocked,
+		failed: !prices && query.isError,
+		retry: () => void query.refetch(),
+		add: (p: ModelPrice, then?: () => void) => {
+			if (!prices || save.isPending) return;
 			save.mutate(
 				{
 					prices: [
@@ -188,17 +203,19 @@ export function useAddPrice() {
 					],
 				},
 				{ onSuccess: () => then?.() },
-			),
-		remove: (p: ModelPrice) =>
-			save.mutate({ prices: prices.filter((x) => x !== p) }),
+			);
+		},
+		remove: (p: ModelPrice) => {
+			if (!prices || save.isPending) return;
+			save.mutate({ prices: prices.filter((x) => x !== p) });
+		},
 	};
 }
 
 /** Settings → Usage → Prices: API prices for models whose agent reports no cost (#1180). */
 export function PriceOverrides({ agents }: { agents: readonly string[] }) {
 	const s = settingOf("usage.prices");
-	const prices = useUsagePrices().data?.prices ?? [];
-	const { add, remove, saving } = useAddPrice();
+	const { prices, add, remove, blocked, failed, retry } = useAddPrice();
 	const [adding, setAdding] = useState(false);
 	return (
 		<SettingGroup
@@ -219,8 +236,9 @@ export function PriceOverrides({ agents }: { agents: readonly string[] }) {
 			}
 		>
 			<Pool>
-				{prices.length === 0 && !adding && <Empty text="No prices yet" />}
-				{prices.map((p) => (
+				{failed && <Problem text="Your prices did not load." onRetry={retry} />}
+				{prices?.length === 0 && !adding && <Empty text="No prices yet" />}
+				{prices?.map((p) => (
 					<SettingRow
 						key={`${p.agent}:${p.provider ?? ""}:${p.model}`}
 						label={
@@ -235,7 +253,12 @@ export function PriceOverrides({ agents }: { agents: readonly string[] }) {
 						}
 						testId="price-row"
 					>
-						<Button variant="text" size="sm" onClick={() => remove(p)}>
+						<Button
+							variant="text"
+							size="sm"
+							disabled={blocked}
+							onClick={() => remove(p)}
+						>
 							Remove
 						</Button>
 					</SettingRow>
@@ -243,7 +266,7 @@ export function PriceOverrides({ agents }: { agents: readonly string[] }) {
 				{adding && (
 					<PriceForm
 						agents={agents}
-						saving={saving}
+						saving={blocked}
 						onSave={(p) => add(p, () => setAdding(false))}
 						onCancel={() => setAdding(false)}
 					/>

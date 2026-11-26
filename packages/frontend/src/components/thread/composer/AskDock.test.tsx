@@ -389,6 +389,66 @@ describe("AskDock (#1024)", () => {
 		);
 	});
 
+	const onlyAlways = (source: PendingAsk["source"]) =>
+		baseAsk({
+			askId: "ask-always",
+			kind: "permission",
+			source,
+			permission: {
+				toolKind: "edit",
+				options: [
+					{ optionId: "w", name: "Always", kind: "allow_always" },
+					{ optionId: "d", name: "Deny", kind: "reject_once" },
+				],
+			},
+		});
+	const dock = async (ask: PendingAsk) => {
+		await act(async () => {
+			root.render(
+				<TooltipProvider>
+					<AskDock asks={[ask]} threadId={THREAD} agent="Claude Code" />
+				</TooltipProvider>,
+			);
+		});
+	};
+	const press = async (code: "KeyY" | "KeyN") => {
+		await act(async () => {
+			window.dispatchEvent(
+				new KeyboardEvent("keydown", { code, altKey: true, bubbles: true }),
+			);
+		});
+	};
+
+	it("an agent ask with only a standing allow offers no Allow once, and Alt+Y sends nothing (#1180)", async () => {
+		await dock(onlyAlways({ kind: "agent" }));
+		expect(q("ask-dock-allow")).toBeNull();
+		await press("KeyY");
+		expect(mockAnswerMutate).not.toHaveBeenCalled();
+		await press("KeyN");
+		expect(mockAnswerMutate.mock.calls.map((c) => c[0])).toEqual([
+			{
+				id: THREAD,
+				askId: "ask-always",
+				answer: { kind: "permission", decision: "deny" },
+			},
+		]);
+	});
+
+	it("a PrismaLens tool ask keeps Allow once whatever options it lists (#1180)", async () => {
+		await dock(
+			onlyAlways({ kind: "tool", tool: "pl_run", requestId: "ask-always" }),
+		);
+		expect(q("ask-dock-allow").textContent).toContain("Allow once");
+		await press("KeyY");
+		expect(mockAnswerMutate.mock.calls.map((c) => c[0])).toEqual([
+			{
+				id: THREAD,
+				askId: "ask-always",
+				answer: { kind: "permission", decision: "approve", scope: "once" },
+			},
+		]);
+	});
+
 	// adaaf52a6 moves the ask reason into a hint, so AskDock renders inside TooltipProvider.
 	it("secret calls useAnswerSecret with value and never calls useAnswerAsk", async () => {
 		const ask = baseAsk({

@@ -27,7 +27,9 @@ export function advanceContext(ctx: TurnContext, event: string): TurnContext {
 		if (e.kind === "session_opened")
 			return {
 				harness: typeof e.harness === "string" ? e.harness : ctx.harness,
-				model: typeof e.model === "string" ? e.model : ctx.model,
+				// `null` says no model is in effect; an absent key says nothing.
+				model:
+					typeof e.model === "string" || e.model === null ? e.model : ctx.model,
 			};
 		if (
 			e.kind === "session_config" &&

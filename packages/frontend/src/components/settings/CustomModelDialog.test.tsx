@@ -47,7 +47,7 @@ describe("CustomModelDialog (#1180)", () => {
 			Object.getOwnPropertyDescriptor(
 				HTMLInputElement.prototype,
 				"value",
-			)?.set?.call(name, "Gateway A");
+			)?.set?.call(name, "  Gateway A  ");
 			name.dispatchEvent(new Event("input", { bubbles: true }));
 		});
 		await act(async () => q("custom-model-label-no-reasoning").click());
@@ -58,6 +58,17 @@ describe("CustomModelDialog (#1180)", () => {
 			name: "Gateway A",
 			labels: ["no-reasoning", "fast"],
 		});
+		await act(async () => {
+			Object.getOwnPropertyDescriptor(
+				HTMLInputElement.prototype,
+				"value",
+			)?.set?.call(name, "   ");
+			name.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		await act(async () => q("custom-model-label-no-reasoning").click());
+		await act(async () => q("custom-model-label-fast").click());
+		await act(async () => q("custom-model-save").click());
+		expect(onSave.mock.lastCall).toEqual([{ id: "gw-a" }]);
 		await act(async () => root.unmount());
 	});
 });

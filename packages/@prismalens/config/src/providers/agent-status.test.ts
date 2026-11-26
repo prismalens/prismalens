@@ -150,9 +150,7 @@ describe("agentCommand (#1180)", () => {
 	});
 
 	it("signInCommand is agentCommand over the row's sign-in args", () => {
-		expect(signInCommand(claude, { platform: "linux" })).toBe(
-			agentCommand(claude, ["auth", "login"], { platform: "linux" }),
-		);
+		expect(signInCommand(claude, { platform: "linux" })).toBe("claude auth login");
 	});
 });
 
@@ -234,6 +232,20 @@ describe("installChannelOf (#1180)", () => {
 		expect(updateRoute(HARNESS_REGISTRY.gemini, formula, { platform: "darwin" })).toEqual({
 			command: "brew upgrade gemini-cli",
 		});
+	});
+
+	it("a Homebrew cask under a prefix npm shares is Homebrew's, not npm's", () => {
+		expect(
+			installChannelOf(
+				{
+					path: "/opt/homebrew/bin/codex",
+					realPath: "/opt/homebrew/Caskroom/codex/9.9.9/codex",
+				},
+				{ npmPrefix: "/opt/homebrew", brewPrefix: "/opt/homebrew" },
+				brew,
+				"darwin",
+			),
+		).toEqual({ cask: "codex" });
 	});
 
 	it("an unknown path shows the agent's own update line, never another install's command", () => {

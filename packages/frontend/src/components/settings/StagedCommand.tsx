@@ -21,7 +21,8 @@ export function useRecheck(ids: readonly string[]) {
 
 export function recheckWith(queryClient: QueryClient, ids: readonly string[]) {
 	return () =>
-		void Promise.all(
+		// One failed check still leaves the others' new status to show.
+		void Promise.allSettled(
 			ids.map((id) =>
 				client.settings.harnesses.checkHarness({ id: id as HarnessId }),
 			),
@@ -65,9 +66,11 @@ export function StagedCommand({
 	const recheck = useRecheck(agents);
 	const line = `${command}; exit`;
 	const canStage = useCanStage(line);
+	// Beside the button the chip only copies: its own run would skip the recheck.
 	const chip = (
 		<CommandChip
 			command={command}
+			path={canStage}
 			className={cn("relative z-10", className)}
 			testId={copyTestId}
 		/>

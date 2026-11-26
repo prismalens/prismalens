@@ -235,9 +235,27 @@ describe("refreshAgentReleases (#1180)", () => {
 		});
 	});
 
-	it("a refused or malformed answer records null", async () => {
+	it("reads a package again once its entry is a day old", async () => {
+		const { urls, fetchImpl } = npm("0.200.0");
+		const next = await refreshAgentReleases(
+			["@google/gemini-cli"],
+			{ "@google/gemini-cli": { checkedAt: DAY, latest: "0.70.0" } },
+			{ enabled: true, now: 2 * DAY, fetchImpl },
+		);
+		expect(urls).toEqual([
+			"https://registry.npmjs.org/@google/gemini-cli/latest",
+		]);
+		expect(next).toEqual({
+			"@google/gemini-cli": { checkedAt: 2 * DAY, latest: "0.200.0" },
+		});
+	});
+
+	it.each([
+		["refused", 403, '{"version":"1.2.3"}'],
+		["malformed", 200, "{}"],
+	])("a %s answer records null", async (_, status, body) => {
 		const fetchImpl = (async () =>
-			new Response("{}", { status: 200 })) as unknown as typeof fetch;
+			new Response(body, { status })) as unknown as typeof fetch;
 		const next = await refreshAgentReleases(["opencode-ai"], {}, {
 			enabled: true,
 			now: 5,

@@ -231,6 +231,7 @@ describe("About with the update controls", () => {
 		expect(about.autoInstall).toBe("notify");
 		expect(about.checkForUpdates).toBe(true);
 		expect(about.runtime?.node).toBe(process.version);
+		expect(about.runtime?.platform).toBe(process.platform);
 		expect(about.logsDir).toBe(join(workspace, "logs"));
 		expect((await s.aboutFor(false)).update.install).toEqual({ available: false, blockedBy: "not_host" });
 	});

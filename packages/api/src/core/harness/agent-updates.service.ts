@@ -161,9 +161,13 @@ export class AgentUpdatesService {
 			const c = HARNESS_REGISTRY[id].channel;
 			return c && "npm" in c ? [c.npm] : [];
 		});
-		this.refreshing ??= this.refresh(packages, cache).finally(() => {
-			this.refreshing = null;
-		});
+		this.refreshing ??= this.refresh(packages, cache)
+			.catch((err: unknown) =>
+				this.logger.warn(`Could not refresh agent releases: ${String(err)}`),
+			)
+			.finally(() => {
+				this.refreshing = null;
+			});
 		return cache;
 	}
 
