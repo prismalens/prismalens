@@ -52,12 +52,20 @@ describe("modelIdentity's provider (#1180)", () => {
 		expect(id.provider).toEqual({ value: "anthropic", source: "inferred" });
 	});
 
-	it("is unknown for Claude Code and Codex when the run env is not known", () => {
-		for (const agent of ["claude-code", "codex"] as const)
-			expect(
-				modelIdentity(HARNESS_REGISTRY[agent], evidence(agent, "m", null))
-					.provider,
-			).toEqual({ value: null, source: "unknown" });
+	it("is unknown for Claude Code when the run env is not known", () => {
+		const id = modelIdentity(
+			HARNESS_REGISTRY["claude-code"],
+			evidence("claude-code", "claude-opus-5-5", null),
+		);
+		expect(id.provider).toEqual({ value: null, source: "unknown" });
+	});
+
+	it("is unknown for Codex when the run env is not known", () => {
+		const id = modelIdentity(
+			HARNESS_REGISTRY.codex,
+			evidence("codex", "gpt-6.2-sol", null),
+		);
+		expect(id.provider).toEqual({ value: null, source: "unknown" });
 	});
 
 	it("keeps a reported provider over the vendor, and the evidence's maker as inferred", () => {

@@ -2,11 +2,10 @@
 // Copyright 2026 Sumit Patel
 
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
-import { LIMIT_WINDOWS } from "@prismalens/contracts";
+import { type AgentAccount, LIMIT_WINDOWS } from "@prismalens/contracts";
 import { type LimitRead, readAgentLimits } from "@prismalens/engine";
 import { z } from "zod";
 import type { HarnessService } from "../../core/harness/harness.service.js";
-import type { HarnessModelsService } from "../../core/harness/harness-models.service.js";
 import type { PrismaService } from "../../core/prisma/prisma.service.js";
 
 export const LIMIT_READS_KEY = "AGENT_LIMIT_READS";
@@ -69,7 +68,12 @@ export const LIMIT_SOURCE = Symbol("LIMIT_SOURCE");
 /** The source a running host uses: the agent's runtime from Settings and its last check. */
 export function harnessLimitSource(
 	harness: Pick<HarnessService, "runtimeFor">,
-	models: Pick<HarnessModelsService, "snapshot" | "checked">,
+	models: {
+		snapshot(): { agents: Partial<Record<string, { runtime: string }>> };
+		checked(
+			agent: HarnessId,
+		): { at: string; account?: AgentAccount | null } | null;
+	},
 	read: LimitSource["read"] = (agent, runtime) =>
 		readAgentLimits(agent, runtime),
 ): LimitSource {

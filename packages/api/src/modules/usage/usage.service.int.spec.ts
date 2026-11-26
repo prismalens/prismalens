@@ -759,25 +759,18 @@ describe("limit reads before a run (#1180)", () => {
 		const read = vi.fn(async () => opts.reads.shift() ?? null);
 		const models = {
 			snapshot: () => ({
-				v: 1 as const,
-				agents: {
-					"claude-code": {
-						check: {} as never,
-						runtime: runtime(),
-						offered: null,
-					},
-				},
+				agents: { "claude-code": { runtime: runtime() } },
 			}),
 			checked: () =>
 				opts.check
-					? ({
+					? {
 							at: opts.check.at,
 							account: {
 								label: opts.check.label,
 								email: opts.check.email,
 								organization: null,
 							},
-						} as never)
+						}
 					: null,
 		};
 		const harness = {
@@ -786,7 +779,7 @@ describe("limit reads before a run (#1180)", () => {
 		return { source: harnessLimitSource(harness, models, read), read };
 	}
 
-	const claudeOf = (l: { agents: { agent: string }[] }) =>
+	const claudeOf = <A extends { agent: string }>(l: { agents: A[] }) =>
 		l.agents.find((a) => a.agent === "claude-code");
 
 	beforeEach(async () => {

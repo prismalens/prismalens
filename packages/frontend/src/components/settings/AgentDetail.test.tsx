@@ -141,6 +141,9 @@ let mockChoice = {
 	isError: false,
 };
 
+vi.mock("@/components/usage/UsageLimitsPanel", () => ({
+	AgentLimitsRow: () => null,
+}));
 vi.mock("@/components/agent/AgentPicker", () => ({
 	useAgentChoice: () => mockChoice,
 	modelName: (_h: unknown, id: string) => id,

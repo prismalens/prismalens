@@ -254,21 +254,23 @@ const kindFor = (mins: number): LimitWindow =>
 /**
  * Every bucket `account/rateLimits/read` returned, mapped as t3code's `codexUsageLimits.ts`:
  * primary and secondary are positions; with no duration, paid plans read 5 hours and a
- * week and Free and Go a month. A bucket other than `codex` is a model window named by its id.
+ * week and Free and Go a month. Any other bucket is a model window named by its id.
  */
 export function codexWindows(res: unknown): LimitReadWindow[] {
 	const body = (res ?? {}) as {
 		rateLimits?: CodexSnapshot | null;
 		rateLimitsByLimitId?: Record<string, CodexSnapshot> | null;
 	};
+	// `rateLimits` is the main allowance's bucket, the single view older CLIs send alone.
+	const mainId = body.rateLimits?.limitId ?? "main";
 	const buckets: [string, CodexSnapshot][] = body.rateLimitsByLimitId
 		? Object.entries(body.rateLimitsByLimitId)
 		: body.rateLimits
-			? [[body.rateLimits.limitId ?? "codex", body.rateLimits]]
+			? [[mainId, body.rateLimits]]
 			: [];
 	const out: LimitReadWindow[] = [];
 	for (const [id, snap] of buckets) {
-		const main = id === "codex";
+		const main = id === mainId;
 		const monthly = snap.planType === "free" || snap.planType === "go";
 		const positions = [
 			["primary", snap.primary, monthly ? MONTH_MINS : SESSION_MINS],

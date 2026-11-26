@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { ModelPrice } from "@prismalens/contracts";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
 import { fact } from "@/components/kit/fact";
 import { Picker } from "@/components/kit/Picker";
@@ -53,6 +53,7 @@ export function PriceForm({
 	onCancel: () => void;
 	saving?: boolean;
 }) {
+	const uid = useId();
 	const [agent, setAgent] = useState(initial?.agent ?? agents[0] ?? "");
 	const [model, setModel] = useState(initial?.model ?? "");
 	const [route, setRoute] = useState("");
@@ -70,16 +71,17 @@ export function PriceForm({
 		set: (v: string) => void,
 		testId: string,
 	) => (
-		<label className="grid min-w-0 gap-1 text-meta text-text-2">
-			{label}
+		<div className="grid min-w-0 gap-1 text-meta text-text-2">
+			<label htmlFor={`${uid}-${testId}`}>{label}</label>
 			<Input
+				id={`${uid}-${testId}`}
 				inputMode="decimal"
 				value={value}
 				onChange={(e) => set(e.target.value)}
 				placeholder="$ per million"
 				data-testid={testId}
 			/>
-		</label>
+		</div>
 	);
 	return (
 		<form
@@ -119,25 +121,27 @@ export function PriceForm({
 						testId="price-agent"
 					/>
 				</div>
-				<label className="grid min-w-0 gap-1 text-meta text-text-2">
-					Model
+				<div className="grid min-w-0 gap-1 text-meta text-text-2">
+					<label htmlFor={`${uid}-price-model`}>Model</label>
 					<Input
+						id={`${uid}-price-model`}
 						value={model}
 						onChange={(e) => setModel(e.target.value)}
 						maxLength={200}
 						data-testid="price-model"
 					/>
-				</label>
-				<label className="grid min-w-0 gap-1 text-meta text-text-2">
-					Route
+				</div>
+				<div className="grid min-w-0 gap-1 text-meta text-text-2">
+					<label htmlFor={`${uid}-price-route`}>Route</label>
 					<Input
+						id={`${uid}-price-route`}
 						value={route}
 						onChange={(e) => setRoute(e.target.value)}
 						placeholder="Any route"
 						maxLength={100}
 						data-testid="price-route"
 					/>
-				</label>
+				</div>
 			</div>
 			<div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4">
 				{field("Input", input, setInput, "price-input")}

@@ -353,7 +353,7 @@ function WaitingThreads({
 /** When the shown limit read ran, and a failed try after it (#1180). */
 function CheckedTime({ a, now }: { a: AgentLimits; now: number }) {
 	return (
-		<>
+		<span className="inline-flex flex-wrap gap-x-2 text-meta text-text-3">
 			{a.checkedAt && (
 				<Time
 					at={a.checkedAt}
@@ -361,7 +361,6 @@ function CheckedTime({ a, now }: { a: AgentLimits; now: number }) {
 					prefix="Checked"
 					past
 					ago
-					className="text-meta text-text-3"
 					testId={`limits-checked-${a.agent}`}
 				/>
 			)}
@@ -372,11 +371,10 @@ function CheckedTime({ a, now }: { a: AgentLimits; now: number }) {
 					prefix="Last try failed"
 					past
 					ago
-					className="text-meta text-text-3"
 					testId={`limits-tried-${a.agent}`}
 				/>
 			)}
-		</>
+		</span>
 	);
 }
 
