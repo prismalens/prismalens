@@ -59,7 +59,10 @@ function Group({
 	rows,
 	model,
 	tree,
+	keep = 0,
 }: {
+	/** Rows a folded group still shows: its most recent ones. */
+	keep?: number;
 	id: string;
 	label: string;
 	rows: ListNode[];
@@ -84,11 +87,15 @@ function Group({
 				{label}
 				<span className="ml-auto tabular-nums">{rows.length}</span>
 			</button>
-			{open && (
+			{(open || keep > 0) && (
 				<div className="lab-sub">
 					<ThreadTreeView
 						{...tree}
-						model={only(model, { active: rows })}
+						model={only(model, {
+							active: open
+								? rows
+								: [...rows].sort((x, y) => y.at - x.at).slice(0, keep),
+						})}
 						expandAll
 					/>
 				</div>
@@ -131,6 +138,7 @@ function LabGrouping() {
 						rows={by(g.id)}
 						model={model}
 						tree={tree}
+						keep={g.id === "done" ? 3 : 0}
 					/>
 				))}
 				<div className="lab-edge">
