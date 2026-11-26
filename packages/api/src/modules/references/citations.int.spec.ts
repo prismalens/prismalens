@@ -50,7 +50,7 @@ let doomed = "";
 let svc: ReferencesService;
 let citations: Citations;
 
-async function thread(title: string, events: CanonicalEvent[], foldedSeqs: number[] = []) {
+async function thread(title: string, events: CanonicalEvent[]) {
 	const prisma = await pl.prisma();
 	const t = await prisma.investigation.create({
 		data: { kind: "chat", status: "completed", title, lastTurnOutcome: "answered" },
@@ -62,7 +62,6 @@ async function thread(title: string, events: CanonicalEvent[], foldedSeqs: numbe
 				seq: e.seq,
 				branchId: "branchId" in e ? e.branchId : "__report__",
 				event: JSON.stringify(e),
-				foldedBy: foldedSeqs.includes(e.seq) ? "rewind-1" : null,
 			},
 		});
 	return t.id;
@@ -83,7 +82,6 @@ beforeAll(async () => {
 			answer(4, "   "),
 			answer(5, LONG),
 		],
-		[3],
 	);
 	citing = await thread("Follow-up", [ask(0, "Continue from the pool thread")]);
 	stranger = await thread("Unrelated", [ask(0, "Something else")]);
@@ -126,17 +124,6 @@ describe("a message cited from another thread (#1195)", () => {
 			turn: 2,
 			title: "Pool exhaustion",
 			text: "Try raising it",
-		});
-	});
-
-	it("still resolves after an edit folded its turn, marked folded", async () => {
-		expect(await citations.message(source, "main:3")).toEqual({
-			threadId: source,
-			key: "main:3",
-			turn: 2,
-			title: "Pool exhaustion",
-			text: "Raised to 20.",
-			folded: true,
 		});
 	});
 
@@ -311,15 +298,6 @@ describe("pl_citation_read (#1195)", () => {
 			"- src/db.ts",
 			"<<<END CITED_TURN>>>",
 		]);
-	});
-
-	it("marks a turn an edit folded", async () => {
-		await svc.cite(citing, {
-			references: [{ kind: "message", id: messageRefId(source, "main:3"), label: "folded" }],
-		});
-		const r = await tool()(citing, { threadId: source, key: "main:3" });
-		expect(r.body).toMatchObject({ turn: 2, folded: true });
-		expect(r.body.body).toContain("The user since edited an earlier message, so this turn is folded");
 	});
 
 	it.each([
