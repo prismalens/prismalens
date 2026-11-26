@@ -17,6 +17,7 @@ import { Route as AuthenticatedAlertsRouteRouteImport } from './routes/_authenti
 import { Route as AuthenticatedAutomationRouteImport } from './routes/_authenticated/automation'
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated/events'
 import { Route as AuthenticatedIncidentsRouteRouteImport } from './routes/_authenticated/incidents/route'
+import { Route as AuthenticatedLabGroupingRouteImport } from './routes/_authenticated/lab-grouping'
 import { Route as AuthenticatedNewRouteImport } from './routes/_authenticated/new'
 import { Route as AuthenticatedSettingsRouteRouteImport } from './routes/_authenticated/settings/route'
 import { Route as AuthenticatedAlertsIndexRouteImport } from './routes/_authenticated/alerts/index'
@@ -77,6 +78,12 @@ const AuthenticatedIncidentsRouteRoute =
   AuthenticatedIncidentsRouteRouteImport.update({
     id: '/incidents',
     path: '/incidents',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedLabGroupingRoute =
+  AuthenticatedLabGroupingRouteImport.update({
+    id: '/lab-grouping',
+    path: '/lab-grouping',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedNewRoute = AuthenticatedNewRouteImport.update({
@@ -205,6 +212,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/automation': typeof AuthenticatedAutomationRoute
   '/events': typeof AuthenticatedEventsRoute
+  '/lab-grouping': typeof AuthenticatedLabGroupingRoute
   '/new': typeof AuthenticatedNewRoute
   '/incidents/$id': typeof AuthenticatedIncidentsIdRouteRouteWithChildren
   '/projects/$id': typeof AuthenticatedProjectsIdRoute
@@ -230,6 +238,7 @@ export interface FileRoutesByTo {
   '/pair': typeof PairRoute
   '/automation': typeof AuthenticatedAutomationRoute
   '/events': typeof AuthenticatedEventsRoute
+  '/lab-grouping': typeof AuthenticatedLabGroupingRoute
   '/new': typeof AuthenticatedNewRoute
   '/': typeof AuthenticatedIndexRoute
   '/projects/$id': typeof AuthenticatedProjectsIdRoute
@@ -260,6 +269,7 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteRouteWithChildren
   '/_authenticated/automation': typeof AuthenticatedAutomationRoute
   '/_authenticated/events': typeof AuthenticatedEventsRoute
+  '/_authenticated/lab-grouping': typeof AuthenticatedLabGroupingRoute
   '/_authenticated/new': typeof AuthenticatedNewRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/incidents/$id': typeof AuthenticatedIncidentsIdRouteRouteWithChildren
@@ -292,6 +302,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/automation'
     | '/events'
+    | '/lab-grouping'
     | '/new'
     | '/incidents/$id'
     | '/projects/$id'
@@ -317,6 +328,7 @@ export interface FileRouteTypes {
     | '/pair'
     | '/automation'
     | '/events'
+    | '/lab-grouping'
     | '/new'
     | '/'
     | '/projects/$id'
@@ -346,6 +358,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/automation'
     | '/_authenticated/events'
+    | '/_authenticated/lab-grouping'
     | '/_authenticated/new'
     | '/_authenticated/'
     | '/_authenticated/incidents/$id'
@@ -430,6 +443,13 @@ declare module '@tanstack/react-router' {
       path: '/incidents'
       fullPath: '/incidents'
       preLoaderRoute: typeof AuthenticatedIncidentsRouteRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/lab-grouping': {
+      id: '/_authenticated/lab-grouping'
+      path: '/lab-grouping'
+      fullPath: '/lab-grouping'
+      preLoaderRoute: typeof AuthenticatedLabGroupingRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/new': {
@@ -645,6 +665,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSettingsRouteRoute: typeof AuthenticatedSettingsRouteRouteWithChildren
   AuthenticatedAutomationRoute: typeof AuthenticatedAutomationRoute
   AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
+  AuthenticatedLabGroupingRoute: typeof AuthenticatedLabGroupingRoute
   AuthenticatedNewRoute: typeof AuthenticatedNewRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedProjectsIdRoute: typeof AuthenticatedProjectsIdRoute
@@ -667,6 +688,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSettingsRouteRoute: AuthenticatedSettingsRouteRouteWithChildren,
   AuthenticatedAutomationRoute: AuthenticatedAutomationRoute,
   AuthenticatedEventsRoute: AuthenticatedEventsRoute,
+  AuthenticatedLabGroupingRoute: AuthenticatedLabGroupingRoute,
   AuthenticatedNewRoute: AuthenticatedNewRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedProjectsIdRoute: AuthenticatedProjectsIdRoute,

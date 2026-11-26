@@ -1,0 +1,48 @@
+// The D25 PR 2 sim check: three tasks in Recent (the real sidebar) and State (the lab view),
+// measured as rows scanned, distance from the list's top and clicks, on one live feed.
+import { createRequire } from "node:module";
+const [, , frontendPkg, url, pairLink, out] = process.argv;
+const { chromium } = createRequire(frontendPkg)("@playwright/test");
+const browser = await chromium.launch();
+const pctx = await browser.newContext(); const pp = await pctx.newPage(); await pp.goto(pairLink); await pp.waitForTimeout(4000);
+const state = await pctx.storageState(); await pctx.close();
+const run = async (foldFinished) => {
+	const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "dark", storageState: state });
+	await ctx.addInitScript((f) => { localStorage.setItem("pl.lab.fold.done", f ? "0" : "1"); localStorage.setItem("pl.threads.settledOpen", "0"); }, foldFinished);
+	const page = await ctx.newPage();
+	await page.goto(url + "/lab-grouping"); await page.waitForTimeout(6000);
+	const m = await page.evaluate(() => {
+		const recent = document.querySelector('[data-testid="sidebar"] [data-testid="thread-tree"]') ?? document.querySelector('[data-testid="thread-tree"]');
+		const lists = { Recent: recent, State: document.querySelector('[data-testid="state-list"]') };
+		const scroller = (el) => { for (let a = el; a; a = a.parentElement) { const o = getComputedStyle(a).overflowY; if ((o === "auto" || o === "scroll") && a.scrollHeight > a.clientHeight) return a; } return el; };
+		const rowsOf = (root) => Array.from(root.querySelectorAll('[data-testid="thread-row"]'));
+		// The reader's recent threads: the newest five outside Needs you, Pinned and Settled, by activity.
+		const known = rowsOf(recent).filter((r) => r.closest('[data-testid="thread-section-threads"]'))
+			.sort((a, b) => Number(b.dataset.activity) - Number(a.dataset.activity)).slice(0, 5).map((r) => r.dataset.id);
+		const out = {};
+		for (const [name, root] of Object.entries(lists)) {
+			const sc = scroller(root); const top0 = root.getBoundingClientRect().top; const view = sc.clientHeight;
+			const rows = rowsOf(root);
+			const at = (r) => ({ index: rows.indexOf(r), px: Math.round(r.getBoundingClientRect().bottom - top0) });
+			const find = (id) => rows.find((r) => r.dataset.id === id);
+			const t1 = known.map((id) => { const r = find(id); return r ? { id, ...at(r) } : { id, index: -1, px: -1, folded: true }; });
+			const working = rows.filter((r) => r.dataset.state === "working" && !r.closest('[data-testid="thread-section-needs"]'));
+			const lastW = working.at(-1);
+			const firstAsk = root.querySelector('[data-testid="thread-section-needs"] [data-testid="thread-row"]');
+			out[name] = {
+				view,
+				t1,
+				t2: { count: working.length, lastIndex: lastW ? at(lastW).index : -1, lastPx: lastW ? at(lastW).px : -1, firstPx: working[0] ? at(working[0]).px : -1, contiguous: working.length > 0 && working.every((r, i) => i === 0 || rows.indexOf(r) === rows.indexOf(working[i - 1]) + 1) },
+				t3: firstAsk ? at(firstAsk) : null,
+			};
+		}
+		return out;
+	});
+	await page.screenshot({ path: `${out}-${foldFinished ? "folded" : "open"}.png` });
+	await ctx.close();
+	return m;
+};
+const open = await run(false);
+const folded = await run(true);
+console.log(JSON.stringify({ open, folded }, null, 1));
+await browser.close();
