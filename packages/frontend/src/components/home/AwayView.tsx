@@ -196,8 +196,8 @@ export function AwayDigestCard({
 			data-testid="away-digest"
 		>
 			<span className="flex min-w-0 items-center gap-3">
-				<h2 className="text-heading text-text-1">What changed</h2>
-				<span className="flex items-center gap-2.5">
+				<h2 className="shrink-0 text-heading text-text-1">What changed</h2>
+				<span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
 					{bands.map(([status, n]) => (
 						<span
 							key={status}
