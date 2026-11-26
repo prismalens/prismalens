@@ -9,7 +9,7 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { RunPage } from "@/components/run/RunPage";
-import { type PanelTab, panelSearch } from "@/lib/run-panel";
+import { type PanelTab, panelSearch } from "@/lib/panel-search";
 import { prefetchRun } from "@/lib/run-prefetch";
 
 export const Route = createFileRoute(

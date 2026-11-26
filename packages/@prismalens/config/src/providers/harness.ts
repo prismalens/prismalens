@@ -34,6 +34,8 @@ export {
 	type AccessLevel,
 	type AgentFact,
 	type AgentFacts,
+	type AuthenticateMethod,
+	authenticateMethod,
 	DEFAULT_ACCESS_LEVEL,
 	type FactCheck,
 	type FactVersions,
@@ -203,14 +205,7 @@ export function resolveHarnessModel(
 }
 
 /** Auto-selection order: the first one on PATH runs unless one is pinned. */
-export const HARNESS_AUTO_ORDER: readonly HarnessId[] = [
-	"opencode",
-	"claude-code",
-	"codex",
-	"gemini",
-	"deepagents",
-	"local",
-];
+export const HARNESS_AUTO_ORDER: readonly HarnessId[] = HARNESS_IDS;
 
 export const HARNESS_BINARY: Record<HarnessId, string> = Object.fromEntries(
 	HARNESS_IDS.map((id) => [id, HARNESS_REGISTRY[id].binary]),
