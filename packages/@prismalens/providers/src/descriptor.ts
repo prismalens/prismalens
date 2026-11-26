@@ -61,7 +61,43 @@ export interface AuthScheme {
 	readonly needsTarget?: boolean;
 }
 
-/** A sign-in method an agent's own CLI offers, served as data; `unattended` says whether alert and scheduled runs may use it. */
+/**
+ * Which runs PrismaLens may start on a sign-in path, by its vendor's terms: every run,
+ * only a person's (no alert or schedule), none, or terms not yet read (runs go ahead).
+ */
+export const TERMS_RUNS = [
+	"allowed",
+	"interactive-only",
+	"never",
+	"unknown",
+] as const;
+export type TermsRuns = (typeof TERMS_RUNS)[number];
+
+/** A clause as read: verbatim, where, and the UTC date it was read. */
+export interface TermsSource {
+	readonly url: string;
+	readonly clause: string;
+	readonly readOn: string;
+}
+
+export interface Terms {
+	readonly runs: TermsRuns;
+	readonly source: TermsSource;
+	/** The strongest clause that reads the other way, kept beside the ruling. */
+	readonly against?: TermsSource;
+	/** Pages that bear on this path and were not read; required when `runs` is `unknown`. */
+	readonly gaps?: readonly string[];
+}
+
+/** An env var whose value means a run signs in this way; `prefix` narrows it to one kind of key. */
+export interface SignInEnv {
+	readonly name: string;
+	readonly prefix?: string;
+	/** It counts only while `name` is unset or is `is`: a key read only by the provider that setting picks. */
+	readonly when?: { readonly name: string; readonly is: string };
+}
+
+/** A sign-in method an agent's own CLI offers, served as data with its vendor's terms. */
 export interface SignInMethod {
 	readonly id: string;
 	readonly label: string;
@@ -71,7 +107,11 @@ export interface SignInMethod {
 		| "terminal"
 		| "credentials"
 	)[];
-	readonly unattended: boolean;
+	/** Set in the run's env, this method is the one in use; absent, it is the CLI's own stored sign-in. */
+	readonly env?: readonly SignInEnv[];
+	/** The ACP `authenticate` method that picks it; when a run sends it, the agent uses this sign-in. */
+	readonly acp?: string;
+	readonly terms: Terms;
 }
 
 export interface Operation {

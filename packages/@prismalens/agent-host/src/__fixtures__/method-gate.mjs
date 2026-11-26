@@ -3,6 +3,7 @@
 
 // Answers session/new only after `authenticate`, as Antigravity 1.5.2 does; LOG gets each method id (#1235).
 // GATE=hang never answers `authenticate`, as a signed-out agent waiting on its browser sign-in.
+// GATE=goose refuses session/new as goose 1.60.2 does with no provider set (#1236).
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -30,7 +31,17 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 		appendFileSync(process.env.LOG, `${method}\n`);
 		if (process.env.GATE !== "hang")
 			send({ jsonrpc: "2.0", id: msg.id, result: {} });
-	} else if (msg.method === "session/new")
+	} else if (msg.method === "session/new" && process.env.GATE === "goose")
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			error: {
+				code: -32603,
+				message: "Internal error",
+				data: "Failed to resolve provider and model: Configuration value not found: GOOSE_PROVIDER",
+			},
+		});
+	else if (msg.method === "session/new")
 		send(
 			method
 				? { jsonrpc: "2.0", id: msg.id, result: { sessionId: "s1" } }

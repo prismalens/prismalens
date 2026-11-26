@@ -31,6 +31,17 @@ vi.mock("./TurnUndo", () => ({
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 let container: HTMLDivElement;
+const q = (id: string) =>
+	container.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`);
+/** Each poll flushes React, so the lane's timer, the import and the transition can land. */
+const until = (check: () => void) =>
+	vi.waitFor(
+		async () => {
+			await act(async () => {});
+			check();
+		},
+		{ timeout: 5_000, interval: 10 },
+	);
 let root: Root;
 
 beforeEach(() => {
@@ -60,24 +71,13 @@ describe("LazyTurnUndo (#1181)", () => {
 		expect(loading).not.toBeNull();
 		expect(loading?.disabled).toBe(true);
 
-		await act(async () => {
-			await new Promise((r) => setTimeout(r, 20));
-		});
-
-		const retryBtn = container.querySelector(
-			'[data-testid="turn-undo-retry"]',
-		) as HTMLButtonElement | null;
-		expect(retryBtn).not.toBeNull();
+		await until(() => expect(q("turn-undo-retry")).not.toBeNull());
+		expect(q("turn-undo-loading")).toBeNull();
 
 		mockState.shouldFail = false;
-		await act(async () => {
-			retryBtn?.click();
-			await new Promise((r) => setTimeout(r, 20));
-		});
+		await act(async () => q("turn-undo-retry")?.click());
 
-		expect(container.querySelector('[data-testid="turn-undo"]')).not.toBeNull();
-		expect(
-			container.querySelector('[data-testid="turn-undo-retry"]'),
-		).toBeNull();
+		await until(() => expect(q("turn-undo")?.textContent).toBe("Mock Undo"));
+		expect(q("turn-undo-retry")).toBeNull();
 	});
 });

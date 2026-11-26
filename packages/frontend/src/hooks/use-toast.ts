@@ -176,6 +176,8 @@ function useToast() {
 
 	React.useEffect(() => {
 		listeners.push(setState);
+		// A toast raised between this hook's render and its subscription (the lazy toast layer).
+		setState(memoryState);
 		return () => {
 			const index = listeners.indexOf(setState);
 			if (index > -1) {

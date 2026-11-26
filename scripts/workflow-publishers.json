@@ -695,6 +695,32 @@
 		]
 	},
 	{
+		"file": "agent-terms.yml",
+		"job": "report",
+		"call": null,
+		"steps": [
+			{
+				"uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+				"with": {
+					"persist-credentials": false,
+					"sparse-checkout": ".github/actions\nscripts\n",
+					"sparse-checkout-cone-mode": false
+				},
+				"env": null
+			},
+			{
+				"uses": "./.github/actions/report-failure",
+				"with": {
+					"title": "Agent terms changed",
+					"labels": "bug",
+					"ok": "${{ needs.check.result == 'success' }}",
+					"body": "A quoted clause in an agent's sign-in terms is no longer on its page: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nRe-read that page, update the row's clause, verdict and `readOn`, and run `pnpm agent:terms check`. This issue closes itself on the next green run.\n"
+				},
+				"env": null
+			}
+		]
+	},
+	{
 		"file": "dependency-audit.yml",
 		"job": "report",
 		"call": null,
@@ -809,11 +835,17 @@
 				"run": "pnpm --filter @prismalens/frontend test:e2e --project=chromium-reset --project=journeys-reset --workers=1",
 				"cwd": ".",
 				"env": {
+					"PLAYWRIGHT_JSON_OUTPUT_NAME": "${{ runner.temp }}/playwright-reset.json",
 					"PLAYWRIGHT_HTML_OUTPUT_DIR": "${{ github.workspace }}/packages/frontend/playwright-report-reset"
 				}
 			},
 			{
-				"run": "pnpm --filter @prismalens/frontend test:e2e --project=chromium-quarantine --project=journeys-quarantine",
+				"run": "if [ -f \"$RUNNER_TEMP/playwright-reset.json\" ]; then\n  sh scripts/playwright-summary.sh \"$RUNNER_TEMP/playwright-reset.json\" \"Playwright E2E, reset scenarios\" | tee -a \"$GITHUB_STEP_SUMMARY\"\nfi",
+				"cwd": ".",
+				"env": null
+			},
+			{
+				"run": "pnpm --filter @prismalens/frontend test:e2e --project=chromium-quarantine --project=journeys-quarantine --output=test-results/quarantine",
 				"cwd": ".",
 				"env": {
 					"PLAYWRIGHT_JSON_OUTPUT_NAME": "${{ runner.temp }}/playwright-quarantine.json",
@@ -840,7 +872,7 @@
 				"uses": "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
 				"with": {
 					"name": "playwright-report-${{ matrix.shard }}",
-					"path": "packages/frontend/playwright-report/\npackages/frontend/playwright-report-quarantine/\npackages/frontend/test-results/\n",
+					"path": "packages/frontend/playwright-report/\npackages/frontend/playwright-report-reset/\npackages/frontend/playwright-report-quarantine/\npackages/frontend/test-results/\n",
 					"retention-days": 7
 				},
 				"env": null

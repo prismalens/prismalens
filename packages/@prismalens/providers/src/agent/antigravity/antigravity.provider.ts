@@ -31,14 +31,38 @@ export const antigravity = defineAgent({
 			{
 				id: "login",
 				label: "Google account",
-				steps: ["browser"],
-				unattended: true,
+				steps: ["terminal", "browser"],
+				acp: "oauth-personal",
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://antigravity.google/docs/ide/extensions/acp.md",
+						clause: "Any ACP client can launch Antigravity CLI.",
+						readOn: "2026-11-26",
+					},
+					against: {
+						url: "https://antigravity.google/terms",
+						clause:
+							"You must not abuse, harm, interfere with, or disrupt the Service. This includes, but is not limited to, using the Service in connection with products not provided by us.",
+						readOn: "2026-11-26",
+					},
+				},
 			},
 			{
 				id: "api-key",
 				label: "GEMINI_API_KEY",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "GEMINI_API_KEY" }],
+				acp: "gemini-api-key",
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://antigravity.google/faq.md",
+						clause:
+							"To use a third-party coding agent with Gemini, we recommend using a Gemini Enterprise or Google AI Studio API key.",
+						readOn: "2026-11-26",
+					},
+				},
 			},
 		],
 	},
@@ -52,9 +76,6 @@ export const antigravity = defineAgent({
 		acpRegistryIds: ["antigravity-acp"],
 		vendor: "google",
 		usageReports: [],
-		// Google's forum reply of 2026-10-26 on its terms (#1235).
-		ownSettingsNote: () =>
-			"Google's terms cover one person's own use of a personal sign-in here; runs an alert starts are your call.",
 		install:
 			"Download Google Antigravity's ACP server for your platform (agentclientprotocol.com registry, antigravity-acp) and put agy_acp_server on PATH",
 		lines: {

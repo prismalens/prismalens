@@ -80,7 +80,7 @@ import {
 	takeStandInText,
 } from "@/components/thread/ComposerStandIn";
 import { Button } from "@/components/ui/button";
-import { useToastClearance } from "@/components/ui/toast";
+import { useToastClearance } from "@/components/ui/toast-clearance";
 import { ComposerUsageRing } from "@/components/usage/UsageLimitsPanel";
 import {
 	readStored,
