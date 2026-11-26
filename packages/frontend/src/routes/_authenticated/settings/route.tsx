@@ -29,7 +29,7 @@ export const LEGACY_SETTINGS_TABS: Readonly<
 /**
  * The router spreads this over the raw search, so an unknown tab is overwritten, not omitted (w8-2).
  * `agent` opens one agent's page under Agent (#907); `source` one connection on Sources (#848).
- * `repositoryId` is the project the person came from, for that page's What loads (#1180).
+ * `repositoryId` rides the raw search unvalidated: the agent page uses it only for a listed project (#1180).
  */
 export const validateSettingsSearch = (
 	search: Record<string, unknown>,
@@ -49,10 +49,10 @@ export const validateSettingsSearch = (
 		tab === "agent" && HARNESS_IDS.includes(search.agent as HarnessId)
 			? (search.agent as HarnessId)
 			: undefined;
-	const text = (on: boolean, v: unknown) =>
-		on && typeof v === "string" && v ? v : undefined;
-	const source = text(tab === "sources", search.source);
-	const repositoryId = text(tab === "agent", search.repositoryId);
+	const source =
+		tab === "sources" && typeof search.source === "string" && search.source
+			? search.source
+			: undefined;
 	// An old tab survives validation under its own key, so beforeLoad can still move it.
 	const old =
 		typeof search.tab === "string" ? search.tab.replace(/"/g, "") : "";
@@ -65,8 +65,6 @@ export const validateSettingsSearch = (
 		tab,
 		agent,
 		source,
-		// Always set, so the router's merge over the raw search drops a bad value.
-		repositoryId,
 		...(q ? { q } : {}),
 		...(legacy ? { legacy: old } : {}),
 		...(legacy && typeof search.agent === "string"

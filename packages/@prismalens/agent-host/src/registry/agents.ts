@@ -53,6 +53,8 @@ export interface AgentRunEnv {
 	gateway?: { url: string; token: string; name: string };
 	/** Shared servers for a row's run file, each value an env reference (#1180 §3.3). */
 	runFileServers?: Record<string, Record<string, unknown>>;
+	/** Set by launch when a `mcp-config-file` row's run file holds the gateway or shared servers. */
+	runFile?: true;
 	/** The ANTHROPIC_BASE_URL the child gets from the host, stored and launch layers; unset when none. */
 	anthropicBaseUrl?: string;
 }

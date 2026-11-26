@@ -11,9 +11,8 @@ export const deepagents = {
 	// the gateway goes in by --mcp-config, beside the user's own servers (#848).
 	binary: "dcode",
 	gatewayDelivery: "mcp-config-file",
-	// Shared servers join that file in launch (#1180 §3.3), so the flag goes with them too.
 	acpArgs: (env) =>
-		env.gateway || env.runFileServers
+		env.runFile
 			? ["--acp", "--mcp-config", inConfigDir(env, GATEWAY_RUN_FILE)]
 			: ["--acp"],
 	acpEnv: () => ({}),

@@ -505,6 +505,8 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 		...(input.gateway && row.gatewayDelivery ? { gateway: input.gateway } : {}),
 		...(runFile ? { runFileServers: runFile.servers } : {}),
 	};
+	if (row.gatewayDelivery === "mcp-config-file" && (runEnv.gateway || runFile))
+		runEnv.runFile = true;
 
 	const own =
 		policy.floor?.mode === "inherit-minus-own-secrets"
