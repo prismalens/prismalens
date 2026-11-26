@@ -15,7 +15,7 @@ import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import type { CanonicalEvent } from "@prismalens/contracts/schemas";
 import type { Row } from "../../../../scripts/fakes/scripted-model.mjs";
 import { runInvestigation } from "../src/run/investigate.js";
-import type { RunShared } from "../src/run/shared-set.js";
+import { deliverShared, type RunShared } from "../src/run/shared-set.js";
 import { answerPolicy, CONTEXT, ROW_RUN_ID } from "./acp-scenarios.js";
 import { startStubGateway } from "./stub-gateway.js";
 
@@ -23,6 +23,53 @@ const MARKER = resolve(
 	dirname(fileURLToPath(import.meta.url)),
 	"../../../../scripts/fakes/markers/marker.mjs",
 );
+
+/**
+ * The row's shared set for `harness`, delivered as a real run's is (`deliverShared`): ACP
+ * `mcpServers`, or the run file for an agent that reads its servers from one (deepagents).
+ */
+export async function rowShared(
+	harness: HarnessId,
+	markers: string,
+): Promise<RunShared> {
+	const def = {
+		type: "stdio" as const,
+		command: process.execPath,
+		args: [MARKER, markers, "mk", "mcp", "shared_marker"],
+		env: [],
+	};
+	const delivered = await deliverShared(
+		[
+			{
+				name: "mk",
+				def,
+				files: [],
+				values: {},
+				hash: "matrix",
+				valuesFor: "matrix",
+				recipients: [harness],
+				from: null,
+			},
+		],
+		harness,
+		{
+			http: true,
+			ownNames: [],
+			...(HARNESS_REGISTRY[harness].gatewayDelivery === "mcp-config-file"
+				? { runFile: true }
+				: {}),
+		},
+	);
+	return {
+		servers: delivered.servers,
+		hidden: delivered.hidden,
+		...(delivered.runFile ? { runFile: delivered.runFile } : {}),
+		revision: "rev-a",
+		instructions: null,
+		fingerprint: "matrix",
+		profile: "own",
+	};
+}
 
 export async function runSharedSetRow(
 	row: Row,
@@ -35,21 +82,7 @@ export async function runSharedSetRow(
 	);
 	const runDir = mkdtempSync(join(tmpdir(), "pl-matrix-run-"));
 	const called = join(markers, "mk.called");
-	const shared: RunShared = {
-		servers: [
-			{
-				name: "pl-mk",
-				command: process.execPath,
-				args: [MARKER, markers, "mk", "mcp", "shared_marker"],
-				env: [],
-			},
-		],
-		hidden: [],
-		revision: "rev-a",
-		instructions: null,
-		fingerprint: "matrix",
-		profile: "own",
-	};
+	const shared = await rowShared(harness, markers);
 	// An agent that takes the set's instructions in its system prompt gets a marker word per
 	// revision, so the row reads which one the model saw against the one PrismaLens recorded.
 	const inSystem =
