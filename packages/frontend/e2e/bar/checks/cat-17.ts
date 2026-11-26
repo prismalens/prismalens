@@ -471,6 +471,8 @@ export default defineChecks([
 				...settings,
 				agentsStartThreads: "allow",
 				children: Math.max(Number(settings.children ?? 0), 4),
+				// The sim seeds 11 running agent-started threads: the total cap must clear them too.
+				perTree: 50,
 			});
 			const fails: string[] = [];
 			try {
