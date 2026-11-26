@@ -13,6 +13,7 @@ import { AGENT_REGISTRY, versionOf } from "@prismalens/agent-host";
 import type { HarnessId } from "@prismalens/config/harness";
 import {
 	configVar,
+	rootKeys,
 	scratchEnv,
 	seedProject,
 	seedUser,
@@ -135,9 +136,9 @@ export async function runIsolationRow(
 ): Promise<{ problem: string | null; saw: string }> {
 	const env = scratchEnv(harness, given);
 	const key = configVar(harness);
-	// The check, title and limit paths read the agent's folder from process.env.
-	const before = key ? process.env[key] : undefined;
-	if (key) process.env[key] = env[key];
+	// The check, title and limit paths read the agent's folders from process.env.
+	const before = Object.fromEntries(rootKeys().map((k) => [k, process.env[k]]));
+	if (key) for (const k of rootKeys()) process.env[k] = env[k];
 	const markers = mkdtempSync(join(tmpdir(), "pl-matrix-markers-"));
 	const controls = row.markers?.[harness] ?? [];
 	const seen: string[] = [];
@@ -249,8 +250,9 @@ export async function runIsolationRow(
 		return { problem: null, saw: seen.join("; ") };
 	} finally {
 		if (key) {
-			if (before === undefined) delete process.env[key];
-			else process.env[key] = before;
+			for (const [k, v] of Object.entries(before))
+				if (v === undefined) delete process.env[k];
+				else process.env[k] = v;
 			const home = env[key];
 			if (home && home !== given[key])
 				rmSync(dirname(home), { recursive: true, force: true, maxRetries: 5 });

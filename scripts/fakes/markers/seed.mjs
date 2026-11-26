@@ -4,14 +4,17 @@
 // Seeds the isolation rows' markers (#1180) into each agent's own config files: a hook, a user and
 // a project MCP server, and Codex and OpenCode plugins. Each agent keeps them in its own layout.
 import {
-	appendFileSync,
-	cpSync,
+	copyFileSync,
 	existsSync,
 	lstatSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	realpathSync,
+	renameSync,
+	rmdirSync,
+	rmSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,39 +54,99 @@ const ROOT_VAR = {
 };
 /** The env var naming `harness`'s config folder, which the markers go in. */
 export const configVar = (harness) => ROOT_VAR[harness];
+/** Every folder an agent here reads its setup from or keeps its state in, set or not. */
+const ROOT_KEYS = [
+	...new Set([
+		...Object.values(ROOT_VAR),
+		"XDG_DATA_HOME",
+		"XDG_CACHE_HOME",
+		"XDG_STATE_HOME",
+		"HOME",
+		"USERPROFILE",
+	]),
+];
+export const rootKeys = () => [...ROOT_KEYS];
+
 const within = (path, root) => {
 	const rel = relative(root, path);
 	return !rel.startsWith("..") && !isAbsolute(rel);
 };
-/** A workspace folder PrismaLens made: `<temp>/pl-*`, the way the rows and the doctor name theirs. */
+/** `<temp>/pl-*`, by the path as written and, once it exists, by its real path. */
 function madeByUs(dir) {
-	const rel = relative(resolve(tmpdir()), resolve(dir));
-	return !rel.startsWith("..") && !isAbsolute(rel) && rel.startsWith("pl-");
+	const under = (path, temp) => {
+		const rel = relative(temp, path);
+		return rel.startsWith("pl-") && !isAbsolute(rel);
+	};
+	if (!isAbsolute(dir) || !under(resolve(dir), resolve(tmpdir()))) return false;
+	return (
+		!existsSync(dir) ||
+		under(realpathSync.native(dir), realpathSync.native(tmpdir()))
+	);
 }
 const refuse = (what) => {
 	throw new Error(`${what}; markers go only in a scratch home`);
 };
+const there = (path) => {
+	try {
+		lstatSync(path);
+		return true;
+	} catch {
+		return false;
+	}
+};
 
-/** The config roots this process made with `mkdtemp`; user markers go in no other folder. */
+/** Is `err` a file that vanished, as an agent's per-process temp entries do while it runs. */
+const gone = (err) =>
+	err instanceof Error && "code" in err && err.code === "ENOENT";
+/**
+ * Copies regular files and folders from `src` into `dest`, never through a link. An entry that
+ * vanishes mid-copy is skipped: rows before this one leave agents running in the same folder.
+ */
+function copyConfig(src, dest) {
+	let names = [];
+	try {
+		names = readdirSync(src);
+	} catch (err) {
+		if (!gone(err)) throw err;
+	}
+	for (const name of names) {
+		const from = join(src, name);
+		const to = join(dest, name);
+		try {
+			const st = lstatSync(from);
+			if (st.isDirectory()) {
+				mkdirSync(to, { recursive: true });
+				copyConfig(from, to);
+			} else if (st.isFile()) copyFileSync(from, to);
+		} catch (err) {
+			if (!gone(err)) throw err;
+		}
+	}
+}
+
+/** The homes this process made with `mkdtemp`; user markers go in no other folder. */
 const homes = new Set();
 
 /**
- * The env for one isolation row: the agent's config folder from `env`, copied (links followed,
- * so nothing in the copy points back) into a scratch home made now. The source is only read.
+ * The env for one isolation row: every root in `ROOT_KEYS` is a folder made now in a new home, so
+ * no agent falls back to the real home. The agent's own config folder, when given, is copied in
+ * (`copyConfig`); the source is only read.
  */
 export function scratchEnv(harness, env) {
 	const key = ROOT_VAR[harness];
-	const src = key ? env[key] : undefined;
 	if (!key) return env;
-	if (!src) refuse(`${harness}: ${key} is not set`);
-	if (!madeByUs(src)) refuse(`${harness}: ${key} is not under the temp folder`);
-	const home = mkdtempSync(join(tmpdir(), "pl-seed-"));
-	homes.add(resolve(home));
-	const dest = join(home, "config");
-	if (existsSync(src))
-		cpSync(src, dest, { recursive: true, dereference: true });
-	else mkdirSync(dest);
-	return { ...env, [key]: dest };
+	const src = env[key];
+	if (src !== undefined && !madeByUs(src))
+		refuse(`${harness}: ${key} is not under the temp folder`);
+	const home = mkdtempSync(join(realpathSync.native(tmpdir()), "pl-seed-"));
+	homes.add(home);
+	const out = { ...env };
+	for (const k of ROOT_KEYS) {
+		out[k] = join(home, k.toLowerCase());
+		mkdirSync(out[k], { recursive: true });
+	}
+	if (src !== undefined) copyConfig(src, out[key]);
+	return out;
 }
 
 /** The agent's config folder from `env`; refused unless it is inside a home `scratchEnv` made. */
@@ -97,11 +160,13 @@ export function scratchRoot(harness, env) {
 	return dir;
 }
 
+let seq = 0;
 /**
- * Writes that stay in `root`. Before any write or mkdir, the path's nearest existing ancestor
- * must resolve inside it, and an existing file must be neither a link nor hard-linked.
+ * Writes that stay in `root`. Each folder is made one level at a time and checked again once made
+ * (removed if it landed outside); a file is written to a fresh name and renamed over its target, so
+ * a link put there is replaced, not followed. `between` runs after a check, before the create.
  */
-export function homeFs(root) {
+export function homeFs(root, { between } = {}) {
 	if (!homes.has(resolve(root)) && !madeByUs(root))
 		refuse(`${root} is not under the temp folder`);
 	const real = realpathSync.native(root);
@@ -109,42 +174,48 @@ export function homeFs(root) {
 		const abs = resolve(path);
 		if (!within(abs, resolve(root))) refuse(`${abs} is outside ${root}`);
 		let at = abs;
-		for (;;) {
-			let st;
-			try {
-				st = lstatSync(at);
-			} catch {
-				at = dirname(at);
-				continue;
-			}
-			if (at === abs && (st.isSymbolicLink() || (st.isFile() && st.nlink > 1)))
-				refuse(`${abs} is a link`);
-			if (!within(realpathSync.native(at), real))
-				refuse(`${abs} resolves outside ${root}`);
-			return abs;
+		while (!there(at)) at = dirname(at);
+		const st = lstatSync(at);
+		if (at === abs && (st.isSymbolicLink() || (st.isFile() && st.nlink > 1)))
+			refuse(`${abs} is a link`);
+		if (!within(realpathSync.native(at), real))
+			refuse(`${abs} resolves outside ${root}`);
+		return abs;
+	};
+	const put = (path, text) => {
+		fs.mkdir(dirname(path));
+		const abs = check(path);
+		between?.(abs);
+		const fresh = join(dirname(abs), `.pl-seed-${process.pid}-${++seq}`);
+		writeFileSync(fresh, text, { flag: "wx" });
+		try {
+			check(fresh);
+			renameSync(fresh, abs);
+		} catch (err) {
+			rmSync(fresh, { force: true });
+			throw err;
 		}
 	};
 	const fs = {
 		mkdir: (dir) => {
 			const abs = resolve(dir);
-			// One level at a time, so a link made between levels is still caught.
-			if (existsSync(abs)) return void check(abs);
+			if (there(abs)) return void check(abs);
 			fs.mkdir(dirname(abs));
-			mkdirSync(check(abs));
+			check(abs);
+			between?.(abs);
+			mkdirSync(abs);
+			try {
+				check(abs);
+			} catch (err) {
+				rmdirSync(abs);
+				throw err;
+			}
 		},
-		write: (path, text) => {
-			fs.mkdir(dirname(path));
-			writeFileSync(check(path), text);
-		},
-		append: (path, text) => {
-			fs.mkdir(dirname(path));
-			appendFileSync(check(path), text);
-		},
+		write: put,
+		append: (path, text) =>
+			put(path, (there(path) ? readFileSync(check(path), "utf8") : "") + text),
 		merge: (path, add) =>
-			fs.write(
-				path,
-				JSON.stringify({ ...readJson(check(path)), ...add }, null, 2),
-			),
+			put(path, JSON.stringify({ ...readJson(check(path)), ...add }, null, 2)),
 	};
 	return fs;
 }

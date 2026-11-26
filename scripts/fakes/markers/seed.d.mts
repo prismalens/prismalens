@@ -3,7 +3,9 @@
 
 /** The env var naming `harness`'s config folder, which the markers go in. */
 export function configVar(harness: string): string | undefined;
-/** `env` with the agent's config folder copied into a scratch home made now. */
+/** Every root folder `scratchEnv` points into the run's home. */
+export function rootKeys(): string[];
+/** `env` with every root in a scratch home made now, the agent's config folder copied in. */
 export function scratchEnv(
 	harness: string,
 	env: NodeJS.ProcessEnv,
@@ -11,7 +13,10 @@ export function scratchEnv(
 /** The agent's config folder from `env`; refused unless it is inside a home `scratchEnv` made. */
 export function scratchRoot(harness: string, env: NodeJS.ProcessEnv): string;
 /** Writes that stay in `root`, refusing a linked file or a path whose real location leaves it. */
-export function homeFs(root: string): {
+export function homeFs(
+	root: string,
+	o?: { between?: (path: string) => void },
+): {
 	mkdir(dir: string): void;
 	write(path: string, text: string): void;
 	append(path: string, text: string): void;
