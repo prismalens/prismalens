@@ -1023,8 +1023,25 @@ function repoRelative(root: string, raw: string): string | null {
 		return isSafeRepoPath(slashed.replace(/^\.\//, ""))
 			? slashed.replace(/^\.\//, "")
 			: null;
-	const rel = relative(root, raw).replaceAll("\\", "/");
-	return isSafeRepoPath(rel) ? rel : null;
+	const under = (p: string) => relative(root, p).replaceAll("\\", "/");
+	const rel = under(raw);
+	if (isSafeRepoPath(rel)) return rel;
+	// The root is a real path; a tool names it as the agent's cwd, which may sit behind a link.
+	const real = under(realThrough(raw));
+	return isSafeRepoPath(real) ? real : null;
+}
+
+/** The path with its nearest existing folder made real: the named file may be deleted. */
+function realThrough(p: string): string {
+	const rest: string[] = [];
+	for (let at = resolve(p); ; at = dirname(at)) {
+		try {
+			return join(realpathSync(at), ...rest);
+		} catch {
+			if (dirname(at) === at) return resolve(p);
+			rest.unshift(basename(at));
+		}
+	}
 }
 
 interface Classified {

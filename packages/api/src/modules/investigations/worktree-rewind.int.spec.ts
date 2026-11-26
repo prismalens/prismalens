@@ -177,6 +177,24 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 		expect([read("a.txt"), read("agent.txt"), read("README.md")]).toEqual([A0, null, R1]);
 	});
 
+	it("a path a tool named through a link to the worktree counts as named, as macOS's /var to /private/var", async () => {
+		const via = join(baseDir, "via");
+		dirLink(baseDir, via);
+		await turn(TURN_SEQ, () => {
+			writeFileSync(join(root, "a.txt"), A1);
+			rmSync(join(root, "README.md"));
+		});
+		const linked = join(via, "wt", `pl-${runId}`);
+		const p = await okPreview([
+			{ seq: TURN_SEQ, paths: [join(linked, "a.txt"), join(linked, "README.md")] },
+		]);
+		expect(p.duringTurn).toEqual([]);
+		expect(p.revert).toEqual([
+			{ path: "README.md", status: "deleted" },
+			{ path: "a.txt", status: "modified" },
+		]);
+	});
+
 	it("a path a turn changed but no tool call named is kept as during-turn, and set back only when included", async () => {
 		await turn(TURN_SEQ, () => {
 			writeFileSync(join(root, "a.txt"), A1);
