@@ -211,7 +211,7 @@ describe("installChannelOf (#1180)", () => {
 		const cask = installChannelOf(
 			{
 				path: "/opt/homebrew/bin/codex",
-				realPath: "/opt/homebrew/Caskroom/codex/0.171.0/codex-aarch64-apple-darwin",
+				realPath: "/opt/homebrew/Caskroom/codex/9.9.9/codex-aarch64-apple-darwin",
 			},
 			where,
 			brew,
@@ -224,7 +224,7 @@ describe("installChannelOf (#1180)", () => {
 		const formula = installChannelOf(
 			{
 				path: "/opt/homebrew/bin/gemini",
-				realPath: "/opt/homebrew/Cellar/gemini-cli/0.65.0/libexec/bin/gemini",
+				realPath: "/opt/homebrew/Cellar/gemini-cli/9.9.9/libexec/bin/gemini",
 			},
 			where,
 			{ formula: "gemini-cli" },
