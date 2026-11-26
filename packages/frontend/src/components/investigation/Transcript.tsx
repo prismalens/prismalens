@@ -24,6 +24,7 @@ import {
 	X,
 } from "lucide-react";
 import {
+	type ComponentPropsWithRef,
 	createContext,
 	Fragment,
 	memo,
@@ -1979,6 +1980,7 @@ function OperatorMessage({
 	note,
 	incidentId,
 	runId,
+	...slot
 }: {
 	item: Extract<TranscriptItem, { kind: "operator" }>;
 	chat?: boolean;
@@ -1988,7 +1990,7 @@ function OperatorMessage({
 	note?: string;
 	incidentId: string | null;
 	runId?: string;
-}) {
+} & ComponentPropsWithRef<"li">) {
 	const meta = useMessageMeta();
 	const brief = item.state === "started" && !chat;
 	const who = item.state === "started" ? briefBy : "You";
@@ -2019,7 +2021,13 @@ function OperatorMessage({
 			)}
 			data-testid="transcript-operator"
 			data-state={item.state}
+			// The message menu's Slot hands its trigger props here; both sides read Enter and Escape.
+			{...slot}
 			{...meta.host}
+			onKeyDown={(e) => {
+				slot.onKeyDown?.(e);
+				meta.host.onKeyDown(e);
+			}}
 		>
 			<MessageMeta open={meta.open} dismissed={meta.dismissed} side="left">
 				{lead}
