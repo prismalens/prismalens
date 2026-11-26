@@ -13,6 +13,7 @@ import {
 	readFileSync,
 	writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, win32 } from "node:path";
 import { AgentHostError } from "./errors.js";
 import {
@@ -31,6 +32,13 @@ import {
 	type SubagentStopChoice,
 	type UserSetup,
 } from "./registry/index.js";
+import {
+	type IsolatablePlan,
+	type Isolation,
+	type IsolationContext,
+	mergeIsolation,
+	resolveIsolation,
+} from "./registry/isolation.js";
 
 export interface SubagentLimits {
 	depth?: number;
@@ -207,6 +215,72 @@ export interface PlanLaunchInput {
 	subagents?: SubagentLimits;
 	/** Swap the row's facts, as tests and a `local` command do. */
 	descriptor?: AgentDescriptor;
+	/** Applied last, in order (probe or clean, then project); throws `isolation-unavailable` when one cannot hold (#1180). */
+	isolation?: readonly LaunchIsolation[];
+	/** The agent CLI's version, for an isolation that holds only on some versions. */
+	agentVersion?: string | null;
+	isolationHost?: IsolationHost;
+}
+
+/** The machine an isolation reads policy files from; tests swap it. */
+export type IsolationHost = Partial<
+	Pick<IsolationContext, "read" | "platform" | "home">
+>;
+
+export interface LaunchIsolation {
+	use: Isolation;
+	/** MCP server names found in the agent's config files; each is turned off by name. */
+	mcp: readonly string[];
+}
+
+/** A file's text, null when it does not exist; any other read error throws. */
+function readIfThere(path: string): string | null {
+	try {
+		return readFileSync(path, "utf8");
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+		throw err;
+	}
+}
+
+/**
+ * `plan` with each isolation applied in order; its files land under `runDir`. Exported for a
+ * caller that isolates a plan it already holds.
+ */
+export function isolateLaunch<
+	P extends IsolatablePlan & { files: Record<string, string> },
+>(
+	plan: P,
+	isolation: readonly LaunchIsolation[],
+	o: {
+		runDir: string;
+		version?: string | null;
+		ours?: readonly string[];
+	} & IsolationHost,
+): P {
+	let out = plan;
+	for (const { use, mcp } of isolation) {
+		const layer = resolveIsolation([use], {
+			mcp,
+			ours: o.ours ?? [],
+			env: out.env,
+			runPath: (rel) => join(o.runDir, rel),
+			platform: o.platform ?? process.platform,
+			home: o.home ?? homedir(),
+			read: o.read ?? readIfThere,
+			version: o.version ?? null,
+		});
+		if ("unavailable" in layer)
+			throw new AgentHostError("isolation-unavailable", layer.unavailable);
+		const files = Object.fromEntries(
+			Object.entries(layer.files).map(([rel, content]) => [
+				join(o.runDir, rel),
+				content,
+			]),
+		);
+		out = { ...mergeIsolation(out, layer), files: { ...out.files, ...files } };
+	}
+	return out;
 }
 
 export type EnvVarState = "not-set" | "key-set" | "from-environment";
@@ -483,7 +557,7 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 			? { subagentsOnStop: input.subagents.onStop }
 			: {}),
 	});
-	return {
+	const built: LaunchPlan = {
 		agent: input.agent,
 		command: input.launch.command,
 		args: [...(input.launch.args ?? []), ...row.acpArgs(runEnv)],
@@ -496,6 +570,13 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 		files,
 		dirs,
 	};
+	if (!input.isolation?.length) return built;
+	return isolateLaunch(built, input.isolation, {
+		runDir: input.runDir,
+		version: input.agentVersion ?? null,
+		ours: runEnv.gateway ? [runEnv.gateway.name] : [],
+		...input.isolationHost,
+	});
 }
 
 /** Creates the plan's folders and writes its files. */

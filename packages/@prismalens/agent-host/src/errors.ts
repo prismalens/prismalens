@@ -9,6 +9,7 @@ export const AGENT_HOST_ERROR_CODES = [
 	"commit-missing",
 	"unsafe-copy-path",
 	"bad-config-env",
+	"isolation-unavailable",
 ] as const;
 export type AgentHostErrorCode = (typeof AGENT_HOST_ERROR_CODES)[number];
 

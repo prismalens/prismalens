@@ -19,6 +19,7 @@ import { local } from "./agents/local.js";
 import { opencode } from "./agents/opencode.js";
 import { qwen } from "./agents/qwen.js";
 import type { AgentFacts } from "./facts.js";
+import type { Isolation } from "./isolation.js";
 import type { AccessLevel, LevelFacts, ModeMechanism } from "./levels.js";
 
 export const AGENT_IDS = [
@@ -152,6 +153,10 @@ export interface AgentDescriptor {
 		depth?: SubagentLimitKey;
 		concurrency?: SubagentLimitKey;
 	};
+	/** How a health check turns off the user's and repo's hooks and MCP servers; absent, no background pass launches it (#1180 R1). */
+	probeIsolation?: Isolation;
+	/** The `Clean profile` switches: skip the user's hooks and plugins, keep the sign-in (#1180 §3.4). */
+	cleanProfile?: Isolation;
 }
 
 /** A finished run can be reopened with session/load or session/resume (#747). */
