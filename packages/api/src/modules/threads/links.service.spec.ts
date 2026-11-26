@@ -4,9 +4,15 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import type { WorktreeChanges } from "@prismalens/contracts";
+import { readWorktreeChanges } from "../investigations/worktree-changes.js";
 import { fakeDb } from "./__fixtures__/fake-db.js";
 import { incidentNumber, LinksService, parsePathRef } from "./links.service.js";
+
+vi.mock("../investigations/worktree-changes.js", () => ({
+	readWorktreeChanges: vi.fn(async () => ({ repos: [] })),
+}));
 
 const RUN = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
@@ -199,5 +205,86 @@ describe("LinksService.resolve (#1024 decision 4)", () => {
 		await expect(svc.resolve("44444444-4444-4444-8444-444444444444", [])).rejects.toThrow(
 			/Thread not found/,
 		);
+	});
+});
+
+describe("LinksService.resolve of a bare file name (#1193)", () => {
+	const SHA = "a".repeat(40);
+	const TWO = "66666666-6666-4666-8666-666666666666";
+	const repoDir = (name: string) => join(root, name);
+	const record = (name: string) => ({
+		name,
+		dir: repoDir(name),
+		sourceKind: "folder",
+		url: repoDir(name),
+		subPath: null,
+		connectionId: null,
+		head: SHA,
+		branch: "main",
+		services: [],
+	});
+	mkdirSync(join(repoDir("first"), "src"), { recursive: true });
+	mkdirSync(join(repoDir("second"), "src"), { recursive: true });
+	writeFileSync(join(repoDir("first"), "src", "a.ts"), "export {};\n");
+	writeFileSync(join(repoDir("second"), "src", "a.ts"), "export {};\n");
+	const changes = (
+		repo: string,
+		files: { path: string; status: "added" | "modified" | "deleted" }[],
+	): WorktreeChanges["repos"][number] => ({
+		state: "ok",
+		repo,
+		base: SHA,
+		branch: "main",
+		files: files.map((f) => ({ ...f, additions: 0, deletions: 0 })),
+		additions: 0,
+		deletions: 0,
+		patch: null,
+		omitted: "per-file",
+		truncated: false,
+	});
+	const resolve = async (repos: WorktreeChanges["repos"], text: string) => {
+		vi.mocked(readWorktreeChanges).mockResolvedValueOnce({ repos });
+		const db = fakeDb({
+			investigations: [
+				{
+					id: TWO,
+					workspace: JSON.stringify({
+						layout: "single",
+						cwd: repoDir("first"),
+						repos: [record("first"), record("second")],
+					}),
+					title: "Two repos",
+					status: "completed",
+				},
+			],
+		});
+		const [out] = await new LinksService(db as never).resolve(TWO, [
+			{ kind: "path", text },
+		]);
+		return out;
+	};
+
+	it("opens the file in the repo that changed it, not the cwd's repo that holds an unchanged one", async () => {
+		expect(
+			await resolve([changes("second", [{ path: "src/a.ts", status: "modified" }])], "a.ts:12"),
+		).toEqual({ type: "file", repo: "second", sha: SHA, path: "src/a.ts", line: 12 });
+	});
+
+	it("links the diff at the matched full path when the one changed file of that name was deleted", async () => {
+		expect(
+			await resolve([changes("second", [{ path: "src/gone.tsx", status: "deleted" }])], "gone.tsx:802"),
+		).toEqual({ type: "diff", path: "src/gone.tsx" });
+	});
+
+	it("links nothing when two changed files share the name", async () => {
+		expect(
+			await resolve(
+				[
+					changes("first", [{ path: "src/b.ts", status: "added" }]),
+					changes("second", [{ path: "src/b.ts", status: "added" }]),
+				],
+				"b.ts:1",
+			),
+		).toBeNull();
 	});
 });

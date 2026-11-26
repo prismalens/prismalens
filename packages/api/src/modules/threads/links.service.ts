@@ -64,6 +64,12 @@ export function incidentNumber(text: string): number | null {
 	return m?.[1] ? Number(m[1]) : null;
 }
 
+interface ChangedPath {
+	repo: string;
+	path: string;
+	status: string;
+}
+
 async function within(root: string, path: string): Promise<string | null> {
 	const target = isAbsolute(path) ? resolve(path) : resolve(root, path);
 	const rel = relative(resolve(root), target);
@@ -104,26 +110,33 @@ export class LinksService {
 		const artifacts = candidates.some((c) => c.kind === "artifact")
 			? await this.artifacts(id)
 			: [];
-		let changed: Map<string, string> | null = null;
+		let changed: ChangedPath[] | null = null;
 		const out: (LinkTarget | null)[] = [];
 		for (const c of candidates) {
 			switch (c.kind) {
 				case "path": {
 					const ref = parsePathRef(c.text);
 					let hit = ref ? await this.file(ws, ref) : null;
-					// A bare `Composer.tsx:802` names the one changed file of that name (#1193).
-					if (!hit && ref && !ref.path.includes("/")) {
-						changed ??= await this.changedPaths(ws);
-						const same = [...changed.keys()].filter(
-							(p) => p.split("/").pop() === ref.path,
-						);
-						if (same.length === 1 && same[0])
-							hit = await this.file(ws, { ...ref, path: same[0] });
-					}
 					if (!hit && ref) {
 						changed ??= await this.changedPaths(ws);
-						if (changed.get(ref.path) === "deleted")
-							hit = { type: "diff", path: ref.path };
+						// A bare `Composer.tsx:802` names the one changed file of that name, in the repo that changed it (#1193).
+						const same = ref.path.includes("/")
+							? []
+							: changed.filter((f) => f.path.split("/").pop() === ref.path);
+						const named = same.length === 1 ? same[0] : undefined;
+						if (named && named.status !== "deleted")
+							hit = await this.file(
+								ws,
+								{ ...ref, path: named.path },
+								named.repo,
+							);
+						const gone =
+							named?.status === "deleted"
+								? named
+								: changed.find(
+										(f) => f.path === ref.path && f.status === "deleted",
+									);
+						if (!hit && gone) hit = { type: "diff", path: gone.path };
 					}
 					out.push(hit);
 					break;
@@ -152,16 +165,20 @@ export class LinksService {
 		return out;
 	}
 
-	/** The first workspace repo that holds the path; the cwd's repo is tried first. */
+	/** The first workspace repo that holds the path, or only the repo named `only`; the cwd's repo is tried first. */
 	private async file(
 		ws: RunWorkspace | null,
 		ref: PathRef,
+		only?: string,
 	): Promise<LinkTarget | null> {
 		if (!ws) return null;
-		const repos = [...ws.repos].sort(
-			(a, b) =>
-				Number(ws.cwd.startsWith(b.dir)) - Number(ws.cwd.startsWith(a.dir)),
-		);
+		const repos = ws.repos
+			.filter((r) => only === undefined || r.name === only)
+			.sort(
+				(a, b) =>
+					Number(ws.cwd.startsWith(b.dir)) - Number(ws.cwd.startsWith(a.dir)),
+			);
+		if (only !== undefined && !repos.length) return null;
 		if (!repos.length) {
 			// A folder run records no repos: its cwd is the live folder, so the target has no commit.
 			const rel = await within(ws.cwd, ref.path);
@@ -200,17 +217,17 @@ export class LinksService {
 	}
 
 	/** The workspace's changed paths and each one's status. */
-	private async changedPaths(
-		ws: RunWorkspace | null,
-	): Promise<Map<string, string>> {
+	private async changedPaths(ws: RunWorkspace | null): Promise<ChangedPath[]> {
 		// Paths only: no patch, so the diff's read and this one share a kept result.
 		const changes = await readWorktreeChanges(ws, {
 			deadlineMs: 5_000,
 			patch: "none",
 		}).catch(() => null);
-		const out = new Map<string, string>();
+		const out: ChangedPath[] = [];
 		for (const r of changes?.repos ?? [])
-			if (r.state === "ok") for (const f of r.files) out.set(f.path, f.status);
+			if (r.state === "ok")
+				for (const f of r.files)
+					out.push({ repo: r.repo, path: f.path, status: f.status });
 		return out;
 	}
 
