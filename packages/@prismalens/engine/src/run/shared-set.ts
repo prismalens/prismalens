@@ -24,7 +24,12 @@ export const sharedServerName = (name: string) => `pl-${name}`;
 
 export class ShareRefused extends Error {
 	constructor(
-		readonly code: "relative-path" | "too-large" | "not-found" | "value-path",
+		readonly code:
+			| "relative-path"
+			| "too-large"
+			| "not-found"
+			| "unreadable"
+			| "value-path",
 		message: string,
 	) {
 		super(message);
@@ -152,6 +157,7 @@ export function sharedServerHash(
 export async function bindFiles(
 	def: SharedMcpDef,
 	env: Readonly<Record<string, string | undefined>>,
+	hash: (path: string) => Promise<string | null> = hashFile,
 ): Promise<{ def: SharedMcpDef; files: SharedMcpServerStored["files"] }> {
 	if (def.type !== "stdio") return { def, files: [] };
 	const named = def.args.flatMap((a) => {
@@ -160,10 +166,20 @@ export async function bindFiles(
 	});
 	const command = resolveCommand(def.command, env);
 	if (!command) throw new ShareRefused("not-found", "Command not found");
-	const paths = [command, ...named];
-	const files: SharedMcpServerStored["files"] = [];
-	for (const path of new Set(paths)) {
-		const sha256 = await hashFile(path);
+	// The command must hash: delivery checks only stored digests, so an unhashed one is never checked.
+	let digest: string | null;
+	try {
+		digest = await hash(command);
+	} catch (err) {
+		if (err instanceof ShareRefused) throw err;
+		throw new ShareRefused("unreadable", "Command could not be read");
+	}
+	if (!digest) throw new ShareRefused("not-found", "Command not found");
+	const files: SharedMcpServerStored["files"] = [
+		{ path: command, sha256: digest },
+	];
+	for (const path of new Set(named.filter((p) => p !== command))) {
+		const sha256 = await hash(path);
 		if (sha256) files.push({ path, sha256 });
 	}
 	return { def: { ...def, command }, files };
@@ -196,9 +212,42 @@ function argvOf(s: SharedMcpServerStored): string[] {
 	);
 }
 
+/** Node options that take the next argument as their value (nodejs.org/api/cli.html). */
+const NODE_VALUE_FLAGS = new Set([
+	"-r",
+	"--require",
+	"--import",
+	"--loader",
+	"--experimental-loader",
+	"-C",
+	"--conditions",
+	"--input-type",
+	"--title",
+	"--env-file",
+	"--watch-path",
+	"--inspect-port",
+	"--disable-warning",
+	"--redirect-warnings",
+]);
+/** Options after which Node runs no script file: code given inline, stdin, or a package.json script. */
+const NODE_NO_SCRIPT =
+	/^(?:-[a-zA-Z]*[ep][a-zA-Z]*|--eval|--print|--run|-)(?:=|$)/;
+
+/** The script Node loads from `argv`: the first argument after Node's own options; null for none. */
+export function nodeEntry(argv: readonly string[]): string | null {
+	for (let i = 0; i < argv.length; i++) {
+		const a = argv[i] as string;
+		if (a === "--") return argv[i + 1] ?? null;
+		if (NODE_NO_SCRIPT.test(a)) return null;
+		if (!a.startsWith("-")) return a;
+		if (!a.includes("=") && NODE_VALUE_FLAGS.has(a)) i++;
+	}
+	return null;
+}
+
 /**
- * Whether a `node` server's argv names a script Node would load from `cwd`, each thread's own
- * folder. Approval has no folder, so it hashed no such file.
+ * Whether a `node` server's entry script is one Node would load relative to `cwd`, each thread's
+ * own folder. Approval has no folder, so it hashed no such file.
  */
 function relativeScript(s: SharedMcpServerStored, cwd: string): boolean {
 	if (
@@ -206,16 +255,14 @@ function relativeScript(s: SharedMcpServerStored, cwd: string): boolean {
 		parse(s.def.command).name.toLowerCase() !== "node"
 	)
 		return false;
-	const load = createRequire(join(cwd, "noop.js"));
-	return argvOf(s).some((a) => {
-		if (a.startsWith("-") || isAbsolute(a)) return false;
-		try {
-			load.resolve(`./${a}`);
-			return true;
-		} catch {
-			return false;
-		}
-	});
+	const entry = nodeEntry(argvOf(s));
+	if (!entry || isAbsolute(entry)) return false;
+	try {
+		createRequire(join(cwd, "noop.js")).resolve(`./${entry}`);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function toMcp(s: SharedMcpServerStored): McpServer {
@@ -246,7 +293,8 @@ export async function deliverShared(
 	stored: readonly SharedMcpServerStored[],
 	agent: string,
 	o: {
-		http: boolean;
+		/** Whether the session takes HTTP servers; `unknown` before it opens, as Settings sees it. */
+		http: boolean | "unknown";
 		ownNames: readonly string[];
 		/** deepagents reads servers from its run file, which never holds a value. */
 		runFile?: boolean;
@@ -260,6 +308,8 @@ export async function deliverShared(
 	for (const s of stored) {
 		const name = sharedServerName(s.name);
 		const transport = s.def.type;
+		// An HTTP server goes to a session only if it takes HTTP; before one opens that is unknown.
+		const maybe = transport === "http" && o.http === "unknown";
 		const row = (note: NotSent | null): LoadedItem => ({
 			kind: "mcp",
 			name,
@@ -267,17 +317,22 @@ export async function deliverShared(
 			path: null,
 			disk: false,
 			reported: null,
-			state: note ? "not-sent" : "loads",
+			state: note ? "not-sent" : maybe ? "unknown" : "loads",
 			transport,
 			layer: "config",
-			...(note ? { note } : {}),
+			...(note
+				? { note }
+				: maybe
+					? { note: "Sent if the agent takes HTTP" }
+					: {}),
 		});
 		const names = valueNamesOf(s.def);
 		let note: NotSent | null = null;
 		if (!s.recipients.includes(agent)) note = "Not a recipient";
 		else if (s.valuesFor !== s.hash || names.some((n) => !(n in s.values)))
 			note = "Not sent: needs values";
-		else if (transport === "http" && !o.http) note = "Not sent: no HTTP";
+		else if (transport === "http" && o.http === false)
+			note = "Not sent: no HTTP";
 		else if (o.ownNames.includes(name)) note = "Not sent: name taken";
 		else if (o.runFile && names.length) note = "Not supported for deepagents";
 		else if (o.cwd && relativeScript(s, o.cwd))

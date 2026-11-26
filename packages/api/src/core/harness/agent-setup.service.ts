@@ -88,7 +88,10 @@ const sourceChanged = () =>
 
 type Db = Pick<Prisma.TransactionClient, "setting">;
 
-/** Each delivered server as `name:hash`: what changes when a delivery or a definition does. */
+/**
+ * Each server offered to the session as `name:hash`: what changes when a delivery or a definition
+ * does. An HTTP one counts though the session may not take it, so a report errs toward stale.
+ */
 function deliveredIds(
 	stored: SharedMcpServerStored[],
 	shared: { servers: { name: string }[] },
@@ -509,13 +512,13 @@ export class AgentSetupService {
 		const ownNames = allOnDisk(id, env, cwd)
 			.filter((i) => i.kind === "mcp")
 			.map((i) => i.name);
+		// A run file holds HTTP servers too; an ACP session says whether it takes them only once open.
+		const runFile = HARNESS_REGISTRY[id].gatewayDelivery === "mcp-config-file";
 		return deliverShared(stored, id, {
-			http: true,
+			http: runFile ? true : "unknown",
 			ownNames,
 			cwd,
-			...(HARNESS_REGISTRY[id].gatewayDelivery === "mcp-config-file"
-				? { runFile: true }
-				: {}),
+			...(runFile ? { runFile: true } : {}),
 		});
 	}
 

@@ -146,6 +146,38 @@ describe("deliverShared (#1180 §3.3)", () => {
 		expect(files.map((f) => f.path)).toEqual([command, conf]);
 	});
 
+	it("refuses a command that vanished or turned to a folder before its hash, or cannot be read, and binds a missing argument file as optional", async () => {
+		const command = join(dir, "hash-cmd");
+		writeFileSync(command, "x");
+		const conf = join(dir, "missing-conf.toml");
+		const def = { type: "stdio" as const, command, args: [`--config=${conf}`], env: [] };
+		const refused = (hash: (p: string) => Promise<string | null>) =>
+			bindFiles(def, {}, hash).then(
+				() => "approved",
+				(e: unknown) => e,
+			);
+		const folder = mkdtempSync(join(dir, "cmd-dir-"));
+		expect([
+			await refused(async () => null),
+			await refused(async () => {
+				throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+			}),
+			await refused(async () => {
+				throw new ShareRefused("too-large", "Too large to check");
+			}),
+			await bindFiles({ ...def, command: folder }, {}).then(() => "approved", (e: unknown) => e),
+			await bindFiles({ ...def, command: "bin/hash-cmd" }, {}).then(() => "approved", (e: unknown) => e),
+			(await bindFiles(def, {})).files.map((f) => f.path),
+		]).toEqual([
+			new ShareRefused("not-found", "Command not found"),
+			new ShareRefused("unreadable", "Command could not be read"),
+			new ShareRefused("too-large", "Too large to check"),
+			new ShareRefused("not-found", "Command not found"),
+			new ShareRefused("relative-path", "Uses a relative path"),
+			[command],
+		]);
+	});
+
 	it("resolves a relative PATH entry to an absolute command path", () => {
 		const bin = mkdtempSync(join(dir, "bin-"));
 		writeFileSync(join(bin, "docs"), "x");
@@ -204,16 +236,33 @@ describe("a node script relative to the session's folder (#1180 §3.3)", () => {
 		expect(outcomes).toEqual([...values, "server/index.js"].map(() => [0, NOTE]));
 	});
 
-	it("finds the script after node's flags, and when node is node.exe", async () => {
-		expect([
-			await script("server", ws, ["--inspect"]),
-			await script("server", ws, ["-r", "x"]),
-			await script("server", ws, [], "node.exe"),
-		]).toEqual([
-			[0, NOTE],
-			[0, NOTE],
-			[0, NOTE],
-		]);
+	it("finds the entry script after node's own options, after --, and when node is node.exe", async () => {
+		const before = [["--inspect"], ["-r", "x"], ["--require", "server"], ["--import", "x"], ["--loader", "x"], ["--require=x"], ["--"], [], []];
+		const names = ["node", "node", "node", "node", "node", "node", "node", "node.exe", "NODE"];
+		const outcomes = [];
+		for (const [i, b] of before.entries()) outcomes.push(await script("server", ws, b, names[i]));
+		expect(outcomes).toEqual(before.map(() => [0, NOTE]));
+	});
+
+	it("sends a server whose relative names are the script's own arguments, or that runs no script file", async () => {
+		writeFileSync(join(ws, "serve.js"), "x");
+		const abs = join(ws, "server.js");
+		const argvs = [
+			[abs, "serve"],
+			[abs, "--flag", "serve"],
+			["--require", "server", abs, "serve"],
+			["-e", "server"],
+			["-p", "1"],
+			["-pe", "1"],
+			["--eval=server"],
+			["--print", "1"],
+			["-"],
+			["--run", "server"],
+			["--", abs, "server"],
+		];
+		const outcomes = [];
+		for (const argv of argvs) outcomes.push(await sent("node", argv));
+		expect(outcomes).toEqual(argvs.map(() => [1, null]));
 	});
 
 	it("puts a value into neither the note, the row nor the servers when it holds one back", async () => {
