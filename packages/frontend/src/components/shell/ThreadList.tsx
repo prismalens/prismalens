@@ -560,13 +560,16 @@ const HIDE_AGENTS_KEY = "pl.threads.hideAgentStarted";
 
 /** A click before the popover's code arrives opens it once it does. */
 let filterOpenOnLoad = false;
+const takeFilterOpen = () => {
+	const open = filterOpenOnLoad;
+	filterOpenOnLoad = false;
+	return open;
+};
 const FilterMenu = lazyPart(
 	() =>
-		import("./ThreadFilters").then((m) => (props: FilterProps) => {
-			const startOpen = filterOpenOnLoad;
-			filterOpenOnLoad = false;
-			return <m.ThreadFilterButton {...props} startOpen={startOpen} />;
-		}),
+		import("./ThreadFilters").then((m) => (props: FilterProps) => (
+			<m.ThreadFilterButton {...props} takeOpen={takeFilterOpen} />
+		)),
 	(props: FilterProps) => (
 		<FilterTrigger
 			count={[props.value.state, props.value.pr].filter(Boolean).length}
