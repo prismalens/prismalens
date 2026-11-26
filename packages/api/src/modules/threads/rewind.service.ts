@@ -466,16 +466,8 @@ export class RewindService {
 		// A retried rewind id that already committed (a restart mid-action) is never run twice.
 		const past = this.rewinds(rows).find(
 			(r) => input.rewindId && r.event.rewindId === input.rewindId,
-		)?.event;
-		if (past)
-			return {
-				state: "done",
-				rewindId: past.rewindId,
-				reverted: past.reverted,
-				kept: past.kept,
-				sent: false,
-				why: "PrismaLens restarted during this edit, so the edited message may already have been sent. Check the thread before sending it again, or Undo.",
-			};
+		);
+		if (past) return this.resumeSend(t, rows, past, input.text, by);
 		const m = this.messageOf(rows, input.seq);
 		if (!m || m.event.kind !== "operator_message") return refused("stale");
 		const look = await this.look(t, rows, m, canWrite);
@@ -634,6 +626,62 @@ export class RewindService {
 			sent: sent === null,
 			why: sent,
 		};
+	}
+
+	/**
+	 * A committed rewind asked again after a restart: its edit is sent unless it already went,
+	 * or the thread moved on. It replays rather than forks: the fork point was in the folded rows.
+	 */
+	private async resumeSend(
+		t: Thread,
+		rows: Row[],
+		past: ReturnType<RewindService["rewinds"]>[number],
+		text: string,
+		by: RewindBy,
+	): Promise<RewindResult> {
+		const { event, row } = past;
+		const stored = {
+			state: "done" as const,
+			rewindId: event.rewindId,
+			reverted: event.reverted,
+			kept: event.kept,
+		};
+		const job = await this.prisma.job.findUnique({
+			where: { investigationId: t.id },
+			select: { payload: true },
+		});
+		const went =
+			job?.payload.includes(event.rewindId) ||
+			rows.some(
+				(r) => r.ordinal > row.ordinal && r.event.kind === "operator_message",
+			);
+		if (went) return { ...stored, sent: true, why: null };
+		if (past.undone || (await this.running(t)))
+			return {
+				...stored,
+				sent: false,
+				why: "The thread moved on before the edit was sent, so it was not sent.",
+			};
+		// The edited message itself is folded: read it on purpose for its quotes and files.
+		const edited = await this.prisma.investigationEvent.findFirst({
+			where: { investigationId: t.id, ordinal: event.messageOrdinal },
+			select: { event: true },
+		});
+		const m = edited
+			? CanonicalEventSchema.safeParse(JSON.parse(edited.event))
+			: null;
+		if (!m?.success || m.data.kind !== "operator_message")
+			return {
+				...stored,
+				sent: false,
+				why: "The edited message could not be read back, so it was not sent.",
+			};
+		const why = await this.send(t, m.data, text, by, {
+			rewindId: event.rewindId,
+			fork: null,
+			why: "PrismaLens restarted before the edit was sent",
+		});
+		return { ...stored, sent: why === null, why };
 	}
 
 	/** Admits the edited message under the held admission; the refusal's words, or null when sent. */
