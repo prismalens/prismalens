@@ -206,8 +206,8 @@ export interface AcpSessionConfig {
 	permission: PermissionPolicy;
 	/** Sent as `_meta` on `session/new`. */
 	sessionMeta?: Record<string, unknown>;
-	/** An ACP `authenticate` method id sent after `initialize` when the agent advertised it (#1235). */
-	authenticate?: string;
+	/** An ACP `authenticate` method sent after `initialize` when the agent listed it, or it is `unlisted` (#1235). */
+	authenticate?: { methodId: string; unlisted?: boolean };
 	initTimeoutMs?: number;
 	promptTimeoutMs?: number;
 	/** Raw wire lines, both directions, for the run transcript. Best effort. */
@@ -780,20 +780,22 @@ export class AcpSession {
 		this.takesDirectories =
 			init?.agentCapabilities?.sessionCapabilities?.additionalDirectories !=
 			null;
+		const method = config.authenticate;
 		if (
-			config.authenticate &&
-			this.authMethods.some((m) => m.id === config.authenticate)
+			method &&
+			(method.unlisted ||
+				this.authMethods.some((m) => m.id === method.methodId))
 		)
 			await this.request(
 				"authenticate",
-				{ methodId: config.authenticate },
+				{ methodId: method.methodId },
 				config.initTimeoutMs ?? DEFAULT_INIT_TIMEOUT_MS,
 			).catch((e: unknown) => {
 				// Any refused authenticate is a failed sign-in: signed out, Cursor 2026.11.22 answers
 				// -32602, not -32000. Rewrapped as auth_required, the run reads as signed out (#1235).
 				if (!(e instanceof AcpRpcError)) throw e;
 				throw new AcpRpcError(
-					`Authentication required: ${config.authenticate} refused (${e.message})`,
+					`Authentication required: ${method.methodId} refused (${e.message})`,
 					-32000,
 					e.data,
 					e.raw,
