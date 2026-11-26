@@ -1294,18 +1294,19 @@ Then(
 	/^(?:the )?(?:ask )?card reads "(You approved it|You denied it)"$/,
 	async ({ page }, text: string) => {
 		const line = page.getByTestId("step-ask");
-		// The group may render, or fold, after the answer lands: open every folded one until the
-		// ask's line shows, rather than checking for a fold at one instant.
+		// The run may end while this reads, folding its turn and then its tool group: open
+		// whatever is folded and read the line again, until it reads the answer.
 		const folded = page.locator(
-			'[data-testid="transcript-tools"][data-folded] [data-testid="tools-expand"]',
+			'[data-testid="worked-toggle"][aria-expanded="false"], [data-testid="turn-fold"][aria-expanded="false"], [data-testid="turn-fold-remote"]:not([disabled]), [data-testid="transcript-tools"][data-folded] [data-testid="tools-expand"]',
 		);
+		const expectedState = text === "You approved it" ? "approved" : "denied";
 		await expect(async () => {
 			for (const b of await folded.all()) await b.click();
-			await expect(line).toBeVisible({ timeout: 1000 });
-		}).toPass({ timeout: 15_000 });
-		const expectedState = text === "You approved it" ? "approved" : "denied";
-		await expect(line).toHaveAttribute("data-state", expectedState);
-		await expect(line).toHaveText(text);
+			await expect(line).toHaveAttribute("data-state", expectedState, {
+				timeout: 1000,
+			});
+			await expect(line).toHaveText(text, { timeout: 1000 });
+		}).toPass({ timeout: 20_000 });
 	},
 );
 
