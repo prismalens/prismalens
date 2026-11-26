@@ -153,8 +153,8 @@ describe("installLineFor (#1180)", () => {
 		description: "",
 		install: [
 			"darwin-aarch64: https://example.test/goose-aarch64-apple-darwin.tar.bz2",
-			"linux-x86_64: https://example.test/goose-x86_64-unknown-linux-gnu.tar.bz2",
 			"linux-x86_64-musl: https://example.test/goose-x86_64-unknown-linux-musl.tar.bz2",
+			"linux-x86_64: https://example.test/goose-x86_64-unknown-linux-gnu.tar.bz2",
 			"linux-aarch64-musl: https://example.test/goose-aarch64-unknown-linux-musl.tar.bz2",
 			"windows-x86_64: https://example.test/goose-x86_64-pc-windows-msvc.zip",
 		],

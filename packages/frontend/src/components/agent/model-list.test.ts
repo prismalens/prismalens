@@ -110,9 +110,11 @@ describe("filterModels (#1180)", () => {
 		{ id: "opus", name: "Opus 5.5", provider: "Anthropic" },
 		{ id: "openrouter/x", name: "X", provider: "OpenRouter" },
 		{ id: "gpt-6", name: "GPT 6", provider: "OpenAI" },
+		{ id: "gw-a", name: "Atlas", provider: "Gateway" },
 	];
 	it("keeps the rows whose name, id or provider holds every word, ignoring case", () => {
 		expect(filterModels(rows, "OPUS").map((r) => r.id)).toEqual(["opus"]);
+		expect(filterModels(rows, "atlas").map((r) => r.id)).toEqual(["gw-a"]);
 		expect(filterModels(rows, "openrouter/").map((r) => r.id)).toEqual([
 			"openrouter/x",
 		]);
@@ -121,6 +123,7 @@ describe("filterModels (#1180)", () => {
 			"opus",
 			"openrouter/x",
 			"gpt-6",
+			"gw-a",
 		]);
 	});
 });
@@ -128,7 +131,7 @@ describe("filterModels (#1180)", () => {
 describe("favourites (#1180)", () => {
 	it("toggle adds at the end and removes in place, leaving other agents' favourites", () => {
 		const start = [
-			{ harness: "codex" as const, model: "gpt-6" },
+			{ harness: "codex" as const, model: "opus" },
 			{ harness: "claude-code" as const, model: "opus" },
 		];
 		expect(toggleFavourite(start, "claude-code", "sonnet")).toEqual([
@@ -136,7 +139,7 @@ describe("favourites (#1180)", () => {
 			{ harness: "claude-code", model: "sonnet" },
 		]);
 		expect(toggleFavourite(start, "claude-code", "opus")).toEqual([
-			{ harness: "codex", model: "gpt-6" },
+			{ harness: "codex", model: "opus" },
 		]);
 	});
 
