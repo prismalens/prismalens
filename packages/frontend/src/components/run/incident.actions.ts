@@ -22,8 +22,10 @@ import {
 } from "@/components/kit/actions";
 import { markLook } from "@/components/kit/marks";
 
-/** An incident or chat thread's page header: everything but its status and primary action. */
+/** An incident or chat thread's page header, or its row in a list: everything but its status and primary action. */
 export interface IncidentCtx {
+	/** Opens the incident's page, from its row. */
+	open: () => void;
 	toggleDetails: () => void;
 	detailsLabel: string;
 	allRuns: () => void;
@@ -43,6 +45,7 @@ export interface IncidentCtx {
 
 /** `chat`: a Home question, which has no severity, Resolve or merge. */
 export type IncidentState =
+	| "listed"
 	| "chat"
 	| "hasRun"
 	| "detailsOpen"
@@ -59,6 +62,14 @@ export type IncidentState =
 export const incidentObject = defineObject<IncidentCtx, IncidentState>(
 	"incident",
 );
+
+export const incidentOpen = defineAction({
+	id: "incident.open",
+	label: "Open overview",
+	icon: SquareArrowOutUpRight,
+	when: (f) => !!f.is?.listed,
+	run: (c) => c.open(),
+});
 
 export const incidentDetails = defineAction({
 	id: "incident.details",

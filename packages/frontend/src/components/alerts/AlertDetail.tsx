@@ -9,7 +9,7 @@ import {
 	isAlertFiring,
 	SEVERITY_LABEL,
 } from "@prismalens/contracts";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, MoreHorizontal } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
@@ -18,18 +18,12 @@ import {
 	alertWord,
 	dayOrClock,
 } from "@/components/alerts/AlertListPane";
+import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { Hint } from "@/components/shared/Hint";
 import { Mono } from "@/components/shared/Mono";
 import { Loading, Problem } from "@/components/shared/State";
 import { StateWord } from "@/components/shared/StateWord";
 import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
 import {
 	alertBackLabel,
 	backTarget,
@@ -38,23 +32,11 @@ import {
 } from "@/hooks/use-back";
 import { useEscapeBack } from "@/hooks/use-escape-back";
 import { usePageTitle } from "@/hooks/use-page-title";
-import { useToast } from "@/hooks/use-toast";
 import { alertDotColor } from "@/lib/alert-groups";
-import { alertKeys } from "@/lib/api/hooks/use-alerts-orpc";
-import { incidentKeys } from "@/lib/api/hooks/use-incidents-orpc";
 import { orpc } from "@/lib/api/orpc-client";
 import { formatDateTime } from "@/lib/format-time";
-import { getErrorMessage } from "@/lib/get-error-message";
 import { alertStatusTone } from "@/lib/state-tone";
-
-function prettyPayload(raw: string | null): string | null {
-	if (!raw) return null;
-	try {
-		return JSON.stringify(JSON.parse(raw), null, 2);
-	} catch {
-		return raw;
-	}
-}
+import { prettyPayload, useAlertCtx } from "./use-alert-ctx";
 
 function Section({
 	id,
@@ -114,8 +96,6 @@ function sourceName(source: string | null | undefined): string {
  * acknowledging is the incident's.
  */
 export function AlertDetail({ alertId }: { alertId: string }) {
-	const queryClient = useQueryClient();
-	const { toast } = useToast();
 	const {
 		data: alert,
 		isLoading,
@@ -125,28 +105,8 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 	const back = useBack(inAlertRecord, "/alerts");
 	useEscapeBack(back);
 
-	const invalidate = () => {
-		queryClient.invalidateQueries({ queryKey: alertKeys.all() });
-		queryClient.invalidateQueries({ queryKey: incidentKeys.all() });
-	};
-	const fail = (title: string) => (err: unknown) =>
-		toast({ title, description: getErrorMessage(err), variant: "destructive" });
-	const resolve = useMutation({
-		...orpc.alerts.resolve.mutationOptions(),
-		onSuccess: invalidate,
-		onError: fail("Could not resolve"),
-	});
-	const correlate = useMutation({
-		...orpc.alerts.correlate.mutationOptions(),
-		onSuccess: () => {
-			invalidate();
-			toast({
-				title: "Correlated",
-				description: "The alert went through the rules again.",
-			});
-		},
-		onError: fail("Still suppressed"),
-	});
+	const { ctxOf, correlate } = useAlertCtx();
+	const ctx = alert ? ctxOf(alert) : null;
 
 	const [payloadOpen, setPayloadOpen] = useState(false);
 	const payload = useMemo(
@@ -157,7 +117,7 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 	const target = backTarget(inAlertRecord, "/alerts");
 	const backLabel = alertBackLabel(target, alert?.incident);
 
-	const band = (
+	const strip = (
 		<div
 			className="flex h-(--header-h) shrink-0 items-center gap-2.5 bg-surface-1 pr-4 pl-3"
 			data-testid="alert-band"
@@ -214,8 +174,11 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 							</Link>
 						</Button>
 					)}
-					<DropdownMenu modal={false}>
-						<DropdownMenuTrigger asChild>
+					<SurfaceMore
+						id="alert.header"
+						ctx={ctx ?? ctxOf(alert)}
+						align="end"
+						trigger={
 							<Button
 								variant="text"
 								size="icon"
@@ -224,32 +187,18 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 							>
 								<MoreHorizontal className="size-4" />
 							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end">
-							{canAlertAction("resolve", alert.status) && (
-								<DropdownMenuItem
-									onSelect={() => resolve.mutate({ id: alert.id })}
-									disabled={resolve.isPending}
-									data-testid="alert-resolve"
-								>
-									Resolve this alert
-								</DropdownMenuItem>
-							)}
-							{payload && (
-								<DropdownMenuItem
-									onSelect={() => {
-										navigator.clipboard?.writeText(payload);
-										toast({ title: "Payload copied" });
-									}}
-								>
-									Copy the raw payload
-								</DropdownMenuItem>
-							)}
-						</DropdownMenuContent>
-					</DropdownMenu>
+						}
+					/>
 				</>
 			)}
 		</div>
+	);
+	const band = ctx ? (
+		<Surface id="alert.header" ctx={ctx}>
+			{strip}
+		</Surface>
+	) : (
+		strip
 	);
 
 	if (isLoading) {

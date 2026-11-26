@@ -1,8 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { defineChecks, verdict } from "../bar";
+
+/** The open menu's row ids (`menu-<id>` less its keys and why parts), from the kit menu (#1127). */
+async function menuRows(page: Page): Promise<string[]> {
+	const menu = page.getByRole("menu").last();
+	await expect(menu).toBeVisible({ timeout: 15_000 });
+	return menu
+		.locator("[data-testid^='menu-']")
+		.evaluateAll((els) =>
+			els
+				.map((e) => (e.getAttribute("data-testid") ?? "").slice(5))
+				.filter((id) => id && !id.endsWith("-keys") && !id.endsWith("-why")),
+		);
+}
 
 /** #1101 category 16, Diff and files. */
 export default defineChecks([
@@ -419,6 +432,44 @@ export default defineChecks([
 			return verdict(
 				fails,
 				`huge diff loaded: ${filesCount} files, +${addCount} lines, file tree painted on demand with ${groupCount} group folding buttons`,
+			);
+		},
+	},
+	{
+		item: "16.8",
+		async run({ page, open, sim, context }) {
+			await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+			await open(
+				`${sim.thread("huge.diff", 2)}?panel=changes&path=shop:src/orders/query.ts`,
+			);
+			const fails: string[] = [];
+			const patch = page.getByTestId("diff-patch");
+			await page.getByLabel("Expand the panel").click({ timeout: 30_000 });
+			await expect(patch).toBeVisible({ timeout: 60_000 });
+
+			// Right-click a line: Comment and Copy line are on its menu.
+			const line = patch.getByText("createdAt").first();
+			await expect(line).toBeVisible({ timeout: 60_000 });
+			await line.click({ button: "right" });
+			const rows = await menuRows(page);
+			for (const id of ["comment", "copy"])
+				if (!rows.includes(id)) fails.push(`line menu lacks ${id} (${rows})`);
+			await page.getByTestId("menu-copy").click();
+			const copied = await page.evaluate(() => navigator.clipboard.readText());
+			if (!copied.includes("createdAt"))
+				fails.push(`Copy line put "${copied.slice(0, 60)}" on the clipboard`);
+
+			// The keyboard's right-click opens the same menu on the focused diff.
+			await patch.focus();
+			await page.keyboard.press("Shift+F10");
+			const keyed = await menuRows(page);
+			if (!keyed.includes("comment"))
+				fails.push(`Shift+F10 menu lacks comment (${keyed})`);
+			await page.keyboard.press("Escape");
+
+			return verdict(
+				fails,
+				`a diff line's right-click lists ${rows.join(", ")}; Copy line copied "${copied.trim().slice(0, 40)}"; Shift+F10 opens ${keyed.length} rows`,
 			);
 		},
 	},

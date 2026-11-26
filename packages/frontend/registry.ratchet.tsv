@@ -191,7 +191,6 @@ src/components/thread/find/FindBar.tsx	L3	1
 src/components/thread/find/use-thread-find.ts	biome-ignore	2
 src/components/thread/panel/HostBrowserPane.tsx	biome-ignore	1
 src/components/thread/panel/KindTab.tsx	time-handmade	1
-src/components/thread/panel/PaneMenu.tsx	L3	1
 src/components/thread/panel/PrView.tsx	biome-ignore	1
 src/components/thread/panel/ThreadSections.tsx	biome-ignore	1
 src/components/thread/panel/ThreadSidePanel.tsx	biome-ignore	1

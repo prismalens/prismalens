@@ -4,7 +4,7 @@
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { defineChecks, verdict } from "../bar";
 
 /** The one-time pairing token of a device that is not the host, from `prismalens pair`. */
@@ -19,6 +19,19 @@ function mintPairToken(): string {
 	const token = out.match(/\/pair#([A-Za-z0-9_-]+)/)?.[1];
 	if (!token) throw new Error("could not mint a pairing token");
 	return token;
+}
+
+/** The open menu's row ids (`menu-<id>` less its keys and why parts), from the kit menu (#1127). */
+async function menuRows(page: Page): Promise<string[]> {
+	const menu = page.getByRole("menu").last();
+	await expect(menu).toBeVisible({ timeout: 15_000 });
+	return menu
+		.locator("[data-testid^='menu-']")
+		.evaluateAll((els) =>
+			els
+				.map((e) => (e.getAttribute("data-testid") ?? "").slice(5))
+				.filter((id) => id && !id.endsWith("-keys") && !id.endsWith("-why")),
+		);
 }
 
 /** #1101 category 21, Terminal, browser and files panes. */
@@ -327,6 +340,94 @@ export default defineChecks([
 			return verdict(
 				fails,
 				`top-right details box docked at the same place and size (${Math.round(box1?.width ?? 0)}x${Math.round(box1?.height ?? 0)} at ${Math.round(box1?.x ?? 0)},${Math.round(box1?.y ?? 0)}) across two threads, giving way when right panel opens`,
+			);
+		},
+	},
+	{
+		item: "21.7",
+		async run({ page, open, sim }) {
+			const fails: string[] = [];
+			await open(`${sim.thread("huge.diff", 0)}?panel=thread`);
+			const tabNames = () =>
+				page
+					.locator("[data-testid^='panel-tab-']")
+					.evaluateAll((els) =>
+						els.map((e) => (e.getAttribute("data-testid") ?? "").slice(10)),
+					);
+			const files = page.getByTestId("panel-tab-files");
+			await expect(files).toBeVisible({ timeout: 30_000 });
+			const start = await tabNames();
+
+			// Move: Files one place left.
+			await files.click({ button: "right" });
+			const rows = await menuRows(page);
+			for (const id of ["closeTab", "closeOthers", "moveLeft"])
+				if (!rows.includes(id)) fails.push(`tab menu lacks ${id} (${rows})`);
+			await page.getByTestId("menu-moveLeft").click();
+			const moved = await tabNames();
+			if (moved.indexOf("files") !== start.indexOf("files") - 1)
+				fails.push(`Move left: ${start} -> ${moved}`);
+
+			// Close from the keyboard's right-click: the tab goes, and its key brings it back.
+			await files.focus();
+			await page.keyboard.press("Shift+F10");
+			await menuRows(page);
+			await page.getByTestId("menu-closeTab").click();
+			await expect(files).toHaveCount(0);
+			await page.keyboard.press("Alt+3");
+			await expect(files).toBeVisible({ timeout: 15_000 });
+
+			// Close others leaves Files alone.
+			await files.click({ button: "right" });
+			await menuRows(page);
+			await page.getByTestId("menu-closeOthers").click();
+			await expect(page.getByTestId("panel-tab-changes")).toHaveCount(0);
+			const left = await tabNames();
+
+			// The pane menu reopens the rest, each by its key.
+			await page.getByTestId("pane-menu").click();
+			const paneRows = await menuRows(page);
+			const keyed = await page
+				.getByRole("menu")
+				.last()
+				.locator("[data-testid$='-keys']")
+				.count();
+			if (keyed < 3) fails.push(`pane menu shows keys on ${keyed} rows`);
+			await page.keyboard.press("Escape");
+			await page.keyboard.press("Alt+1");
+			await page.keyboard.press("Alt+2");
+			return verdict(
+				fails,
+				`tab menu lists ${rows.join(", ")}; Move left ${start} -> ${moved}; Close hid Files and Alt+3 brought it back; Close others left ${left.join(", ") || "Files alone"}; pane menu lists ${paneRows.join(", ")} with ${keyed} keys`,
+			);
+		},
+	},
+	{
+		item: "21.8",
+		async run({ page, open, sim }) {
+			const fails: string[] = [];
+			await open(`${sim.thread("huge.diff", 0)}?panel=new`);
+			await page.getByTestId("new-tab-browser").click();
+			await expect(page.getByTestId("host-browser")).toBeVisible();
+			const address = page.getByTestId("browser-address");
+			await address.fill(`${sim.url}/new`);
+			await address.press("Enter");
+			const strip = page.getByTestId("browser-control-strip");
+			await expect(strip).toBeVisible({ timeout: 30_000 });
+
+			await strip.click({ button: "right", position: { x: 4, y: 4 } });
+			const rows = await menuRows(page);
+			for (const id of ["reload", "copyUrl", "openOutside", "close"])
+				if (!rows.includes(id)) fails.push(`tab menu lacks ${id} (${rows})`);
+			if (!rows.includes("takeControl") && !rows.includes("handBack"))
+				fails.push(`tab menu has no Take control or Hand back (${rows})`);
+			await page.getByTestId("menu-close").click();
+			await expect(page.getByTestId("browser-empty")).toBeVisible({
+				timeout: 15_000,
+			});
+			return verdict(
+				fails,
+				`a browser tab's right-click lists ${rows.join(", ")}; Close tab closed it`,
 			);
 		},
 	},

@@ -139,6 +139,8 @@ import { iconOf, PaneMenu } from "./panel/PaneMenu";
 import type { PullRequestView } from "./panel/PullRequests";
 import { hasDesktopBrowser, hrefOf, placeOf } from "./panel/panel-links";
 import {
+	arrangeTabs,
+	movedOrder,
 	PANE_VIEW,
 	type PanelId,
 	type PanelSearch,
@@ -925,14 +927,29 @@ export function ThreadPage({ id }: { id: string }) {
 		desktopBrowser: hasDesktopBrowser(),
 		onOpen: (t) => openPanel({ panel: t }),
 	});
-	const tabs = panelTabs({
-		kind: context.data?.kind ?? null,
-		thread: true,
-		changes: !!workspace,
-		files: !!workspace,
-		browser: browserOpened || panes.layout.opened.includes("browser"),
-		newTab: search.panel === "new",
-	});
+	const tabs = arrangeTabs(
+		panelTabs({
+			kind: context.data?.kind ?? null,
+			thread: true,
+			changes: !!workspace,
+			files: !!workspace,
+			browser: browserOpened || panes.layout.opened.includes("browser"),
+			newTab: search.panel === "new",
+		}),
+		panes.layout,
+		[search.panel, search.split],
+	);
+	// A tab asked for again (a link, a key, the pane menu) is no longer closed.
+	const reopened = [search.panel, search.split].filter(
+		(p): p is PanelId => !!p && panes.layout.closed.includes(p),
+	);
+	useEffect(() => {
+		if (reopened.length)
+			panes.setLayout((l) => ({
+				...l,
+				closed: l.closed.filter((c) => !reopened.includes(c)),
+			}));
+	}, [reopened.join(), panes.setLayout]);
 	const panelWidth = useRightPanelWidth();
 	useAppCommand(
 		"panelExpand",
@@ -1044,8 +1061,6 @@ export function ThreadPage({ id }: { id: string }) {
 	const paneMenu = (
 		<PaneMenu
 			tools={panes.tools}
-			onOpen={panes.open}
-			onTile={panelOpen ? tilePane : undefined}
 			trigger={
 				<button
 					type="button"
@@ -1065,6 +1080,24 @@ export function ThreadPage({ id }: { id: string }) {
 		},
 		[browserOpened],
 	);
+
+	/** Closes tabs from their menu; the shown one hands over to the next kept, or the panel closes. */
+	function closeTabs(ids: PanelId[]) {
+		const kept = tabs.filter((t) => !ids.includes(t.id));
+		panes.setLayout((l) => ({
+			...l,
+			closed: [...l.closed, ...ids.filter((c) => !l.closed.includes(c))],
+			split: l.split && ids.includes(l.split) ? null : l.split,
+		}));
+		const next = tab && !ids.includes(tab) ? tab : kept[0]?.id;
+		const splitGone = !!search.split && ids.includes(search.split);
+		if (!next) closePanel();
+		else if (next !== tab || splitGone)
+			openPanel({
+				panel: next,
+				...(search.split && !splitGone ? { split: search.split } : {}),
+			});
+	}
 
 	function tilePane(t: PanelId | "terminal") {
 		if (t === "terminal") return;
@@ -2041,10 +2074,27 @@ ${about}`
 									show: () => openPanel({ panel: p }),
 									tile: () => tilePane(p),
 									close: closePanel,
+									closeTab: () => closeTabs([p]),
+									closeOthers: () => {
+										closeTabs(tabs.map((t) => t.id).filter((t) => t !== p));
+										if (p !== tab) openPanel({ panel: p });
+									},
+									move: (by) =>
+										panes.setLayout((l) => ({
+											...l,
+											order: movedOrder(
+												tabs.map((t) => t.id),
+												p,
+												by,
+											),
+										})),
 									widen: () => panelWidth.setFull(!panelWidth.full),
 									link: paneLink(p),
 									facts: {
 										is: {
+											others: tabs.length > 1,
+											first: tabs[0]?.id === p,
+											last: tabs.at(-1)?.id === p,
 											shown: p === tab,
 											tileable:
 												PANE_VIEW[p].tile && p !== tab && p !== splitTab?.id,

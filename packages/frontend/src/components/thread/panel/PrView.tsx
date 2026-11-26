@@ -202,7 +202,7 @@ export function PrView({
 		onFix: threadId ? setFixing : undefined,
 		rerunOff: settings.data?.rerunChecks !== true,
 		reruns,
-		onRerun: threadId ? setConfirming : undefined,
+		onRerun: threadId && pr.can?.rerunCheck ? setConfirming : undefined,
 		onRerunRetry: (r) => {
 			const k = reruns[checkIdent(r)]?.key;
 			if (k) send(r, k);
@@ -826,6 +826,7 @@ function CheckLine({
 						rerunWait: kit.waiting(run),
 						rerunOff: kit.rerunOff,
 					},
+					can: { rerunCheck: !!kit.onRerun },
 				},
 			}}
 		>
