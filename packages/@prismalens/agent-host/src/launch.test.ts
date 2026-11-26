@@ -609,9 +609,9 @@ describe("planLaunch isolation (#1180 R1, §3.4)", () => {
 		});
 	});
 
-	it("OpenCode check on 1.19.6: OPENCODE_PURE and each found server off in its inline config", () => {
+	it("OpenCode check on a 1.x that honours OPENCODE_PURE: OPENCODE_PURE and each found server off in its inline config", () => {
 		const p = isolated("opencode", opencodeProbeIsolation, {
-			agentVersion: "1.19.6",
+			agentVersion: "1.20.0",
 		});
 		expect(p.env.OPENCODE_PURE).toBe("1");
 		expect(JSON.parse(p.env.OPENCODE_CONFIG_CONTENT as string)).toEqual({
@@ -752,7 +752,7 @@ describe("planLaunch isolation (#1180 R1, §3.4)", () => {
 				agent,
 				level: undefined,
 				launch: { command: agent },
-				agentVersion: "1.19.6",
+				agentVersion: "1.20.0",
 				hostEnv: { ...HOST, ...homes },
 				isolationHost: host(),
 			};
