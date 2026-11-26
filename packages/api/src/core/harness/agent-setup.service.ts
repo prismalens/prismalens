@@ -10,7 +10,11 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { Injectable } from "@nestjs/common";
-import { HARNESS_IDS, type HarnessId } from "@prismalens/config/harness";
+import {
+	HARNESS_IDS,
+	HARNESS_REGISTRY,
+	type HarnessId,
+} from "@prismalens/config/harness";
 import {
 	type AgentLoadout,
 	type AgentLoadoutInput,
@@ -385,7 +389,9 @@ export class AgentSetupService {
 		const shared = await deliverShared(stored, id, {
 			http: true,
 			ownNames,
-			...(id === "deepagents" ? { runFile: true } : {}),
+			...(HARNESS_REGISTRY[id].gatewayDelivery === "mcp-config-file"
+				? { runFile: true }
+				: {}),
 		});
 		const member = row.instructionsFor.includes(id);
 		return {
@@ -445,7 +451,10 @@ export class AgentSetupService {
 				disk: false,
 				reported: null,
 				state: member ? "loads" : "not-sent",
-				layer: id === "claude-code" ? "system" : "first-message",
+				layer:
+					HARNESS_REGISTRY[id].facts?.systemPromptVia?.value === "claude-meta"
+						? "system"
+						: "first-message",
 				...(member ? {} : { note: "Not a recipient" }),
 			});
 		const fingerprint = configFingerprint(id, env, root, {

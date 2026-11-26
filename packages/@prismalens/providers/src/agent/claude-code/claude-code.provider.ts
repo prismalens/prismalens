@@ -86,6 +86,8 @@ export const claudeCode = defineAgent({
 		modelWindow: { alias: "[1m]", base: "200k", large: "1M" },
 		settingsFile: "~/.claude/settings.json",
 		// code.claude.com/docs/en/{memory,settings,mcp,skills}; AGENTS.md only beside no CLAUDE.md (#1180).
+		// claude-agent-acp 0.109.0 forwards the init on `_claude/sdkMessage` when `_meta` asks (#1180).
+		loadoutReport: "claude-sdk-init",
 		configLayout: {
 			instructions: [
 				{ path: "{$CLAUDE_CONFIG_DIR|~/.claude}/CLAUDE.md", scope: "global" },
