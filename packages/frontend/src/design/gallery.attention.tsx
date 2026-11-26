@@ -19,7 +19,7 @@ import {
 import { unseenLabel } from "@/components/investigation/unseen.surface";
 import { UnseenDivider } from "@/components/investigation/WindowedTranscript";
 import { NotifyChoicesView } from "@/components/settings/NotifyChoices";
-import { NeedsList } from "@/components/shell/NeedsBadge";
+import { NeedsList } from "@/components/shell/NeedsList";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import {
 	type AutoDecision,

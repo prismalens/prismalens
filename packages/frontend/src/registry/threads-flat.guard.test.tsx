@@ -11,7 +11,7 @@ import type { ThreadRow, ThreadUnit } from "@prismalens/contracts";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NeedsList } from "@/components/shell/NeedsBadge";
+import { NeedsList } from "@/components/shell/NeedsList";
 import { ThreadTreeView } from "@/components/shell/ThreadTree";
 import { threadList } from "@/lib/thread-list";
 

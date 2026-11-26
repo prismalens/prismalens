@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import type { ThreadListModel } from "@/lib/thread-list";
 import { threadList } from "@/lib/thread-list";
-import { NeedsBadge, NeedsList } from "./NeedsBadge";
+import { NeedsBadge, NeedsBadgePart } from "./NeedsBadge";
+import { NeedsList } from "./NeedsList";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -198,6 +199,8 @@ describe("the Needs you badge (#1247 D25)", () => {
 			unit(thread("q", "question")),
 			unit(thread("i", "interrupted")),
 		]);
+		// The popover's code loads after the first paint; here it is in before the badge draws.
+		await NeedsBadgePart.preload(true);
 		await draw();
 		const popover = () =>
 			document.querySelector(
