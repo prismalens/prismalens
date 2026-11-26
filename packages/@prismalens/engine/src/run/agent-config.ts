@@ -325,16 +325,33 @@ export function foundMcpNames(
 ): string[] {
 	return [
 		...new Set(
-			allOnDisk(agent, env, repoRoot, fs)
-				.filter(
-					(i) =>
-						i.kind === "mcp" &&
-						i.state !== "failed" &&
-						!except.includes(i.name),
-				)
-				.map((i) => i.name),
+			[
+				...allOnDisk(agent, env, repoRoot, fs)
+					.filter((i) => i.kind === "mcp" && i.state !== "failed")
+					.map((i) => i.name),
+				...inlineMcpNames(agent, env),
+			].filter((n) => !except.includes(n)),
 		),
 	];
+}
+
+/** The env var holding an agent's inline JSON config, and the key its MCP servers sit under. */
+const INLINE_MCP: Record<string, [env: string, key: string]> = {
+	codex: ["CODEX_CONFIG", "mcp_servers"],
+	opencode: ["OPENCODE_CONFIG_CONTENT", "mcp"],
+};
+
+/** MCP servers defined only in the launch env's inline config; unparseable config names none. */
+function inlineMcpNames(agent: string, env: Env): string[] {
+	const [name, key] = INLINE_MCP[agent] ?? [];
+	const raw = name ? env[name] : undefined;
+	if (!raw || !key) return [];
+	try {
+		const servers = (JSON.parse(raw) as Record<string, unknown>)?.[key];
+		return isRecord(servers) ? Object.keys(servers) : [];
+	} catch {
+		return [];
+	}
 }
 
 /** What a session's launch policy adds to its fingerprint. */

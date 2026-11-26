@@ -542,6 +542,22 @@ describe("probeHarness isolation (#1180 R1)", () => {
 		});
 	});
 
+	it("also turns off an MCP server defined only in the stored CODEX_CONFIG, keeping its own fields", async () => {
+		const dir = scratch();
+		const codexHome = join(scratch(), "codex-home");
+		mkdirSync(codexHome);
+		await probeHarness("codex", {
+			descriptor: recording(dir, "CODEX_CONFIG"),
+			sandbox: async () => ({}),
+			probeIsolation: codexProbeIsolation,
+			env: { CODEX_HOME: codexHome, CODEX_CONFIG: JSON.stringify({ mcp_servers: { inline: { command: "x" } } }) },
+		});
+		expect(JSON.parse(recorded(dir).env.CODEX_CONFIG as string)).toEqual({
+			features: { hooks: false, plugins: false },
+			mcp_servers: { inline: { command: "x", enabled: false } },
+		});
+	});
+
 	it("with requireIsolation, a row with no isolation starts nothing and throws", async () => {
 		const dir = scratch();
 		await expect(
@@ -562,7 +578,8 @@ describe("probeHarness isolation (#1180 R1)", () => {
 				requireIsolation: true,
 				probeIsolation: opencodeProbeIsolation,
 			}),
-		).rejects.toBeInstanceOf(CheckNotIsolatedError);
+			// The recording fake is node, so the version read is node's.
+		).rejects.toEqual(new CheckNotIsolatedError("opencode", `OpenCode ${process.versions.node} has no switch for its plugins`));
 		expect(readdirSync(dir)).toEqual([]);
 		const result = await probeHarness("opencode", {
 			descriptor: recording(dir, "OPENCODE_PURE"),
