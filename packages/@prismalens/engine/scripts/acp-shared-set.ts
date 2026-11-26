@@ -7,7 +7,7 @@
  * agent connected MCP servers at all), then the session is taken up with `session/load` and the
  * tool is called again, since `session/load` carries `mcpServers` too.
  */
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,6 +50,38 @@ export async function runSharedSetRow(
 		fingerprint: "matrix",
 		profile: "own",
 	};
+	// An agent that takes the set's instructions in its system prompt gets a marker word per
+	// revision, so the row reads which one the model saw against the one PrismaLens recorded.
+	const inSystem =
+		HARNESS_REGISTRY[harness].facts?.systemPromptVia?.value === "claude-meta";
+	const MARK: Record<string, string> = {
+		"rev-a": "PLREV-A",
+		"rev-b": "PLREV-B",
+	};
+	const setRevision = (revision: "rev-a" | "rev-b", held?: string | null) => {
+		shared.revision = revision;
+		shared.instructions = inSystem
+			? `Shared instructions ${MARK[revision]}.`
+			: null;
+		if (held !== undefined) shared.held = held;
+	};
+	setRevision("rev-a");
+	const log = env.PL_MATRIX_PROMPT_LOG;
+	const logged = () =>
+		log && existsSync(log)
+			? readFileSync(log, "utf8").trim().split("\n").filter(Boolean)
+			: [];
+	/** The PLREV- words the system prompts of this row's requests held, since line `from`. */
+	const seenSince = (from: number) =>
+		[
+			...new Set(
+				logged()
+					.slice(from)
+					.map((l) => JSON.parse(l) as { row: string; system: string[] })
+					.filter((l) => l.row === row.row)
+					.flatMap((l) => l.system),
+			),
+		].sort();
 	const saw: string[] = [];
 	let sessionId: string | null = null;
 	const once = async (resume: boolean) => {
@@ -96,11 +128,17 @@ export async function runSharedSetRow(
 		return {
 			gateway: stub.count(),
 			how: opened?.kind === "session_opened" ? opened.how : "none",
+			recorded:
+				opened?.kind === "session_opened"
+					? (opened.sharedSet?.revision ?? null)
+					: null,
 			error: error?.kind === "error" ? error.message.slice(0, 120) : null,
 		};
 	};
 	try {
+		const before = logged().length;
 		const first = await once(false);
+		const firstSaw = seenSince(before);
 		const reached = existsSync(called);
 		saw.push(
 			`new: gateway ${first.gateway}, shared ${reached ? "called" : "not called"}${first.error ? `, error: ${first.error}` : ""}`,
@@ -109,6 +147,22 @@ export async function runSharedSetRow(
 			return {
 				problem:
 					"the positive control failed: PrismaLens's own tools were not called",
+				saw: saw.join("; "),
+			};
+		if (inSystem)
+			saw.push(
+				`model saw ${firstSaw.join(",") || "no marker"}, recorded ${first.recorded}`,
+			);
+		if (inSystem && !log)
+			return {
+				problem:
+					"PL_MATRIX_PROMPT_LOG is unset: run the row through admission-fake.mjs",
+				saw: saw.join("; "),
+			};
+		if (inSystem && firstSaw.join() !== "PLREV-A")
+			return {
+				problem:
+					"the new session's system prompt did not hold the instructions it was sent",
 				saw: saw.join("; "),
 			};
 		if (!reached || first.error)
@@ -124,7 +178,11 @@ export async function runSharedSetRow(
 				saw: [...saw, "load: the agent has no session/load"].join("; "),
 			};
 		rmSync(called, { force: true });
+		// The set changes between the runs: the reopened session is sent rev-b over the rev-a it holds.
+		setRevision("rev-b", first.recorded);
+		const beforeAgain = logged().length;
 		const again = await once(true);
+		const againSaw = seenSince(beforeAgain);
 		const loaded = existsSync(called);
 		saw.push(
 			`${again.how}: shared ${loaded ? "called" : "not called"}${again.error ? `, error: ${again.error}` : ""}`,
@@ -143,12 +201,19 @@ export async function runSharedSetRow(
 				problem: `the follow-up opened as ${again.how}, not a reopened session`,
 				saw: saw.join("; "),
 			};
+		if (inSystem)
+			saw.push(
+				`model saw ${againSaw.join(",") || "no marker"}, recorded ${again.recorded}`,
+			);
+		const expected = again.recorded ? MARK[again.recorded] : undefined;
 		return {
 			problem: !loaded
 				? "the shared server's tool was not called after session/load"
 				: again.error
 					? "the reopened run ended in an error"
-					: null,
+					: inSystem && againSaw.join() !== expected
+						? `after the reopen the model saw ${againSaw.join(",") || "no marker"}, but PrismaLens recorded ${again.recorded}`
+						: null,
 			saw: saw.join("; "),
 		};
 	} finally {
