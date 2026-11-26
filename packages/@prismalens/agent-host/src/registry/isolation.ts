@@ -24,6 +24,8 @@ export interface IsolationContext {
 	read: (path: string) => string | null;
 	/** The agent CLI's version, when the caller read it; null when it could not. */
 	version?: string | null;
+	/** The session's folder, where repo-scope config lives; absent for a launch with none. */
+	cwd?: string;
 }
 
 export interface Isolation {
@@ -200,6 +202,25 @@ export function claudeUserSettingsSignIn(ctx: IsolationContext): boolean {
 	);
 }
 
+/** Each plugin key the session folder's project or local Claude settings name, turned off. */
+function claudeRepoPluginsOff(ctx: IsolationContext): JsonObject {
+	const off: JsonObject = {};
+	if (!ctx.cwd) return off;
+	for (const name of ["settings.json", "settings.local.json"]) {
+		try {
+			const dir = joinFor(ctx.platform, ctx.cwd, ".claude");
+			const text = ctx.read(joinFor(ctx.platform, dir, name));
+			const parsed: unknown = text === null ? null : JSON.parse(text);
+			const enabled = isJsonObject(parsed) ? parsed.enabledPlugins : null;
+			if (isJsonObject(enabled))
+				for (const k of Object.keys(enabled)) off[k] = false;
+		} catch {
+			// Claude skips a settings file it cannot parse, so it enables nothing.
+		}
+	}
+	return off;
+}
+
 /**
  * User settings unread, hooks and plugins off, only PrismaLens's MCP servers. `--safe-mode`
  * is not used: in 2.1.331 it also drops the servers PrismaLens passes over ACP.
@@ -212,7 +233,10 @@ export const claudeCleanIsolation: Isolation = {
 			options: {
 				settingSources: ["project", "local"],
 				...(claudeManagedMcpParses(ctx) ? {} : { strictMcpConfig: true }),
-				settings: { disableAllHooks: true, enabledPlugins: {} },
+				settings: {
+					disableAllHooks: true,
+					enabledPlugins: claudeRepoPluginsOff(ctx),
+				},
 			},
 		},
 	}),

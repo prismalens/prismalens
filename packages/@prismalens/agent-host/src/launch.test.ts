@@ -683,6 +683,19 @@ describe("planLaunch isolation (#1180 R1, §3.4)", () => {
 		});
 	});
 
+	it("Claude Code clean turns off each plugin the project's or local settings enable", () => {
+		const p = isolated("claude-code", claudeCleanIsolation, {
+			isolationHost: host({
+				"/w/.claude/settings.json": '{"enabledPlugins":{"mk@mkt":true,"off@mkt":false}}',
+				"/w/.claude/settings.local.json": '{"enabledPlugins":{"loc@mkt":true}}',
+			}),
+		});
+		expect(options(p).settings).toEqual({
+			disableAllHooks: true,
+			enabledPlugins: { "mk@mkt": false, "off@mkt": false, "loc@mkt": false },
+		});
+	});
+
 	const signInSettings = (text: string) =>
 		host({ [join("/c", "settings.json").replaceAll("\\", "/")]: text });
 

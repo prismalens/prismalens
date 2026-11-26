@@ -251,6 +251,7 @@ export function isolationContext(
 		mcp?: readonly string[];
 		ours?: readonly string[];
 		version?: string | null;
+		cwd?: string;
 	} & IsolationHost,
 ): IsolationContext {
 	return {
@@ -262,6 +263,7 @@ export function isolationContext(
 		home: o.home ?? homedir(),
 		read: o.read ?? readIfThere,
 		version: o.version ?? null,
+		...(o.cwd ? { cwd: o.cwd } : {}),
 	};
 }
 
@@ -278,6 +280,7 @@ export function isolateLaunch<
 		runDir: string;
 		version?: string | null;
 		ours?: readonly string[];
+		cwd?: string;
 	} & IsolationHost,
 ): P {
 	let out = plan;
@@ -589,6 +592,7 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 	if (!input.isolation?.length) return built;
 	return isolateLaunch(built, input.isolation, {
 		runDir: input.runDir,
+		cwd: input.cwd,
 		version: input.agentVersion ?? null,
 		ours: runEnv.gateway ? [runEnv.gateway.name] : [],
 		...input.isolationHost,
