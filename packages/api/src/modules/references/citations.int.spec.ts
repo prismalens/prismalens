@@ -340,6 +340,48 @@ describe("pl_citation_read (#1195)", () => {
 		expect(r.body.body).toContain("User asked:\nGo\n");
 	});
 
+	it("reads a 300-row turn whole when the cited message opens it", async () => {
+		const prisma = await pl.prisma();
+		const short = await thread("Opening cite", [ask(0, "Go")]);
+		await prisma.investigationEvent.createMany({
+			data: Array.from({ length: 299 }, (_, i) => ({
+				investigationId: short,
+				seq: i + 1,
+				branchId: "main",
+				event: JSON.stringify(answer(i + 1, `step ${i + 1}`)),
+			})),
+		});
+		await svc.cite(citing, {
+			references: [{ kind: "message", id: messageRefId(short, "main:0"), label: "first" }],
+		});
+		const r = await tool()(citing, { threadId: short, key: "main:0" });
+		expect(r.body.body).toContain("User asked (the cited message):\nGo\n");
+		expect(r.body.body).toContain("Agent said:\nstep 200\n");
+		expect(r.body.body).toContain("Agent said:\nstep 299\n");
+		expect(r.body.body).not.toContain("left out");
+	});
+
+	it("names how many rows of a long turn it leaves out, where it leaves them", async () => {
+		const prisma = await pl.prisma();
+		const long = await thread("Gap turn", [ask(0, "Go")]);
+		await prisma.investigationEvent.createMany({
+			data: Array.from({ length: 450 }, (_, i) => ({
+				investigationId: long,
+				seq: i + 1,
+				branchId: "main",
+				event: JSON.stringify(answer(i + 1, `step ${i + 1}`)),
+			})),
+		});
+		await svc.cite(citing, {
+			references: [{ kind: "message", id: messageRefId(long, "main:430"), label: "deep" }],
+		});
+		const body = (await tool()(citing, { threadId: long, key: "main:430" })).body.body as string;
+		expect(body).toContain(
+			"Agent said:\nstep 199\n\n(230 rows of this turn left out)\n\nAgent said (the cited message):\nstep 430\n",
+		);
+		expect(body).toContain("Agent said:\nstep 450\n");
+	});
+
 	it("returns the whole cited message when it is longer than a surrounding reply may be", async () => {
 		const whole = `${"a".repeat(2500)}END`;
 		const wordy = await thread("Wordy", [ask(0, "Go"), answer(1, whole), answer(2, `${"b".repeat(2500)}END`)]);

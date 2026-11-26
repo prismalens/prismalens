@@ -289,7 +289,8 @@ export class Citations {
 		]);
 		if (!thread || !cited) return null;
 		const span = await this.span(threadId, cited.ordinal);
-		// A long turn reads its opening half and the half from the cited row on, so the cited row is always in.
+		// A long turn reads its opening half, then half from the cited row (or straight on, when the
+		// opening already holds it); what it skips is counted in place.
 		const from = (gte: number, take: number) =>
 			this.prisma.investigationEvent.findMany({
 				where: {
@@ -303,17 +304,32 @@ export class Citations {
 				take,
 				select: { event: true, branchId: true, seq: true, ordinal: true },
 			});
-		const [head, tail] = await Promise.all([
-			from(span.from, TURN_ROWS / 2),
-			from(Math.max(span.from, cited.ordinal), TURN_ROWS / 2),
+		const head = await from(span.from, TURN_ROWS / 2);
+		const headEnd = head.at(-1)?.ordinal ?? span.from - 1;
+		const tail = await from(
+			Math.max(headEnd + 1, cited.ordinal),
+			TURN_ROWS / 2,
+		);
+		const tailEnd = tail.at(-1)?.ordinal ?? headEnd;
+		const between = (gt: number, lt: number | null) =>
+			this.prisma.investigationEvent.count({
+				where: {
+					investigationId: threadId,
+					ordinal: { gt, ...(lt !== null ? { lt } : {}) },
+				},
+			});
+		const [gap, rest] = await Promise.all([
+			tail[0] ? between(headEnd, tail[0].ordinal) : 0,
+			between(tailEnd, span.until),
 		]);
-		const seen = new Set(head.map((r) => r.ordinal));
-		const rows = [...head, ...tail.filter((r) => !seen.has(r.ordinal))];
+		const rows = [...head, ...tail];
+		const leftOut = (n: number) => `(${n} rows of this turn left out)`;
 		const lines: string[] = [`Thread title: ${thread.title ?? "Untitled"}`];
 		const files = new Set<string>();
 		const calls: string[] = [];
 		const edits: string[] = [];
 		for (const r of rows) {
+			if (gap && r === tail[0]) lines.push(leftOut(gap));
 			const e = parse(r.event);
 			if (!e) continue;
 			const mark =
@@ -338,6 +354,7 @@ export class Citations {
 					);
 			}
 		}
+		if (rest) lines.push(leftOut(rest));
 		if (calls.length)
 			lines.push(`Tool calls:\n${calls.slice(0, 60).join("\n")}`);
 		if (edits.length) lines.push(`Edits:\n${edits.slice(0, 20).join("\n")}`);
