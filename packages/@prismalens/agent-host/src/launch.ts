@@ -254,17 +254,45 @@ export function isolationContext(
 		cwd?: string;
 	} & IsolationHost,
 ): IsolationContext {
+	const read = o.read ?? readIfThere;
+	const platform = o.platform ?? process.platform;
 	return {
 		mcp: o.mcp ?? [],
 		ours: o.ours ?? [],
 		env: o.env,
 		runPath: (rel) => join(o.runDir, rel),
-		platform: o.platform ?? process.platform,
+		platform,
 		home: o.home ?? homedir(),
-		read: o.read ?? readIfThere,
+		read,
 		version: o.version ?? null,
-		...(o.cwd ? { cwd: o.cwd } : {}),
+		...(o.cwd
+			? {
+					repoKeys: (files, key) =>
+						repoKeys(o.cwd as string, platform, files, key, read),
+				}
+			: {}),
 	};
+}
+
+/** The keys under `key` in each JSON file; a file that is missing or does not parse adds none. */
+function repoKeys(
+	cwd: string,
+	platform: string,
+	files: readonly string[],
+	key: string,
+	read: (path: string) => string | null,
+): string[] {
+	const sep = platform === "win32" ? "\\" : "/";
+	return files.flatMap((f) => {
+		try {
+			const path = [cwd, ...f.split("/")].join(sep);
+			const parsed: unknown = JSON.parse(read(path) ?? "{}");
+			const at = isJsonObject(parsed) ? parsed[key] : null;
+			return isJsonObject(at) ? Object.keys(at) : [];
+		} catch {
+			return [];
+		}
+	});
 }
 
 /**
