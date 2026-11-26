@@ -2,7 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { describe, expect, it } from "vitest";
-import { heldSharedRevision } from "./agent-setup.js";
+import { heldSharedRevision } from "./agent-setup-values.js";
 
 const opened = (how: string, revision?: string) => ({
 	kind: "session_opened",

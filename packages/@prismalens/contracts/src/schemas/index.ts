@@ -7,6 +7,7 @@
  */
 
 export * from "./agent-setup.js";
+export * from "./agent-setup-values.js";
 export * from "./alert.js";
 export * from "./ask-projection.js";
 export * from "./asks.js";
