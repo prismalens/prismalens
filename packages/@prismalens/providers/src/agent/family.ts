@@ -85,6 +85,18 @@ export interface AgentFacts {
 	loginHint: string;
 	/** Arguments to its own CLI that sign it in, staged in the terminal (#1171); absent, none. */
 	signInArgs?: readonly string[];
+	/** Arguments to its own CLI that sign it out, staged like Sign in (#1180); absent, none. */
+	signOutArgs?: readonly string[];
+	/** Arguments to its own CLI that sign in as another account (#1180); absent, none. */
+	switchAccountArgs?: readonly string[];
+	/** Arguments to its own updater, which updates whatever install runs (#1180); absent, the install channel decides. */
+	updateArgs?: readonly string[];
+	/** Its own updater when no npm or Homebrew install is found; a found channel updates through itself (#1180). */
+	updateFallbackArgs?: readonly string[];
+	/** Its Homebrew names, so an install under `Caskroom/<cask>` or `Cellar/<formula>` updates through brew (#1180). */
+	brew?: { cask?: string; formula?: string };
+	/** The agent's documented update route, shown as text when no channel is known (#1180). */
+	updateLine?: string;
 	/** Env vars that move where its login lives; a stored one leaves Sign in to the copied hint (#1171). */
 	loginEnvKeys?: readonly string[];
 	/** Its adapter reports usage-limit windows on a run (#1171). */

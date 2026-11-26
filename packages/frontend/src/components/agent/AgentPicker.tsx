@@ -9,6 +9,8 @@ import {
 import {
 	ACCESS_LEVEL_LABEL,
 	ACCESS_LEVEL_LINE,
+	customModelsOf,
+	type FavouriteModel,
 	type HarnessSetting,
 	type HarnessStatus,
 } from "@prismalens/contracts";
@@ -33,12 +35,17 @@ import {
 	modeLine,
 } from "@/components/kit/picker-icons";
 import { agentFacts } from "@/lib/agent-facts";
-import { useCheckHarness, useUpdateHarnessSettings } from "@/lib/api/hooks";
+import {
+	useCheckHarness,
+	useHarnessSettings,
+	useUpdateHarnessSettings,
+} from "@/lib/api/hooks";
 import { lazyPart } from "@/lib/lazy";
 import { cn } from "@/lib/utils";
 import { AgentMark, MakerMark } from "./AgentMark";
 import { agentModes, chosenMode, levelOfMode, modeName } from "./agent-modes";
 import {
+	favouritesFirst,
 	isAgentDefault,
 	isFoldedId,
 	makerOf,
@@ -89,6 +96,7 @@ interface ModelRow {
 	warn?: string;
 	legacy?: boolean;
 	provider?: string;
+	favourite?: boolean;
 }
 
 const pickId = (h: HarnessStatus, model: string) => `${h.id}::${model}`;
@@ -98,6 +106,7 @@ function agentRows(
 	agent: HarnessStatus,
 	prefs: ReturnType<typeof useAgentChoice>,
 	chosen: string,
+	favourites: readonly FavouriteModel[],
 ): ModelRow[] {
 	const id = agent.id as HarnessId;
 	const row = (m: string, extra: Partial<ModelRow> = {}): ModelRow => {
@@ -115,14 +124,14 @@ function agentRows(
 			...extra,
 		};
 	};
-	const custom = prefs.customModels[id] ?? [];
+	const custom = customModelsOf(prefs.customModels[id]);
 	const listedIds = new Set(agent.models.entries.map((m) => m.id));
 	const stored = prefs.models[id];
 	// A starred id the agent doesn't list or can't take; unstarring it clears it (#907).
 	const unknown =
 		stored &&
 		!listedIds.has(stored) &&
-		!custom.includes(stored) &&
+		!custom.some((m) => m.id === stored) &&
 		!isFoldedId(agent, stored)
 			? [
 					row(stored, {
@@ -146,10 +155,15 @@ function agentRows(
 		current?.id && !stored && !ids.includes(current.id)
 			? [row(current.id)]
 			: [];
-	return [...unknown, ...runsNow, ...ids.map((m) => row(m))];
+	// The person's favourites lead the agent's rows, in a group of their own (#1180).
+	const rows = favouritesFirst(ids, favourites, agent.id).map((m) =>
+		row(m.id, m.favourite ? { favourite: true } : {}),
+	);
+	return [...unknown, ...runsNow, ...rows];
 }
 
 const STARRED = "starred";
+const NO_FAVOURITES: readonly FavouriteModel[] = [];
 
 /**
  * The agent and model picker (#673 w7, restored on the kit): a rail of Starred, each
@@ -178,6 +192,7 @@ export function ModelChip({
 	className?: string;
 }) {
 	const prefs = useAgentChoice();
+	const favourites = useHarnessSettings().data?.favourites ?? NO_FAVOURITES;
 	const update = useUpdateHarnessSettings();
 	const check = useCheckHarness();
 	const [adding, setAdding] = useState(false);
@@ -301,8 +316,8 @@ export function ModelChip({
 					const chosen =
 						harness?.id === h.id ? model : (models[h.id as HarnessId] ?? "");
 					// Under the shown agent, rows sit under who serves them (#673 w7).
-					return agentRows(h, prefs, chosen).map((r) =>
-						option(r, r.provider ?? h.label),
+					return agentRows(h, prefs, chosen, favourites).map((r) =>
+						option(r, r.favourite ? "Favourites" : (r.provider ?? h.label)),
 					);
 				})(shown);
 		return { onList, options, shownId: shown?.id ?? STARRED };
@@ -317,6 +332,7 @@ export function ModelChip({
 		harnesses.filter,
 		harnesses,
 		tile,
+		favourites,
 	]);
 	// With none picked, the row ticked is the one the chip names: what the agent runs, else its first (#907).
 	const current =

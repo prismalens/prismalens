@@ -3,7 +3,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { AccessLevel, HarnessId } from "@prismalens/config/harness";
-import type { HarnessStatus } from "@prismalens/contracts";
+import type { CustomModel, HarnessStatus } from "@prismalens/contracts";
 import type React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -133,7 +133,10 @@ let mockChoice = {
 		accessLevels: {} as Partial<Record<HarnessId, AccessLevel>>,
 	},
 	setting: "claude-code",
-	customModels: { "claude-code": ["gw-a"] } as Record<string, string[]>,
+	customModels: { "claude-code": ["gw-a"] } as Record<
+		string,
+		(string | CustomModel)[]
+	>,
 	hiddenModels: {} as Record<string, string[]>,
 	modelOrder: {} as Record<string, string[]>,
 	models: {} as Record<string, string>,
@@ -783,5 +786,115 @@ describe("AgentDetail: which agent runs next", () => {
 				?.textContent,
 		).toBe("Signed in to Ollama Cloud, Google");
 		mockHarnesses[2].checked = null;
+	});
+});
+
+describe("AgentDetail models: filter, favourites, names and labels (#1180)", () => {
+	const listed = {
+		source: "harness" as const,
+		asOf: "",
+		entries: [
+			{ id: "opus", name: "Opus", status: null },
+			{ id: "sonnet[1m]", name: "Sonnet", status: null },
+		],
+	};
+	const rows = () =>
+		Array.from(container.querySelectorAll('[data-testid^="agent-model-"]'))
+			.map((el) => el.getAttribute("data-testid"))
+			.filter((t) => /^agent-model-(?!add|star|show|fav|label)/.test(t ?? ""));
+
+	it("Filter models narrows the rows by id; clearing it shows them all", async () => {
+		mockHarnesses[0].models = listed;
+		try {
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			expect(rows()).toEqual([
+				"agent-model-gw-a",
+				"agent-model-opus",
+				"agent-model-sonnet[1m]",
+			]);
+			const filter = container.querySelector(
+				'[data-testid="agent-models-filter"]',
+			) as HTMLInputElement;
+			expect(filter.placeholder).toBe("Filter models");
+			const type = async (v: string) =>
+				act(async () => {
+					const set = Object.getOwnPropertyDescriptor(
+						HTMLInputElement.prototype,
+						"value",
+					)?.set;
+					set?.call(filter, v);
+					filter.dispatchEvent(new Event("input", { bubbles: true }));
+				});
+			await type("SONNET");
+			expect(rows()).toEqual(["agent-model-sonnet[1m]"]);
+			await type("");
+			expect(rows()).toHaveLength(3);
+		} finally {
+			mockHarnesses[0].models = { source: "harness", asOf: "", entries: [] };
+		}
+	});
+
+	it("Favourite adds to the list apart from the star and keeps other agents' favourites", async () => {
+		mockHarnesses[0].models = listed;
+		mockSettings = {
+			harness: "claude-code",
+			favourites: [{ harness: "codex", model: "gpt-6" }],
+		};
+		mockChoice.models = { "claude-code": "sonnet[1m]" };
+		try {
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			const fav = container.querySelector(
+				'[aria-label="Favourite opus"]',
+			) as HTMLButtonElement;
+			expect(fav.getAttribute("aria-pressed")).toBe("false");
+			await act(async () => fav.click());
+			expect(mutateSpy).toHaveBeenCalledTimes(1);
+			expect(mutateSpy).toHaveBeenLastCalledWith({
+				favourites: [
+					{ harness: "codex", model: "gpt-6" },
+					{ harness: "claude-code", model: "opus" },
+				],
+			});
+			// The star stays the default for this agent.
+			expect(
+				container
+					.querySelector('[aria-label="Unstar sonnet[1m]"]')
+					?.getAttribute("aria-pressed"),
+			).toBe("true");
+		} finally {
+			mockHarnesses[0].models = { source: "harness", asOf: "", entries: [] };
+		}
+	});
+
+	it("a custom model shows its own name and labels; a stored bare id still renders; a listed model shows none", async () => {
+		mockHarnesses[0].models = listed;
+		mockChoice.customModels = {
+			"claude-code": [
+				"gw-a",
+				{ id: "gw-b", name: "Gateway B", labels: ["no-reasoning"] },
+			],
+		};
+		try {
+			await act(async () => root.render(<AgentDetail id="claude-code" />));
+			const row = (id: string) =>
+				container.querySelector(`[data-testid="agent-model-${id}"]`);
+			expect(row("gw-a")?.textContent).toContain("gw-a");
+			expect(row("gw-b")?.textContent).toContain("Gateway B");
+			expect(
+				row("gw-b")?.querySelector(
+					'[data-testid="agent-model-label-no-reasoning"]',
+				)?.textContent,
+			).toBe("No reasoning");
+			expect(
+				row("sonnet[1m]")?.querySelector(
+					'[data-testid="agent-model-label-large-context"]',
+				)?.textContent,
+			).toBe("1M context");
+			expect(
+				row("opus")?.querySelector('[data-mark="modelCapability"]'),
+			).toBeNull();
+		} finally {
+			mockHarnesses[0].models = { source: "harness", asOf: "", entries: [] };
+		}
 	});
 });

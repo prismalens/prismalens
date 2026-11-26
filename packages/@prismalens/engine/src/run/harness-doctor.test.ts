@@ -18,6 +18,7 @@ import { prismalensLaunchPolicy } from "../launch/policy.js";
 import {
 	answeredDetail,
 	classify,
+	fastModelOf,
 	probeHarness,
 	sweepStaleRunDirs,
 	versionOf,
@@ -416,4 +417,19 @@ describe("versionOf on Windows (#902)", () => {
 			}
 		},
 	);
+});
+
+describe("fastModelOf (#1180)", () => {
+	const model = {
+		id: "model",
+		category: "model",
+		type: "select",
+		currentValue: "opus",
+		options: [],
+	};
+	it("names the current model only when the session lists a fast option", () => {
+		expect(fastModelOf([model, { id: "fast", type: "boolean" }])).toBe("opus");
+		expect(fastModelOf([model, { id: "effort", type: "select" }])).toBeUndefined();
+		expect(fastModelOf(null)).toBeUndefined();
+	});
 });

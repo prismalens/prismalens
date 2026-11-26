@@ -38,3 +38,21 @@ export function effectiveAccess(
 
 /** Context tokens above which a long-idle thread asks before it sends (#1024). */
 export const COLD_RESUME_TOKENS = 50_000;
+
+/** What a model is known to be, by evidence only (#1180): the person's own word, or the agent's. */
+export const MODEL_LABELS = ["no-reasoning", "fast", "large-context"] as const;
+export type ModelLabel = (typeof MODEL_LABELS)[number];
+
+/** A model the operator added, with the name and labels they gave it (#1180). */
+export interface CustomModel {
+	id: string;
+	name?: string;
+	labels?: ModelLabel[];
+}
+
+/** An agent's custom models as objects; a stored bare id is a model with no name or labels. */
+export function customModelsOf(
+	list: readonly (string | CustomModel)[] | undefined,
+): CustomModel[] {
+	return (list ?? []).map((m) => (typeof m === "string" ? { id: m } : m));
+}
