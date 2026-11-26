@@ -23,7 +23,7 @@ export const sharedServerName = (name: string) => `pl-${name}`;
 
 export class ShareRefused extends Error {
 	constructor(
-		readonly code: "relative-path" | "too-large" | "not-found",
+		readonly code: "relative-path" | "too-large" | "not-found" | "value-path",
 		message: string,
 	) {
 		super(message);
@@ -92,6 +92,28 @@ export function fileArg(arg: string): string | null {
 	if (/^~|[\\/]/.test(value) || FILE_EXT.test(value) || /^\.\.?$/.test(value))
 		throw new ShareRefused("relative-path", "Uses a relative path");
 	return null;
+}
+
+/** Refuses a value that fills a stdio argument and names a file by `fileArg`: approval binds only the definition's own files. */
+export function refuseValueFiles(
+	def: SharedMcpDef,
+	values: Readonly<Record<string, string>>,
+): void {
+	if (def.type !== "stdio") return;
+	for (const a of def.args) {
+		const v = typeof a === "string" ? undefined : values[a.value];
+		let file = false;
+		try {
+			file = v !== undefined && fileArg(v) !== null;
+		} catch {
+			file = true;
+		}
+		if (file)
+			throw new ShareRefused(
+				"value-path",
+				"A value names a file; put a path in the definition and a token in env",
+			);
+	}
 }
 
 /** The value names a definition reads: env, header, argument and query names. */

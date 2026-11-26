@@ -5,6 +5,7 @@
 // a project MCP server, and Codex and OpenCode plugins. Each agent keeps them in its own layout.
 import {
 	appendFileSync,
+	lstatSync,
 	mkdirSync,
 	readFileSync,
 	realpathSync,
@@ -37,10 +38,6 @@ function readJson(path) {
 		return {};
 	}
 }
-function mergeJson(path, add) {
-	mkdirSync(dirname(path), { recursive: true });
-	writeFileSync(path, JSON.stringify({ ...readJson(path), ...add }, null, 2));
-}
 const toml = (s) => `'${s}'`;
 
 const ROOT_VAR = {
@@ -49,52 +46,101 @@ const ROOT_VAR = {
 	opencode: "XDG_CONFIG_HOME",
 	gemini: "GEMINI_CLI_HOME",
 };
-const inside = (dir, root) => {
-	const rel = relative(root, dir);
-	return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+const within = (path, root) => {
+	const rel = relative(root, path);
+	return !rel.startsWith("..") && !isAbsolute(rel);
 };
-/** The agent's config root from `env`; refused unless it is under the OS temp folder, so a row never edits a real config. */
+/** The folder PrismaLens made for this run: `<temp>/pl-*`, the way admission-fake and the rows name theirs. */
+function madeByUs(dir) {
+	const rel = relative(resolve(tmpdir()), resolve(dir));
+	return !rel.startsWith("..") && !isAbsolute(rel) && rel.startsWith("pl-");
+}
+const refuse = (what) => {
+	throw new Error(`${what}; markers go only in a scratch home`);
+};
+
+/** The agent's config root from `env`; refused unless it is in a `pl-*` folder under the OS temp folder. */
 export function scratchRoot(harness, env) {
 	const key = ROOT_VAR[harness];
 	const dir = key ? env[key] : undefined;
-	if (!dir)
-		throw new Error(
-			`${harness}: ${key} is not set; markers go only in a scratch home`,
-		);
-	if (!inside(resolve(dir), resolve(tmpdir())))
-		throw new Error(
-			`${harness}: ${key} is not under the temp folder; markers go only in a scratch home`,
-		);
+	if (!dir) refuse(`${harness}: ${key} is not set`);
+	if (!madeByUs(dir)) refuse(`${harness}: ${key} is not under the temp folder`);
 	mkdirSync(dir, { recursive: true });
-	if (!inside(realpathSync.native(dir), realpathSync.native(tmpdir())))
-		throw new Error(
-			`${harness}: ${key} resolves outside the temp folder; markers go only in a scratch home`,
-		);
+	if (!within(realpathSync.native(dir), realpathSync.native(tmpdir())))
+		refuse(`${harness}: ${key} resolves outside the temp folder`);
 	return dir;
+}
+
+/**
+ * Writes that stay in `root`: each path's deepest existing part must resolve inside it, and an
+ * existing file must be neither a link nor hard-linked, so no write reaches a real config.
+ */
+export function homeFs(root) {
+	if (!madeByUs(root)) refuse(`${root} is not under the temp folder`);
+	const real = realpathSync.native(root);
+	const check = (path) => {
+		const abs = resolve(path);
+		if (!within(abs, resolve(root))) refuse(`${abs} is outside ${root}`);
+		let at = abs;
+		for (;;) {
+			let st;
+			try {
+				st = lstatSync(at);
+			} catch {
+				at = dirname(at);
+				continue;
+			}
+			if (at === abs && (st.isSymbolicLink() || (st.isFile() && st.nlink > 1)))
+				refuse(`${abs} is a link`);
+			if (!within(realpathSync.native(at), real))
+				refuse(`${abs} resolves outside ${root}`);
+			return abs;
+		}
+	};
+	const fs = {
+		mkdir: (dir) => mkdirSync(check(dir), { recursive: true }),
+		write: (path, text) => {
+			fs.mkdir(dirname(path));
+			writeFileSync(check(path), text);
+		},
+		append: (path, text) => {
+			fs.mkdir(dirname(path));
+			appendFileSync(check(path), text);
+		},
+		merge: (path, add) =>
+			fs.write(
+				path,
+				JSON.stringify({ ...readJson(check(path)), ...add }, null, 2),
+			),
+	};
+	return fs;
 }
 
 /** The user-scope markers, in the agent's own scratch home from `env`. */
 export function seedUser(harness, env, markers) {
+	if (!(harness in ROOT_VAR)) return;
+	const root = scratchRoot(harness, env);
+	const f = homeFs(root);
 	const hook = (name) => ({
 		hooks: [{ type: "command", command: shell(markers, name) }],
 	});
 	if (harness === "claude-code") {
-		const dir = scratchRoot(harness, env);
-		mergeJson(join(dir, "settings.json"), {
+		const dir = root;
+		f.merge(join(dir, "settings.json"), {
 			hooks: {
 				SessionStart: [hook("user-hook")],
 				UserPromptSubmit: [hook("user-prompt-hook")],
 			},
 		});
-		mergeJson(join(dir, ".claude.json"), {
+		f.merge(join(dir, ".claude.json"), {
 			mcpServers: { "mk-user": marker(markers, "mcp-user", true) },
 		});
 	} else if (harness === "codex") {
-		const home = scratchRoot(harness, env);
+		const home = root;
 		const mkt = join(home, "mk-marketplace");
 		const plugin = (root) => {
-			mkdirSync(join(root, ".codex-plugin"), { recursive: true });
-			writeFileSync(
+			f.mkdir(join(root, ".codex-plugin"));
+			f.write(
 				join(root, ".codex-plugin", "plugin.json"),
 				JSON.stringify({
 					name: "mk-plugin",
@@ -102,15 +148,15 @@ export function seedUser(harness, env, markers) {
 					mcpServers: "./.mcp.json",
 				}),
 			);
-			writeFileSync(
+			f.write(
 				join(root, ".mcp.json"),
 				JSON.stringify({
 					mcpServers: { "mk-plugin-mcp": marker(markers, "mcp-plugin", true) },
 				}),
 			);
 		};
-		mkdirSync(join(mkt, ".agents", "plugins"), { recursive: true });
-		writeFileSync(
+		f.mkdir(join(mkt, ".agents", "plugins"));
+		f.write(
 			join(mkt, ".agents", "plugins", "marketplace.json"),
 			JSON.stringify({
 				name: "mk",
@@ -128,7 +174,7 @@ export function seedUser(harness, env, markers) {
 		plugin(join(mkt, "plugins", "mk-plugin"));
 		plugin(join(home, "plugins", "cache", "mk", "mk-plugin", "0.0.1"));
 		const m = marker(markers, "mcp-user", true);
-		appendFileSync(
+		f.append(
 			join(home, "config.toml"),
 			[
 				"",
@@ -145,14 +191,14 @@ export function seedUser(harness, env, markers) {
 				"",
 			].join("\n"),
 		);
-		writeFileSync(
+		f.write(
 			join(home, "hooks.json"),
 			JSON.stringify({ hooks: { SessionStart: [hook("user-hook")] } }),
 		);
 	} else if (harness === "opencode") {
-		const dir = join(scratchRoot(harness, env), "opencode");
+		const dir = join(root, "opencode");
 		const m = marker(markers, "mcp-user", true);
-		mergeJson(join(dir, "opencode.json"), {
+		f.merge(join(dir, "opencode.json"), {
 			mcp: {
 				"mk-user": {
 					type: "local",
@@ -162,19 +208,19 @@ export function seedUser(harness, env, markers) {
 			},
 		});
 		const write = `appendFileSync(${JSON.stringify(join(markers, "plugin"))}, "loaded\\n")`;
-		mkdirSync(join(dir, "plugin"), { recursive: true });
+		f.mkdir(join(dir, "plugin"));
 		// 1.x calls each exported function; 2.x takes one default definition.
-		writeFileSync(
+		f.write(
 			join(dir, "plugin", "mk1.js"),
 			`import { appendFileSync } from "node:fs";\nexport const Mk = async () => { ${write}; return {}; };\n`,
 		);
-		writeFileSync(
+		f.write(
 			join(dir, "plugin", "mk2.js"),
 			`import { appendFileSync } from "node:fs";\nexport default { id: "mk", setup: async () => { ${write}; return {}; } };\n`,
 		);
 	} else if (harness === "gemini") {
-		const path = join(scratchRoot(harness, env), ".gemini", "settings.json");
-		mergeJson(path, {
+		const path = join(root, ".gemini", "settings.json");
+		f.merge(path, {
 			mcpServers: { "mk-user": marker(markers, "mcp-user", true) },
 			hooks: { SessionStart: [hook("user-hook")] },
 		});
@@ -183,31 +229,32 @@ export function seedUser(harness, env, markers) {
 
 /** The project-scope markers, in the session's own folder. */
 export function seedProject(harness, cwd, env, markers) {
+	const f = homeFs(cwd);
 	const hook = (name) => ({
 		hooks: [{ type: "command", command: shell(markers, name) }],
 	});
 	const server = marker(markers, "mcp-project", true);
 	if (harness === "claude-code") {
-		mergeJson(join(cwd, ".mcp.json"), { mcpServers: { "mk-project": server } });
-		mergeJson(join(cwd, ".claude", "settings.json"), {
+		f.merge(join(cwd, ".mcp.json"), { mcpServers: { "mk-project": server } });
+		f.merge(join(cwd, ".claude", "settings.json"), {
 			hooks: { SessionStart: [hook("project-hook")] },
 		});
 	} else if (harness === "codex") {
-		mkdirSync(join(cwd, ".codex"), { recursive: true });
-		writeFileSync(
+		f.mkdir(join(cwd, ".codex"));
+		f.write(
 			join(cwd, ".codex", "config.toml"),
 			`[mcp_servers.mk-project]\ncommand = ${toml(server.command)}\nargs = [${server.args.map(toml).join(", ")}]\n`,
 		);
-		writeFileSync(
+		f.write(
 			join(cwd, ".codex", "hooks.json"),
 			JSON.stringify({ hooks: { SessionStart: [hook("project-hook")] } }),
 		);
-		appendFileSync(
+		homeFs(scratchRoot(harness, env)).append(
 			join(scratchRoot(harness, env), "config.toml"),
 			`\n[projects.${toml(cwd)}]\ntrust_level = "trusted"\n`,
 		);
 	} else if (harness === "opencode") {
-		mergeJson(join(cwd, "opencode.json"), {
+		f.merge(join(cwd, "opencode.json"), {
 			mcp: {
 				"mk-project": {
 					type: "local",
@@ -217,7 +264,7 @@ export function seedProject(harness, cwd, env, markers) {
 			},
 		});
 	} else if (harness === "gemini") {
-		mergeJson(join(cwd, ".gemini", "settings.json"), {
+		f.merge(join(cwd, ".gemini", "settings.json"), {
 			mcpServers: { "mk-project": server },
 			hooks: { SessionStart: [hook("project-hook")] },
 		});

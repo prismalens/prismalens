@@ -2501,13 +2501,19 @@ describe("a command turn (#1024)", () => {
 		]);
 	});
 
-	it("a first compact turn goes alone; the PrismaLens set's instructions wait for a normal prompt (#1180 §3.3)", async () => {
+	it("a first compact turn goes alone, and the PrismaLens set's instructions open the normal prompt after it (#1180 §3.3)", async () => {
 		const { runDir } = await collect("resume", {
 			env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1" },
-			resume: { sessionId: "ses_old", text: "/compact", mode: "queue", heads: [], compact: { command: "compact", only: true } },
+			resume: { sessionId: "ses_old", text: "Follow-up question", mode: "queue", heads: [], compact: { command: "compact" } },
 			shared: set,
 		});
-		expect(promptsSent(runDir)).toEqual([[{ type: "text", text: "/compact" }]]);
+		expect(promptsSent(runDir)).toEqual([
+			[{ type: "text", text: "/compact" }],
+			[
+				{ type: "text", text: "Always cite the runbook." },
+				{ type: "text", text: "Follow-up question" },
+			],
+		]);
 	});
 
 	it("after a restart, the restart note goes in the turn before the command", async () => {

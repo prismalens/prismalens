@@ -35,8 +35,22 @@ function forms(secrets: readonly string[]): string[] {
 	].sort((x, y) => y.length - x.length);
 }
 
-/** Event fields whose contents the agent wrote; a `kind` inside them is data, not a discriminator. */
-const FREE_FIELDS = new Set(["args", "input", "rawInput", "modelUsage"]);
+/**
+ * Event fields whose contents are data: what the agent wrote, and records keyed by names someone
+ * chose (an ask's form values, an alert's labels). A `kind` inside them is not a discriminator.
+ */
+const FREE_FIELDS = new Set([
+	"args",
+	"input",
+	"rawInput",
+	"modelUsage",
+	"values",
+	"answers",
+	"labels",
+	"annotations",
+	"context",
+	"journals",
+]);
 
 /**
  * The event with every exact secret value replaced inside its string values; keys and schema
