@@ -188,17 +188,27 @@ export interface SharedDelivery {
 	hidden: string[];
 }
 
+/** The arguments `toMcp` sends: the definition's, with each value put in. */
+function argvOf(s: SharedMcpServerStored): string[] {
+	if (s.def.type !== "stdio") return [];
+	return s.def.args.map((a) =>
+		typeof a === "string" ? a : (s.values[a.value] ?? ""),
+	);
+}
+
 /**
- * Whether a `node` server names a script Node would load from `cwd`, each thread's own folder.
- * Approval has no folder, so it hashed no such file.
+ * Whether a `node` server's argv names a script Node would load from `cwd`, each thread's own
+ * folder. Approval has no folder, so it hashed no such file.
  */
-function relativeScript(def: SharedMcpDef, cwd: string): boolean {
-	if (def.type !== "stdio" || parse(def.command).name.toLowerCase() !== "node")
+function relativeScript(s: SharedMcpServerStored, cwd: string): boolean {
+	if (
+		s.def.type !== "stdio" ||
+		parse(s.def.command).name.toLowerCase() !== "node"
+	)
 		return false;
 	const load = createRequire(join(cwd, "noop.js"));
-	return def.args.some((a) => {
-		if (typeof a !== "string" || a.startsWith("-") || isAbsolute(a))
-			return false;
+	return argvOf(s).some((a) => {
+		if (a.startsWith("-") || isAbsolute(a)) return false;
 		try {
 			load.resolve(`./${a}`);
 			return true;
@@ -215,7 +225,7 @@ function toMcp(s: SharedMcpServerStored): McpServer {
 		return {
 			name,
 			command: s.def.command,
-			args: s.def.args.map((a) => (typeof a === "string" ? a : v(a.value))),
+			args: argvOf(s),
 			env: s.def.env.map((n) => ({ name: n, value: v(n) })),
 		};
 	const url = new URL(s.def.url);
@@ -270,7 +280,7 @@ export async function deliverShared(
 		else if (transport === "http" && !o.http) note = "Not sent: no HTTP";
 		else if (o.ownNames.includes(name)) note = "Not sent: name taken";
 		else if (o.runFile && names.length) note = "Not supported for deepagents";
-		else if (o.cwd && relativeScript(s.def, o.cwd))
+		else if (o.cwd && relativeScript(s, o.cwd))
 			note = "Needs an absolute script path";
 		else
 			for (const f of s.files)
