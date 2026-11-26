@@ -59,15 +59,6 @@ export const goose = defineAgent({
 				},
 			},
 		],
-		precedence: {
-			first: "env",
-			source: {
-				url: "https://goose-docs.ai/docs/guides/environment-variables",
-				clause:
-					"Environment variables take precedence over configuration files.",
-				readOn: "2026-11-26",
-			},
-		},
 	},
 	facts: {
 		// No goose source states a cache lifetime, an auto-compact point or a compact command.

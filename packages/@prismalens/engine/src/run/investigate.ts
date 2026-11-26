@@ -215,8 +215,6 @@ export interface RunInvestigationOptions {
 	launchArgs?: string[];
 	/** What Settings set for this run, recorded as `fidelity.runtime`; names only. */
 	runtimeNote?: RunRuntimeNote | null;
-	/** Why this run went ahead on a sign-in path whose terms are unread (#1252). */
-	termsWarning?: string;
 	limits?: RunLimits;
 	initTimeoutMs?: number;
 	promptTimeoutMs?: number;
@@ -868,8 +866,6 @@ async function* runSession(
 		access.mechanism,
 		opts.runtimeNote,
 	);
-	if (opts.termsWarning)
-		fidelity = { ...fidelity, termsWarning: opts.termsWarning };
 	const { env, args, launch } = prepareRunEnv({
 		...opts,
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),

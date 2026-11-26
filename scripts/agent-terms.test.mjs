@@ -3,45 +3,52 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { loadAgents, staleSources, termsLines } from "./agent-terms.mjs";
+import {
+	checkSources,
+	loadAgents,
+	plain,
+	rawUrl,
+	termsLines,
+} from "./agent-terms.mjs";
 
-const source = (readOn) => ({
-	url: "https://acme.test/terms",
-	clause: "No bots.",
-	readOn,
+const source = (url, clause) => ({ url, clause, readOn: "2026-11-26" });
+const method = (id, runs, s, extra = {}) => ({
+	id,
+	label: id.toUpperCase(),
+	terms: { runs, source: s, ...extra },
 });
 const acme = {
 	id: "acme",
 	auth: {
 		methods: [
-			{
-				id: "login",
-				label: "Acme account",
-				terms: {
-					runs: "interactive-only",
-					source: source("2026-01-02"),
+			method(
+				"login",
+				"interactive-only",
+				source("https://acme.test/terms", "No bots."),
+				{
+					against: source("https://acme.test/blog", "Bots welcome."),
 					gaps: ["acme.test/aup"],
 				},
-			},
-			{
-				id: "api-key",
-				label: "ACME_KEY",
-				terms: { runs: "allowed", source: source("2026-11-20") },
-			},
+			),
+			method(
+				"api-key",
+				"allowed",
+				source("https://acme.test/terms", "Keys are for programs."),
+			),
 		],
-		precedence: { first: "env", source: source("2026-11-20") },
 	},
 };
+const words = (n) => Array.from({ length: n }, () => "filler").join(" ");
 
-test("terms prints each path's verdict, clause, URL, read date and gaps, then the precedence", () => {
+test("terms prints each path's verdict, clause, URL, read date, counter-clause and gaps", () => {
 	assert.deepEqual(termsLines([acme]), [
 		"acme",
-		"  login (Acme account): interactive-only",
-		'    "No bots." https://acme.test/terms (read 2026-01-02)',
+		"  login (LOGIN): interactive-only",
+		'    "No bots." https://acme.test/terms (read 2026-11-26)',
+		'    against: "Bots welcome." https://acme.test/blog (read 2026-11-26)',
 		"    not read: acme.test/aup",
-		"  api-key (ACME_KEY): allowed",
-		'    "No bots." https://acme.test/terms (read 2026-11-20)',
-		'  precedence: env first, "No bots." https://acme.test/terms (read 2026-11-20)',
+		"  api-key (API-KEY): allowed",
+		'    "Keys are for programs." https://acme.test/terms (read 2026-11-26)',
 	]);
 });
 
@@ -49,19 +56,61 @@ test("terms for an agent the registry lacks fails by name", () => {
 	assert.throws(() => termsLines([acme], "nope"), /no agent nope/);
 });
 
-test("stale lists every source oldest first and flags those past the window", () => {
-	const { all, stale } = staleSources([acme], new Date("2026-11-26"), 90);
+test("check reads each page once and marks a clause present, changed, or unreadable", async () => {
+	const fetched = [];
+	const pages = {
+		"https://acme.test/terms": `<p>No&nbsp;bots.</p> ${words(300)}`,
+		"https://acme.test/blog": `<p>Bots are now banned.</p> ${words(300)}`,
+	};
+	const results = await checkSources([acme], async (url) => {
+		fetched.push(url);
+		return pages[url];
+	});
 	assert.deepEqual(
-		all.map((s) => `${s.readOn} ${s.at}`),
-		[
-			"2026-01-02 acme.login",
-			"2026-11-20 acme.api-key",
-			"2026-11-20 acme.precedence",
-		],
+		results.map((r) => `${r.at} ${r.state}`),
+		["acme.login present", "acme.login changed", "acme.api-key changed"],
+	);
+	assert.deepEqual(fetched, [
+		"https://acme.test/terms",
+		"https://acme.test/blog",
+	]);
+});
+
+test("check calls a failed fetch or a script-filled shell unreadable, never changed", async () => {
+	const one = {
+		id: "a",
+		auth: {
+			methods: [
+				method("login", "allowed", source("https://a.test/t", "No bots.")),
+			],
+		},
+	};
+	const failed = await checkSources([one], async () => {
+		throw new Error("HTTP 403");
+	});
+	const shell = await checkSources(
+		[one],
+		async () => '<div id="root"></div><script>render("No bots.")</script>',
 	);
 	assert.deepEqual(
-		stale.map((s) => s.at),
-		["acme.login"],
+		[failed[0].state, shell[0].state],
+		["unreadable", "unreadable"],
+	);
+});
+
+test("plain makes markup, Markdown links, entities, curly quotes and code marks comparable", () => {
+	assert.equal(
+		plain(
+			"[Headless mode](../cli/headless.md) uses `agy acp`&#x27;s <b>cached</b> ‘sign-in’ ,\n  as &quot;said&quot;.",
+		),
+		`Headless mode uses agy acp's cached 'sign-in', as "said".`,
+	);
+});
+
+test("check fetches a GitHub blob as its raw file", () => {
+	assert.equal(
+		rawUrl("https://github.com/o/r/blob/main/docs/a.md"),
+		"https://raw.githubusercontent.com/o/r/main/docs/a.md",
 	);
 });
 

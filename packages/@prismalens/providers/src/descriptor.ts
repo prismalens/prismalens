@@ -63,7 +63,7 @@ export interface AuthScheme {
 
 /**
  * Which runs PrismaLens may start on a sign-in path, by its vendor's terms: every run,
- * only a person's (no alert or schedule), none, or terms not yet read (the run warns).
+ * only a person's (no alert or schedule), none, or terms not yet read (runs go ahead).
  */
 export const TERMS_RUNS = [
 	"allowed",
@@ -112,12 +112,6 @@ export interface SignInMethod {
 	readonly terms: Terms;
 }
 
-/** Which credential the CLI uses when a stored sign-in and an env key both exist, as its docs say. */
-export interface SignInPrecedence {
-	readonly first: "env" | "login";
-	readonly source: TermsSource;
-}
-
 export interface Operation {
 	readonly about: string;
 	readonly input?: z.ZodType;
@@ -140,8 +134,6 @@ export interface ProviderSpec<F extends Family = Family> {
 	readonly auth?: {
 		readonly schemes?: readonly AuthScheme[];
 		readonly methods?: readonly SignInMethod[];
-		/** Absent, the CLI's docs do not say, and a run takes the stricter verdict of the two. */
-		readonly precedence?: SignInPrecedence;
 	};
 	readonly operations?: Readonly<Record<string, Operation>>;
 	/** Non-secret settings; forms render from its JSON Schema and `.meta`. */

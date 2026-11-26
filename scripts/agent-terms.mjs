@@ -5,15 +5,13 @@
 /**
  * Which runs each agent's sign-in paths may start, read from the agent registry (#1252).
  *
- *   agent-terms.mjs [agent]           each path: verdict, clause, URL, read date, gaps
- *   agent-terms.mjs stale [--days N]  every source by read date; exit 1 naming each older than N days (90)
+ *   agent-terms.mjs [agent]  each path: verdict, clause, URL, read date, gaps
+ *   agent-terms.mjs check    fetches every source; exit 1 naming each whose quoted clause is gone
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { parseArgs } from "node:util";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const DAY = 86_400_000;
 
 /** Every agent's sign-in data, by its launch id. */
 export async function loadAgents() {
@@ -40,52 +38,102 @@ export function termsLines(agents, only) {
 				? [`    not read: ${m.terms.gaps.join("; ")}`]
 				: []),
 		]),
-		...(auth.precedence
-			? [
-					`  precedence: ${auth.precedence.first} first, ${quote(auth.precedence.source)}`,
-				]
-			: []),
 	]);
 }
 
-/** Every source with its read date, oldest first, and those older than `days` on `today`. */
-export function staleSources(agents, today, days) {
-	const all = agents.flatMap(({ id, auth }) => [
-		...(auth.methods ?? []).flatMap((m) =>
-			[m.terms.source, m.terms.against]
-				.filter(Boolean)
-				.map((s) => ({ at: `${id}.${m.id}`, ...s })),
-		),
-		...(auth.precedence
-			? [{ at: `${id}.precedence`, ...auth.precedence.source }]
-			: []),
-	]);
-	all.sort(
-		(a, b) => a.readOn.localeCompare(b.readOn) || a.at.localeCompare(b.at),
+const ENTITIES = {
+	amp: "&",
+	lt: "<",
+	gt: ">",
+	quot: '"',
+	apos: "'",
+	nbsp: " ",
+};
+
+/** Text as a reader compares it: scripts, tags, links, entities, curly quotes, code marks and spacing made plain. */
+export function plain(text) {
+	return text
+		.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, " ")
+		.replace(/<[^>]*>/g, " ")
+		.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+		.replace(/&#x([0-9a-f]+);/gi, (_, n) =>
+			String.fromCharCode(parseInt(n, 16)),
+		)
+		.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+		.replace(/&(\w+);/g, (m, n) => ENTITIES[n] ?? m)
+		.replace(/[‘’]/g, "'")
+		.replace(/[“”]/g, '"')
+		.replace(/[`*]/g, "")
+		.replace(/\s+/g, " ")
+		.replace(/\s+([,.;:!?)])/g, "$1");
+}
+
+/** A GitHub blob page renders its Markdown; the raw file holds the text as quoted. */
+export const rawUrl = (url) =>
+	url.replace(
+		/^https:\/\/github\.com\/([^/]+\/[^/]+)\/blob\//,
+		"https://raw.githubusercontent.com/$1/",
 	);
-	const cutoff = today.getTime() - days * DAY;
-	return { all, stale: all.filter((s) => Date.parse(s.readOn) < cutoff) };
+
+/** Fewer words than this and the page is a shell its script fills in, so it can't be judged. */
+const MIN_WORDS = 200;
+
+/** Each distinct source: `present`, `changed` (its clause is gone), or `unreadable`. */
+export async function checkSources(agents, fetchText) {
+	const seen = new Map();
+	for (const { id, auth } of agents)
+		for (const m of auth.methods ?? [])
+			for (const s of [m.terms.source, m.terms.against].filter(Boolean)) {
+				const key = `${s.url}\n${s.clause}`;
+				if (!seen.has(key)) seen.set(key, { at: `${id}.${m.id}`, ...s });
+			}
+	const pages = new Map();
+	const results = [];
+	for (const s of seen.values()) {
+		if (!pages.has(s.url))
+			pages.set(
+				s.url,
+				fetchText(rawUrl(s.url)).then(plain, (e) => ({ error: String(e) })),
+			);
+		const page = await pages.get(s.url);
+		results.push({
+			...s,
+			state:
+				typeof page !== "string"
+					? "unreadable"
+					: page.includes(plain(s.clause))
+						? "present"
+						: page.split(" ").length < MIN_WORDS
+							? "unreadable"
+							: "changed",
+		});
+	}
+	return results;
 }
 
-async function main() {
-	const { positionals, values } = parseArgs({
-		allowPositionals: true,
-		options: { days: { type: "string", default: "90" } },
+async function fetchText(url) {
+	const res = await fetch(url, {
+		headers: { "user-agent": "prismalens-terms-check" },
+		signal: AbortSignal.timeout(30_000),
 	});
+	if (!res.ok) throw new Error(`HTTP ${res.status}`);
+	return res.text();
+}
+
+async function main(args) {
 	const agents = await loadAgents();
-	if (positionals[0] === "stale") {
-		const days = Number(values.days);
-		const { all, stale } = staleSources(agents, new Date(), days);
-		for (const s of all) console.log(`${s.readOn}  ${s.at}  ${s.url}`);
-		for (const s of stale)
-			console.error(
-				`older than ${days} days: ${s.at} ${s.url} (read ${s.readOn})`,
-			);
-		return stale.length ? 1 : 0;
+	if (args[0] === "check") {
+		const results = await checkSources(agents, fetchText);
+		for (const r of results)
+			console.log(`${r.state.padEnd(10)} ${r.at}  ${r.url}`);
+		const changed = results.filter((r) => r.state === "changed");
+		for (const r of changed)
+			console.error(`clause gone, re-read it: ${r.at} ${r.url} "${r.clause}"`);
+		return changed.length ? 1 : 0;
 	}
-	for (const l of termsLines(agents, positionals[0])) console.log(l);
+	for (const l of termsLines(agents, args[0])) console.log(l);
 	return 0;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href)
-	process.exit(await main());
+	process.exit(await main(process.argv.slice(2)));

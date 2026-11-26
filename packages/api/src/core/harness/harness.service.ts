@@ -30,7 +30,6 @@ import {
 	HARNESS_IDS,
 	HARNESS_REGISTRY,
 	type HarnessId,
-	harnessAuthPath,
 	isSafeGatewayUrl,
 	preferredModel,
 	providerSignedOutLine,
@@ -1355,7 +1354,6 @@ export class HarnessService implements OnApplicationBootstrap {
 					off,
 					added: settings.added?.includes(h.id) ?? false,
 					signIn: this.signInOf(h.id, settings),
-					authPath: authPathStatus(h.id, runtimes.get(h.id)?.env ?? {}),
 					versionVsTested: testedPair(checked, h.tested),
 					localDefault: this.localDefaultOf(h.id, runtimes.get(h.id)?.env),
 					envVars: envVarStates(h.id, settings.envNames?.[h.id] ?? []),
@@ -1413,19 +1411,5 @@ function sessionRows(
 			: {}),
 		...(from.resumeAfterLimit === false ? { resumeAfterLimit: false } : {}),
 		...(from.compactIdle === true ? { compactIdle: true } : {}),
-	};
-}
-
-/** The sign-in a run of `id` would use on the host env and its own variables, as Settings shows it (#1252). */
-export function authPathStatus(
-	id: HarnessId,
-	env: Readonly<Record<string, string>>,
-): HarnessStatus["authPath"] {
-	const path = harnessAuthPath(id, { ...process.env, ...env });
-	if (!path) return null;
-	return {
-		method: path.method.id,
-		runs: path.method.terms.runs,
-		...(path.other ? { other: path.other.id } : {}),
 	};
 }

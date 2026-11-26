@@ -114,9 +114,6 @@ export const provider = defineKind({
 						}),
 					),
 				),
-				precedence: z.optional(
-					z.object({ first: z.enum(["env", "login"]), source }).strict(),
-				),
 			}),
 		),
 		operations: z.optional(

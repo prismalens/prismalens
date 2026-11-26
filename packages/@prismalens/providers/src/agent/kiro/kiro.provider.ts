@@ -58,15 +58,6 @@ export const kiro = defineAgent({
 				},
 			},
 		],
-		precedence: {
-			first: "login",
-			source: {
-				url: "https://kiro.dev/docs/cli/headless/",
-				clause:
-					"When a stored login is active, it takes precedence over KIRO_API_KEY, and Kiro CLI reports that choice at startup.",
-				readOn: "2026-11-26",
-			},
-		},
 	},
 	facts: {
 		// No Kiro source states a cache lifetime, an auto-compact point or a compact command.

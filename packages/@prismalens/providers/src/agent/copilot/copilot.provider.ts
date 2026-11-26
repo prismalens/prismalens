@@ -78,15 +78,6 @@ export const copilot = defineAgent({
 				},
 			},
 		],
-		precedence: {
-			first: "env",
-			source: {
-				url: "https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli",
-				clause:
-					"An environment variable silently overrides a stored OAuth token.",
-				readOn: "2026-11-26",
-			},
-		},
 	},
 	facts: {
 		// No Copilot source states a cache lifetime; it compacts at 0.8 of the window (`copilot help environment`).

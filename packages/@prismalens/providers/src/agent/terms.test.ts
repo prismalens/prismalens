@@ -92,7 +92,7 @@ describe("termsGate", () => {
 		]).toEqual([null, null, null]);
 	});
 
-	it("refuses every run on a never path and warns an unattended run on an unknown one, naming its unread pages", () => {
+	it("refuses every run on a never path and lets every run use an unknown one", () => {
 		const never: SignInMethod = { id: "login", label: "Acme account", steps: ["browser"], terms: { runs: "never", source: { url: "https://acme.test/terms", clause: "You must not run it in other apps.", readOn: "2026-11-26" } } };
 		const unknown: SignInMethod = { ...never, terms: { runs: "unknown", source: never.terms.source, gaps: ["acme.test/aup: needs JavaScript"] } };
 		expect(termsGate({ name: "Acme", auth: { methods: [never] } }, {}, "person")).toEqual({
@@ -101,9 +101,6 @@ describe("termsGate", () => {
 		expect([
 			termsGate({ name: "Acme", auth: { methods: [unknown] } }, {}, "alert"),
 			termsGate({ name: "Acme", auth: { methods: [unknown] } }, {}, "person"),
-		]).toEqual([
-			{ warn: "PrismaLens has not read Acme's terms for Acme account (acme.test/aup: needs JavaScript). The run used your own sign-in." },
-			null,
-		]);
+		]).toEqual([null, null]);
 	});
 });

@@ -420,7 +420,7 @@ async function runJobInternal(
 		const { selection, model, modelSource, effort, customModel } = resolved;
 		if (!selection.runnable) throw new Error(selection.reason);
 		const runtime = await ports.agentRuntime(selection.harness);
-		const termsWarning = termsOf(selection.harness, runtime, startedByOf(data));
+		refuseByTerms(selection.harness, runtime, startedByOf(data));
 		// Off the run's path: a slow or failing title never delays it (#1101).
 		const alert = data.alerts?.[0];
 		const firstText =
@@ -581,7 +581,6 @@ async function runJobInternal(
 				accessLevel,
 				...(data.agentMode ? { agentMode: data.agentMode } : {}),
 				...(data.unattended ? { unattended: true } : {}),
-				...(termsWarning ? { termsWarning } : {}),
 				...(data.waitForAsks ? { waitForAsks: true } : {}),
 				...(data.toolFree ? { toolFree: true } : {}),
 				...(data.scheduled?.alwaysAllow?.length
@@ -1122,7 +1121,7 @@ async function runFollowUp(
 			);
 		const runtime = await ports.agentRuntime(harness);
 		// A follow-up is a person's message; only a recovered alert or schedule run is nobody's.
-		const termsWarning = termsOf(
+		refuseByTerms(
 			harness,
 			runtime,
 			data.unattended ? startedByOf(data) : "person",
@@ -1350,7 +1349,6 @@ async function runFollowUp(
 				...(accessLevel ? { accessLevel } : {}),
 				// A recovered alert-started run is still nobody's to answer (#818, #981).
 				...(data.unattended ? { unattended: true } : {}),
-				...(termsWarning ? { termsWarning } : {}),
 				onSpawn: (pid) => keepReceipt(runDir, pid),
 				...runOptionsOf(runtime, data),
 				...(await secretOptions(ports, id, runtime)),
@@ -1805,22 +1803,18 @@ export function followUpModelSource(
 	return now.model === model ? now.source : "operator";
 }
 
-/**
- * The run's sign-in terms on the env it launches with: a refusal throws its reason before
- * the agent starts, a warning rides the run (#1252).
- */
-function termsOf(
+/** Throws, before the agent starts, when the sign-in this run's env uses bars this starter (#1252). */
+function refuseByTerms(
 	harness: HarnessId,
 	runtime: AgentRuntime,
 	startedBy: StartedBy,
-): string | undefined {
+): void {
 	const gate = harnessTermsGate(
 		harness,
 		{ ...process.env, ...runtime.env },
 		startedBy,
 	);
-	if (gate && "refuse" in gate) throw new Error(gate.refuse);
-	return gate?.warn;
+	if (gate) throw new Error(gate.refuse);
 }
 
 /** A run's spawn inputs from Settings → Agent (#907). */

@@ -61,15 +61,6 @@ export const codex = defineAgent({
 				},
 			},
 		],
-		precedence: {
-			first: "env",
-			source: {
-				url: "https://github.com/openai/codex/blob/main/codex-rs/login/src/auth/manager.rs",
-				clause:
-					"// API key via env var takes precedence over any other auth method.",
-				readOn: "2026-11-26",
-			},
-		},
 	},
 	facts: {
 		// codex-acp 2.5.0 advertises `compact`, taking no input; retention depends on the model and request (#1024).

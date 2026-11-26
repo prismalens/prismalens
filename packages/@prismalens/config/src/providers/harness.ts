@@ -30,7 +30,6 @@ import {
 	type Lines,
 	type RunStarter,
 	type SignInMethod,
-	type SignInPrecedence,
 	type TermsGate,
 	termsGate,
 } from "@prismalens/providers/agents";
@@ -129,11 +128,8 @@ export interface HarnessAccess extends LevelFacts {
 type ProductFacts = Omit<AgentFacts, "lines"> & {
 	/** A lettered tile, only where the agent has no published logo (#1101). */
 	mark?: AgentMarkFact;
-	/** Its sign-in methods with their vendor's terms, and which wins when two apply (#1252). */
-	signIn: {
-		methods: readonly SignInMethod[];
-		precedence?: SignInPrecedence;
-	};
+	/** Its sign-in methods with their vendor's terms (#1252). */
+	signIn: { methods: readonly SignInMethod[] };
 };
 
 /** Two letters for an agent with no published logo; one with a logo has its art in `assets/brands.ts`. */
@@ -160,13 +156,9 @@ function productOf(id: HarnessId): ProductFacts & { lines: Lines } {
 	const a = DESCRIBED.get(id);
 	if (!a)
 		throw new Error(`agent ${id} has no descriptor in @prismalens/providers`);
-	const signIn = {
-		methods: a.auth?.methods ?? [],
-		...(a.auth?.precedence ? { precedence: a.auth.precedence } : {}),
-	};
 	return {
 		...a.facts,
-		signIn,
+		signIn: { methods: a.auth?.methods ?? [] },
 		...("letters" in a.mark ? { mark: a.mark } : {}),
 	};
 }

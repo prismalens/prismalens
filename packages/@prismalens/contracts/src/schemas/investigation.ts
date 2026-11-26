@@ -299,8 +299,6 @@ export const RunFidelitySchema = /* @__PURE__ */ lazySchema(() =>
 		ranAccess: AccessLevelSchema.optional(),
 		/** An alert started the run: past reads, every ask was refused at once (#818 w5-29). */
 		unattended: z.boolean().optional(),
-		/** It ran on a sign-in path whose terms PrismaLens has not read, and why (#1252). */
-		termsWarning: z.string().optional(),
 		/** The model id the run asked the harness for; absent when the harness chose its own. */
 		model: z.string().optional(),
 		/** Where that id came from (#337 run e, G11). Additive; older records have none. */

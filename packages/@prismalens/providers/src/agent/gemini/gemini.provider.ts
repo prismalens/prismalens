@@ -60,15 +60,6 @@ export const gemini = defineAgent({
 				},
 			},
 		],
-		precedence: {
-			first: "login",
-			source: {
-				url: "https://github.com/google-gemini/gemini-cli/blob/main/packages/cli/src/validateNonInterActiveAuth.ts",
-				clause:
-					"const effectiveAuthType = configuredAuthType || getAuthTypeFromEnv();",
-				readOn: "2026-11-26",
-			},
-		},
 	},
 	facts: {
 		// Gemini's implicit caching states no TTL (#1024).

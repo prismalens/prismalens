@@ -11,7 +11,6 @@ import {
 export {
 	type SignInEnv,
 	type SignInMethod,
-	type SignInPrecedence,
 	TERMS_RUNS,
 	type Terms,
 	type TermsRuns,

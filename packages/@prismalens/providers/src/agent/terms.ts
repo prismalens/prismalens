@@ -16,7 +16,7 @@ const STRICTNESS: Record<TermsRuns, number> = {
 type Env = Readonly<Record<string, string | undefined>>;
 type Auth = ProviderSpec["auth"];
 
-/** The sign-in a run will use; `other` is the one it may use instead, when the CLI's precedence leaves it open. */
+/** The sign-in a run will use; `other` is the one it may use instead, when nothing says which wins. */
 export interface AuthPath {
 	readonly method: SignInMethod;
 	readonly other?: SignInMethod;
@@ -28,16 +28,14 @@ const hits = (m: SignInMethod, env: Env) =>
 		return !!v && (!e.prefix || v.startsWith(e.prefix));
 	});
 
-/** Does setting `m`'s env make the CLI use it: its env wins, or the run then sends its ACP method? */
+/** Does setting `m`'s env make the CLI use it: the run then sends its ACP method, or no stored sign-in competes? */
 const wins = (auth: Auth, m: SignInMethod) =>
-	!!m.acp ||
-	auth?.precedence?.first === "env" ||
-	!(auth?.methods ?? []).some((s) => !s.env);
+	!!m.acp || !(auth?.methods ?? []).some((s) => !s.env);
 
 /**
  * The sign-in path a run takes. The ACP method it sends decides first; else the first
- * method whose env is set, else the CLI's stored sign-in. Where both may apply and the
- * CLI's precedence is not documented as env-first, the stricter verdict holds (#1252).
+ * method whose env is set, else the CLI's stored sign-in. Where a key and a stored sign-in
+ * may both apply with different verdicts, the stricter holds (#1252).
  */
 export function authPathOf(
 	auth: Auth,
@@ -69,12 +67,9 @@ export function runsUnder(runs: TermsRuns, startedBy: RunStarter): boolean {
 	return true;
 }
 
-export type TermsGate =
-	| { readonly refuse: string }
-	| { readonly warn: string }
-	| null;
+export type TermsGate = { readonly refuse: string } | null;
 
-/** Refuse, warn or pass a run by its sign-in path's terms, in the words the user reads. */
+/** Refuse or pass a run by its sign-in path's terms, in the words the user reads. */
 export function termsGate(
 	agent: { readonly name: string; readonly auth?: Auth },
 	env: Env,
@@ -84,13 +79,7 @@ export function termsGate(
 	const path = authPathOf(agent.auth, env, sent);
 	if (!path) return null;
 	const { method, other } = path;
-	const { runs, source, gaps } = method.terms;
-	if (runs === "unknown")
-		return startedBy === "person"
-			? null
-			: {
-					warn: `PrismaLens has not read ${agent.name}'s terms for ${method.label} (${(gaps ?? []).join("; ")}). The run used your own sign-in.`,
-				};
+	const { runs, source } = method.terms;
 	if (runsUnder(runs, startedBy)) return null;
 	const said = `its terms say "${source.clause}" (${source.url}).`;
 	const which = other

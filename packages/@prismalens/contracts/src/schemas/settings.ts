@@ -10,7 +10,6 @@ import {
 	HARNESS_IDS,
 	type HarnessId,
 	SANDBOX_STATES,
-	TERMS_RUNS,
 } from "@prismalens/config/harness";
 import { z } from "zod";
 import { SubagentLimitSchema, SubagentsOnStopSchema } from "./subagents.js";
@@ -198,15 +197,6 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 		added: z.boolean().optional(),
 		/** The agent's own login, staged in the terminal; null when it has none here (#1171). */
 		signIn: z.object({ command: z.string() }).nullable().optional(),
-		/** The sign-in method a run would use on this env, and its terms verdict; `other` when either may apply (#1252). */
-		authPath: z
-			.object({
-				method: z.string(),
-				runs: z.enum(TERMS_RUNS),
-				other: z.string().optional(),
-			})
-			.nullable()
-			.optional(),
 		/** The version it ran against the tested one; null when either is unknown. */
 		versionVsTested: z.enum(["older", "same", "newer"]).nullable().optional(),
 		/** The program Binary path names: the agent's own CLI, not its adapter; empty for the local agent. */

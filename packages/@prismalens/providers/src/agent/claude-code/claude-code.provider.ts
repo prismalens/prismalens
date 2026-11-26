@@ -69,15 +69,6 @@ export const claudeCode = defineAgent({
 				},
 			},
 		],
-		precedence: {
-			first: "env",
-			source: {
-				url: "https://code.claude.com/docs/en/authentication",
-				clause:
-					"In non-interactive mode (`-p`), the key is always used when present.",
-				readOn: "2026-11-26",
-			},
-		},
 	},
 	facts: {
 		// claude-agent-acp 0.99.1 handles `/compact` but has no idle self-compaction, and states no cache
