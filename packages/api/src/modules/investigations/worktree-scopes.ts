@@ -817,7 +817,12 @@ export interface NamedPaths {
 
 export type RewindKeep = { path: string; why: KeepWhy };
 
-export type RewindRepoRefusal = "stale" | "linked" | "no-snapshot" | "gone";
+export type RewindRepoRefusal =
+	| "stale"
+	| "linked"
+	| "no-snapshot"
+	| "gone"
+	| "too-many";
 
 /** One write's journal row: the path, and the `mode blob` (or `absent`) it was set to. */
 export interface ReceiptRow {
@@ -893,30 +898,26 @@ async function filteredPaths(
 	paths: readonly string[],
 ): Promise<Set<string>> {
 	const out = new Set<string>();
-	for (let i = 0; i < paths.length; i += 200) {
-		const batch = paths.slice(i, i + 200);
-		const raw = await store
-			.git(
-				[
-					"check-attr",
-					"-z",
-					"filter",
-					"ident",
-					"working-tree-encoding",
-					"--",
-					...batch,
-				],
-				{ work: true },
-			)
-			.catch(() => "");
-		const f = raw.split("\0");
-		for (let j = 0; j + 2 < f.length; j += 3) {
-			const value = f[j + 2];
-			if (value && value !== "unspecified" && value !== "unset")
-				out.add(f[j] as string);
-		}
+	if (!paths.length) return out;
+	// Paths go on stdin, never argv; a failed check throws, so nothing is written unchecked.
+	const raw = await store.git(
+		["check-attr", "-z", "--stdin", "filter", "ident", "working-tree-encoding"],
+		{ work: true, input: `${paths.join("\0")}\0` },
+	);
+	const f = raw.split("\0");
+	for (let j = 0; j + 2 < f.length; j += 3) {
+		const value = f[j + 2];
+		if (value && value !== "unspecified" && value !== "unset")
+			out.add(f[j] as string);
 	}
 	return out;
+}
+
+/** A delete that only an already-missing file may skip: any other failure stops the writes. */
+async function unlinkKnown(path: string): Promise<void> {
+	await unlink(path).catch((e: NodeJS.ErrnoException) => {
+		if (e.code !== "ENOENT") throw e;
+	});
 }
 
 export interface WriteResult {
@@ -974,8 +975,12 @@ export async function writeStates(
 				for (const r of receipt) {
 					const was = o.backup.get(r.path) ?? "absent";
 					if (!(await ancestorsPlain(store.root, r.path))) continue;
+					if ((await stateOnDisk(store, r.path)) !== r.wrote) {
+						kept.push({ path: r.path, why: "changed-while-rewinding" });
+						continue;
+					}
 					if (was === "absent") {
-						await unlink(join(store.root, r.path)).catch(() => {});
+						await unlinkKnown(join(store.root, r.path));
 						continue;
 					}
 					await store.git(["checkout-index", "-f", "--", r.path], {
@@ -1005,9 +1010,8 @@ export async function writeStates(
 				continue;
 			}
 			const target = o.targets.get(p) ?? "absent";
-			if (target === "absent") {
-				await unlink(join(store.root, p)).catch(() => {});
-			} else await store.git(["checkout-index", "-f", "--", p], work);
+			if (target === "absent") await unlinkKnown(join(store.root, p));
+			else await store.git(["checkout-index", "-f", "--", p], work);
 			receipt.push({ path: p, wrote: target });
 		}
 		return { receipt, kept, linked: null };
@@ -1128,7 +1132,7 @@ async function classify(
 			out.kept.push({ path: p, why: "both" });
 			continue;
 		}
-		const nameIt = turns.some((t) => namedBy.get(t.seq)?.has(p));
+		const nameIt = namedBy.get(last.seq)?.has(p) ?? false;
 		if (!nameIt && !include.has(p)) {
 			out.duringTurn.push(p);
 			continue;
@@ -1224,12 +1228,17 @@ export async function previewRewindFiles(
 				out.push({ repo: name, state: "unavailable", reason: "linked" });
 				continue;
 			}
+			// The confirm shows every path it sets back, or none: a longer list never runs.
+			if (c.revert.length > REWIND_PATHS_MAX) {
+				out.push({ repo: name, state: "unavailable", reason: "too-many" });
+				continue;
+			}
 			const token = await tokenOf(store, now.commit);
 			out.push({
 				repo: name,
 				state: "ok",
 				...token,
-				revert: c.revert.slice(0, REWIND_PATHS_MAX),
+				revert: c.revert,
 				duringTurn: c.duringTurn.slice(0, REWIND_PATHS_MAX),
 				kept: c.kept.slice(0, REWIND_PATHS_MAX),
 				commits: await commitsSince(store, cut.T, token.head),
@@ -1412,6 +1421,15 @@ export async function rewindFiles(
 		);
 		if (c.linkedAncestor)
 			return { state: "refused", repo: repoName, reason: "linked", paths: [] };
+		if (
+			c.revert.filter((r) => !o.include.has(r.path)).length > REWIND_PATHS_MAX
+		)
+			return {
+				state: "refused",
+				repo: repoName,
+				reason: "too-many",
+				paths: [],
+			};
 		await blobsPresent(store, c.targets);
 		const target = await targetCommit(
 			store,
@@ -1478,7 +1496,14 @@ export async function undoRewindFiles(
 		);
 		const expected = new Map(receipt.map((r) => [r.path, r.wrote]));
 		const byTurn = new Set<string>();
-		for (const t of later)
+		// A path changed between turns is the user's too: a turn's end state alone can't vouch for it.
+		const between = new Set<string>();
+		let from = await refOf(store, opRef(o.of, "target"));
+		for (const t of later) {
+			if (from)
+				for (const p of await changedPaths(store, from, t.start as string))
+					between.add(p);
+			from = t.end as string;
 			for (const p of await changedPaths(
 				store,
 				t.start as string,
@@ -1490,6 +1515,7 @@ export async function undoRewindFiles(
 					(await statesAt(store, t.end as string, [p])).get(p) ?? "absent",
 				);
 			}
+		}
 		await writeMeta(store, o.op, {
 			kind: "undo",
 			rewindId: o.rewindId,
@@ -1510,7 +1536,7 @@ export async function undoRewindFiles(
 				kept.push({ path: p, why: "linked" });
 				continue;
 			}
-			if (now.get(p) !== expected.get(p)) {
+			if (now.get(p) !== expected.get(p) || between.has(p)) {
 				kept.push({ path: p, why: byTurn.has(p) ? "both" : "yours" });
 				continue;
 			}

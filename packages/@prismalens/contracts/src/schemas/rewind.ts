@@ -37,6 +37,7 @@ const RepoUnavailableReason = /* @__PURE__ */ lazySchema(() =>
 		"no-snapshot",
 		"removed",
 		"linked",
+		"too-many",
 	]),
 );
 
@@ -134,7 +135,7 @@ export const RewindResultSchema = /* @__PURE__ */ lazySchema(() =>
 		}),
 		z.object({
 			state: z.literal("refused"),
-			reason: z.enum([...REWIND_BLOCKS, "stale", "conflict"]),
+			reason: z.enum([...REWIND_BLOCKS, "stale", "conflict", "interrupted"]),
 			paths: z.array(RewindPathSchema),
 		}),
 	]),
@@ -161,6 +162,7 @@ export const RewindUndoResultSchema = /* @__PURE__ */ lazySchema(() =>
 				"stale",
 				"superseded",
 				"already-undone",
+				"interrupted",
 			]),
 			paths: z.array(RewindPathSchema),
 		}),

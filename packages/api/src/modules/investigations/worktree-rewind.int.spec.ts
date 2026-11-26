@@ -17,6 +17,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { REWIND_PATHS_MAX, type RunWorkspace } from "@prismalens/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -43,6 +44,11 @@ import {
 	undoRewindFiles,
 	writeStates,
 } from "./worktree-scopes.js";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const fs = await importOriginal<typeof import("node:fs/promises")>();
+	return { ...fs, unlink: vi.fn(fs.unlink) };
+});
 
 vi.setConfig({ testTimeout: 50_000 }); // slowest test 16448 ms; 3x, rounded up to the second, at least 5 s (#1154)
 
@@ -177,6 +183,16 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 		expect([read("a.txt"), read("agent.txt"), read("README.md")]).toEqual([A0, null, R1]);
 	});
 
+	it("a path named by an earlier turn but changed unnamed by the last turn that changed it is kept as during-turn", async () => {
+		await agentTurn();
+		await turn(TURN_SEQ + 2, () => writeFileSync(join(root, "a.txt"), A2));
+
+		const p = await okPreview(NAMED);
+
+		expect(p.duringTurn).toEqual(["a.txt"]);
+		expect(p.revert).toEqual([{ path: "agent.txt", status: "added" }]);
+	});
+
 	it("a path a tool named through a link to the worktree counts as named, as macOS's /var to /private/var", async () => {
 		const via = join(baseDir, "via");
 		dirLink(baseDir, via);
@@ -274,6 +290,26 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 		expect([read("a.txt"), read("agent.txt")]).toEqual([A1, NEW]);
 	});
 
+	it("undo keeps a file the user saved before a replacement turn changed it again as both, and leaves its bytes", async () => {
+		await agentTurn();
+		const { op } = await rewind();
+		writeFileSync(join(root, "a.txt"), "the user's save\n");
+		await turn(101, () => writeFileSync(join(root, "a.txt"), A2));
+
+		const u = done(
+			await undoRewindFiles(ws, "repo", ctx, {
+				op: randomUUID(),
+				of: op,
+				rewindId: randomUUID(),
+				afterSeq: 100,
+			}),
+		);
+
+		expect(u.reverted).toEqual(["agent.txt"]);
+		expect(u.kept).toEqual([{ path: "a.txt", why: "both" }]);
+		expect([read("a.txt"), read("agent.txt")]).toEqual([A2, NEW]);
+	});
+
 	it("undo keeps a file the user saved after the rewind as yours and leaves its bytes", async () => {
 		await agentTurn();
 		const { op } = await rewind();
@@ -341,11 +377,12 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 		expect(await interruptedWritten(gitDir, op, await snapshotNow(ws, "repo", ctx))).toEqual([]);
 	});
 
-	it("an operation interrupted mid-write names the paths it may have written, and Restore puts their backup back", async () => {
+	it("an operation interrupted mid-write names only the path it wrote, and Restore puts that path's backup back", async () => {
 		await agentTurn();
 		const { op } = await rewind();
 		const { gitDir } = await store();
-		// The crash point: target written, no receipt or after.
+		// The crash point: a.txt written, agent.txt not yet; no receipt or after.
+		writeFileSync(join(root, "agent.txt"), NEW);
 		await storeGit(gitDir, ["update-ref", "-d", `refs/pl/op/${op}/receipt`]);
 		await storeGit(gitDir, ["update-ref", "-d", `refs/pl/op/${op}/after`]);
 		expect([...((await storeOps(gitDir)).get(op)?.refs ?? [])].toSorted()).toEqual([
@@ -355,11 +392,11 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 		]);
 
 		const written = await interruptedWritten(gitDir, op, await snapshotNow(ws, "repo", ctx));
-		expect(written.toSorted()).toEqual(["a.txt", "agent.txt"]);
+		expect(written).toEqual(["a.txt"]);
 
 		const plan = await previewRestoreFiles(ws, "repo", ctx, op);
 		if (typeof plan === "string") throw new Error(`expected a plan, got ${plan}`);
-		expect(plan.overwrite.toSorted()).toEqual(["a.txt", "agent.txt"]);
+		expect(plan.overwrite).toEqual(["a.txt"]);
 		expect([plan.created, plan.damaged]).toEqual([[], []]);
 		const r = done(
 			await restoreFiles(ws, "repo", ctx, {
@@ -369,7 +406,7 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 				include: new Set(),
 			}),
 		);
-		expect(r.reverted.toSorted()).toEqual(["a.txt", "agent.txt"]);
+		expect(r.reverted).toEqual(["a.txt"]);
 		expect(r.kept).toEqual([]);
 		expect([read("a.txt"), read("agent.txt")]).toEqual([A1, NEW]);
 	});
@@ -394,6 +431,28 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 		expect(r.reverted).toEqual(["agent.txt"]);
 		expect(r.kept).toEqual([{ path: "a.txt", why: "damaged" }]);
 		expect([read("a.txt"), read("agent.txt")]).toEqual(["edited after the crash\n", NEW]);
+	});
+
+	it("Restore writes a damaged file's backup back when the user ticks it", async () => {
+		await agentTurn();
+		const { op } = await rewind();
+		writeFileSync(join(root, "a.txt"), "edited after the crash\n");
+
+		const plan = await previewRestoreFiles(ws, "repo", ctx, op);
+		if (typeof plan === "string") throw new Error(`expected a plan, got ${plan}`);
+		expect(plan.damaged).toEqual(["a.txt"]);
+		const r = done(
+			await restoreFiles(ws, "repo", ctx, {
+				op: randomUUID(),
+				of: op,
+				expect: { head: plan.head, tree: plan.tree },
+				include: new Set(["a.txt"]),
+			}),
+		);
+
+		expect(r.reverted.toSorted()).toEqual(["a.txt", "agent.txt"]);
+		expect(r.kept).toEqual([]);
+		expect([read("a.txt"), read("agent.txt")]).toEqual([A1, NEW]);
 	});
 
 	it("a path whose attributes set a filter or ident is kept as filtered and never written", async () => {
@@ -475,6 +534,94 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 		expect(readFileSync(join(outside, "f.txt"), "utf8")).toBe("OUTSIDE\n");
 	});
 
+	it("a save made after a write and before a link stops the writes is kept, not rolled back over", async () => {
+		mkdirSync(join(root, "sub"));
+		writeFileSync(join(root, "sub", "f.txt"), "s0\n");
+		git(["add", "-A"]);
+		git(["commit", "-q", "-m", "sub"]);
+		const outside = join(baseDir, "outside");
+		mkdirSync(outside);
+		writeFileSync(join(root, "a.txt"), A1);
+		const s = await store();
+		const result = await withStoreLock(s.gitDir, async () => {
+			const backup = await takeSnapshot(s);
+			const paths = ["a.txt", "sub/f.txt"];
+			const states = await statesAt(s, backup.commit, paths);
+			const a0 = (await statesAt(s, git(["rev-parse", "HEAD"]), ["a.txt"])).get("a.txt") as string;
+			const racing: typeof s = {
+				...s,
+				git: async (args, o) => {
+					const out = await s.git(args, o);
+					if (args[0] === "checkout-index" && args.at(-1) === "a.txt") {
+						writeFileSync(join(root, "a.txt"), "saved meanwhile\n");
+						rmSync(join(root, "sub"), { recursive: true });
+						dirLink(outside, join(root, "sub"));
+					}
+					return out;
+				},
+			};
+			return writeStates(racing, {
+				base: backup.commit,
+				targets: new Map(paths.map((p) => [p, a0])),
+				backup: states,
+			});
+		});
+
+		expect(result).toEqual({
+			receipt: [],
+			kept: [{ path: "a.txt", why: "changed-while-rewinding" }],
+			linked: "sub/f.txt",
+		});
+		expect(read("a.txt")).toBe("saved meanwhile\n");
+	});
+
+	it("an attribute check git cannot run stops the writes before any file is written", async () => {
+		writeFileSync(join(root, "a.txt"), A1);
+		const s = await store();
+		const run = withStoreLock(s.gitDir, async () => {
+			const backup = await takeSnapshot(s);
+			const states = await statesAt(s, backup.commit, ["a.txt"]);
+			const target = await statesAt(s, ws.repos[0]?.head as string, ["a.txt"]);
+			const failing: typeof s = {
+				...s,
+				git: (args, o) =>
+					args[0] === "check-attr" ? Promise.reject(new Error("spawn E2BIG")) : s.git(args, o),
+			};
+			return writeStates(failing, { base: backup.commit, targets: target, backup: states });
+		});
+
+		await expect(run).rejects.toThrow("spawn E2BIG");
+		expect(read("a.txt")).toBe(A1);
+	});
+
+	it("a delete the filesystem refuses stops the writes and leaves the operation recoverable, not recorded as written", async () => {
+		await agentTurn();
+		const p = await okPreview(NAMED);
+		const op = randomUUID();
+		vi.mocked(unlink).mockRejectedValueOnce(
+			Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }),
+		);
+
+		await expect(
+			rewindFiles(ws, "repo", ctx, {
+				op,
+				rewindId: randomUUID(),
+				fromSeq: MESSAGE_SEQ,
+				named: NAMED,
+				include: new Set(),
+				expect: { head: p.head, tree: p.tree },
+			}),
+		).rejects.toThrow("EACCES");
+
+		expect(read("agent.txt")).toBe(NEW);
+		const { gitDir } = await store();
+		expect([...((await storeOps(gitDir)).get(op)?.refs ?? [])].toSorted()).toEqual([
+			"backup",
+			"meta",
+			"target",
+		]);
+	});
+
 	it("a changed path under a folder the user replaced by a link makes the preview unavailable and refuses the rewind as linked, writing nothing (R17)", async () => {
 		mkdirSync(join(root, "sub"));
 		writeFileSync(join(root, "sub", "f.txt"), "s0\n");
@@ -511,18 +658,44 @@ describe("rewind, undo and restore of a thread's files (#1193)", () => {
 		expect(read("a.txt")).toBe(A1);
 	});
 
-	it(`preview caps revert and duringTurn at REWIND_PATHS_MAX (${REWIND_PATHS_MAX}) paths each`, async () => {
+	it(`more than REWIND_PATHS_MAX (${REWIND_PATHS_MAX}) files to set back makes the preview unavailable as too-many and refuses the rewind, writing nothing`, async () => {
 		const names = Array.from({ length: REWIND_PATHS_MAX + 1 }, (_, i) => `n/f${String(i).padStart(3, "0")}.txt`);
-		const unnamed = names.map((n) => n.replace("n/", "u/"));
 		mkdirSync(join(root, "n"));
-		mkdirSync(join(root, "u"));
 		await turn(TURN_SEQ, () => {
-			for (const n of [...names, ...unnamed]) writeFileSync(join(root, n), "x\n");
+			for (const n of names) writeFileSync(join(root, n), "x\n");
+		});
+		const named: NamedPaths[] = [{ seq: TURN_SEQ, paths: names }];
+
+		const [preview] = await previewRewindFiles(ws, MESSAGE_SEQ, named, ctx);
+		expect(preview).toEqual({ repo: "repo", state: "unavailable", reason: "too-many" });
+
+		const s = await store();
+		const now = await takeSnapshot(s, { ref: "refs/pl/test/now" });
+		const tree = (await storeGit(s.gitDir, ["rev-parse", `${now.commit}^{tree}`])).trim();
+		const r = await rewindFiles(ws, "repo", ctx, {
+			op: randomUUID(),
+			rewindId: randomUUID(),
+			fromSeq: MESSAGE_SEQ,
+			named,
+			include: new Set(),
+			expect: { head: now.head, tree },
 		});
 
-		const p = await okPreview([{ seq: TURN_SEQ, paths: names }]);
+		expect(r).toEqual({ state: "refused", repo: "repo", reason: "too-many", paths: [] });
+		expect(names.map((n) => read(n)).filter((t) => t !== "x\n")).toEqual([]);
+	});
 
-		expect(p.revert.map((r) => r.path)).toEqual(names.slice(0, REWIND_PATHS_MAX));
+	it(`preview caps duringTurn at REWIND_PATHS_MAX (${REWIND_PATHS_MAX}) paths`, async () => {
+		const unnamed = Array.from({ length: REWIND_PATHS_MAX + 1 }, (_, i) => `u/f${String(i).padStart(3, "0")}.txt`);
+		mkdirSync(join(root, "u"));
+		await turn(TURN_SEQ, () => {
+			writeFileSync(join(root, "a.txt"), A1);
+			for (const n of unnamed) writeFileSync(join(root, n), "x\n");
+		});
+
+		const p = await okPreview([{ seq: TURN_SEQ, paths: ["a.txt"] }]);
+
+		expect(p.revert).toEqual([{ path: "a.txt", status: "modified" }]);
 		expect(p.duringTurn).toEqual(unnamed.slice(0, REWIND_PATHS_MAX));
 	});
 });
