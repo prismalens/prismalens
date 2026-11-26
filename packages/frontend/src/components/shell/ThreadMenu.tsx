@@ -25,6 +25,7 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { userMovedThreads } from "@/hooks/use-list-hold";
 import { useOperator } from "@/hooks/use-operator";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -167,6 +168,7 @@ export function useThreadCtx(
 	};
 	const doArchive = () => {
 		const on = !thread.archivedAt;
+		userMovedThreads();
 		archive(on).then(
 			() =>
 				on &&
@@ -215,13 +217,14 @@ export function useThreadCtx(
 				)
 				.finally(() => setNaming(false));
 		}),
-		togglePin: done(
-			() =>
-				void threadMenuMutations
-					.pin(queryClient)
-					.mutate({ id: thread.id, on: !thread.pinnedAt })
-					.catch(() => {}),
-		),
+		togglePin: done(() => {
+			// The reader moved this row: the list applies it now, not after they leave (#1247 D25).
+			userMovedThreads();
+			void threadMenuMutations
+				.pin(queryClient)
+				.mutate({ id: thread.id, on: !thread.pinnedAt })
+				.catch(() => {});
+		}),
 		toggleArchive: done(doArchive),
 		settle: done(() => onSettle?.()),
 		open: done(() => void navigate(threadLink(thread))),
