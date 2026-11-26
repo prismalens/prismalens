@@ -285,6 +285,8 @@ export default defineChecks([
 					{
 						subject: { kind: "none" },
 						text: `fake-session:rewind-caller Edit the last message of ${target}`,
+						// The fake sessions speak as Claude Code; the sim's default agent may be another.
+						harness: "claude-code",
 					},
 				);
 				return investigationId;
