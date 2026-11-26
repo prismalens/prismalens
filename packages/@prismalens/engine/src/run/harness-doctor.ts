@@ -69,6 +69,8 @@ export interface HarnessProbeResult {
 	models?: AcpOfferedModel[];
 	/** What it reported as its current model, its effort option and whether it takes images (R4.2, R4.3). */
 	servedModel?: string | null;
+	/** The served model, when the agent's own config options list a Fast mode for it (#1180). */
+	fastModel?: string;
 	effort?: AcpOfferedEffort | null;
 	/** The agent's own permission modes and effort levels, by its names (#673 w21); null when it offered none. */
 	modes?: AcpOfferedMode[] | null;
@@ -343,6 +345,7 @@ export async function probeHarness(
 			companionVersion: await companion(),
 			...(models.length ? { models } : {}),
 			servedModel: selectedModel(options),
+			...(fastModelOf(options) ? { fastModel: fastModelOf(options) } : {}),
 			effort,
 			modes: modes.length ? modes : null,
 			efforts: effortLevels(effort),
@@ -382,4 +385,14 @@ export async function probeHarness(
 	} finally {
 		removeRunDir(runDir);
 	}
+}
+
+/**
+ * The current model when the session lists a `fast` option: claude-agent-acp 0.109.0
+ * (`session-fast-mode.js`) adds it only while the current model supports Fast mode (#1180).
+ */
+export function fastModelOf(options: unknown): string | undefined {
+	if (!Array.isArray(options)) return undefined;
+	const listed = options.some((o: { id?: unknown } | null) => o?.id === "fast");
+	return listed ? (selectedModel(options) ?? undefined) : undefined;
 }

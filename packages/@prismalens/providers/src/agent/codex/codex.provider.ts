@@ -84,6 +84,12 @@ export const codex = defineAgent({
 		// Real-model runs were on codex 0.163.0: scripts/acp-admission.ts 3 of 3, gpt-6-luna (#846), and #848 live runs. Must equal @prismalens/agent-adapters' pin.
 		loginHint: "`codex login`, or `OPENAI_API_KEY` in env",
 		signInArgs: ["login"],
+		signOutArgs: ["logout"],
+		switchAccountArgs: ["login"],
+		updateFallbackArgs: ["update"],
+		brew: { cask: "codex" },
+		updateLine:
+			"Download the latest release from github.com/openai/codex/releases",
 		loginEnvKeys: ["CODEX_HOME"],
 	},
 });

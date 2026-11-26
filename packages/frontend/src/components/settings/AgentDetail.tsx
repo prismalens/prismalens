@@ -8,9 +8,13 @@
  */
 
 import type { HarnessId } from "@prismalens/config/harness";
-import { type HarnessStatus, RUNTIME_HOST_ONLY } from "@prismalens/contracts";
+import {
+	customModelsOf,
+	type HarnessStatus,
+	RUNTIME_HOST_ONLY,
+} from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
-import { ArrowDown, ArrowLeft, ArrowUp, Star, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, Heart, Star, X } from "lucide-react";
 import { type FormEvent, useRef, useState } from "react";
 import { parse, quote } from "shell-quote";
 import { AgentMark, MakerMark } from "@/components/agent/AgentMark";
@@ -20,7 +24,16 @@ import {
 	useAgentChoice,
 } from "@/components/agent/AgentPicker";
 import { providerState } from "@/components/agent/agent-choice";
-import { agentModels, makerOf, move } from "@/components/agent/model-list";
+import {
+	agentModels,
+	filterModels,
+	isFavourite,
+	makerOf,
+	modelLabels,
+	move,
+	providerOf,
+	toggleFavourite,
+} from "@/components/agent/model-list";
 import { fact } from "@/components/kit/fact";
 import { Mark } from "@/components/kit/Mark";
 import { DestructiveConfirm } from "@/components/shared/DestructiveConfirm";
@@ -354,8 +367,10 @@ export function modelsLine(
 function ModelsSection({ agent }: { agent: HarnessStatus }) {
 	const id = agent.id as HarnessId;
 	const { customModels, hiddenModels, modelOrder, models } = useAgentChoice();
+	const favourites = useHarnessSettings().data?.favourites ?? [];
 	const update = useUpdateHarnessSettings();
-	const custom = customModels[id] ?? [];
+	const custom = customModelsOf(customModels[id]);
+	const customIds = custom.map((m) => m.id);
 	const hidden = hiddenModels[id] ?? [];
 	const list = agentModels(agent, {
 		custom,
@@ -364,6 +379,17 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 	});
 	const ids = list.map((m) => m.id);
 	const shown = list.filter((m) => !m.hidden).length;
+	const [query, setQuery] = useState("");
+	const nameOf = (m: string) =>
+		custom.find((c) => c.id === m)?.name || (modelName(agent, m) ?? m);
+	const visible = filterModels(
+		list.map((m) => ({
+			...m,
+			name: nameOf(m.id),
+			provider: providerOf(id, m.id),
+		})),
+		query,
+	);
 	const [draft, setDraft] = useState("");
 	const [refusal, setRefusal] = useState<string | null>(null);
 	const [removing, setRemoving] = useState<string | null>(null);
@@ -381,7 +407,7 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 		}
 		setRefusal(null);
 		update.mutate(
-			{ customModels: { [id]: [...custom, model] } },
+			{ customModels: { [id]: [...customIds, model] } },
 			{ onSuccess: () => setDraft("") },
 		);
 	};
@@ -408,9 +434,24 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 			}
 			description={modelsLine(agent, models[id])}
 		>
+			{list.length > 0 && (
+				<Input
+					value={query}
+					onChange={(e) => setQuery(e.target.value)}
+					placeholder="Filter models"
+					aria-label="Filter models"
+					className="mb-2 h-8 w-72 max-md:w-full"
+					data-testid="agent-models-filter"
+				/>
+			)}
 			<Pool>
-				{list.map((m, i) => {
-					const name = modelName(agent, m.id) ?? m.id;
+				{visible.map((m) => {
+					const name = m.name;
+					const i = ids.indexOf(m.id);
+					const favourite = isFavourite(favourites, id, m.id);
+					const labels = modelLabels(agent.id, m.id, {
+						custom: custom.find((c) => c.id === m.id),
+					});
 					return (
 						<Row
 							key={m.id}
@@ -443,6 +484,21 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 										className="size-3.5"
 									/>
 									<span {...fact("model")}>{name}</span>
+									{labels.map((l) => (
+										<span
+											key={l.label}
+											className="text-meta font-normal text-text-3"
+										>
+											<Mark
+												id="modelCapability"
+												state={l.label}
+												word={l.word}
+												testId={`agent-model-label-${l.label}`}
+											>
+												{l.word}
+											</Mark>
+										</span>
+									))}
 									{m.custom && (
 										<span className="text-meta font-normal text-text-3">
 											Added by you
@@ -453,6 +509,25 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 							meta={<Mono>{m.id}</Mono>}
 							trailing={
 								<span className="flex items-center gap-1">
+									<Button
+										variant="ghost"
+										size="icon"
+										aria-label={`Favourite ${name}`}
+										aria-pressed={favourite}
+										onClick={() =>
+											update.mutate({
+												favourites: toggleFavourite(favourites, id, m.id),
+											})
+										}
+										data-testid="agent-model-favourite"
+									>
+										<Heart
+											className={cn(
+												"size-3.5",
+												favourite && "fill-current text-text-1",
+											)}
+										/>
+									</Button>
 									{m.custom && (
 										<Button
 											variant="ghost"
@@ -556,7 +631,7 @@ function ModelsSection({ agent }: { agent: HarnessStatus }) {
 				error={update.error}
 				onConfirm={() =>
 					update.mutateAsync({
-						customModels: { [id]: custom.filter((m) => m !== removing) },
+						customModels: { [id]: customIds.filter((m) => m !== removing) },
 					})
 				}
 			/>

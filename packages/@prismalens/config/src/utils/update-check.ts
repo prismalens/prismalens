@@ -254,3 +254,51 @@ export async function refreshUpdateCache(
 export function isExactVersion(version: string): boolean {
 	return semver.valid(version) === version;
 }
+
+/** Each agent package's newest npm version and when it was read (#1180). */
+export type AgentReleaseCache = Record<
+	string,
+	{ checkedAt: number; latest: string | null }
+>;
+
+/** The `latest` dist-tag of an npm package, or null on anything unexpected. */
+export async function fetchNpmLatest(
+	pkg: string,
+	fetchImpl: typeof fetch = fetch,
+): Promise<string | null> {
+	try {
+		const res = await fetchImpl(`https://registry.npmjs.org/${pkg}/latest`, {
+			headers: { accept: "application/json" },
+			signal: AbortSignal.timeout(TIMEOUT_MS),
+		});
+		if (!res.ok) return null;
+		const { version } = (await res.json()) as { version?: unknown };
+		return typeof version === "string" && semver.valid(version)
+			? version
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The agents' npm releases, each read at most once a day, and only while About's
+ * Check for updates is on: off, nothing is fetched and the cache is returned as is.
+ */
+export async function refreshAgentReleases(
+	packages: readonly string[],
+	cache: AgentReleaseCache,
+	opts: { enabled: boolean; now: number; fetchImpl?: typeof fetch },
+): Promise<AgentReleaseCache> {
+	if (!opts.enabled) return cache;
+	const next = { ...cache };
+	for (const pkg of new Set(packages)) {
+		const seen = cache[pkg];
+		if (seen && opts.now - seen.checkedAt < CACHE_TTL_MS) continue;
+		next[pkg] = {
+			checkedAt: opts.now,
+			latest: await fetchNpmLatest(pkg, opts.fetchImpl),
+		};
+	}
+	return next;
+}

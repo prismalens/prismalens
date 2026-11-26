@@ -121,13 +121,16 @@ export {
 	writeUpdateChannel,
 } from "./utils/update-channel.js";
 export {
+	type AgentReleaseCache,
 	doNotTrack,
 	fetchLatestVersion,
+	fetchNpmLatest,
 	isExactVersion,
 	isNewer,
 	isStale,
 	RELEASES_URL,
 	readCache,
+	refreshAgentReleases,
 	refreshUpdateCache,
 	releaseReady,
 	type UpdateCheckCache,
