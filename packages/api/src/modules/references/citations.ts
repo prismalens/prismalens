@@ -204,11 +204,10 @@ export class Citations {
 				sourceKey: c.key,
 			};
 			await this.prisma.$transaction(async (tx) => {
-				// The first write takes SQLite's one write lock, so no reset commits between the
-				// generation check and the insert: a citation read before a reset is never written.
-				await tx.messageCitation.updateMany({
-					where,
-					data: { sourceTurn: msg.turn },
+				// A delete that matches no row (turns start at 1) takes SQLite's one write lock and changes
+				// nothing, so no reset commits between the check and the write; a stale read writes nothing.
+				await tx.messageCitation.deleteMany({
+					where: { ...where, sourceTurn: -1 },
 				});
 				if ((await this.generation(c.threadId, tx)) !== gen) return;
 				await tx.messageCitation.upsert({

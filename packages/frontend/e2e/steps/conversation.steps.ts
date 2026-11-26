@@ -1293,11 +1293,16 @@ When(
 Then(
 	/^(?:the )?(?:ask )?card reads "(You approved it|You denied it)"$/,
 	async ({ page }, text: string) => {
-		const expand = page.getByTestId("tools-expand");
-		if (await expand.isVisible().catch(() => false)) {
-			await expand.click();
-		}
 		const line = page.getByTestId("step-ask");
+		// The group may render, or fold, after the answer lands: open every folded one until the
+		// ask's line shows, rather than checking for a fold at one instant.
+		const folded = page.locator(
+			'[data-testid="transcript-tools"][data-folded] [data-testid="tools-expand"]',
+		);
+		await expect(async () => {
+			for (const b of await folded.all()) await b.click();
+			await expect(line).toBeVisible({ timeout: 1000 });
+		}).toPass({ timeout: 15_000 });
 		const expectedState = text === "You approved it" ? "approved" : "denied";
 		await expect(line).toHaveAttribute("data-state", expectedState);
 		await expect(line).toHaveText(text);

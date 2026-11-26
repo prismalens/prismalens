@@ -498,6 +498,33 @@ ${"b".repeat(1999)}…
 		expect(r.body.error).toBe("not_found");
 	});
 
+	it("leaves a newer citation of the same key untouched when a stale write lands after it", async () => {
+		const src = await thread("Stale over new", [ask(0, "First"), answer(1, "one"), answer(2, "two")]);
+		const reader = await thread("Stale reader", [ask(0, "Read it")]);
+		const ref = { references: [{ kind: "message" as const, id: messageRefId(src, "main:2"), label: "two" }] };
+		const read = citations.message.bind(citations);
+		const spy = vi.spyOn(citations, "message").mockImplementationOnce(async (t, k) => {
+			const stale = await read(t, k);
+			const investigations = pl.resolve<InvestigationsService>(InvestigationsService);
+			if (!investigations) throw new Error("InvestigationsService is not provided");
+			await investigations.clearEvents(src);
+			// The rerun puts main:2 in turn 2, and the user cites it again before the stale write lands.
+			await (await pl.prisma()).investigationEvent.createMany({
+				data: [ask(0, "First"), answer(1, "one"), ask(2, "Second")].map((e) => ({
+					investigationId: src,
+					seq: e.seq,
+					branchId: "main",
+					event: JSON.stringify(e),
+				})),
+			});
+			await svc.cite(reader, ref);
+			return stale;
+		});
+		await svc.cite(reader, ref);
+		spy.mockRestore();
+		expect((await citations.list(reader)).cites.map((c) => [c.key, c.turn])).toEqual([["main:2", 2]]);
+	});
+
 	it("reads a 300-row turn whole when the cited message sits past its opening half", async () => {
 		const prisma = await pl.prisma();
 		const mid = await thread("Mid cite", [ask(0, "Go")]);
