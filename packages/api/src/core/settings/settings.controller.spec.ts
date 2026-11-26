@@ -243,3 +243,36 @@ describe("SettingsController host-only update routes (#724)", () => {
 		expect(install).toHaveBeenCalledWith("9.9.9", false);
 	});
 });
+
+describe("SettingsController PrismaLens set routes (#1180 §3.3)", () => {
+	type Proc = { "~orpc": { handler: (args: { input: unknown; context: unknown }) => Promise<unknown> } };
+	const SOURCE = { agent: "codex", path: "/home/u/.codex/config.toml", key: "docs" };
+	// The host's own browser: the owner, from loopback, with a same-host origin.
+	const local = {
+		request: {
+			...host.request,
+			socket: { remoteAddress: "127.0.0.1", localPort: 3000 },
+			headers: { host: "127.0.0.1:3000", origin: "http://127.0.0.1:3000" },
+		},
+	};
+
+	it("refuses the preview and a reveal to a paired device without reading the source, and answers the host", async () => {
+		const preview = vi.fn(async () => ({ shown: "preview" }));
+		const reveal = vi.fn(async () => ({ shown: "row" }));
+		const routes = new SettingsController(
+			{} as SettingsService,
+			{} as HarnessService,
+			telemetryStub(),
+			{} as UpdateService,
+			{} as DiagnosticsService,
+			{} as HarnessRefreshService,
+			{ preview, reveal } as unknown as AgentSetupService,
+		).agentSetupRoutes() as unknown as Record<string, Proc>;
+		const call = async (name: string, input: unknown, context: unknown) => routes[name]?.["~orpc"].handler({ input, context });
+		await expect(call("previewSharedServer", { source: SOURCE }, paired)).rejects.toMatchObject({ code: "FORBIDDEN" });
+		await expect(call("revealSharedServerRow", { source: SOURCE, row: 0 }, paired)).rejects.toMatchObject({ code: "FORBIDDEN" });
+		expect([preview.mock.calls.length, reveal.mock.calls.length]).toEqual([0, 0]);
+		expect(await call("previewSharedServer", { source: SOURCE }, local)).toEqual({ shown: "preview" });
+		expect(await call("revealSharedServerRow", { source: SOURCE, row: 0 }, local)).toEqual({ shown: "row" });
+	});
+});

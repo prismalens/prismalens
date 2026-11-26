@@ -137,7 +137,7 @@ function Recipients({
 }) {
 	const id = useId();
 	return (
-		<fieldset className="flex flex-col gap-2" data-testid="share-recipients">
+		<fieldset className="flex flex-col gap-3" data-testid="share-recipients">
 			<legend className="mb-1 text-body font-medium text-text-2">Agents</legend>
 			{agents.map((a) => (
 				<label
@@ -146,6 +146,7 @@ function Recipients({
 					className="flex items-center gap-2 text-body text-text-1"
 				>
 					<Checkbox
+						className="size-6"
 						id={`${id}-${a.id}`}
 						checked={picked.includes(a.id)}
 						onCheckedChange={(on) =>
@@ -954,6 +955,20 @@ export function SharedSetView({
 	);
 }
 
+/** The entry `Copy again` opens: `from` is its stable id (#1180); the agent and name only without it. */
+export function copySource(
+	sources: readonly SharedSource[],
+	{ from, fromAgent, name }: SharedMcpServerView,
+): SharedSource | undefined {
+	if (from)
+		return sources.find(
+			(s) =>
+				s.agent === from.agent && s.path === from.path && s.key === from.key,
+		);
+	const own = sources.filter((s) => s.agent === fromAgent);
+	return own.find((s) => serverName(s.key) === name) ?? own[0];
+}
+
 /** Settings → Agents → PrismaLens set. */
 export function SharedSetSettings() {
 	const set = useSharedSet();
@@ -980,12 +995,7 @@ export function SharedSetSettings() {
 		);
 	if (!set.data) return <Loading rows={3} />;
 	const copyAgain = (server: SharedMcpServerView) => {
-		const from = (sources.data ?? []).filter(
-			(s) => s.agent === server.fromAgent,
-		);
-		const source =
-			from.find((s) => serverName(s.key) === server.name) ?? from[0];
-		setSharing({ initial: source });
+		setSharing({ initial: copySource(sources.data ?? [], server) });
 	};
 	return (
 		<>

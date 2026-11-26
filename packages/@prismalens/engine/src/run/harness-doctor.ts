@@ -88,6 +88,8 @@ export interface HarnessProbeResult {
 	modes?: AcpOfferedMode[] | null;
 	efforts?: { id: string; name: string; default: boolean }[] | null;
 	images?: boolean;
+	/** ACP `mcpCapabilities.http` (#1180 §3.3). */
+	mcpHttp?: boolean;
 	/** Per offered mode (or `agent-default`): does the agent's own sandbox hold it on this machine (#673 w51). */
 	sandbox?: SandboxChecks;
 	/** The agent pushed its sign-in: true when it says signed out; absent when it pushed none (#831). */
@@ -471,6 +473,9 @@ export async function probeHarness(
 			efforts: effortLevels(effort),
 			images:
 				probed.raw.initialize?.agentCapabilities?.promptCapabilities?.image ===
+				true,
+			mcpHttp:
+				probed.raw.initialize?.agentCapabilities?.mcpCapabilities?.http ===
 				true,
 			...(signedOut !== null ? { signedOut } : {}),
 			...(signedOut

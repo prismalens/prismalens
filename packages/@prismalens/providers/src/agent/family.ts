@@ -177,8 +177,11 @@ export interface AgentFacts {
 	settingsFile?: string;
 	/** Where its own config lives, so What loads reads it from disk (#1180 §3.1); absent, not readable. */
 	configLayout?: ConfigLayout;
-	/** How a run hears what its session loaded: claude-agent-acp's raw SDK init (#1180 §3.1); absent, disk only. */
-	loadoutReport?: "claude-sdk-init";
+	/**
+	 * How PrismaLens hears what the agent loads (#1180 §3.1): claude-agent-acp's raw SDK init on a
+	 * run, or Codex's app-server before any run; absent, disk only.
+	 */
+	loadoutReport?: "claude-sdk-init" | "codex-app-server";
 	/** Why it has no single permission level, where it has modes but they are not levels. */
 	noLevelReason?: string;
 	/** What its own settings still decide, under the Settings rows (#673 w21); null, nothing to say. */

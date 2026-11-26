@@ -26,7 +26,7 @@ vi.mock("./investigate.js", () => ({
 }));
 
 const { conductRun } = await import("./conductor.js");
-const { injectedSecrets, redactEvent, requestedSecrets, scrub, StreamScrubber } = await import(
+const { injectedSecrets, RecordScrubber, redactEvent, requestedSecrets, scrub, StreamScrubber } = await import(
 	"./redact.js"
 );
 
@@ -127,5 +127,30 @@ describe("shared values never reach a stream, even split across pieces (#1180 §
 			turn_usage: "[redacted]",
 			nested: [{ text: "x [redacted] y" }],
 		});
+	});
+});
+
+describe("RecordScrubber (#1180 §3.3)", () => {
+	const VALUE = 'sv-"quoted"\back\nline-9f';
+	const msg = (text: string) => ({ kind: "agent_step", text, toolCalls: [] as unknown[] });
+	const tool = { kind: "tool_result", toolCallId: "t1", output: "ok" };
+	const channel = (r: { kind: string }, path: readonly (string | number)[]) =>
+		path.join(".") === "text" && r.kind === "agent_step" ? "message" : "";
+
+	it("replaces a value split across two records' string values with a record between, and keeps every shape", () => {
+		const s = new RecordScrubber<Record<string, unknown>>([VALUE], channel);
+		const out = [msg(`see ${VALUE.slice(0, 6)}`), tool, msg(`${VALUE.slice(6)} end`)].flatMap((r) => s.push(r));
+		expect([...out, ...s.end()]).toEqual([msg("see [redacted]"), tool, msg("[redacted] end")]);
+	});
+
+	it("gives back the same record when nothing in it changed, and never touches a kind", () => {
+		const s = new RecordScrubber<Record<string, unknown>>(["agent_step"], channel);
+		const plain = { kind: "agent_step", text: "nothing here", toolCalls: [] };
+		expect([...s.push(plain), ...s.end()][0]).toBe(plain);
+	});
+
+	it("leaves a value whose channel is null as it is", () => {
+		const s = new RecordScrubber<{ kind: string; m: string; held: string }>([VALUE], (_, p) => (p[0] === "held" ? "" : null));
+		expect([...s.push({ kind: "x", m: VALUE, held: VALUE }), ...s.end()]).toEqual([{ kind: "x", m: VALUE, held: "[redacted]" }]);
 	});
 });

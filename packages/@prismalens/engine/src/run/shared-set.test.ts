@@ -92,7 +92,7 @@ describe("deliverShared (#1180 §3.3)", () => {
 		expect([without.servers, without.items[0]?.note]).toEqual([[], "Not sent: no HTTP"]);
 	});
 
-	it("says why each server is not sent: not a recipient, values entered for another definition, name taken, deepagents with values", async () => {
+	it("says why each server is not sent: not a recipient, values entered for another definition, name taken", async () => {
 		const s = await stdio();
 		const notes = async (stored: SharedMcpServerStored, agent: string, o: { ownNames?: string[]; runFile?: boolean } = {}) =>
 			(await deliverShared([stored], agent, { http: true, ownNames: o.ownNames ?? [], ...(o.runFile ? { runFile: true } : {}) })).items[0]?.note;
@@ -100,7 +100,24 @@ describe("deliverShared (#1180 §3.3)", () => {
 		expect(await notes({ ...s, valuesFor: "an-older-hash" }, "codex")).toBe("Not sent: needs values");
 		expect(await notes({ ...s, values: { TOKEN: VALUE } }, "codex")).toBe("Not sent: needs values");
 		expect(await notes(s, "codex", { ownNames: ["pl-docs"] })).toBe("Not sent: name taken");
-		expect(await notes({ ...s, recipients: ["deepagents"] }, "deepagents", { runFile: true })).toBe("Not supported for deepagents");
+	});
+
+	it("gives an agent with a run file its servers as ${PL_SV_...} references, with each value only in the env they read", async () => {
+		const s = await stdio({ recipients: ["deepagents"] });
+		const w = http({ recipients: ["deepagents"] });
+		const out = await deliverShared([s, w], "deepagents", { http: true, ownNames: [], runFile: true });
+		const command = s.def.type === "stdio" ? s.def.command : "";
+		expect([out.servers, out.items.map((i) => i.state)]).toEqual([[], ["loads", "loads"]]);
+		expect(out.runFile).toEqual({
+			servers: {
+				"pl-docs": { command, args: ["--db", "${PL_SV_DOCS_1}"], env: { TOKEN: "${PL_SV_DOCS_2}" } },
+				"pl-web": { type: "http", url: "https://mcp.example/v1?key=${PL_SV_WEB_1}", headers: { Authorization: "${PL_SV_WEB_2}" } },
+			},
+			env: { PL_SV_DOCS_1: "db-secret-arg", PL_SV_DOCS_2: VALUE, PL_SV_WEB_1: "q-secret", PL_SV_WEB_2: "Bearer h-secret" },
+		});
+		const file = JSON.stringify(out.runFile?.servers);
+		expect([VALUE, "db-secret-arg", "q-secret", "h-secret"].filter((v) => file.includes(v) || file.includes(JSON.stringify(v).slice(1, -1)))).toEqual([]);
+		expect(out.hidden).toEqual(expect.arrayContaining([VALUE, "db-secret-arg", "q-secret", "Bearer h-secret"]));
 	});
 
 	it("a deleted command, or one replaced by a same-size file with its mtime restored, is not sent and shows Changed", async () => {

@@ -107,6 +107,7 @@ export function useAppSlots(ctx: SlotContext): LaneSlots {
 					search: {
 						tab: "agent",
 						agent: (inv?.harness ?? undefined) as HarnessId | undefined,
+						...(inv?.repositoryId ? { repositoryId: inv.repositoryId } : {}),
 					},
 				})
 			}

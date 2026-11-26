@@ -139,8 +139,7 @@ export type NotSent =
 	| "Not sent: needs values"
 	| "Not sent: no HTTP"
 	| "Not sent: name taken"
-	| "Changed"
-	| "Not supported for deepagents";
+	| "Changed";
 
 export interface SharedDelivery {
 	/** For ACP `mcpServers` on `session/new`, `session/load` and `session/resume` alike. */
@@ -149,6 +148,56 @@ export interface SharedDelivery {
 	items: LoadedItem[];
 	/** Every value sent, for the scrubbers. */
 	hidden: string[];
+	/** With `runFile`: the servers for the agent's run file, and the env its references read. */
+	runFile?: RunFileServers;
+}
+
+/** Servers as a run file holds them, each value a `${PL_SV_<server>_<n>}` the child's env answers. */
+export interface RunFileServers {
+	servers: Record<string, Record<string, unknown>>;
+	env: Record<string, string>;
+}
+
+/** `s` for a run file: every value an env reference, so the file never holds one (#1180 §3.3). */
+export function toRunFile(s: SharedMcpServerStored): RunFileServers {
+	const env: Record<string, string> = {};
+	const prefix = `PL_SV_${s.name.toUpperCase().replaceAll("-", "_")}`;
+	const ref = (n: string) => {
+		const key = `${prefix}_${Object.keys(env).length + 1}`;
+		env[key] = s.values[n] ?? "";
+		return `\${${key}}`;
+	};
+	const pairs = (names: readonly string[]) =>
+		Object.fromEntries(names.map((n) => [n, ref(n)]));
+	const name = sharedServerName(s.name);
+	if (s.def.type === "stdio")
+		return {
+			servers: {
+				[name]: {
+					command: s.def.command,
+					args: s.def.args.map((a) =>
+						typeof a === "string" ? a : ref(a.value),
+					),
+					env: pairs(s.def.env),
+				},
+			},
+			env,
+		};
+	// The reference stays unencoded in the query, so dcode can expand it there.
+	const base = new URL(s.def.url).toString();
+	const query = s.def.query.map((q) => `${encodeURIComponent(q)}=${ref(q)}`);
+	return {
+		servers: {
+			[name]: {
+				type: "http",
+				url: query.length
+					? `${base}${base.includes("?") ? "&" : "?"}${query.join("&")}`
+					: base,
+				headers: pairs(s.def.headers),
+			},
+		},
+		env,
+	};
 }
 
 function toMcp(s: SharedMcpServerStored): McpServer {
@@ -181,7 +230,7 @@ export async function deliverShared(
 	o: {
 		http: boolean;
 		ownNames: readonly string[];
-		/** deepagents reads servers from its run file, which never holds a value. */
+		/** deepagents reads servers from its run file, which holds env references, never a value. */
 		runFile?: boolean;
 		hash?: (path: string) => Promise<string | null>;
 	},
@@ -210,7 +259,6 @@ export async function deliverShared(
 			note = "Not sent: needs values";
 		else if (transport === "http" && !o.http) note = "Not sent: no HTTP";
 		else if (o.ownNames.includes(name)) note = "Not sent: name taken";
-		else if (o.runFile && names.length) note = "Not supported for deepagents";
 		else
 			for (const f of s.files)
 				if ((await hash(f.path)) !== f.sha256) {
@@ -219,7 +267,13 @@ export async function deliverShared(
 				}
 		out.items.push(row(note));
 		if (note) continue;
-		out.servers.push(toMcp(s));
+		if (o.runFile) {
+			const file = toRunFile(s);
+			out.runFile = {
+				servers: { ...out.runFile?.servers, ...file.servers },
+				env: { ...out.runFile?.env, ...file.env },
+			};
+		} else out.servers.push(toMcp(s));
 		out.hidden.push(...names.map((n) => s.values[n] ?? "").filter(Boolean));
 	}
 	return out;
@@ -231,8 +285,12 @@ export interface RunShared {
 	servers: McpServer[];
 	/** Every value sent, for the scrubbers. */
 	hidden: string[];
-	/** The instructions revision recorded on `session_opened`. */
+	/** The servers for an agent that reads them from its run file (deepagents). */
+	runFile?: RunFileServers;
+	/** The set's instructions revision now. */
 	revision: string;
+	/** The revision the thread's session holds (`heldSharedRevision`), for a reopen. */
+	held?: string | null;
 	/** Null when the agent is not a recipient or there is no text. */
 	instructions: string | null;
 	/** `configFingerprint` for this session's `agent_loadout` report. */

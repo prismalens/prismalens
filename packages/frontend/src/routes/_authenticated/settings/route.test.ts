@@ -31,6 +31,21 @@ describe("Settings tab search (w8-2)", () => {
 		expect(merged({ tab: "sources", source: "" }).source).toBeUndefined();
 	});
 
+	it("keeps a project only under Agents, for What loads (#1180)", () => {
+		expect(merged({ tab: "agent", repositoryId: "r-1" }).repositoryId).toBe(
+			"r-1",
+		);
+		expect(
+			merged({ tab: "general", repositoryId: "r-1" }).repositoryId,
+		).toBeUndefined();
+		expect(
+			merged({ tab: "agent", repositoryId: 7 }).repositoryId,
+		).toBeUndefined();
+		expect(
+			merged({ tab: "agent", repositoryId: "" }).repositoryId,
+		).toBeUndefined();
+	});
+
 	it("sends a tab from before #848 to its new page", () => {
 		expect(legacySettingsTarget("?tab=integrations")).toEqual({
 			tab: "notifications",

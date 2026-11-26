@@ -9,6 +9,7 @@
 // with no window durations), "error" (a JSON-RPC error) or "hang" (never answers it).
 // FAKE_CODEX_ARGS writes this process's arguments there, one JSON array, so a test
 // sees the `-c` overrides. `initialize` from any client but `prismalens` is refused.
+// FAKE_CODEX_ANSWERS: a JSON object of method -> result, answered as given (What loads, #1180).
 import { writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -74,6 +75,9 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 			id: msg.id,
 			error: { code: -32002, message: "Not initialized" },
 		});
+	const answers = JSON.parse(process.env.FAKE_CODEX_ANSWERS ?? "{}");
+	if (msg.method in answers)
+		return send({ id: msg.id, result: answers[msg.method] });
 	if (msg.method === "account/read")
 		return send({
 			id: msg.id,

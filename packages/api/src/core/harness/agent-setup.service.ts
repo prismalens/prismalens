@@ -38,6 +38,7 @@ import {
 	layoutOf,
 	mcpSourceHash,
 	type RunShared,
+	readAgentLoadout,
 	readMcpSource,
 	readOnDisk,
 	sharedServerHash,
@@ -159,6 +160,9 @@ export class AgentSetupService {
 			recipients: s.recipients,
 			changedInSource: changed,
 			fromAgent: s.from?.agent ?? null,
+			from: s.from
+				? { agent: s.from.agent, path: s.from.path, key: s.from.key }
+				: null,
 		};
 	}
 
@@ -397,6 +401,7 @@ export class AgentSetupService {
 		return {
 			servers: shared.servers,
 			hidden: shared.hidden,
+			...(shared.runFile ? { runFile: shared.runFile } : {}),
 			revision: row.revision,
 			instructions: member && row.instructions.trim() ? row.instructions : null,
 			fingerprint: configFingerprint(id, env, cwd, {
@@ -431,15 +436,25 @@ export class AgentSetupService {
 			throw new AgentSetupError("BAD_REQUEST", "Unknown agent");
 		const id = input.id;
 		const profile: LoadoutProfile = input.profile ?? "own";
-		const [env, root, row, stored] = await Promise.all([
+		const [env, root, row, stored, runtime] = await Promise.all([
 			this.envOf(id),
 			this.repoRoot(input.repositoryId),
 			this.setRow(),
 			this.storedServers(),
+			this.harness.runtimeFor(id),
 		]);
 		const disk = readOnDisk(id, env, root);
+		// An agent that answers before any run (Codex's app-server) is asked as the section opens.
+		const agentSaid =
+			(await readAgentLoadout(id, runtime, root).catch(() => null)) ?? [];
 		const ownNames = disk.filter((i) => i.kind === "mcp").map((i) => i.name);
-		const shared = await deliverShared(stored, id, { http: true, ownNames });
+		const shared = await deliverShared(stored, id, {
+			http: true,
+			ownNames,
+			...(HARNESS_REGISTRY[id].gatewayDelivery === "mcp-config-file"
+				? { runFile: true }
+				: {}),
+		});
 		const member = row.instructionsFor.includes(id);
 		const ours: LoadedItem[] = [...shared.items];
 		if (row.instructions.trim())
@@ -496,6 +511,7 @@ export class AgentSetupService {
 		}
 		const key = (i: LoadedItem) =>
 			`${i.kind}\0${i.name}\0${i.scope}\0${i.path ?? ""}`;
+		reported = [...reported, ...agentSaid];
 		const byKey = new Map(reported.map((i) => [key(i), i]));
 		// Claude's init names servers and skills without a path: matched by kind and name.
 		const pathless = (i: LoadedItem) => `${i.kind}\0${i.name}`;

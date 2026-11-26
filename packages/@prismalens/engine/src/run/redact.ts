@@ -182,3 +182,84 @@ function masked(piece: string, marks: [number, number][]): string {
 	}
 	return out + piece.slice(at);
 }
+
+type Path = readonly (string | number)[];
+
+/** Each string value of `v` in order with its path; `kind` fields are left out (#1180 §3.3). */
+function leavesOf(v: unknown, path: Path = []): { path: Path; text: string }[] {
+	if (typeof v === "string")
+		return path[path.length - 1] === "kind" ? [] : [{ path, text: v }];
+	if (Array.isArray(v)) return v.flatMap((x, i) => leavesOf(x, [...path, i]));
+	if (v && typeof v === "object")
+		return Object.entries(v).flatMap(([k, x]) => leavesOf(x, [...path, k]));
+	return [];
+}
+
+function withLeaves(
+	v: unknown,
+	texts: Map<string, string>,
+	path: Path = [],
+): unknown {
+	if (typeof v === "string") return texts.get(JSON.stringify(path)) ?? v;
+	if (Array.isArray(v))
+		return v.map((x, i) => withLeaves(x, texts, [...path, i]));
+	if (v && typeof v === "object")
+		return Object.fromEntries(
+			Object.entries(v).map(([k, x]) => [
+				k,
+				withLeaves(x, texts, [...path, k]),
+			]),
+		);
+	return v;
+}
+
+/**
+ * Holds records of any shape (wire records, events) and scrubs their string values as one
+ * stream per channel, so a value split across records, with others between, is still caught.
+ * A value whose channel is null is left as it is. A record comes back the same object when
+ * nothing in it changed, so its shape never does.
+ */
+export class RecordScrubber<T> {
+	private readonly stream: StreamScrubber;
+	private held: { record: T; leaves: { path: Path; text: string }[] }[] = [];
+
+	constructor(
+		secrets: readonly string[],
+		private readonly channel: (record: T, path: Path) => string | null = () =>
+			"",
+	) {
+		this.stream = new StreamScrubber(secrets);
+	}
+
+	/** Takes the next record; returns those now safe to release, in order. */
+	push(record: T): T[] {
+		const leaves = leavesOf(record).flatMap((l) => {
+			const channel = this.channel(record, l.path);
+			return channel === null ? [] : [{ ...l, channel }];
+		});
+		this.held.push({ record, leaves });
+		return this.rebuild(
+			this.stream.push(
+				leaves.map((l) => ({ text: l.text, channel: l.channel })),
+			),
+		);
+	}
+
+	/** Every record still held, scrubbed. */
+	end(): T[] {
+		return this.rebuild(this.stream.end());
+	}
+
+	private rebuild(units: string[][]): T[] {
+		return units.map((texts) => {
+			const { record, leaves } =
+				this.held.shift() as (typeof this.held)[number];
+			const changed = new Map<string, string>();
+			leaves.forEach((l, i) => {
+				const t = texts[i] ?? l.text;
+				if (t !== l.text) changed.set(JSON.stringify(l.path), t);
+			});
+			return changed.size ? (withLeaves(record, changed) as T) : record;
+		});
+	}
+}

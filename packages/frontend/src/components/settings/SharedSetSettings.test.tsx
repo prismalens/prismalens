@@ -12,7 +12,36 @@ import type React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SharedSetView, ShareServerForm } from "./SharedSetSettings";
+import {
+	SharedSetSettings,
+	SharedSetView,
+	ShareServerForm,
+} from "./SharedSetSettings";
+
+const live = vi.hoisted(() => ({
+	set: undefined as unknown,
+	sources: [] as unknown[],
+	preview: vi.fn(),
+}));
+
+vi.mock("@/lib/api/hooks", () => ({
+	useHarnesses: () => ({ data: { harnesses: [] } }),
+	useHarnessSettings: () => ({ data: { canEditRuntime: true } }),
+}));
+
+vi.mock("@/lib/api/hooks/use-agent-setup-orpc", () => {
+	const change = () => ({ mutate: vi.fn(), isPending: false, reset: vi.fn() });
+	return {
+		useSharedSet: () => ({ data: live.set, isError: false }),
+		useSharedSources: () => ({ data: live.sources }),
+		usePreviewSharedServer: () => ({ ...change(), mutate: live.preview }),
+		useApproveSharedServer: change,
+		useRemoveSharedServer: change,
+		useRevealSharedServerRow: change,
+		useSetSharedMembership: change,
+		useUpdateSharedSet: change,
+	};
+});
 
 vi.mock("@/components/ui/select", async () => {
 	const R = await import("react");
@@ -264,6 +293,7 @@ const server = (over: Partial<SharedMcpServerView>): SharedMcpServerView => ({
 	recipients: ["claude-code"],
 	changedInSource: false,
 	fromAgent: null,
+	from: null,
 	...over,
 });
 
@@ -284,6 +314,7 @@ describe("SharedSetView", () => {
 				recipients: ["claude-code", "codex"],
 				changedInSource: true,
 				fromAgent: "codex",
+				from: { agent: "codex", path: "~/.codex/config.toml", key: "tickets" },
 			}),
 		],
 	};
@@ -355,5 +386,50 @@ describe("SharedSetView", () => {
 		).toBe("false");
 		await click("shared-set-agent-gemini-switch");
 		expect(onMember).toHaveBeenCalledWith("gemini", true);
+	});
+});
+
+describe("SharedSetSettings Copy again", () => {
+	const older = {
+		agent: "codex",
+		path: "~/.codex/config.toml",
+		key: "tickets",
+		transport: "http",
+	};
+	const copied = { ...older, path: "~/work/.codex/config.toml" };
+	const copyAgain = async (from: SharedSource | null) => {
+		live.preview.mockClear();
+		live.sources = [older, copied];
+		live.set = {
+			decided: "shared",
+			instructions: "",
+			instructionsFor: [],
+			revision: "r1",
+			servers: [
+				server({
+					name: "tickets",
+					changedInSource: true,
+					fromAgent: "codex",
+					from,
+				}),
+			],
+		} satisfies SharedSet;
+		await act(async () => root.render(<SharedSetSettings />));
+		await click("shared-server-copy-again");
+	};
+
+	it("opens the source whose path and key the server was copied from, among two of one agent and name", async () => {
+		await copyAgain({ agent: "codex", path: copied.path, key: copied.key });
+		expect(live.preview.mock.calls).toEqual([[copied]]);
+	});
+
+	it("opens no source when the copied entry is gone", async () => {
+		await copyAgain({ agent: "codex", path: "~/gone.toml", key: "tickets" });
+		expect(live.preview.mock.calls).toEqual([]);
+	});
+
+	it("opens the agent's source of the same name when the server records no entry", async () => {
+		await copyAgain(null);
+		expect(live.preview.mock.calls).toEqual([[older]]);
 	});
 });

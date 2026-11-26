@@ -9,7 +9,6 @@
 import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import type {
 	AccountInfo,
 	Options,
@@ -21,13 +20,12 @@ import {
 	codexConfigArgs,
 	type IsolationHost,
 	isolationContext,
-	killProcessTree,
 	type LaunchPolicy,
-	spawnAgent,
 } from "@prismalens/agent-host";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import type { LimitWindow } from "@prismalens/contracts";
 import { foundMcpNames } from "./agent-config.js";
+import { withCodexAppServer } from "./codex-app-server.js";
 import { removeRunDir } from "./harness-doctor.js";
 import { prepareRunEnv } from "./investigate.js";
 
@@ -80,7 +78,6 @@ export interface LimitReadDeps {
 }
 
 export const LIMIT_READ_BUDGET_MS = 15_000;
-const CLIENT_VERSION = "1";
 
 /** One read; null when the agent has no such read, the CLI failed, or the budget ran out. */
 export async function readLimits(
@@ -134,83 +131,34 @@ export async function readAgentLimits(
 
 // ---------------------------------------------------------------- Codex
 
-type Rpc = { id?: number; result?: unknown; error?: unknown };
+export { codexAppServerArgs } from "./codex-app-server.js";
 
-/** The `-c` overrides that keep the user's hooks, plugins and MCP servers from starting (R1). */
-export function codexAppServerArgs(mcp: readonly string[]): string[] {
-	return ["app-server", ...codexConfigArgs(mcp)];
-}
-
-async function readCodex(
+function readCodex(
 	plan: LimitReadPlan,
 	budget: number,
 	deps: LimitReadDeps,
 ): Promise<LimitRead | null> {
-	const child = spawnAgent({
-		command: plan.command,
-		args: [
-			...(plan.args ?? []),
-			...codexAppServerArgs(
-				foundMcpNames(
-					"codex",
-					{ ...plan.env, ...(deps.home ? { HOME: deps.home } : {}) },
-					null,
-				),
-			),
-		],
-		cwd: plan.cwd,
-		env: plan.env,
-	});
-	const pending = new Map<number, (msg: Rpc) => void>();
-	let next = 0;
-	child.stdin.on("error", () => {});
-	createInterface({ input: child.stdout }).on("line", (line) => {
-		try {
-			const msg = JSON.parse(line) as Rpc;
-			if (typeof msg.id === "number") pending.get(msg.id)?.(msg);
-		} catch {
-			// A log line on stdout is not an answer.
-		}
-	});
-	child.stderr.resume();
-	const exited = new Promise<null>((resolve) => {
-		child.once("error", () => resolve(null));
-		child.once("exit", () => resolve(null));
-	});
-	const call = (method: string, params: unknown) =>
-		new Promise<unknown>((resolve, reject) => {
-			const id = ++next;
-			pending.set(id, (msg) => {
-				pending.delete(id);
-				if (msg.error !== undefined)
-					reject(new Error(JSON.stringify(msg.error)));
-				else resolve(msg.result);
-			});
-			child.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
-		});
-	const read = async (): Promise<LimitRead | null> => {
-		await call("initialize", {
-			clientInfo: { name: "prismalens", version: CLIENT_VERSION },
-		});
-		child.stdin.write(`${JSON.stringify({ method: "initialized" })}\n`);
-		const account = await call("account/read", {});
-		const limits = await call("account/rateLimits/read", null);
-		const windows = codexWindows(limits);
-		if (!windows.length) return null;
-		return {
-			account: codexAccount(account),
-			at: (deps.now?.() ?? new Date()).toISOString(),
-			windows,
-		};
-	};
-	try {
-		return await withBudget(
-			Promise.race([read(), exited]).catch(() => null),
-			budget,
-		);
-	} finally {
-		killProcessTree(child);
-	}
+	const mcp = foundMcpNames(
+		"codex",
+		{ ...plan.env, ...(deps.home ? { HOME: deps.home } : {}) },
+		null,
+	);
+	return withCodexAppServer(
+		plan,
+		codexConfigArgs(mcp),
+		budget,
+		async (call) => {
+			const account = await call("account/read", {});
+			const limits = await call("account/rateLimits/read", null);
+			const windows = codexWindows(limits);
+			if (!windows.length) return null;
+			return {
+				account: codexAccount(account),
+				at: (deps.now?.() ?? new Date()).toISOString(),
+				windows,
+			};
+		},
+	);
 }
 
 function codexAccount(res: unknown): string | null {

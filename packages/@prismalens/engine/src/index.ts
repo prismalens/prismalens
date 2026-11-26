@@ -10,6 +10,7 @@ export * from "./launch/policy.js";
 export * from "./launch/process.js";
 export * from "./launch/types.js";
 export * from "./run/agent-config.js";
+export * from "./run/codex-loadout.js";
 export * from "./run/conductor.js";
 export * from "./run/connectors.js";
 export * from "./run/elicitation.js";
