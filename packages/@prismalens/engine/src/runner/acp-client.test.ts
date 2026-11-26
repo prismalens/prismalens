@@ -23,6 +23,7 @@ import type { HarnessChild, HarnessLauncher } from "../launch/types.js";
 import {
 	type AcpDrift,
 	AcpSession,
+	CLOSE_EXIT_MS,
 	type AcpStreamItem,
 	offeredEffort,
 	offeredModes,
@@ -1265,4 +1266,50 @@ describe("AcpSession authenticate (#1235)", () => {
 			sessionId: "s1",
 		});
 	});
+});
+
+describe("AcpSession.close waits for the agent to exit (#1180)", () => {
+	const alive = (pid: number) => {
+		try {
+			process.kill(pid, 0);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+	const closeTimed = async (env: Record<string, string>) => {
+		let pid = -1;
+		const session = new AcpSession({
+			command: process.execPath,
+			args: [FAKE],
+			cwd: tmpdir(),
+			env: { ...process.env, FAKE_ACP_MODE: "resume", ...env },
+			permission: () => ({ allow: true, optionId: "once" }),
+			initTimeoutMs: 5_000,
+			promptTimeoutMs: 5_000,
+			onSpawn: (p) => {
+				pid = p ?? -1;
+			},
+		});
+		await session.open();
+		const started = Date.now();
+		await session.close();
+		return { ms: Date.now() - started, aliveAfter: alive(pid), pid };
+	};
+
+	it("resolves only once an agent that takes 700 ms to exit after SIGTERM has gone, within the bound", async () => {
+		const { ms, aliveAfter, pid } = await closeTimed({
+			FAKE_TERM_DELAY_MS: "700",
+		});
+		expect([pid > 0, aliveAfter, ms < CLOSE_EXIT_MS]).toEqual([
+			true,
+			false,
+			true,
+		]);
+	});
+
+	it("SIGKILLs an agent that ignores SIGTERM once the bound passes, and resolves once it has gone", async () => {
+		const { ms, aliveAfter } = await closeTimed({ FAKE_IGNORE_TERM: "1" });
+		expect([aliveAfter, ms < 2 * CLOSE_EXIT_MS]).toEqual([false, true]);
+	}, 15_000);
 });

@@ -50,6 +50,8 @@
 // =straggler one id-less message after the answer); FAKE_REPLAY_COMPLETE=1 advertises replayComplete
 // and ends the load replay with the marker, then one state update before the answer; FAKE_LATE_REPLAY=1 sends the whole history again after the load answer,
 // with ids; FAKE_AGENT_NAME names the agent in initialize.
+// FAKE_TERM_DELAY_MS=<n> exits n ms after a SIGTERM, as an agent still releasing a lock does;
+// FAKE_IGNORE_TERM=1 ignores SIGTERM, so only a SIGKILL ends it.
 import {
 	appendFileSync,
 	existsSync,
@@ -67,6 +69,10 @@ const mode =
 		: "") ||
 	process.env.FAKE_ACP_MODE ||
 	"ok";
+const termDelay = Number(process.env.FAKE_TERM_DELAY_MS ?? 0);
+if (process.env.FAKE_IGNORE_TERM) process.on("SIGTERM", () => {});
+else if (termDelay > 0)
+	process.on("SIGTERM", () => setTimeout(() => process.exit(0), termDelay));
 const authLabel = process.env.FAKE_AUTH_LABEL ?? "fake";
 const authEmail = process.env.FAKE_AUTH_EMAIL;
 const cwd = process.cwd();
