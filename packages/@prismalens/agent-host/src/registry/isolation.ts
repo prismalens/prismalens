@@ -29,6 +29,8 @@ export interface IsolationContext {
 export interface Isolation {
 	/** A reason this launch cannot be isolated this time, else null. */
 	unavailable?: (ctx: IsolationContext) => string | null;
+	/** It reads `ctx.version`, so the caller reads the agent CLI's version first. */
+	versioned?: true;
 	/** Deep-merged into the `session/new` `_meta`. */
 	meta?: (ctx: IsolationContext) => Record<string, unknown>;
 	env?: (ctx: IsolationContext) => Record<string, string>;
@@ -271,6 +273,7 @@ const opencodeMcpOff = (mcp: readonly string[]): JsonObject =>
 		: {};
 
 export const opencodeProbeIsolation: Isolation = {
+	versioned: true,
 	unavailable: (ctx) =>
 		opencodeHonoursPure(ctx.version)
 			? null

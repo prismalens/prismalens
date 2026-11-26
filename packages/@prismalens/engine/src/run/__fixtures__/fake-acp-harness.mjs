@@ -685,6 +685,22 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			);
 		if (msg.params?.cwd !== cwd)
 			process.stderr.write(`fake: session cwd ${msg.params?.cwd} != ${cwd}\n`);
+		// FAKE_RECORD: what this launch got, for a test to read back.
+		if (process.env.FAKE_RECORD)
+			writeFileSync(
+				process.env.FAKE_RECORD,
+				JSON.stringify({
+					meta: msg.params?._meta ?? null,
+					argv: process.argv.slice(2),
+					env: Object.fromEntries(
+						(process.env.FAKE_RECORD_ENV ?? "")
+							.split(",")
+							.filter(Boolean)
+							.map((k) => [k, process.env[k] ?? null]),
+					),
+					workspace: readdirSync(cwd).sort(),
+				}),
+			);
 		// FAKE_SERVED_MODEL: report that model as selected, the way a real harness does.
 		const options = configOptions();
 		const modes = sessionModes();

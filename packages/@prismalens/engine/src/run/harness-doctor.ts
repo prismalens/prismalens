@@ -8,12 +8,23 @@
  * no provider for `session/new`, and claude-agent-acp checks credentials at turn start.
  */
 import { execFile } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify, stripVTControlCharacters } from "node:util";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import {
+	AGENT_REGISTRY,
+	AgentHostError,
+	type Isolation,
+	isolateLaunch,
 	type LaunchPolicy,
 	type ProbeAccount,
 	type ProbeInput,
@@ -237,6 +248,81 @@ export function sweepStaleRunDirs(root = tmpdir(), now = Date.now()): void {
 
 let swept = false;
 
+/** A check that must run isolated and cannot: no process was started (#1180 R1). */
+export class CheckNotIsolatedError extends Error {
+	constructor(
+		readonly harness: HarnessId,
+		reason: string,
+	) {
+		super(reason);
+		this.name = "CheckNotIsolatedError";
+	}
+}
+
+/** The row's check isolation; absent, a background pass never launches it (#1180 R1). */
+export function checkIsolationOf(harness: HarnessId): Isolation | null {
+	return AGENT_REGISTRY[harness]?.probeIsolation ?? null;
+}
+
+export interface CheckIsolationOptions {
+	/** A background pass or Check all: throw `CheckNotIsolatedError` rather than launch un-isolated. */
+	requireIsolation?: boolean;
+	/** MCP server names found in the agent's config files; each is turned off by name. */
+	mcp?: readonly string[];
+	/** Swap the row's isolation; null launches as a run would. */
+	probeIsolation?: Isolation | null;
+}
+
+/**
+ * `prepared` with the row's check isolation applied and its files written; un-isolated when the
+ * row has none or it cannot hold, unless isolation is required.
+ */
+export async function isolateCheck<
+	P extends {
+		env: Record<string, string>;
+		args: string[];
+		sessionMeta?: Record<string, unknown>;
+	},
+>(
+	harness: HarnessId,
+	prepared: P,
+	o: CheckIsolationOptions & {
+		runDir: string;
+		versionOf: () => Promise<string | null>;
+	},
+): Promise<P & { isolated: boolean; sessionMeta?: Record<string, unknown> }> {
+	const use =
+		o.probeIsolation !== undefined
+			? o.probeIsolation
+			: checkIsolationOf(harness);
+	if (!use) {
+		if (o.requireIsolation)
+			throw new CheckNotIsolatedError(harness, "no safe check");
+		return { ...prepared, isolated: false };
+	}
+	const version = use.versioned ? await o.versionOf() : null;
+	try {
+		const out = isolateLaunch(
+			{ ...prepared, files: {} as Record<string, string> },
+			[{ use, mcp: o.mcp ?? [] }],
+			{ runDir: o.runDir, version },
+		);
+		const { files, ...plan } = out;
+		for (const [path, content] of Object.entries(files))
+			writeFileSync(path, content, { mode: 0o600 });
+		return { ...(plan as unknown as P), isolated: true };
+	} catch (err) {
+		if (
+			!(err instanceof AgentHostError) ||
+			err.code !== "isolation-unavailable"
+		)
+			throw err;
+		if (o.requireIsolation)
+			throw new CheckNotIsolatedError(harness, err.message);
+		return { ...prepared, isolated: false };
+	}
+}
+
 /**
  * `initialize` -> `session/new`, no prompt turn, closed immediately. Callers
  * loop harness ids and `await` each in turn — never `Promise.all` — so two
@@ -266,9 +352,18 @@ export async function probeHarness(
 		policy?: LaunchPolicy;
 		binaryPath?: string;
 		launchArgs?: string[];
-	} = {},
+		/** Test-only: fills the check's scratch folder right after it is made. */
+		seedWorkspace?: (cwd: string) => void;
+	} & CheckIsolationOptions = {},
 ): Promise<HarnessProbeResult> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[harness];
+	if (opts.requireIsolation) {
+		const use =
+			opts.probeIsolation !== undefined
+				? opts.probeIsolation
+				: checkIsolationOf(harness);
+		if (!use) throw new CheckNotIsolatedError(harness, "no safe check");
+	}
 	if (!swept) {
 		swept = true;
 		sweepStaleRunDirs();
@@ -276,9 +371,10 @@ export async function probeHarness(
 	const runDir = mkdtempSync(join(tmpdir(), `${RUN_DIR_PREFIX}${Date.now()}-`));
 	const cwd = join(runDir, "workspace");
 	mkdirSync(cwd, { recursive: true });
+	opts.seedWorkspace?.(cwd);
 
 	try {
-		const { env, args, runEnv, launch } = prepareRunEnv({
+		const prepared = prepareRunEnv({
 			harness,
 			...(opts.descriptor ? { descriptor: opts.descriptor } : {}),
 			cwd,
@@ -288,6 +384,30 @@ export async function probeHarness(
 			...(opts.binaryPath ? { binaryPath: opts.binaryPath } : {}),
 			...(opts.launchArgs ? { launchArgs: opts.launchArgs } : {}),
 		});
+		const { runEnv, launch } = prepared;
+		const rowMeta = descriptor.sessionMeta?.();
+		const {
+			env,
+			args,
+			sessionMeta: meta,
+		} = await isolateCheck(
+			harness,
+			{
+				env: prepared.env,
+				args: prepared.args,
+				...(rowMeta ? { sessionMeta: rowMeta } : {}),
+			},
+			{
+				...opts,
+				runDir,
+				versionOf: () =>
+					versionOf(
+						runEnv.companionPath ?? launch.command,
+						undefined,
+						prepared.env,
+					),
+			},
+		);
 		// Only a CLI the adapter is pointed at; a PATH codex-acp runs its own codex.
 		// Read on every outcome, so a signed-out row still names its version (w8-8).
 		const companion = () =>
@@ -295,7 +415,6 @@ export async function probeHarness(
 			Object.values(descriptor.acpEnv(runEnv)).includes(runEnv.companionPath)
 				? versionOf(runEnv.companionPath, undefined, env)
 				: Promise.resolve(null);
-		const meta = descriptor.sessionMeta?.();
 		const probed = await probeAgent({
 			agent: harness,
 			command: launch.command,

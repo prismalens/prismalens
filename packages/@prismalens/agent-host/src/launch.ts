@@ -243,6 +243,28 @@ function readIfThere(path: string): string | null {
 	}
 }
 
+/** The context an isolation reads, on this machine unless `IsolationHost` swaps it. */
+export function isolationContext(
+	o: {
+		runDir: string;
+		env: Readonly<Record<string, string>>;
+		mcp?: readonly string[];
+		ours?: readonly string[];
+		version?: string | null;
+	} & IsolationHost,
+): IsolationContext {
+	return {
+		mcp: o.mcp ?? [],
+		ours: o.ours ?? [],
+		env: o.env,
+		runPath: (rel) => join(o.runDir, rel),
+		platform: o.platform ?? process.platform,
+		home: o.home ?? homedir(),
+		read: o.read ?? readIfThere,
+		version: o.version ?? null,
+	};
+}
+
 /**
  * `plan` with each isolation applied in order; its files land under `runDir`. Exported for a
  * caller that isolates a plan it already holds.
@@ -260,16 +282,10 @@ export function isolateLaunch<
 ): P {
 	let out = plan;
 	for (const { use, mcp } of isolation) {
-		const layer = resolveIsolation([use], {
-			mcp,
-			ours: o.ours ?? [],
-			env: out.env,
-			runPath: (rel) => join(o.runDir, rel),
-			platform: o.platform ?? process.platform,
-			home: o.home ?? homedir(),
-			read: o.read ?? readIfThere,
-			version: o.version ?? null,
-		});
+		const layer = resolveIsolation(
+			[use],
+			isolationContext({ ...o, mcp, env: out.env }),
+		);
 		if ("unavailable" in layer)
 			throw new AgentHostError("isolation-unavailable", layer.unavailable);
 		const files = Object.fromEntries(

@@ -85,7 +85,7 @@ describe("readLimits through codex app-server (#1180)", () => {
 		]);
 	});
 
-	it("starts app-server with hooks off and each MCP server of the user's config.toml off", async () => {
+	it("starts app-server with hooks and plugins off and each MCP server of the user's config.toml off", async () => {
 		const home = join(dir, "codex-home");
 		mkdirSync(home);
 		writeFileSync(
@@ -98,6 +98,8 @@ describe("readLimits through codex app-server (#1180)", () => {
 			"app-server",
 			"-c",
 			"features.hooks=false",
+			"-c",
+			"features.plugins=false",
 			"-c",
 			"mcp_servers.docs.enabled=false",
 			"-c",
@@ -162,6 +164,7 @@ const claudeDeps = (query: FakeQuery): LimitReadDeps => ({
 	now: () => AT,
 	home: dir,
 	managedSettingsPath: join(dir, "managed-settings.json"),
+	isolationHost: { platform: "linux", read: () => null },
 });
 
 describe("readLimits through the Claude Agent SDK (#1180)", () => {
@@ -239,6 +242,27 @@ describe("readLimits through the Claude Agent SDK (#1180)", () => {
 			mcpServers: {},
 			settings: { disableAllHooks: true },
 		});
+	});
+
+	it("leaves strictMcpConfig out when a managed-mcp.json with mcpServers applies, and keeps it for one that does not parse", async () => {
+		const usage = { rate_limits_available: false, rate_limits: null };
+		const managed = "/etc/claude-code/managed-mcp.json";
+		for (const [text, strict] of [
+			['{"mcpServers":{"corp":{"command":"c"}}}', false],
+			["{not json", true],
+		] as const) {
+			const { query, calls } = fakeQuery({ usage });
+			await readLimits("claude-code", claudePlan(), {
+				...claudeDeps(query),
+				isolationHost: {
+					platform: "linux",
+					read: (path) => (path === managed ? text : null),
+				},
+			});
+			const options = calls.options as Record<string, unknown>;
+			expect("strictMcpConfig" in options, text).toBe(strict);
+			expect(options.settings, text).toEqual({ disableAllHooks: true });
+		}
 	});
 
 	it("returns null when the SDK has no usage method", async () => {

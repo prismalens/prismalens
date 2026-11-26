@@ -6,6 +6,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
+	readFileSync,
 	rmSync,
 	utimesSync,
 	writeFileSync,
@@ -14,9 +15,15 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import {
+	claudeProbeIsolation,
+	codexProbeIsolation,
+	opencodeProbeIsolation,
+} from "@prismalens/agent-host";
 import { prismalensLaunchPolicy } from "../launch/policy.js";
 import {
 	answeredDetail,
+	CheckNotIsolatedError,
 	classify,
 	fastModelOf,
 	probeHarness,
@@ -431,5 +438,95 @@ describe("fastModelOf (#1180)", () => {
 		expect(fastModelOf([model, { id: "fast", type: "boolean" }])).toBe("opus");
 		expect(fastModelOf([model, { id: "effort", type: "select" }])).toBeUndefined();
 		expect(fastModelOf(null)).toBeUndefined();
+	});
+});
+
+describe("probeHarness isolation (#1180 R1)", () => {
+	const recorded = (dir: string) =>
+		JSON.parse(readFileSync(join(dir, "record.json"), "utf8")) as {
+			meta: unknown;
+			env: Record<string, string | null>;
+			workspace: string[];
+		};
+	const recording = (dir: string, keys: string) => ({
+		...descriptor("ok"),
+		acpEnv: () => ({
+			FAKE_ACP_MODE: "ok",
+			FAKE_RECORD: join(dir, "record.json"),
+			FAKE_RECORD_ENV: keys,
+		}),
+	});
+	const dirs: string[] = [];
+	const scratch = () => {
+		const d = mkdtempSync(join(tmpdir(), "iso-rec-"));
+		dirs.push(d);
+		return d;
+	};
+	afterAll(() => {
+		for (const d of dirs) rmSync(d, { recursive: true, force: true });
+	});
+
+	it("sends Claude Code's check options in _meta, connectors off in env, in the workspace the seed filled", async () => {
+		const dir = scratch();
+		const result = await probeHarness("claude-code", {
+			descriptor: recording(dir, "ENABLE_CLAUDEAI_MCP_SERVERS"),
+			sandbox: async () => ({}),
+			authWaitMs: 0,
+			probeIsolation: claudeProbeIsolation,
+			seedWorkspace: (cwd) => writeFileSync(join(cwd, ".mcp.json"), "{}"),
+		});
+		expect(result.outcome).toBe("answers-acp");
+		const seen = recorded(dir);
+		expect(seen.meta).toEqual({
+			claudeCode: {
+				options: { strictMcpConfig: true, settings: { disableAllHooks: true } },
+			},
+		});
+		expect(seen.env).toEqual({ ENABLE_CLAUDEAI_MCP_SERVERS: "false" });
+		expect(seen.workspace).toEqual([".mcp.json"]);
+	});
+
+	it("sends Codex its hooks, plugins and each named MCP server off in CODEX_CONFIG", async () => {
+		const dir = scratch();
+		await probeHarness("codex", {
+			descriptor: recording(dir, "CODEX_CONFIG"),
+			sandbox: async () => ({}),
+			probeIsolation: codexProbeIsolation,
+			mcp: ["docs"],
+		});
+		expect(JSON.parse(recorded(dir).env.CODEX_CONFIG as string)).toEqual({
+			features: { hooks: false, plugins: false },
+			mcp_servers: { docs: { enabled: false } },
+		});
+	});
+
+	it("with requireIsolation, a row with no isolation starts nothing and throws", async () => {
+		const dir = scratch();
+		await expect(
+			probeHarness("cursor", {
+				descriptor: recording(dir, ""),
+				requireIsolation: true,
+				probeIsolation: null,
+			}),
+		).rejects.toEqual(new CheckNotIsolatedError("cursor", "no safe check"));
+		expect(readdirSync(dir)).toEqual([]);
+	});
+
+	it("an isolation that cannot hold this time throws under requireIsolation, and a person's Check launches as a run would", async () => {
+		const dir = scratch();
+		await expect(
+			probeHarness("opencode", {
+				descriptor: recording(dir, "OPENCODE_PURE"),
+				requireIsolation: true,
+				probeIsolation: opencodeProbeIsolation,
+			}),
+		).rejects.toBeInstanceOf(CheckNotIsolatedError);
+		expect(readdirSync(dir)).toEqual([]);
+		const result = await probeHarness("opencode", {
+			descriptor: recording(dir, "OPENCODE_PURE"),
+			probeIsolation: opencodeProbeIsolation,
+		});
+		expect(result.outcome).toBe("answers-acp");
+		expect(recorded(dir)).toMatchObject({ meta: null, env: { OPENCODE_PURE: null } });
 	});
 });

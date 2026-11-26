@@ -8,12 +8,18 @@
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { LaunchPolicy } from "@prismalens/agent-host";
+import { type LaunchPolicy, versionOf } from "@prismalens/agent-host";
 import type { HarnessId } from "@prismalens/config/harness";
 import type { TurnUsage } from "@prismalens/contracts/schemas";
 import { flattenAcpContent } from "../adapter/acp-adapter.js";
 import { AcpSession } from "../runner/acp-client.js";
-import { removeRunDir } from "./harness-doctor.js";
+import {
+	type CheckIsolationOptions,
+	CheckNotIsolatedError,
+	checkIsolationOf,
+	isolateCheck,
+	removeRunDir,
+} from "./harness-doctor.js";
 import { prepareRunEnv } from "./investigate.js";
 import { toolFreePolicy } from "./permission.js";
 
@@ -30,20 +36,34 @@ export interface NameThreadOptions {
 	binaryPath?: string;
 	launchArgs?: string[];
 	timeoutMs?: number;
+	/** MCP server names found in the agent's config files; each is turned off by name. */
+	mcp?: CheckIsolationOptions["mcp"];
+	probeIsolation?: CheckIsolationOptions["probeIsolation"];
+	/** Test-only: fills the title session's scratch folder right after it is made. */
+	seedWorkspace?: (cwd: string) => void;
 }
 
-/** The agent's whole answer and its usage; throws on any failure, the caller keeps its title. */
+/**
+ * The agent's whole answer and its usage; throws on any failure, the caller keeps its title.
+ * Runs only isolated, as a health check does (#1180 R1).
+ */
 export async function nameThread(
 	harness: HarnessId,
 	opts: NameThreadOptions,
 ): Promise<{ text: string; usage?: TurnUsage; model: string | null }> {
+	const use =
+		opts.probeIsolation !== undefined
+			? opts.probeIsolation
+			: checkIsolationOf(harness);
+	if (!use) throw new CheckNotIsolatedError(harness, "no safe check");
 	const runDir = mkdtempSync(join(tmpdir(), RUN_DIR_PREFIX));
 	const cwd = join(runDir, "workspace");
 	mkdirSync(cwd, { recursive: true });
+	opts.seedWorkspace?.(cwd);
 	const timeoutMs = opts.timeoutMs ?? NAME_TIMEOUT_MS;
 	let session: AcpSession | null = null;
 	try {
-		const { env, args, launch } = prepareRunEnv({
+		const prepared = prepareRunEnv({
 			harness,
 			cwd,
 			runDir,
@@ -53,11 +73,29 @@ export async function nameThread(
 			...(opts.binaryPath ? { binaryPath: opts.binaryPath } : {}),
 			...(opts.launchArgs ? { launchArgs: opts.launchArgs } : {}),
 		});
+		const { launch, runEnv } = prepared;
+		const { env, args, sessionMeta } = await isolateCheck(
+			harness,
+			{ env: prepared.env, args: prepared.args },
+			{
+				requireIsolation: true,
+				probeIsolation: use,
+				...(opts.mcp ? { mcp: opts.mcp } : {}),
+				runDir,
+				versionOf: () =>
+					versionOf(
+						runEnv.companionPath ?? launch.command,
+						undefined,
+						prepared.env,
+					),
+			},
+		);
 		const s = new AcpSession({
 			command: launch.command,
 			args,
 			cwd,
 			env,
+			...(sessionMeta ? { sessionMeta } : {}),
 			permission: toolFreePolicy,
 			initTimeoutMs: timeoutMs,
 			promptTimeoutMs: timeoutMs,
