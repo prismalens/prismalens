@@ -21,6 +21,7 @@ import {
 import type { Row } from "../../../../scripts/fakes/scripted-model.mjs";
 import {
 	CheckNotIsolatedError,
+	type HarnessProbeResult,
 	isolateCheck,
 	probeHarness,
 } from "../src/run/harness-doctor.js";
@@ -128,6 +129,14 @@ export async function isolatedSession(
 	}
 }
 
+/** A probe that did not answer ACP fails the row: no markers from it proves nothing. */
+export const probeProblem = (
+	r: Pick<HarnessProbeResult, "outcome" | "detail">,
+) =>
+	r.outcome === "answers-acp"
+		? null
+		: `the probe ended ${r.outcome}: ${r.detail}`;
+
 /** Runs one isolation row; a problem, or null on a pass, and what it saw. */
 export async function runIsolationRow(
 	row: Row,
@@ -189,13 +198,14 @@ export async function runIsolationRow(
 							"background pass",
 							async () => {
 								try {
-									await probeHarness(harness, {
-										requireIsolation: true,
-										mcp: FOUND_MCP,
-										seedWorkspace: seed,
-										sandbox: async () => ({}),
-									});
-									return null;
+									return probeProblem(
+										await probeHarness(harness, {
+											requireIsolation: true,
+											mcp: FOUND_MCP,
+											seedWorkspace: seed,
+											sandbox: async () => ({}),
+										}),
+									);
 								} catch (err) {
 									return err instanceof CheckNotIsolatedError
 										? `no safe check: ${err.message}`
@@ -205,14 +215,14 @@ export async function runIsolationRow(
 						],
 						[
 							"Check",
-							async () => {
-								await probeHarness(harness, {
-									mcp: FOUND_MCP,
-									seedWorkspace: seed,
-									sandbox: async () => ({}),
-								});
-								return null;
-							},
+							async () =>
+								probeProblem(
+									await probeHarness(harness, {
+										mcp: FOUND_MCP,
+										seedWorkspace: seed,
+										sandbox: async () => ({}),
+									}),
+								),
 						],
 						[
 							"title",
