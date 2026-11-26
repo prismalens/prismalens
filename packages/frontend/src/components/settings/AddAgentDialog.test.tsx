@@ -118,7 +118,15 @@ vi.mock("@/lib/api/hooks", () => ({
 }));
 vi.mock("./use-about", () => ({
 	useAbout: () => ({
-		data: { runtime: { node: "v24", os: "win32", arch: "x64" } },
+		// As About sends it: `os` is for reading, `platform` is Node's name.
+		data: {
+			runtime: {
+				node: "v24",
+				os: "Windows_NT 10.0.22631",
+				platform: "win32",
+				arch: "x64",
+			},
+		},
 	}),
 }));
 vi.mock("@tanstack/react-router", () => ({
@@ -274,6 +282,42 @@ describe("Add agent tiles (#907)", () => {
 			to: "/settings",
 			search: { tab: "agent", agent: "claude-code" },
 		});
+	});
+});
+
+describe("Add agent after a reset (#1180)", () => {
+	function Reopens() {
+		const [open, setOpen] = useState(true);
+		return (
+			<>
+				<button
+					type="button"
+					data-testid="reopen"
+					onClick={() => setOpen(true)}
+				>
+					Reopen
+				</button>
+				<AddAgentDialog open={open} onOpenChange={setOpen} />
+			</>
+		);
+	}
+
+	it("forgets the registry agent picked before it was closed", async () => {
+		await act(async () => root.render(<Reopens />));
+		await typeInto("acp-registry-search", "amp");
+		await click("acp-registry-entry");
+		await click("add-agent-tile-local");
+		await typeInto("add-agent-command", "/usr/bin/node");
+		await click("add-agent-next");
+		await act(async () => {
+			document.activeElement?.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+			);
+		});
+		expect(q("add-agent-dialog")).toBeNull();
+		await click("reopen");
+		expect(q("acp-registry")).not.toBeNull();
+		expect(q("add-agent-next-why")).toBeNull();
 	});
 });
 

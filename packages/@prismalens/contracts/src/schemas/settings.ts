@@ -853,7 +853,14 @@ export const AboutSchema = /* @__PURE__ */ lazySchema(() =>
 		uninstallCommand: z.string(),
 		logsDir: z.string().optional(),
 		runtime: z
-			.object({ node: z.string(), os: z.string(), arch: z.string() })
+			.object({
+				node: z.string(),
+				/** The OS name and release, to read. */
+				os: z.string(),
+				/** Node's `process.platform`, to match a build against. */
+				platform: z.string(),
+				arch: z.string(),
+			})
 			.optional(),
 		autoInstall: UpdateAutoInstallSchema.optional(),
 		/** "Check for updates" on About; the env switches in `disabledBy` still win. */

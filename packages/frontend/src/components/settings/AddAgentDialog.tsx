@@ -134,6 +134,7 @@ export function AddAgentDialog({
 	const reset = () => {
 		setStep(0);
 		setPicked(null);
+		setRegistryPick(null);
 		setCommand(settings?.localAgent?.command ?? "");
 		setArgs("");
 		setApiKey("");
@@ -288,7 +289,10 @@ export function AddAgentDialog({
 									</p>
 								</div>
 							)}
-							<AcpRegistrySearch host={runtime} onChoose={setRegistryPick} />
+							<AcpRegistrySearch
+								host={runtime && { os: runtime.platform, arch: runtime.arch }}
+								onChoose={setRegistryPick}
+							/>
 						</div>
 					)}
 

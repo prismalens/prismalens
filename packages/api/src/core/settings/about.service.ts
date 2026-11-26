@@ -148,6 +148,7 @@ export class AboutService {
 			runtime: {
 				node: process.version,
 				os: `${osType()} ${osRelease()}`,
+				platform: process.platform,
 				arch: process.arch,
 			},
 			checkForUpdates: opts.checkEnabled !== false,
