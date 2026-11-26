@@ -48,7 +48,13 @@ export function bucketKeys(
 export const emptyBucket = (currency = "USD"): UsageBucket => ({
 	turns: 0,
 	tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	cost: { amount: null, currency, unpricedTurns: 0 },
+	cost: {
+		amount: null,
+		currency,
+		unpricedTurns: 0,
+		estimate: null,
+		estimatedTurns: 0,
+	},
 });
 
 /** One `turn_usage` event's payload, or null when it is not one or does not parse. */
@@ -63,10 +69,14 @@ export function readTurnUsage(event: string) {
 	}
 }
 
-/** Adds one turn to a bucket; the total is the agent's own when it gave one. */
+/**
+ * Adds one turn to a bucket; the total is the agent's own when it gave one. `estimate`
+ * is the person's price over a turn with no reported cost (#1180), never over a reported one.
+ */
 export function addTurn(
 	bucket: UsageBucket,
 	usage: NonNullable<ReturnType<typeof readTurnUsage>>,
+	estimate: number | null = null,
 ): void {
 	const t: UsageTokens = bucket.tokens;
 	const input = usage.inputTokens ?? 0;
@@ -83,7 +93,13 @@ export function addTurn(
 	bucket.turns += 1;
 	if (usage.cost && usage.cost.currency === bucket.cost.currency)
 		bucket.cost.amount = (bucket.cost.amount ?? 0) + usage.cost.amount;
-	else bucket.cost.unpricedTurns += 1;
+	else {
+		bucket.cost.unpricedTurns += 1;
+		if (estimate !== null && !usage.cost) {
+			bucket.cost.estimate = (bucket.cost.estimate ?? 0) + estimate;
+			bucket.cost.estimatedTurns += 1;
+		}
+	}
 }
 
 export const dayOf = (bucket: UsageBucket, day: string): UsageDay => ({

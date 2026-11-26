@@ -87,5 +87,12 @@ export const claudeCode = defineAgent({
 		updateArgs: ["update"],
 		loginEnvKeys: ["CLAUDE_CONFIG_DIR"],
 		reportsLimits: true,
+		limitsBeforeRun: "claude-sdk",
+		routingEnvKeys: [
+			"ANTHROPIC_BASE_URL",
+			"CLAUDE_CODE_USE_BEDROCK",
+			"CLAUDE_CODE_USE_VERTEX",
+			"CLAUDE_CODE_USE_FOUNDRY",
+		],
 	},
 });

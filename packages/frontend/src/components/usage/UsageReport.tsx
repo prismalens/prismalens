@@ -65,6 +65,19 @@ function Headline({
 				{measure === "tokens" ? "tokens · " : ""}
 				{countOf(summary.threads, "thread")}
 			</span>
+			{measure === "cost" && totals.cost.estimate !== null && (
+				<Hint
+					label={`Your prices, over ${countOf(totals.cost.estimatedTurns, "unpriced turn")}`}
+				>
+					<span
+						className="text-body text-text-2 tabular-nums"
+						data-testid="usage-api-estimate"
+						{...fact("cost")}
+					>
+						{`≈ ${formatCost(totals.cost.estimate, totals.cost.currency)} API estimate`}
+					</span>
+				</Hint>
+			)}
 			{measure === "cost" && unpriced > 0 && (
 				<Hint
 					label={
@@ -121,7 +134,15 @@ function TokenCells({
 			<TableCell className={num}>{formatTokens(bucket.tokens.total)}</TableCell>
 			<TableCell className={num}>{formatShare(part)}</TableCell>
 			<TableCell className={num} {...fact("cost")}>
-				{formatCost(bucket.cost.amount, bucket.cost.currency)}
+				{bucket.cost.amount === null && bucket.cost.estimate !== null ? (
+					<Hint label="API estimate">
+						<span data-testid="usage-row-estimate">
+							{`≈ ${formatCost(bucket.cost.estimate, bucket.cost.currency)}`}
+						</span>
+					</Hint>
+				) : (
+					formatCost(bucket.cost.amount, bucket.cost.currency)
+				)}
 			</TableCell>
 		</>
 	);

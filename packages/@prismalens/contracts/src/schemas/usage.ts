@@ -6,6 +6,8 @@ import { lazySchema } from "../lazy-schema.js";
 import { LimitWindowSchema } from "./provider-failure.js";
 import { AccessLevelSchema } from "./settings.js";
 
+export * from "./model-identity.js";
+
 /** The Usage view's ranges (#1101 cat 17). */
 export const USAGE_RANGES = ["24h", "7d", "30d"] as const;
 export const UsageRangeSchema = /* @__PURE__ */ lazySchema(() =>
@@ -39,12 +41,15 @@ export type UsageTokens = z.infer<typeof UsageTokensSchema>;
 /**
  * Cost as the agents reported it, an estimate. `amount` is null when no turn
  * in the bucket reported one; `unpricedTurns` counts the turns without it.
+ * `estimate` is the person's API prices over the unpriced turns one matched (#1180).
  */
 export const UsageCostSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		amount: z.number().nonnegative().nullable(),
 		currency: z.string().min(1),
 		unpricedTurns: z.number().int().nonnegative(),
+		estimate: z.number().nonnegative().nullable(),
+		estimatedTurns: z.number().int().nonnegative(),
 	}),
 );
 export type UsageCost = z.infer<typeof UsageCostSchema>;
@@ -107,6 +112,10 @@ export const UsageWindowSchema = /* @__PURE__ */ lazySchema(() =>
 		status: z.string().nullable(),
 		/** When the agent reported it. */
 		at: z.string().datetime(),
+		/** One per window: `<limitId or type>:<position or window>` (#1180). */
+		key: z.string().optional(),
+		/** `check`: read from the agent's own CLI before a run; `run`: a run reported it. */
+		via: z.enum(["run", "check"]).optional(),
 	}),
 );
 export type UsageWindow = z.infer<typeof UsageWindowSchema>;
@@ -139,14 +148,46 @@ export const AgentLimitsSchema = /* @__PURE__ */ lazySchema(() =>
 		windows: z.array(UsageWindowSchema),
 		/** Why `windows` is empty: it reports them on a run, or not at all (#1171); null when not empty. */
 		empty: z.enum(["not-reported", "no-run-yet"]).nullable().optional(),
+		/** When the shown limit read ran; null when none is shown (#1180). */
+		checkedAt: z.string().datetime().nullable().optional(),
+		/** A read that failed after the shown one, or with none shown. */
+		triedAt: z.string().datetime().nullable().optional(),
 	}),
 );
+export type AgentLimits = z.infer<typeof AgentLimitsSchema>;
 export const UsageLimitsSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		agents: z.array(AgentLimitsSchema),
 	}),
 );
 export type UsageLimits = z.infer<typeof UsageLimitsSchema>;
+
+/** Dollars per million tokens, as the provider's API price list gives them. */
+const PerMillion = z.number().nonnegative().max(1_000_000);
+
+/**
+ * The person's API price for a model the agent reports no cost for (#1180).
+ * `provider` null is `Any route`: it matches whatever provider served the turn.
+ */
+export const ModelPriceSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		agent: z.string().min(1).max(100),
+		provider: z.string().min(1).max(100).nullable(),
+		model: z.string().min(1).max(200),
+		perMillion: z.object({
+			input: PerMillion,
+			output: PerMillion,
+			cacheRead: PerMillion.optional(),
+			cacheWrite: PerMillion.optional(),
+		}),
+	}),
+);
+export type ModelPrice = z.infer<typeof ModelPriceSchema>;
+export const MAX_MODEL_PRICES = 200;
+export const ModelPricesSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({ prices: z.array(ModelPriceSchema).max(MAX_MODEL_PRICES) }),
+);
+export type ModelPrices = z.infer<typeof ModelPricesSchema>;
 
 /** What an agent enforced at a level, from the runs it made (#1101 cat 18). */
 export const EnforcementRowSchema = /* @__PURE__ */ lazySchema(() =>

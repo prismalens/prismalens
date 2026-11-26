@@ -46,6 +46,7 @@ import { Loading } from "@/components/shared/State";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { AgentLimitsRow } from "@/components/usage/UsageLimitsPanel";
 import { agentFacts } from "@/lib/agent-facts";
 import {
 	useCheckHarness,
@@ -213,6 +214,7 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 								)}
 							</p>
 						)}
+						{agent.installed && <AgentLimitsRow agent={agent.id} />}
 						{checked?.lastTry && (
 							// Shown in the line itself, so a keyboard reaches it with no hint to focus.
 							<p className="text-warn" data-testid="agent-detail-last-try">

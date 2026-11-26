@@ -12,6 +12,7 @@ export function Time({
 	now,
 	prefix,
 	past = false,
+	ago = false,
 	className,
 	testId,
 }: {
@@ -21,13 +22,17 @@ export function Time({
 	prefix?: string;
 	/** It has happened: never reads as future when clocks disagree. */
 	past?: boolean;
+	/** After a prefix, an age reads "Checked 3m ago"; "now" stays "now". */
+	ago?: boolean;
 	className?: string;
 	testId?: string;
 }) {
 	const when = new Date(at);
 	if (Number.isNaN(when.getTime()) || now === null) return null;
 	const exact = formatDateTimeUtc(when);
-	const word = relTime(when, now, { past });
+	const rel = relTime(when, now, { past });
+	const word =
+		ago && rel !== "now" && !rel.startsWith("in ") ? `${rel} ago` : rel;
 	return (
 		<Hint label={prefix ? `${prefix} ${exact}` : exact}>
 			<time
