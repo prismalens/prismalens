@@ -59,7 +59,7 @@ import { StatePill } from "./source-words";
 export const INSTRUCTIONS_HINT = "Sent to agents and kept with each thread.";
 export const SHARED_AS_SHOWN = "Shared as shown to every agent you pick.";
 export const STARTS_IN_FOLDER =
-	"Starts in each thread's folder and may read config there.";
+	"Starts in each thread's folder and may read config there. A script named relative to that folder is not sent; give its full path.";
 export const DOTS = "••••••";
 
 export interface AgentChoice {

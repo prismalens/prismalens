@@ -512,6 +512,7 @@ export class AgentSetupService {
 		return deliverShared(stored, id, {
 			http: true,
 			ownNames,
+			cwd,
 			...(HARNESS_REGISTRY[id].gatewayDelivery === "mcp-config-file"
 				? { runFile: true }
 				: {}),
