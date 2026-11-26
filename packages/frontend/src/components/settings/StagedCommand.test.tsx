@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+	QueryClient,
+	QueryClientProvider,
+	useQuery,
+} from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -37,9 +41,19 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
+/** The harness status as the page reads it: each fetch answers the next version. */
+let version = 0;
+function Status() {
+	const { data } = useQuery({
+		queryKey: ["harnesses"],
+		queryFn: async () => `status v${++version}`,
+	});
+	return <span data-testid="status">{data}</span>;
+}
+
 async function render() {
+	version = 0;
 	const client = new QueryClient();
-	client.setQueryData(["harnesses"], []);
 	const host = document.createElement("div");
 	document.body.appendChild(host);
 	const root = createRoot(host);
@@ -47,6 +61,7 @@ async function render() {
 		root.render(
 			<QueryClientProvider client={client}>
 				<TooltipProvider>
+					<Status />
 					<StagedCommand
 						agents={["claude-code", "codex"]}
 						command="npm i -g example"
@@ -59,8 +74,11 @@ async function render() {
 		),
 	);
 	const q = (selector: string) => host.querySelector<HTMLElement>(selector);
-	const stale = () => client.getQueryState(["harnesses"])?.isInvalidated;
-	return { q, root, stale };
+	const status = () => q('[data-testid="status"]')?.textContent;
+	await vi.waitFor(() => {
+		if (status() !== "status v1") throw new Error("status not read");
+	});
+	return { q, root, status };
 }
 
 describe("StagedCommand (#1180)", () => {
@@ -82,16 +100,20 @@ describe("StagedCommand (#1180)", () => {
 						finish = resolve;
 					}),
 		);
-		const { q, root, stale } = await render();
+		const { q, root, status } = await render();
 		await act(async () => q('[data-testid="update"]')?.click());
 		const [, { onEnd }] = stage.mock.calls[0] as [
 			string,
 			{ onEnd: () => void },
 		];
 		await act(async () => onEnd());
-		expect(stale()).toBe(false);
+		await act(() => new Promise((r) => setTimeout(r, 20)));
+		expect(status()).toBe("status v1");
 		await act(async () => finish());
-		expect(stale()).toBe(true);
+		await vi.waitFor(() => {
+			if (status() !== "status v2") throw new Error("status not refreshed");
+		});
+		expect(status()).toBe("status v2");
 		await act(async () => root.unmount());
 	});
 });
