@@ -4,27 +4,15 @@
 import type { HarnessId } from "@prismalens/config/harness";
 import { useNavigate } from "@tanstack/react-router";
 import type { NeedsCtx } from "@/components/home/needs.actions";
+import { causeOf, stopOf } from "@/components/home/needs-cause";
 import { agentFacts } from "@/lib/agent-facts";
 import { useResumeInvestigation } from "@/lib/api/hooks/use-investigations-orpc";
 import { useRetryNow } from "@/lib/api/hooks/use-session-orpc";
-import { failureWords, signInCommand } from "@/lib/failure-words";
+import { signInCommand } from "@/lib/failure-words";
 import { accountLink } from "@/lib/provider-stop";
 import { stopCause } from "@/lib/stop-causes";
 import type { ListNode } from "@/lib/thread-list";
 import { threadLink } from "@/lib/thread-rows";
-
-/** What stopped a thread: a provider or host stop. */
-export const stopOf = (n: ListNode) =>
-	n.info.mode ?? n.info.host ?? n.thread.limit?.mode ?? null;
-
-/** The cause the status registry's `fix` reads: a stop, or a signed-out agent's failure. */
-export const causeOf = (n: ListNode) =>
-	stopOf(n) ??
-	(n.info.status === "failed" &&
-	n.thread.error &&
-	failureWords(n.thread.error).signIn
-		? "sign_in"
-		: null);
 
 /** The context a card's registered fix actions run with. */
 export function useNeedsCtx(node: ListNode, answer: () => void): NeedsCtx {
