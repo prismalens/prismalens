@@ -16,8 +16,9 @@ const matrix = (...args: string[]) => {
 	return { code: r.status, rows: r.stdout.split(/\r?\n/).filter((l) => l.startsWith("ROW ")) };
 };
 
-// Cursor is n/a on the isolation rows, so none of these starts an agent.
-describe("acp-matrix --require (#1180 §0)", () => {
+// Cursor is n/a on the isolation rows, so none of these starts an agent; each still
+// spawns the script through tsx, which outlasts the 5 s default under a full `pnpm test`.
+describe("acp-matrix --require (#1180 §0)", { timeout: 60_000 }, () => {
 	it("fails a named row that is missing or n/a for the agent, and exits 1", () => {
 		expect(matrix("cursor", "--only", "no-such-row,probe-runs-no-user-code", "--require")).toEqual({
 			code: 1,
