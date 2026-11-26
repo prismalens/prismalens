@@ -61,7 +61,41 @@ export interface AuthScheme {
 	readonly needsTarget?: boolean;
 }
 
-/** A sign-in method an agent's own CLI offers, served as data; `unattended` says whether alert and scheduled runs may use it. */
+/**
+ * Which runs PrismaLens may start on a sign-in path, by its vendor's terms: every run,
+ * only a person's (no alert or schedule), none, or terms not yet read (the run warns).
+ */
+export const TERMS_RUNS = [
+	"allowed",
+	"interactive-only",
+	"never",
+	"unknown",
+] as const;
+export type TermsRuns = (typeof TERMS_RUNS)[number];
+
+/** A clause as read: verbatim, where, and the UTC date it was read. */
+export interface TermsSource {
+	readonly url: string;
+	readonly clause: string;
+	readonly readOn: string;
+}
+
+export interface Terms {
+	readonly runs: TermsRuns;
+	readonly source: TermsSource;
+	/** The strongest clause that reads the other way, kept beside the ruling. */
+	readonly against?: TermsSource;
+	/** Pages that bear on this path and were not read; required when `runs` is `unknown`. */
+	readonly gaps?: readonly string[];
+}
+
+/** An env var whose value means a run signs in this way; `prefix` narrows it to one kind of key. */
+export interface SignInEnv {
+	readonly name: string;
+	readonly prefix?: string;
+}
+
+/** A sign-in method an agent's own CLI offers, served as data with its vendor's terms. */
 export interface SignInMethod {
 	readonly id: string;
 	readonly label: string;
@@ -71,7 +105,15 @@ export interface SignInMethod {
 		| "terminal"
 		| "credentials"
 	)[];
-	readonly unattended: boolean;
+	/** Set in the run's env, this method is the one in use; absent, it is the CLI's own stored sign-in. */
+	readonly env?: readonly SignInEnv[];
+	readonly terms: Terms;
+}
+
+/** Which credential the CLI uses when a stored sign-in and an env key both exist, as its docs say. */
+export interface SignInPrecedence {
+	readonly first: "env" | "login";
+	readonly source: TermsSource;
 }
 
 export interface Operation {
@@ -96,6 +138,8 @@ export interface ProviderSpec<F extends Family = Family> {
 	readonly auth?: {
 		readonly schemes?: readonly AuthScheme[];
 		readonly methods?: readonly SignInMethod[];
+		/** Absent, the CLI's docs do not say, and a run takes the stricter verdict of the two. */
+		readonly precedence?: SignInPrecedence;
 	};
 	readonly operations?: Readonly<Record<string, Operation>>;
 	/** Non-secret settings; forms render from its JSON Schema and `.meta`. */

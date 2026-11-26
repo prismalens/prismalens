@@ -3,6 +3,7 @@
 
 import {
 	channelOf,
+	codingPlan,
 	defineAgent,
 	modeNamed,
 	offers,
@@ -32,15 +33,51 @@ export const claudeCode = defineAgent({
 				id: "login",
 				label: "Claude account",
 				steps: ["terminal", "browser"],
-				unattended: true,
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://code.claude.com/docs/en/legal-and-compliance",
+						clause:
+							"Nor does it prevent an end user from signing in to the unmodified Claude Code binary with their own Claude subscription, including where a platform hosts Claude Code as described under *Can customers offer Claude Code in their products?* above.",
+						readOn: "2026-11-26",
+					},
+					against: {
+						url: "https://code.claude.com/docs/en/agent-sdk/overview",
+						clause:
+							"Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK.",
+						readOn: "2026-11-26",
+					},
+				},
 			},
+			codingPlan(
+				["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"],
+				"ANTHROPIC_BASE_URL",
+			),
 			{
 				id: "api-key",
 				label: "ANTHROPIC_API_KEY",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "ANTHROPIC_API_KEY" }, { name: "ANTHROPIC_AUTH_TOKEN" }],
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://www.anthropic.com/legal/consumer-terms",
+						clause:
+							"Except when you are accessing our Services via an Anthropic API Key or where we otherwise explicitly permit it, to access the Services through automated or non-human means, whether through a bot, script, or otherwise.",
+						readOn: "2026-11-26",
+					},
+				},
 			},
 		],
+		precedence: {
+			first: "env",
+			source: {
+				url: "https://code.claude.com/docs/en/authentication",
+				clause:
+					"In non-interactive mode (`-p`), the key is always used when present.",
+				readOn: "2026-11-26",
+			},
+		},
 	},
 	facts: {
 		// claude-agent-acp 0.99.1 handles `/compact` but has no idle self-compaction, and states no cache

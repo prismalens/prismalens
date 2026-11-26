@@ -3,7 +3,7 @@
 
 import { defineKind } from "@prismalens/registry";
 import { z } from "zod";
-import { defineProvider, FAMILIES } from "../descriptor.ts";
+import { defineProvider, FAMILIES, TERMS_RUNS } from "../descriptor.ts";
 import {
 	aliasesFree,
 	entryPointsDeclared,
@@ -14,6 +14,24 @@ import {
 
 const text = z.string().trim().min(1);
 const zod = z.custom<z.ZodType>((v) => v instanceof z.ZodType, "a zod schema");
+const source = z
+	.object({
+		url: z.url({ protocol: /^https$/ }),
+		clause: text,
+		readOn: z.iso.date(),
+	})
+	.strict();
+const terms = z
+	.object({
+		runs: z.enum(TERMS_RUNS),
+		source,
+		against: z.optional(source),
+		gaps: z.optional(z.array(text).min(1)),
+	})
+	.strict()
+	.refine((t) => t.runs !== "unknown" || !!t.gaps, {
+		message: "an unknown verdict names the pages it could not read in gaps",
+	});
 
 export const provider = defineKind({
 	name: "provider",
@@ -86,9 +104,17 @@ export const provider = defineKind({
 									z.enum(["browser", "deviceCode", "terminal", "credentials"]),
 								)
 								.min(1),
-							unattended: z.boolean(),
+							env: z.optional(
+								z.array(
+									z.object({ name: text, prefix: z.optional(text) }).strict(),
+								),
+							),
+							terms,
 						}),
 					),
+				),
+				precedence: z.optional(
+					z.object({ first: z.enum(["env", "login"]), source }).strict(),
 				),
 			}),
 		),

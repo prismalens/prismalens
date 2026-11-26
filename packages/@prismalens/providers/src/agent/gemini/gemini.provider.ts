@@ -27,15 +27,48 @@ export const gemini = defineAgent({
 				id: "login",
 				label: "Google account",
 				steps: ["terminal", "browser"],
-				unattended: true,
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/authentication.mdx",
+						clause:
+							"Headless mode will use your existing authentication method, if an existing authentication credential is cached.",
+						readOn: "2026-11-26",
+					},
+					against: {
+						url: "https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/tos-privacy.md",
+						clause:
+							"Directly accessing the services powering Gemini CLI (for example, the Gemini Code Assist service) using third-party software, tools, or services (for example, using OpenClaw with Gemini CLI OAuth) is a violation of applicable terms and policies.",
+						readOn: "2026-11-26",
+					},
+				},
 			},
 			{
 				id: "api-key",
 				label: "GEMINI_API_KEY",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "GEMINI_API_KEY" }],
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://github.com/google-gemini/gemini-cli/blob/main/docs/get-started/authentication.mdx",
+						clause:
+							"[Headless mode](#headless) | [Use Gemini API Key](#gemini-api) or [Vertex AI](#vertex-ai)",
+						readOn: "2026-11-26",
+					},
+					gaps: ["Google Cloud's service terms, for Vertex AI"],
+				},
 			},
 		],
+		precedence: {
+			first: "login",
+			source: {
+				url: "https://github.com/google-gemini/gemini-cli/blob/main/packages/cli/src/validateNonInterActiveAuth.ts",
+				clause:
+					"const effectiveAuthType = configuredAuthType || getAuthTypeFromEnv();",
+				readOn: "2026-11-26",
+			},
+		},
 	},
 	facts: {
 		// Gemini's implicit caching states no TTL (#1024).

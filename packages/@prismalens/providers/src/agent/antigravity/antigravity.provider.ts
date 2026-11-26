@@ -31,16 +31,42 @@ export const antigravity = defineAgent({
 			{
 				id: "login",
 				label: "Google account",
-				steps: ["browser"],
-				unattended: true,
+				steps: ["terminal", "browser"],
+				terms: {
+					runs: "never",
+					source: {
+						url: "https://antigravity.google/faq.md",
+						clause:
+							"Wrapping `agy` inside third-party coding agents or applications, or automating account rotation, is not supported under consumer plans.",
+						readOn: "2026-11-26",
+					},
+				},
 			},
 			{
 				id: "api-key",
 				label: "GEMINI_API_KEY",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "GEMINI_API_KEY" }],
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://antigravity.google/faq.md",
+						clause:
+							"To use a third-party coding agent with Gemini, we recommend using a Gemini Enterprise or Google AI Studio API key.",
+						readOn: "2026-11-26",
+					},
+				},
 			},
 		],
+		precedence: {
+			first: "login",
+			source: {
+				url: "https://antigravity.google/docs/ide/extensions/acp.md",
+				clause:
+					"`agy acp` uses the credentials you cached with an interactive `agy` session.",
+				readOn: "2026-11-26",
+			},
+		},
 	},
 	facts: {
 		// No Antigravity source states a cache lifetime, an auto-compact point or a compact command.
@@ -52,9 +78,8 @@ export const antigravity = defineAgent({
 		acpRegistryIds: ["antigravity-acp"],
 		vendor: "google",
 		usageReports: [],
-		// Google's forum reply of 2026-10-26 on its terms (#1235).
 		ownSettingsNote: () =>
-			"Google's terms cover one person's own use of a personal sign-in here; runs an alert starts are your call.",
+			"Antigravity's own settings apply, as in your terminal; which runs each sign-in may start is under Sign-in.",
 		install:
 			"Download Google Antigravity's ACP server for your platform (agentclientprotocol.com registry, antigravity-acp) and put agy_acp_server on PATH",
 		lines: {
