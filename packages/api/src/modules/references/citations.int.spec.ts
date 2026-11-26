@@ -437,4 +437,48 @@ ${"b".repeat(1999)}…
 		expect(after.isError).toBe(true);
 		expect(after.body.error).toBe("not_found");
 	});
+
+	const rerun = async (id: string, text: string) => {
+		const investigations = pl.resolve<InvestigationsService>(InvestigationsService);
+		if (!investigations) throw new Error("InvestigationsService is not provided");
+		await investigations.clearEvents(id);
+		await (await pl.prisma()).investigationEvent.create({
+			data: { investigationId: id, seq: 0, branchId: "main", event: JSON.stringify(ask(0, text)) },
+		});
+	};
+
+	it("keeps no citation that a reset lands between reading the cited message and writing it", async () => {
+		const src = await thread("Reset mid-cite", [ask(0, "First attempt")]);
+		const reader = await thread("Mid-cite reader", [ask(0, "Read it")]);
+		const read = citations.message.bind(citations);
+		const spy = vi.spyOn(citations, "message").mockImplementationOnce(async (t, k) => {
+			const m = await read(t, k);
+			await rerun(src, "Second attempt");
+			return m;
+		});
+		await svc.cite(reader, {
+			references: [{ kind: "message", id: messageRefId(src, "main:0"), label: "first" }],
+		});
+		spy.mockRestore();
+		expect(await citations.list(reader)).toEqual({ cites: [], citedIn: [] });
+	});
+
+	it("reads nothing when a reset lands between finding the citation and reading its turn", async () => {
+		const src = await thread("Reset mid-read", [ask(0, "First attempt")]);
+		const reader = await thread("Mid-read reader", [ask(0, "Read it")]);
+		await svc.cite(reader, {
+			references: [{ kind: "message", id: messageRefId(src, "main:0"), label: "first" }],
+		});
+		const prisma = await pl.prisma();
+		const find = prisma.messageCitation.findUnique.bind(prisma.messageCitation);
+		const spy = vi.spyOn(prisma.messageCitation, "findUnique").mockImplementationOnce((async (a: Parameters<typeof find>[0]) => {
+			const row = await find(a);
+			await rerun(src, "Second attempt");
+			return row;
+		}) as typeof find);
+		const r = await tool()(reader, { threadId: src, key: "main:0" });
+		spy.mockRestore();
+		expect(r.isError).toBe(true);
+		expect(r.body.error).toBe("not_found");
+	});
 });
