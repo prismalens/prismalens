@@ -106,10 +106,22 @@ describe("readLimits through codex app-server (#1180)", () => {
 	});
 
 	it("returns null when app-server does not answer within the budget", async () => {
-		const started = Date.now();
-		const read = await readLimits("codex", codexPlan("hang"), { budgetMs: 400 });
-		expect(read).toBeNull();
-		expect(Date.now() - started).toBeLessThan(5_000);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			let settled: unknown = "pending";
+			const read = readLimits("codex", codexPlan("hang"), {
+				budgetMs: 400,
+			}).then((r) => {
+				settled = r;
+			});
+			await vi.advanceTimersByTimeAsync(399);
+			expect(settled).toBe("pending");
+			await vi.advanceTimersByTimeAsync(1);
+			await read;
+			expect(settled).toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("returns null when the rate-limit read answers with an error", async () => {
@@ -281,6 +293,49 @@ describe("readLimits through the Claude Agent SDK (#1180)", () => {
 			await readLimits("claude-code", claudePlan(), claudeDeps(query)),
 		).toBeNull();
 		expect(query).not.toHaveBeenCalled();
+	});
+});
+
+describe("readLimits for a Claude env that names its own key (#1180)", () => {
+	const usage = {
+		rate_limits_available: true,
+		rate_limits: { five_hour: { utilization: 5, resets_at: null } },
+	};
+
+	it.each(["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"])(
+		"starts no session when the planned env sets %s",
+		async (name) => {
+			const { query } = fakeQuery({ usage });
+			const plan = claudePlan();
+			expect(
+				await readLimits(
+					"claude-code",
+					{ ...plan, env: { ...plan.env, [name]: "k" } },
+					claudeDeps(query),
+				),
+			).toBeNull();
+			expect(query).not.toHaveBeenCalled();
+		},
+	);
+
+	it("reads a subscription env with a blank key and an OAuth token", async () => {
+		const { query } = fakeQuery({ usage });
+		const plan = claudePlan();
+		const read = await readLimits(
+			"claude-code",
+			{
+				...plan,
+				env: {
+					...plan.env,
+					ANTHROPIC_API_KEY: " ",
+					CLAUDE_CODE_OAUTH_TOKEN: "t",
+				},
+			},
+			claudeDeps(query),
+		);
+		expect(read?.windows.map((w) => [w.key, w.usedPercent])).toEqual([
+			["five_hour:session", 5],
+		]);
 	});
 });
 
