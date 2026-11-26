@@ -4,6 +4,7 @@
 // The thread page's runtime schemas, in a chunk of their own: zod is ~40 KB of a first paint
 // the page does not need them for. Load through `loadThreadSchemas` (#1130).
 export {
+	CanonicalEventSchema,
 	CommitFrameSchema,
 	DoneFrameSchema,
 	LiveFrameSchema,

@@ -838,6 +838,7 @@ function ListRowView({
 							on && "bg-surface-3 hover:bg-surface-3",
 						)}
 						data-testid="thread-row"
+						data-list-row
 						data-id={t.id}
 						// The slow-link census reads how stale the row is (#1181).
 						data-activity={Date.parse(t.lastActivityAt)}
@@ -894,7 +895,8 @@ function ListRowView({
 						{metaLine}
 					</Link>
 				</div>
-				{more && (
+				{/* Reserved from the row's own mark: asks that load later fill it without moving the list. */}
+				{(more || (inNeeds && asking)) && (
 					<p
 						aria-hidden
 						className="-mt-1 h-4 truncate pr-2 pl-[30px] text-meta text-text-3"

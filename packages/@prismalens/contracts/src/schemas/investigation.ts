@@ -33,8 +33,10 @@ import {
 import { type ContextPack, ContextPackSchema } from "./context-pack.js";
 import {
 	ARTIFACT_HTML_CHARS,
+	KEEP_WHYS,
 	MAX_ATTACHMENTS_PER_MESSAGE,
 	MESSAGE_TEXT_MAX,
+	REWIND_PATHS_MAX,
 	SUBAGENT_STATES,
 } from "./investigation-values.js";
 import { OverlaySchema } from "./overlay.js";
@@ -720,6 +722,7 @@ export const SESSION_OPENINGS = [
 	"summary",
 	"load_broken",
 	"return",
+	"fork",
 ] as const;
 export type SessionOpeningHow = (typeof SESSION_OPENINGS)[number];
 /** Why a session opened (#1166). */
@@ -731,6 +734,7 @@ export const SESSION_CAUSES = [
 	"wake",
 	"compact",
 	"idle_compact",
+	"rewind",
 ] as const;
 export type SessionCause = (typeof SESSION_CAUSES)[number];
 /** The causes a job carries; the rest the run reads from the job's own shape. */
@@ -739,6 +743,7 @@ export const RESUME_CAUSES = [
 	"wake",
 	"compact",
 	"idle_compact",
+	"rewind",
 ] as const;
 export type ResumeCause = (typeof RESUME_CAUSES)[number];
 export const SessionOpeningSchema = /* @__PURE__ */ lazySchema(() =>
@@ -762,6 +767,8 @@ export const SessionOpeningSchema = /* @__PURE__ */ lazySchema(() =>
 		full: z.enum(["stale", "unsent"]).optional(),
 		/** `handoff`: a return whose own session could not be reopened, and why. */
 		returnFailed: z.string().max(200).optional(),
+		/** `fresh` or `handoff` after a rewind: the agent's own fork was abandoned, and why (#1193). */
+		forkFailed: z.string().max(200).optional(),
 	}),
 );
 export type SessionOpening = z.infer<typeof SessionOpeningSchema>;
@@ -1368,12 +1375,44 @@ export const AgentPlanSchema = /* @__PURE__ */ lazySchema(() =>
 /** UTF-8 bytes of thinking kept per turn; the rest is dropped and `truncated` says so (#1024). */
 export const THOUGHT_MAX_BYTES = 16 * 1024;
 
+/** One path of one repo (#1193): every rewind path list names the repo. */
+export const RewindPathSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({ repo: z.string().max(200), path: z.string().max(4096) }),
+);
+export type RewindPath = z.infer<typeof RewindPathSchema>;
+export const RewindKeptSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		repo: z.string().max(200),
+		path: z.string().max(4096),
+		why: z.enum(KEEP_WHYS),
+	}),
+);
+export type RewindKept = z.infer<typeof RewindKeptSchema>;
+/** The thread's session columns a rewind cleared, or an undo replaced (#1193). */
+export const PriorSessionsSchema = /* @__PURE__ */ lazySchema(() =>
+	z.object({
+		acpSessionId: z.string().nullable(),
+		agentSessions: z.string().nullable(),
+	}),
+);
+export type PriorSessions = z.infer<typeof PriorSessionsSchema>;
+/** Who rewound: the user, or a thread through `pl_thread_rewind`. */
+export const RewindBySchema = /* @__PURE__ */ lazySchema(() =>
+	z.discriminatedUnion("kind", [
+		z.object({ kind: z.literal("you") }),
+		z.object({ kind: z.literal("thread"), id: z.string().uuid() }),
+	]),
+);
+export type RewindBy = z.infer<typeof RewindBySchema>;
+
 export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 	z.discriminatedUnion("kind", [
 		z.object({
 			kind: z.literal("agent_step"),
 			...StreamBaseShape,
 			text: z.string(),
+			/** The ACP `messageId` of the step's last message chunk: where a rewind may fork (#1193). */
+			acpMessageId: z.string().max(200).optional(),
 			toolCalls: z.array(
 				z.object({
 					/** Stable id from AIMessage tool_calls[].id; pairs with a tool_result. */
@@ -1924,6 +1963,56 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			source: z.enum(["agent", "branch", "user"]),
 		}),
 		z.object({
+			/** The user or a thread edited a sent message: later turns fold, files go back (#1193). */
+			kind: z.literal("thread_rewound"),
+			...StreamBaseShape,
+			rewindId: z.string().uuid(),
+			fromSeq: z.number().int(),
+			/** The turns it folded, for the fold row. */
+			turns: z.number().int().nonnegative().optional(),
+			messageOrdinal: z.number().int(),
+			throughOrdinal: z.number().int(),
+			/** repo -> the operation id under `refs/pl/op/` in that repo's store. */
+			journals: z.record(z.string(), z.string().uuid()),
+			reverted: z.array(RewindPathSchema).max(REWIND_PATHS_MAX),
+			kept: z.array(RewindKeptSchema).max(REWIND_PATHS_MAX),
+			priorSessions: PriorSessionsSchema,
+			session: z.enum(["fork", "replay", "new"]),
+			by: RewindBySchema,
+		}),
+		z.object({
+			/** A rewind was undone: its turns, files and sessions came back (#1193). */
+			kind: z.literal("rewind_undone"),
+			...StreamBaseShape,
+			rewindId: z.string().uuid(),
+			journals: z.record(z.string(), z.string().uuid()),
+			restored: z.array(RewindPathSchema).max(REWIND_PATHS_MAX),
+			kept: z.array(RewindKeptSchema).max(REWIND_PATHS_MAX),
+			replacedSessions: PriorSessionsSchema,
+		}),
+		z.object({
+			/** A rewind, undo or restore stopped part-way at a restart; only files may have changed (#1193). */
+			kind: z.literal("rewind_interrupted"),
+			...StreamBaseShape,
+			op: z.string().uuid(),
+			repo: z.string(),
+			opKind: z.enum(["rewind", "undo", "restore"]),
+			rewindId: z.string().uuid().nullable(),
+			backup: z.string(),
+			receipt: z.string().nullable(),
+			written: z.array(RewindPathSchema).max(REWIND_PATHS_MAX),
+		}),
+		z.object({
+			/** The user restored an interrupted operation's backup (#1193). */
+			kind: z.literal("rewind_restored"),
+			...StreamBaseShape,
+			op: z.string().uuid(),
+			of: z.string().uuid(),
+			journals: z.record(z.string(), z.string().uuid()),
+			restored: z.array(RewindPathSchema).max(REWIND_PATHS_MAX),
+			kept: z.array(RewindKeptSchema).max(REWIND_PATHS_MAX),
+		}),
+		z.object({
 			kind: z.literal("report"),
 			runId: z.string().uuid(),
 			seq: z.number().int(),
@@ -2462,6 +2551,25 @@ export const InvestigationJobDataSchema = /* @__PURE__ */ lazySchema(() =>
 						command: z.string().min(1).max(64),
 						instructions: z.string().max(2000).optional(),
 						only: z.boolean().optional(),
+					})
+					.optional(),
+				/** A rewind's edited message (#1193): never the thread's saved session; `fork` names its source. */
+				rewind: z
+					.object({
+						rewindId: z.string().uuid(),
+						fork: z
+							.object({
+								from: z.string().min(1),
+								messageId: z.string().min(1).max(200),
+								adapter: z.string().min(1),
+								tail: z.object({
+									prompts: z.number().int().nonnegative(),
+									text: z.string(),
+								}),
+							})
+							.nullable(),
+						/** Why the session replays, for the divider; null with a fork. */
+						why: z.string().max(200).nullable().optional(),
 					})
 					.optional(),
 				/** A restart cut the run off: the agent is told its last command may not have completed. */

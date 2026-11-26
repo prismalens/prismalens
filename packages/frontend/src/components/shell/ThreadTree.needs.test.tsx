@@ -151,3 +151,24 @@ describe("Needs you lists each thread that waits, flat (#1101 cat 1)", () => {
 		]);
 	});
 });
+
+describe("an ask row's details line (#1101 cat 8)", () => {
+	it("is reserved, empty, on each approval and question row before its asks load", async () => {
+		await render();
+		const lines = Array.from(
+			container.querySelectorAll(
+				'[data-testid="thread-section-needs"] [data-testid="row-ask-more"]',
+			),
+		).map((p) => [
+			p
+				.closest('[data-testid="thread-row-wrap"]')
+				?.querySelector('[data-testid="thread-row"]')
+				?.getAttribute("data-id"),
+			p.textContent,
+		]);
+		expect(lines).toEqual([
+			["a", ""],
+			["b", ""],
+		]);
+	});
+});

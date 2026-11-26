@@ -21,7 +21,8 @@ export function startsOver(o: SessionOpening): boolean {
 		o.how === "handoff" ||
 		o.how === "summary" ||
 		o.how === "load_broken" ||
-		o.how === "return"
+		o.how === "return" ||
+		(o.how === "new" && o.cause === "rewind")
 	);
 }
 
@@ -37,7 +38,11 @@ export function sessionHow(o: SessionOpening, names: SessionNames): string {
 				: "reloaded";
 		case "new":
 			return "started";
+		case "fork":
+			return "Session cut back to your edited message";
 		case "handoff":
+			if (o.cause === "rewind")
+				return `New session with the conversation up to your edited message${o.forkFailed ? ` (${o.forkFailed})` : ""}. It got ${o.carried ?? "the conversation"}.`;
 			return o.returnFailed
 				? `couldn't reopen its own session, so it got a full handoff. It got ${o.carried ?? "the conversation"}.`
 				: `handed off${o.from ? ` from ${names.agent(o.from)}` : ""}. It got ${o.carried ?? "the conversation"}.`;
@@ -60,7 +65,7 @@ export function sessionLine(
 	names: SessionNames,
 	code?: string | null,
 ): string {
-	const same = o.how === "resume" || o.how === "load";
+	const same = o.how === "resume" || o.how === "load" || o.how === "fork";
 	const parts = [
 		o.how === "return"
 			? `Returned to ${names.agent(o.harness)}'s own session`

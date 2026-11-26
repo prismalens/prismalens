@@ -48,6 +48,8 @@ export * from "./pull-request-values.js";
 export * from "./recommendation.js";
 export * from "./references.js";
 export * from "./repository.js";
+export * from "./rewind.js";
+export * from "./rewind-values.js";
 export * from "./run-views.js";
 export * from "./run-workspace.js";
 export * from "./safe-url.js";

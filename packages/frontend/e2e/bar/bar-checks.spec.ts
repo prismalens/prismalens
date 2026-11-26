@@ -11,6 +11,7 @@ import { ALL } from "./checks";
  * One test per checked bar item (#1101 Scores), against the sim in BAR_SIM_DIR. Each
  * writes BAR_OUT/results/<item>.json, so a run cut off by its hard timeout keeps what it
  * reached; `pnpm sim judge-evidence` turns them into checks.md. BAR_ONLY=1,7 picks categories.
+ * Cases: @cond:host.rewind-interrupted (bar 16.12 restores its cut-off rewind, #1193).
  */
 const SIM_DIR = resolve(process.env.BAR_SIM_DIR ?? "../../.sim-checks");
 const OUT = resolve(process.env.BAR_OUT ?? "test-results/bar");

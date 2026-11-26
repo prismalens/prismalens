@@ -384,8 +384,8 @@ export default defineChecks([
 			await expect(page.getByTestId("panel-tab-changes")).toHaveCount(0);
 			const left = await tabNames();
 
-			// The pane menu reopens the rest, each by its key.
-			await page.getByTestId("pane-menu").click();
+			// The panel's pane menu reopens the rest, each by its key; the header holds another.
+			await page.getByTestId("thread-panel").getByTestId("pane-menu").click();
 			const paneRows = await menuRows(page);
 			const keyed = await page
 				.getByRole("menu")

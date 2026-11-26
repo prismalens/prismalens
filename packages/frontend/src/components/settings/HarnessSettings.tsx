@@ -69,7 +69,7 @@ import {
 } from "@/lib/api/hooks";
 import { signInNext } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
-import { subagentsOnStop } from "./agent-threads.settings";
+import { rewindSession, subagentsOnStop } from "./agent-threads.settings";
 import { StatePill } from "./source-words";
 
 export function HarnessSettings() {
@@ -586,6 +586,7 @@ export function SubagentsGroup() {
 		>
 			<Pool>
 				<SubagentStopRow />
+				<RewindSessionRow />
 				<SubagentLimitRow
 					field="subagentDepth"
 					label="Sub-agent depth"
@@ -665,6 +666,58 @@ export function SubagentStopRow() {
 					</SelectContent>
 				</Select>
 			</span>
+		</SettingRow>
+	);
+}
+
+/** When you edit a sent message: keep the agent's session up to it, or replay; the agent's fact says which it can (#1193). */
+export function RewindSessionRow() {
+	const { data: settings } = useHarnessSettings();
+	const update = useUpdateHarnessSettings();
+	const { effective } = useAgentChoice();
+	const s = settingOf("agent.rewindSession");
+	const { options } = rewindSession;
+	const fallback = options[0].value;
+	const value = settings?.rewindSession ?? fallback;
+	const forks =
+		effective &&
+		HARNESS_REGISTRY[effective.id as HarnessId]?.facts?.rewindVia?.value ===
+			"fork-at-message";
+	return (
+		<SettingRow
+			label={<span id="harness-rewind-session-label">{s.label}</span>}
+			description={
+				effective && !forks
+					? `For ${effective.label}: always a new session with the conversation so far; it can't cut its session at a message.`
+					: s.sentence
+			}
+			testId={s.anchor}
+			changed={value !== fallback}
+			onReset={() => update.mutate({ rewindSession: fallback })}
+		>
+			<Select
+				value={value}
+				onValueChange={(v) =>
+					update.mutate({
+						rewindSession: v as (typeof options)[number]["value"],
+					})
+				}
+				disabled={update.isPending}
+			>
+				<SelectTrigger
+					aria-labelledby="harness-rewind-session-label"
+					data-testid="harness-rewind-session"
+				>
+					<SelectValue />
+				</SelectTrigger>
+				<SelectContent>
+					{options.map((o) => (
+						<SelectItem key={o.value} value={o.value}>
+							{o.label}
+						</SelectItem>
+					))}
+				</SelectContent>
+			</Select>
 		</SettingRow>
 	);
 }

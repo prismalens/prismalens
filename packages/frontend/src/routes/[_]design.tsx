@@ -285,7 +285,7 @@ function Gallery() {
 				</Section>
 
 				{LANE_SECTIONS.map((s) => (
-					<Section key={s.id} title={s.title}>
+					<Section key={s.id} id={s.id} title={s.title}>
 						{s.render()}
 					</Section>
 				))}
@@ -294,9 +294,17 @@ function Gallery() {
 	);
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+	id,
+	title,
+	children,
+}: {
+	id?: string;
+	title: string;
+	children: ReactNode;
+}) {
 	return (
-		<section className="flex flex-col gap-3">
+		<section className="flex flex-col gap-3" data-gallery-state={id}>
 			<h2 className="text-heading text-text-2">{title}</h2>
 			{children}
 		</section>

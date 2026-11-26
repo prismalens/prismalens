@@ -1,0 +1,44 @@
+{
+	"description": "An agent that edits another thread's last message through pl_thread_rewind (#1193, bar 10.6): the prompt names the target's link, and the agent says what the tool answered.",
+	"agent": {
+		"name": "claude-agent-acp",
+		"version": "0.85.1-fake"
+	},
+	"turns": [
+		[
+			{
+				"say": "Editing the last message of {{thread}}.\n"
+			},
+			{
+				"call": {
+					"tool": "pl_thread_rewind",
+					"arguments": {
+						"id": "{{thread}}",
+						"back": 1,
+						"text": "Set the retries to 3 instead.",
+						"requestId": "rewind-{{seq}}"
+					}
+				}
+			},
+			{
+				"say": "{{result}}"
+			}
+		]
+	],
+	"followUp": [
+		{
+			"call": {
+				"tool": "pl_thread_rewind",
+				"arguments": {
+					"id": "{{thread}}",
+					"back": 1,
+					"text": "Set the retries to 3 instead.",
+					"requestId": "rewind-{{seq}}"
+				}
+			}
+		},
+		{
+			"say": "{{result}}"
+		}
+	]
+}

@@ -13,6 +13,9 @@ import { ACCESS_LEVELS, type AccessLevel } from "@prismalens/config/harness";
 import {
 	isWorkflowTerminal,
 	LIVE_WORKFLOW_STATUSES,
+	REWIND_BLOCK_WORDS,
+	type RewindBlock,
+	type RewindPreview,
 	RunWorkspaceSchema,
 	STOP_REASONS,
 	SUBAGENT_STATES,
@@ -41,6 +44,7 @@ import { storedUseDefault } from "../../core/harness/harness.service.js";
 import { PrismaService } from "../../core/prisma/prisma.service.js";
 import { DispatchService } from "../../infrastructure/dispatch/dispatch.service.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
+import { RewindService } from "../threads/rewind.service.js";
 import { isSettled } from "../threads/settled.js";
 import { SIDE_QUESTION } from "../threads/side-question.js";
 import { fixOf, startedVia } from "../threads/started-via.js";
@@ -191,6 +195,54 @@ const NO_STARTER = () =>
 		"Pass a thread's link from pl_thread_list instead.",
 	);
 
+/** `pl_thread_rewind`'s bound args: the card and the pending row never hold `back` (#1193 R11). */
+interface RewindArgs {
+	threadId: string;
+	seq: number;
+	messageOrdinal: number;
+	revision: number;
+	repos: Record<string, { head: string; tree: string }>;
+	include: [];
+	text: string;
+	turns: number;
+	/** The bound preview, as the card shows it. */
+	card: string;
+}
+
+/** A block as the agent reads it, with what to do instead. */
+function rewindBlockFailure(block: RewindBlock | null): Failure | null {
+	if (!block) return null;
+	const next: Record<RewindBlock, string> = {
+		"view-only": "Tell the user; this device cannot edit.",
+		"not-yours": "Pick a message the user sent; pass a larger `back`.",
+		running: "Stop it first with pl_thread_cancel.",
+		queued: "Wait until its queued messages are sent, then call again.",
+		"before-report": "Start a fork with pl_thread_start instead.",
+	};
+	return fail("invalid_input", REWIND_BLOCK_WORDS[block], next[block]);
+}
+
+/** The card: what folds, which files go back and stay, and how the session continues. */
+function rewindCard(p: RewindPreview): string {
+	const ok = p.repos.flatMap((r) => (r.state === "ok" ? [r] : []));
+	const list = (xs: string[]) =>
+		xs.length
+			? `${xs.slice(0, 8).join(", ")}${xs.length > 8 ? ", …" : ""}`
+			: "none";
+	return [
+		`Folds ${p.turns} turn${p.turns === 1 ? "" : "s"}.`,
+		`Sets back: ${list(ok.flatMap((r) => r.revert.map((f) => f.path)))}.`,
+		`Keeps: ${list(ok.flatMap((r) => r.kept.map((k) => k.path)))}.`,
+		`Changed during a turn, kept: ${list(ok.flatMap((r) => r.duringTurn))}.`,
+		`Stays: ${p.stays.join(", ")}.`,
+		p.session.via === "fork"
+			? "The agent's session is cut back to the message."
+			: p.session.via === "new"
+				? "A new session starts."
+				: `A new session gets the conversation so far${p.session.why ? ` (${p.session.why})` : ""}.`,
+	].join("\n");
+}
+
 /** Answers whether `runId` may read `threadId`: its subject's records, or a thread linked to it. */
 export type CanRead = (runId: string, threadId: string) => Promise<boolean>;
 
@@ -227,6 +279,7 @@ export class ThreadTreeService
 		private readonly io: TreeIo,
 		@Optional() private readonly inbox?: InboxService,
 		@Optional() private readonly statuses?: ThreadStatusService,
+		@Optional() private readonly rewinds?: RewindService,
 	) {
 		// The starter's next prompt carries what changed in the threads it started.
 		dispatch.addPromptNote?.((id) => this.statusLine(id));
@@ -249,6 +302,7 @@ export class ThreadTreeService
 			done: (_args, value) =>
 				`started ${(value as { link: string }).link}. Nothing comes back by itself: it messages you only if its brief asks it to.`,
 		});
+		this.rewindExecutor();
 		actions.register("pl_thread_cancel", {
 			check: (caller, args) =>
 				this.cancelRefusal(caller, (args as { id: string }).id),
@@ -266,6 +320,166 @@ export class ThreadTreeService
 			done: (_args, value) =>
 				`${(value as { link: string }).link} was asked to stop.`,
 		});
+	}
+
+	/** The edit an agent asked for, bound to what it was shown (#1193 R11). */
+	private rewindExecutor(): void {
+		this.actions.register("pl_thread_rewind", {
+			check: (caller, args) => this.rewindRefusal(caller, args as RewindArgs),
+			run: (caller, args, actionId) =>
+				this.rewindThread(caller, args as RewindArgs, actionId),
+			// A rewind that landed before a crash left its marker, keyed by the action's id.
+			already: async (_caller, args, actionId) =>
+				!!(await this.prisma.investigationEvent.findFirst({
+					where: {
+						investigationId: (args as RewindArgs).threadId,
+						branchId: "rewinds",
+						event: { contains: `"rewindId":"${actionId}"` },
+					},
+					select: { id: true },
+				})),
+			describe: (args) => {
+				const a = args as RewindArgs;
+				return {
+					title: `Edit a thread's message: ${cap(a.text, 80)}`,
+					detail: cap(a.card, 1_000),
+				};
+			},
+			done: (args, value) =>
+				(value as { line?: string }).line ??
+				`Rewound ${(args as RewindArgs).threadId}.`,
+		});
+	}
+
+	/** Binds `back` to the message and what a preview showed, before the gate (#1193 R11). */
+	async bindRewind(
+		callerId: string,
+		input: { id: string; back: number; text: string; requestId: string },
+	): Promise<RewindArgs | Failure> {
+		const target = await this.resolve(callerId, input.id);
+		const refused = await this.rewindTarget(callerId, input.id, target);
+		if (refused) return refused;
+		const rewinds = this.rewinds as RewindService;
+		const t = target as Row;
+		const sent = await rewinds.sentMessages(t.id);
+		const seq = sent[input.back - 1];
+		if (seq === undefined)
+			return fail(
+				"invalid_input",
+				`${threadLink(t)} has ${sent.length} sent message${sent.length === 1 ? "" : "s"}.`,
+				"Pass a smaller `back`; 1 is the last message.",
+			);
+		const p = await rewinds.preview(t.id, seq, true);
+		const blocked = rewindBlockFailure(p.block);
+		if (blocked) return blocked;
+		return {
+			threadId: t.id,
+			seq,
+			messageOrdinal: p.messageOrdinal,
+			revision: p.revision,
+			repos: Object.fromEntries(
+				p.repos.flatMap((r) =>
+					r.state === "ok" ? [[r.repo, { head: r.head, tree: r.tree }]] : [],
+				),
+			),
+			include: [],
+			text: input.text,
+			turns: p.turns,
+			card: rewindCard(p),
+		};
+	}
+
+	private async rewindTarget(
+		callerId: string,
+		id: string,
+		target: Row | null,
+	): Promise<Failure | null> {
+		if (!this.rewinds)
+			return fail("disabled", "Edits are not running here.", "Continue.");
+		if (!target && isStarter(id)) return NO_STARTER();
+		if (!target || !(await this.canRead(callerId, target.id)))
+			return fail(
+				"not_found",
+				`No thread "${id}" that this thread can read.`,
+				"Pass a link from pl_thread_list, or `starter`.",
+			);
+		if (target.id === callerId)
+			return fail(
+				"invalid_input",
+				"A thread can't edit its own messages.",
+				"Say the corrected thing in your next message instead.",
+			);
+		return null;
+	}
+
+	private async rewindRefusal(
+		callerId: string,
+		args: RewindArgs,
+	): Promise<Failure | null> {
+		const target = await this.row(args.threadId);
+		const refused = await this.rewindTarget(callerId, args.threadId, target);
+		if (refused) return refused;
+		const p = await (this.rewinds as RewindService)
+			.preview(args.threadId, args.seq, true)
+			.catch(() => null);
+		if (!p)
+			return fail(
+				"not_found",
+				"That message is no longer in the thread.",
+				"Call pl_thread_rewind again to see the current state.",
+			);
+		return rewindBlockFailure(p.block);
+	}
+
+	private async rewindThread(
+		callerId: string,
+		args: RewindArgs,
+		actionId: string,
+	): Promise<ToolOutcome> {
+		const rewinds = this.rewinds as RewindService;
+		const target = (await this.row(args.threadId)) as Row;
+		const result = await rewinds.rewind(
+			{
+				id: args.threadId,
+				seq: args.seq,
+				text: args.text,
+				expect: {
+					messageOrdinal: args.messageOrdinal,
+					revision: args.revision,
+					repos: args.repos,
+				},
+				include: [],
+				...(/^[0-9a-f-]{36}$/i.test(actionId) ? { rewindId: actionId } : {}),
+			},
+			{ kind: "thread", id: callerId },
+			true,
+		);
+		if (result.state === "refused")
+			return result.reason === "stale" || result.reason === "conflict"
+				? fail(
+						"invalid_input",
+						`${threadLink(target)} changed since the edit was shown.`,
+						"Call pl_thread_rewind again to see the current state.",
+					)
+				: result.reason === "interrupted"
+					? fail(
+							"internal",
+							`The edit of ${threadLink(target)} stopped partway.`,
+							"Do not retry; its thread offers Restore to the user.",
+						)
+					: (rewindBlockFailure(result.reason) ??
+						fail("internal", "The edit did not run.", "Continue without it."));
+		const line = `Rewound ${threadLink(target)}: ${args.turns} turn${args.turns === 1 ? "" : "s"} folded, ${result.reverted.length} file${result.reverted.length === 1 ? "" : "s"} set back, ${result.kept.length} kept. ${result.sent ? "It continues from the edited message." : (result.why ?? "The edited message was not sent.")}`;
+		return {
+			value: {
+				status: result.sent ? "rewound" : "rewound_not_sent",
+				link: threadLink(target),
+				reverted: result.reverted.length,
+				kept: result.kept.length,
+				...(result.why ? { why: result.why } : {}),
+				line,
+			},
+		};
 	}
 
 	onApplicationBootstrap(): void {
