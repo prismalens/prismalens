@@ -56,6 +56,7 @@ import {
 } from "@/lib/api/hooks";
 import { notSignedIn, signInNext } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
+import { CheckTimes, safeCheck, UNSAFE_CHECK_HINT } from "./agent-checks";
 import { EnvVarNotes, envStateWord } from "./agent-env";
 import { SignInButton } from "./SignInButton";
 import { CredentialChip, StatePill, type Word } from "./source-words";
@@ -135,6 +136,30 @@ export function errorText(error: unknown): string | null {
 	return error instanceof Error ? error.message : String(error);
 }
 
+/** Check; on an agent with no safe check its hint says the session may run the agent's own code (#1180 R1). */
+function CheckButton({
+	safe,
+	pending,
+	onCheck,
+}: {
+	safe: boolean;
+	pending: boolean;
+	onCheck: () => void;
+}) {
+	const button = (
+		<Button
+			variant="secondary"
+			size="sm"
+			disabled={pending}
+			onClick={onCheck}
+			data-testid="agent-detail-check"
+		>
+			{pending ? "Checking" : "Check"}
+		</Button>
+	);
+	return safe ? button : <Hint label={UNSAFE_CHECK_HINT}>{button}</Hint>;
+}
+
 export function AgentDetail({ id }: { id: HarnessId }) {
 	const { data, isLoading } = useHarnesses();
 	const agent = data?.harnesses.find((h) => h.id === id);
@@ -186,17 +211,14 @@ export function AgentDetail({ id }: { id: HarnessId }) {
 						)}
 						<span className="flex-1" />
 						<SignInButton agent={agent} />
-						<Button
-							variant="secondary"
-							size="sm"
-							disabled={check.isPending}
-							onClick={() => check.mutate({ id })}
-							data-testid="agent-detail-check"
-						>
-							{check.isPending ? "Checking" : "Check"}
-						</Button>
+						<CheckButton
+							safe={safeCheck(id)}
+							pending={check.isPending}
+							onCheck={() => check.mutate({ id })}
+						/>
 					</div>
 					<div className="mb-6 flex flex-col gap-1 text-body text-text-2">
+						{checked && <CheckTimes agent={agent} />}
 						{checked && (
 							<p data-testid="agent-detail-check-line">
 								{checked.outcome !== "sign-in-needed"

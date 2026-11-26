@@ -244,14 +244,16 @@ describe("readLimits through the Claude Agent SDK (#1180)", () => {
 		});
 	});
 
-	it("leaves strictMcpConfig out when a managed-mcp.json with mcpServers applies, and keeps it for one that does not parse", async () => {
-		const usage = { rate_limits_available: false, rate_limits: null };
-		const managed = "/etc/claude-code/managed-mcp.json";
-		for (const [text, strict] of [
-			['{"mcpServers":{"corp":{"command":"c"}}}', false],
-			["{not json", true],
-		] as const) {
-			const { query, calls } = fakeQuery({ usage });
+	it.each([
+		['{"mcpServers":{"corp":{"command":"c"}}}', false],
+		["{not json", true],
+	] as const)(
+		"with managed-mcp.json %s, strictMcpConfig is sent: %s",
+		async (text, strict) => {
+			const managed = "/etc/claude-code/managed-mcp.json";
+			const { query, calls } = fakeQuery({
+				usage: { rate_limits_available: false, rate_limits: null },
+			});
 			await readLimits("claude-code", claudePlan(), {
 				...claudeDeps(query),
 				isolationHost: {
@@ -260,10 +262,10 @@ describe("readLimits through the Claude Agent SDK (#1180)", () => {
 				},
 			});
 			const options = calls.options as Record<string, unknown>;
-			expect("strictMcpConfig" in options, text).toBe(strict);
-			expect(options.settings, text).toEqual({ disableAllHooks: true });
-		}
-	});
+			expect("strictMcpConfig" in options).toBe(strict);
+			expect(options.settings).toEqual({ disableAllHooks: true });
+		},
+	);
 
 	it("returns null when the SDK has no usage method", async () => {
 		const { query, calls } = fakeQuery({ noUsage: true });

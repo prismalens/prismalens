@@ -685,52 +685,54 @@ describe("planLaunch isolation (#1180 R1, §3.4)", () => {
 		});
 	});
 
-	it("Claude Code clean is unavailable when the user's settings carry sign-in", () => {
-		const settings = (text: string) =>
-			host({ [join("/c", "settings.json").replaceAll("\\", "/")]: text });
-		for (const text of [
-			'{"apiKeyHelper":"get-key"}',
-			'{"awsCredentialExport":"x"}',
-			'{"env":{"ANTHROPIC_AUTH_TOKEN":"x"}}',
-			'{"env":{"CLAUDE_CODE_USE_BEDROCK":"1"}}',
-		])
-			expect(() =>
-				isolated("claude-code", claudeCleanIsolation, {
-					hostEnv: { ...HOST, CLAUDE_CONFIG_DIR: "/c" },
-					isolationHost: settings(text),
-				}),
-			).toThrow("Your Claude settings carry sign-in");
+	const signInSettings = (text: string) =>
+		host({ [join("/c", "settings.json").replaceAll("\\", "/")]: text });
+
+	it.each([
+		'{"apiKeyHelper":"get-key"}',
+		'{"awsCredentialExport":"x"}',
+		'{"env":{"ANTHROPIC_AUTH_TOKEN":"x"}}',
+		'{"env":{"CLAUDE_CODE_USE_BEDROCK":"1"}}',
+	])("Claude Code clean is unavailable when the user's settings carry sign-in: %s", (text) => {
+		expect(() =>
+			isolated("claude-code", claudeCleanIsolation, {
+				hostEnv: { ...HOST, CLAUDE_CONFIG_DIR: "/c" },
+				isolationHost: signInSettings(text),
+			}),
+		).toThrow("Your Claude settings carry sign-in");
+	});
+
+	it("Claude Code clean holds when the user's settings carry hooks but no sign-in", () => {
 		const hooksOnly = isolated("claude-code", claudeCleanIsolation, {
 			hostEnv: { ...HOST, CLAUDE_CONFIG_DIR: "/c" },
-			isolationHost: settings('{"hooks":{}}'),
+			isolationHost: signInSettings('{"hooks":{}}'),
 		});
 		expect(options(hooksOnly).settingSources).toEqual(["project", "local"]);
 	});
 
-	it("a clean profile changes only its listed env keys, keeps the config and data folders and adds no sign-in key", () => {
-		const clean = {
-			"claude-code": [claudeCleanIsolation, ["ENABLE_CLAUDEAI_MCP_SERVERS"]],
-			codex: [codexCleanIsolation, ["CODEX_CONFIG"]],
-			opencode: [
-				opencodeCleanIsolation,
-				["OPENCODE_CONFIG_CONTENT", "OPENCODE_DISABLE_CLAUDE_CODE", "OPENCODE_PURE"],
-			],
-			gemini: [
-				geminiCleanIsolation,
-				["GEMINI_CLI_SYSTEM_DEFAULTS_PATH", "GEMINI_CLI_SYSTEM_SETTINGS_PATH"],
-			],
-		} as const;
-		const homes = {
-			CLAUDE_CONFIG_DIR: "/c",
-			CODEX_HOME: "/x",
-			GEMINI_CLI_HOME: "/g",
-			XDG_DATA_HOME: "/d",
-			HOME: "/home/u",
-		};
-		for (const [agent, [use, listed]] of Object.entries(clean) as [
-			keyof typeof clean,
-			(typeof clean)[keyof typeof clean],
-		][]) {
+	const homes = {
+		CLAUDE_CONFIG_DIR: "/c",
+		CODEX_HOME: "/x",
+		GEMINI_CLI_HOME: "/g",
+		XDG_DATA_HOME: "/d",
+		HOME: "/home/u",
+	};
+	it.each([
+		["claude-code", claudeCleanIsolation, ["ENABLE_CLAUDEAI_MCP_SERVERS"]],
+		["codex", codexCleanIsolation, ["CODEX_CONFIG"]],
+		[
+			"opencode",
+			opencodeCleanIsolation,
+			["OPENCODE_CONFIG_CONTENT", "OPENCODE_DISABLE_CLAUDE_CODE", "OPENCODE_PURE"],
+		],
+		[
+			"gemini",
+			geminiCleanIsolation,
+			["GEMINI_CLI_SYSTEM_DEFAULTS_PATH", "GEMINI_CLI_SYSTEM_SETTINGS_PATH"],
+		],
+	] as const)(
+		"%s clean changes only its listed env keys, keeps the config and data folders and adds no sign-in key",
+		(agent, use, listed) => {
 			const base = {
 				agent,
 				level: undefined,
@@ -744,9 +746,10 @@ describe("planLaunch isolation (#1180 R1, §3.4)", () => {
 			const changed = Object.keys({ ...own.env, ...p.env }).filter(
 				(k) => own.env[k] !== p.env[k],
 			);
-			expect(changed.sort(), agent).toEqual([...listed]);
-			for (const [k, v] of Object.entries(homes))
-				expect(p.env[k], `${agent} ${k}`).toBe(v);
-		}
-	});
+			expect(changed.sort()).toEqual([...listed]);
+			expect(
+				Object.fromEntries(Object.keys(homes).map((k) => [k, p.env[k]])),
+			).toEqual(homes);
+		},
+	);
 });
