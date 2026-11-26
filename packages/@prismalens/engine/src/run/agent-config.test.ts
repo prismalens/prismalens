@@ -205,7 +205,7 @@ describe("foundMcpNames (#1180 R1)", () => {
 });
 
 describe("configFingerprint (#1180 §3.1)", () => {
-	const policy = { profile: "own" as const, isolation: null, sharedRevision: "r1", member: true };
+	const policy = { profile: "own" as const, isolation: null, sharedRevision: "r1", member: true, sharedServers: [] as string[] };
 	const files = { [r(".mcp.json")]: JSON.stringify({ mcpServers: { a: {} } }) };
 
 	it("changes when a config file's content, the profile or the shared revision changes, and not otherwise", () => {
@@ -215,6 +215,24 @@ describe("configFingerprint (#1180 §3.1)", () => {
 		expect(configFingerprint("claude-code", env, repo, policy, edited)).not.toBe(base);
 		expect(configFingerprint("claude-code", env, repo, { ...policy, profile: "clean" }, memoryFs(files))).not.toBe(base);
 		expect(configFingerprint("claude-code", env, repo, { ...policy, sharedRevision: "r2" }, memoryFs(files))).not.toBe(base);
+	});
+
+	it("is the same for the same project files at two checkout paths", () => {
+		const snapshot = resolve(home, "snapshots", "app-1");
+		const fs = memoryFs({ ...files, [resolve(snapshot, ".mcp.json")]: files[r(".mcp.json")] as string });
+		expect(configFingerprint("claude-code", env, snapshot, policy, fs)).toBe(
+			configFingerprint("claude-code", env, repo, policy, fs),
+		);
+	});
+
+	it("changes when the PrismaLens servers delivered to the agent change", () => {
+		const fs = memoryFs(files);
+		const base = configFingerprint("claude-code", env, repo, { ...policy, sharedServers: ["web:h1"] }, fs);
+		expect([
+			configFingerprint("claude-code", env, repo, { ...policy, sharedServers: [] }, fs) === base,
+			configFingerprint("claude-code", env, repo, { ...policy, sharedServers: ["web:h2"] }, fs) === base,
+			configFingerprint("claude-code", env, repo, { ...policy, sharedServers: ["web:h1"] }, fs) === base,
+		]).toEqual([false, false, true]);
 	});
 
 	it("differs between two worktrees of one project whose .mcp.json differ", () => {

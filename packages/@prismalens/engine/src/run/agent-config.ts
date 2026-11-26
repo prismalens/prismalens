@@ -8,7 +8,15 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import {
+	basename,
+	dirname,
+	isAbsolute,
+	join,
+	relative,
+	resolve,
+	sep,
+} from "node:path";
 import {
 	type ConfigLayout,
 	HARNESS_REGISTRY,
@@ -337,6 +345,8 @@ export interface LoadoutPolicy {
 	/** The PrismaLens set's revision, and whether this agent receives it. */
 	sharedRevision: string;
 	member: boolean;
+	/** Each PrismaLens server this launch delivers, as `name:hash`; no value or argument. */
+	sharedServers: readonly string[];
 }
 
 /**
@@ -357,11 +367,24 @@ export function configFingerprint(
 		const text = fs.text(path) ?? fs.text(join(path, "SKILL.md")) ?? "";
 		return createHash("sha256").update(text).digest("hex");
 	};
+	// A file inside the project is named from its root, so two checkouts of one project match.
+	const identity = (path: string | null) => {
+		if (!path || !repoRoot) return path ?? "";
+		const rel = relative(repoRoot, path);
+		return rel && !rel.startsWith("..") && !isAbsolute(rel)
+			? `<repo>/${rel.replaceAll("\\", "/")}`
+			: path;
+	};
 	const rows = items
 		.map((i) =>
-			[i.kind, i.name, i.scope, i.path ?? "", i.state, content(i.path)].join(
-				"\0",
-			),
+			[
+				i.kind,
+				i.name,
+				i.scope,
+				identity(i.path),
+				i.state,
+				content(i.path),
+			].join("\0"),
 		)
 		.sort();
 	return createHash("sha256")
