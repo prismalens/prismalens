@@ -356,16 +356,18 @@ function CleanProfileRow({
 	onChange: (on: boolean) => void;
 }) {
 	const s = settingOf("agent.cleanProfile");
+	const canEdit = useCanEditRuntime();
 	return (
 		<SettingRow
 			label={<label htmlFor="agent-clean-profile">{s.label}</label>}
 			description={s.sentence}
 			testId={s.anchor}
+			locked={canEdit ? undefined : RUNTIME_HOST_ONLY}
 		>
 			<Switch
 				id="agent-clean-profile"
 				checked={on}
-				disabled={pending}
+				disabled={pending || !canEdit}
 				onCheckedChange={onChange}
 				data-testid="agent-clean-profile"
 			/>
