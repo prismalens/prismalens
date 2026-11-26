@@ -21,7 +21,8 @@
 // FAKE_MODELS / FAKE_EFFORTS offer model and thought_level options that session/set_config_option
 // switches (FAKE_REFUSE_SET keeps the old value; FAKE_REJECT_SET answers with an RPC error instead);
 // FAKE_MODES offers modes for session/new and session/load (first is currentModeId);
-// FAKE_USAGE=1 sends one usage_update before the final message.
+// FAKE_USAGE=1 sends one usage_update before the final message; FAKE_RATE_LIMIT=1 adds
+// Claude Code's `_claude/rateLimit` five-hour window to it.
 // FAKE_FAIL_ON=<prefix> answers any prompt starting with it with an RPC error.
 // FAKE_SESSION_DELAY_MS delays the session/new answer in any mode.
 // FAKE_ADDITIONAL_DIRS=1 advertises sessionCapabilities.additionalDirectories.
@@ -555,6 +556,17 @@ async function turn(sessionId, promptText) {
 			used: 182000,
 			size: 440000,
 			cost: { amount: 1.25, currency: "USD" },
+			...(process.env.FAKE_RATE_LIMIT
+				? {
+						_meta: {
+							"_claude/rateLimit": {
+								rateLimitType: "five_hour",
+								utilization: 0.4,
+								status: "allowed",
+							},
+						},
+					}
+				: {}),
 		});
 	const valid =
 		mode === "ok" ||

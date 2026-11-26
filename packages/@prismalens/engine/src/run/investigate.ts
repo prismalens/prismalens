@@ -1076,7 +1076,10 @@ async function* runSession(
 					const key = quota ? JSON.stringify(quota) : null;
 					if (quota && key !== lastQuota) {
 						lastQuota = key;
-						yield adapter.agentQuota(quota);
+						yield adapter.agentQuota({
+							...quota,
+							...(session.authAccount ? { account: session.authAccount } : {}),
+						});
 					}
 				}
 				// The agent compacted on its own; PrismaLens's own compact turn records itself.

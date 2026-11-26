@@ -67,9 +67,8 @@ export const LIMIT_SOURCE = Symbol("LIMIT_SOURCE");
 
 /** The source a running host uses: the agent's runtime from Settings and its last check. */
 export function harnessLimitSource(
-	harness: Pick<HarnessService, "runtimeFor">,
+	harness: Pick<HarnessService, "runtimeFor" | "runtimeKey">,
 	models: {
-		snapshot(): { agents: Partial<Record<string, { runtime: string }>> };
 		checked(
 			agent: HarnessId,
 		): { at: string; account?: AgentAccount | null } | null;
@@ -77,8 +76,7 @@ export function harnessLimitSource(
 	read: LimitSource["read"] = (agent, runtime) =>
 		readAgentLimits(agent, runtime),
 ): LimitSource {
-	const currentKey = (agent: HarnessId) =>
-		models.snapshot().agents[agent]?.runtime ?? null;
+	const currentKey = (agent: HarnessId) => harness.runtimeKey(agent);
 	return {
 		async inputs(agent) {
 			const r = await harness.runtimeFor(agent);
@@ -88,7 +86,7 @@ export function harnessLimitSource(
 					...(r.policy ? { policy: r.policy } : {}),
 					...(r.binaryPath ? { binaryPath: r.binaryPath } : {}),
 				},
-				key: currentKey(agent) ?? "",
+				key: currentKey(agent),
 			};
 		},
 		currentKey,

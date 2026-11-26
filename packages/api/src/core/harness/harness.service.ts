@@ -627,7 +627,7 @@ export class HarnessService implements OnApplicationBootstrap {
 	 * What a check of `id` runs under, as a hash: a check is shown only while this matches (#1171).
 	 * A stored variable's ciphertext changes on each write, so it stands in for a revision counter.
 	 */
-	private runtimeKey(
+	runtimeKey(
 		id: HarnessId,
 		s: HarnessSettings = this.lastSettings,
 		stored: Partial<Record<HarnessId, Record<string, string>>> = this
