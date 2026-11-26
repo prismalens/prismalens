@@ -695,9 +695,11 @@ export default defineChecks([
 				const visible = (await eventsOf(page, fx.id)).filter(
 					(e) => e.kind === "operator_message",
 				);
-				if (a.app !== b.app || a.readme !== b.readme)
+				// Undo may write the checkout's line endings, as the operator ruled (#1193 R5).
+				const eol = (t: string) => t.replace(/\r\n/g, "\n");
+				if (eol(a.app) !== eol(b.app) || eol(a.readme) !== eol(b.readme))
 					fails.push(
-						`${waitForReply ? "after the reply" : "before admission"}: files differ after Undo`,
+						`${waitForReply ? "after the reply" : "before admission"}: files differ after Undo (app ${JSON.stringify(b.app)} -> ${JSON.stringify(a.app)}, readme ${JSON.stringify(b.readme)} -> ${JSON.stringify(a.readme)})`,
 					);
 				if (JSON.stringify(a.session) !== JSON.stringify(b.session))
 					fails.push(
@@ -746,13 +748,17 @@ export default defineChecks([
 				fx.id,
 				"fake-session:ask-user Which retries should I use?",
 			);
-			await page.waitForTimeout(3000);
-			const asked = await apiGet<{
-				asks: { ask: { askId: string; threadId: string }; ended: boolean }[];
-			}>(page, "/threads/asks");
-			const open1 = asked.asks.find(
-				(a) => !a.ended && a.ask.threadId === fx.id,
-			);
+			// The follow-up starts the agent afresh, so its ask can take a while to open.
+			let open1:
+				| { ask: { askId: string; threadId: string }; ended: boolean }
+				| undefined;
+			for (let i = 0; i < 60 && !open1; i++) {
+				if (i) await page.waitForTimeout(500);
+				const asked = await apiGet<{
+					asks: { ask: { askId: string; threadId: string }; ended: boolean }[];
+				}>(page, "/threads/asks");
+				open1 = asked.asks.find((a) => !a.ended && a.ask.threadId === fx.id);
+			}
 			if (open1) {
 				await apiPost(page, `/investigations/${fx.id}/cancel`, {}).catch(
 					() => undefined,
