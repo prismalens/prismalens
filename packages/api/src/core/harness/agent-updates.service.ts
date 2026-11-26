@@ -201,9 +201,13 @@ export class AgentUpdatesService {
 	}
 
 	private async stored(): Promise<AgentReleaseCache> {
-		const row = await this.prisma.setting.findUnique({
-			where: { key: RELEASES_KEY },
-		});
+		// Release data is optional: a failed read answers none, so the agent rows still return.
+		const row = await this.prisma.setting
+			.findUnique({ where: { key: RELEASES_KEY } })
+			.catch((err: unknown) => {
+				this.logger.warn(`Could not read agent releases: ${String(err)}`);
+				return null;
+			});
 		if (!row) return {};
 		try {
 			const raw: unknown = JSON.parse(row.value);

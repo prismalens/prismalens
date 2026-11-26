@@ -160,6 +160,40 @@ describe("usage.prices (#1180)", () => {
 		]);
 	});
 
+	it("says a failed save did not save, keeps the form for a retry, and clears it on the next save", async () => {
+		setPrices.mockImplementationOnce(async () => {
+			throw new Error("database is locked");
+		});
+		await render();
+		await fillPrice();
+		await act(async () => saveButton().click());
+		await vi.waitFor(() => {
+			if (!q("price-save-failed")) throw new Error("no failure shown");
+		});
+		expect(q("price-save-failed")?.textContent).toBe(
+			"Your price did not save.",
+		);
+		expect(q("price-model")).not.toBeNull();
+		await act(async () => saveButton().click());
+		await vi.waitFor(() => {
+			if (q("price-model")) throw new Error("form still open");
+		});
+		expect(q("price-save-failed")).toBeNull();
+		expect(setPrices).toHaveBeenCalledTimes(2);
+	});
+
+	it("says a failed removal did not save and keeps the row", async () => {
+		setPrices.mockImplementationOnce(async () => {
+			throw new Error("database is locked");
+		});
+		await render();
+		await act(async () => removeButtons()[0]?.click());
+		await vi.waitFor(() => {
+			if (!q("price-save-failed")) throw new Error("no failure shown");
+		});
+		expect(all("price-row")).toHaveLength(2);
+	});
+
 	it("takes no second removal while one is saving", async () => {
 		setPrices.mockImplementationOnce(() => new Promise<ModelPrices>(() => {}));
 		await render();
