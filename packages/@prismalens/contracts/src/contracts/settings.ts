@@ -259,6 +259,19 @@ export const settingsContract = {
 			})
 			.input(CheckHarnessInputSchema)
 			.output(HarnessProbeResultSchema),
+
+		/**
+		 * Check every installed agent that is on, one at a time; an agent with no safe check is not started (#1180).
+		 * POST /settings/harness/check-all
+		 */
+		checkAllHarnesses: oc
+			.route({
+				method: "POST",
+				path: "/settings/harness/check-all",
+				summary: "Check every installed agent whose check runs isolated",
+				tags: ["settings"],
+			})
+			.output(z.array(HarnessProbeResultSchema)),
 	},
 
 	/** The editors on this computer's PATH (#1024). */

@@ -37,8 +37,11 @@ export class HarnessProbeService {
 		guard?: { key: string; current: () => string | null },
 		/** The caller's start number, taken before it read the runtime; absent publishes as the newest. */
 		seq = (this.published.get(id) ?? 0) + 1,
+		/** A background pass or Check all: throw `CheckNotIsolatedError` rather than launch un-isolated (#1180 R1). */
+		opts: { requireIsolation?: boolean } = {},
 	): Promise<HarnessProbeResult> {
 		const probed = await probeHarness(id, {
+			...(opts.requireIsolation ? { requireIsolation: true } : {}),
 			...(runtime ? { env: runtime.env } : {}),
 			...(runtime?.policy ? { policy: runtime.policy } : {}),
 			...(runtime?.binaryPath ? { binaryPath: runtime.binaryPath } : {}),

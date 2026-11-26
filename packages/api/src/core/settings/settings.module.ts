@@ -3,6 +3,7 @@
 
 import { forwardRef, Module } from "@nestjs/common";
 import { IntegrationsModule } from "../../modules/integrations/integrations.module.js";
+import { UsageModule } from "../../modules/usage/usage.module.js";
 import { HarnessModule } from "../harness/harness.module.js";
 import { PrismaModule } from "../prisma/prisma.module.js";
 import { AboutService } from "./about.service.js";
@@ -12,7 +13,12 @@ import { SettingsService } from "./settings.service.js";
 import { UpdateService } from "./update.service.js";
 
 @Module({
-	imports: [PrismaModule, HarnessModule, forwardRef(() => IntegrationsModule)],
+	imports: [
+		PrismaModule,
+		HarnessModule,
+		UsageModule,
+		forwardRef(() => IntegrationsModule),
+	],
 	controllers: [SettingsController],
 	providers: [SettingsService, AboutService, UpdateService, DiagnosticsService],
 	exports: [SettingsService],

@@ -10,6 +10,7 @@ import {
 	HarnessService,
 	HarnessSettingsError,
 } from "../harness/harness.service.js";
+import { HarnessRefreshService } from "../harness/harness-refresh.service.js";
 import { TelemetryService } from "../telemetry/telemetry.service.js";
 import { MutationThrottleGuard } from "../throttle/mutation-throttle.guard.js";
 import { DiagnosticsService } from "./diagnostics.service.js";
@@ -25,6 +26,7 @@ export class SettingsController {
 		private readonly telemetryService: TelemetryService,
 		private readonly updateService: UpdateService,
 		private readonly diagnosticsService: DiagnosticsService,
+		private readonly refresh: HarnessRefreshService,
 	) {}
 
 	/** Settings → About (#717), with the update verdict for this caller (#724) */
@@ -198,6 +200,9 @@ export class SettingsController {
 			checkHarness: implement(settingsContract.harnesses.checkHarness).handler(
 				async ({ input }) => this.harnessService.check(input.id as HarnessId),
 			),
+			checkAllHarnesses: implement(
+				settingsContract.harnesses.checkAllHarnesses,
+			).handler(async () => this.refresh.checkAll()),
 		};
 	}
 }

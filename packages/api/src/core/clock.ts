@@ -20,6 +20,10 @@ export const setInterval = (
 	...args: Parameters<typeof globalThis.setInterval>
 ): ReturnType<typeof globalThis.setInterval> => globalThis.setInterval(...args);
 
+export const clearInterval = (
+	...args: Parameters<typeof globalThis.clearInterval>
+): void => globalThis.clearInterval(...args);
+
 /** Resolves after `ms`. */
 export const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => {
