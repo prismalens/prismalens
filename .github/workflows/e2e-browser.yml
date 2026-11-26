@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   e2e:
-    name: Playwright (Chromium, shard ${{ matrix.shard }}/4)
+    name: Playwright (Chromium, ${{ matrix.shard == 'apart' && 'reset and quarantine' || format('shard {0}/4', matrix.shard) }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # `issues: write` is for the quarantine report step; the workflow-level default is read-only.
@@ -28,7 +28,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        # `apart` runs the reset and quarantined tests, so no main shard carries them.
+        shard: [1, 2, 3, 4, apart]
     # No service containers: dispatch is in-process over a SQLite job table, so the
     # app boots with no broker.
     steps:
@@ -70,40 +71,50 @@ jobs:
           fi
 
       # Phone and tablet run nightly (e2e-browser-mobile.yml), not per PR. `@quarantine`
-      # tests are excluded here and run in the next step (docs/contributing/testing.md, "Flaky e2e tests").
+      # tests are excluded here and run in `apart` (docs/contributing/testing.md, "Flaky e2e tests").
       - name: Run Playwright E2E Tests
+        if: ${{ matrix.shard != 'apart' }}
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/playwright-main.json
         run: pnpm --filter @prismalens/frontend test:e2e --project=chromium --project=journeys --shard=${{ matrix.shard }}/4
 
       - name: Flaky and failed tests to the job summary
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.shard != 'apart' }}
         run: |
           if [ -f "$RUNNER_TEMP/playwright-main.json" ]; then
             sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-main.json" "Playwright E2E, shard ${{ matrix.shard }}/4" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
       # Tests that empty their stack (Settings, Reset data) run here on their own, one
-      # worker, after the main run, so no other test finds its seed gone (#1154).
+      # worker, so no other test finds its seed gone (#1154).
       - name: Run the scenarios that reset their stack
-        if: ${{ !cancelled() && matrix.shard == 4 }}
+        if: ${{ matrix.shard == 'apart' }}
         env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/playwright-reset.json
           PLAYWRIGHT_HTML_OUTPUT_DIR: ${{ github.workspace }}/packages/frontend/playwright-report-reset
         run: pnpm --filter @prismalens/frontend test:e2e --project=chromium-reset --project=journeys-reset --workers=1
 
+      - name: Reset scenarios to the job summary
+        if: ${{ !cancelled() && matrix.shard == 'apart' }}
+        run: |
+          if [ -f "$RUNNER_TEMP/playwright-reset.json" ]; then
+            sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-reset.json" "Playwright E2E, reset scenarios" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
       # Non-blocking by construction: a quarantined test may fail without failing the job.
-      # Each has an open issue; the summary lists how it did. Shard 1 runs them all.
+      # Each has an open issue; the summary lists how it did.
       - name: Run quarantined tests (non-blocking)
         id: quarantine
-        if: ${{ !cancelled() && matrix.shard == 1 }}
+        if: ${{ !cancelled() && matrix.shard == 'apart' }}
         continue-on-error: true
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: ${{ runner.temp }}/playwright-quarantine.json
           PLAYWRIGHT_HTML_OUTPUT_DIR: ${{ github.workspace }}/packages/frontend/playwright-report-quarantine
-        run: pnpm --filter @prismalens/frontend test:e2e --project=chromium-quarantine --project=journeys-quarantine
+        # Its own output directory: Playwright empties it at start, and the reset traces must survive.
+        run: pnpm --filter @prismalens/frontend test:e2e --project=chromium-quarantine --project=journeys-quarantine --output=test-results/quarantine
 
       - name: Quarantined tests to the job summary
-        if: ${{ !cancelled() && matrix.shard == 1 }}
+        if: ${{ !cancelled() && matrix.shard == 'apart' }}
         run: |
           if [ -f "$RUNNER_TEMP/playwright-quarantine.json" ]; then
             sh scripts/playwright-summary.sh "$RUNNER_TEMP/playwright-quarantine.json" "Playwright E2E, quarantined (non-blocking)" | tee -a "$GITHUB_STEP_SUMMARY" "$RUNNER_TEMP/quarantine-summary.md"
@@ -112,7 +123,7 @@ jobs:
       # A failing quarantined test reaches its owner on the default branch, where the token may write issues;
       # pnpm quarantine:check holds the tag to an open issue (#1154). The calling job grants `issues: write`.
       - name: Report the quarantined tests
-        if: ${{ !cancelled() && matrix.shard == 1 && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        if: ${{ !cancelled() && matrix.shard == 'apart' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
         continue-on-error: true
         uses: ./.github/actions/report-failure
         with:
@@ -130,6 +141,7 @@ jobs:
           name: playwright-report-${{ matrix.shard }}
           path: |
             packages/frontend/playwright-report/
+            packages/frontend/playwright-report-reset/
             packages/frontend/playwright-report-quarantine/
             packages/frontend/test-results/
           retention-days: 7
