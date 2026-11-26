@@ -141,6 +141,20 @@ describe("readOnDisk (#1180 §3.1)", () => {
 		expect(JSON.stringify(items)).not.toContain(SECRET);
 	});
 
+	it("OpenCode: plugins listed in opencode.jsonc, global and in the project", () => {
+		const fs = memoryFs({
+			[h(".config", "opencode", "opencode.jsonc")]: `{
+				// comments are allowed
+				"plugin": ["p-global"],
+			}`,
+			[r("opencode.jsonc")]: JSON.stringify({ plugin: ["p-repo"] }),
+		});
+		expect(rows(readOnDisk("opencode", env, repo, fs))).toEqual([
+			["plugin", "p-global", "global", "found", h(".config", "opencode", "opencode.jsonc")],
+			["plugin", "p-repo", "repo", "in-project", r("opencode.jsonc")],
+		]);
+	});
+
 	it("Gemini: GEMINI_CLI_HOME, extensions as folders, a settings file that does not parse is failed", () => {
 		const gh = h("gem");
 		const fs = memoryFs({

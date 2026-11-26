@@ -135,18 +135,24 @@ export const opencode = defineAgent({
 			],
 			hooks: [],
 			plugins: [
-				{
-					path: "{$XDG_CONFIG_HOME|~/.config}/opencode/opencode.json",
-					scope: "global",
-					format: "jsonc",
-					key: "plugin",
-				},
-				{
-					path: "<repo>/opencode.json",
-					scope: "repo",
-					format: "jsonc",
-					key: "plugin",
-				},
+				...["opencode.json", "opencode.jsonc"].map(
+					(f) =>
+						({
+							path: `{$XDG_CONFIG_HOME|~/.config}/opencode/${f}`,
+							scope: "global",
+							format: "jsonc",
+							key: "plugin",
+						}) as const,
+				),
+				...["opencode.json", "opencode.jsonc"].map(
+					(f) =>
+						({
+							path: `<repo>/${f}`,
+							scope: "repo",
+							format: "jsonc",
+							key: "plugin",
+						}) as const,
+				),
 			],
 		},
 		noLevelReason: "OpenCode has per-tool rules, not one permission level.",
