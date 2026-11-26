@@ -30,6 +30,7 @@ import {
 	type HarnessRunEnv,
 	levelOfAgentMode,
 	type ModelSource,
+	mergeConfigPatch,
 	modeFidelity,
 	NO_MODE_KEY,
 	resolveAccess,
@@ -129,6 +130,7 @@ import {
 	injectedSecrets,
 	redactEvent,
 	requestedSecrets,
+	StreamScrubber,
 	scrub,
 } from "./redact.js";
 import {
@@ -140,6 +142,13 @@ import {
 import { withCwdRelativeSources } from "./report-paths.js";
 import { userServerByOurName } from "./reserved-name.js";
 import { checkSandbox } from "./sandbox-check.js";
+import {
+	CLAUDE_INIT_META,
+	CLAUDE_SDK_MESSAGE,
+	initItems,
+	initOf,
+} from "./sdk-init.js";
+import type { RunShared } from "./shared-set.js";
 
 const authenticateOf = (
 	row: Parameters<typeof authenticateMethod>[0],
@@ -401,6 +410,8 @@ export interface RunInvestigationOptions {
 	 * from every event, the transcript and stderr whatever their length or name.
 	 */
 	secrets?: readonly string[];
+	/** The PrismaLens set this run's session gets, resolved by the product (#1180 §3.3). */
+	shared?: RunShared;
 	signal?: AbortSignal;
 }
 
@@ -853,21 +864,77 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** How long a run waits after `session/new` for the agent's first gateway request. */
 const GATEWAY_CONFIRM_MS = 5_000;
 
+/**
+ * The session `_meta`: the row's own, each system-prompt text appended, and, when the run
+ * records what loads, Claude's request for its init message (#1180 §3.1).
+ */
+function sessionMetaOf(
+	row: Record<string, unknown> | undefined,
+	append: readonly string[],
+	askInit: boolean,
+): Record<string, unknown> | undefined {
+	let meta = (row ?? {}) as Parameters<typeof mergeConfigPatch>[0];
+	if (append.length)
+		meta = { ...meta, systemPrompt: { append: append.join("\n\n") } };
+	if (askInit) meta = mergeConfigPatch(meta, CLAUDE_INIT_META);
+	return Object.keys(meta).length ? meta : row;
+}
+
+/** A session-opening request with each `pl-*` server reduced to its name and type (§3.3 sinks). */
+function withoutSharedDefs(line: string): string {
+	if (!line.includes('"pl-')) return line;
+	try {
+		const msg = JSON.parse(line) as { params?: { mcpServers?: unknown } };
+		const servers = msg.params?.mcpServers;
+		if (!Array.isArray(servers)) return line;
+		msg.params = {
+			...msg.params,
+			mcpServers: servers.map((s) =>
+				s &&
+				typeof s === "object" &&
+				String((s as { name?: unknown }).name).startsWith("pl-")
+					? {
+							name: (s as { name: string }).name,
+							type: (s as { type?: string }).type ?? "stdio",
+						}
+					: s,
+			),
+		};
+		return JSON.stringify(msg);
+	} catch {
+		return line;
+	}
+}
+
 export async function* runInvestigation(
 	opts: RunInvestigationOptions,
 ): AsyncGenerator<CanonicalEvent> {
-	const secrets = requestedSecrets(opts.secrets);
+	const secrets = requestedSecrets([
+		...(opts.secrets ?? []),
+		...(opts.shared?.hidden ?? []),
+	]);
 	if (!secrets.length) {
 		yield* runSession(opts);
 		return;
 	}
-	// A requested secret never reaches an event, even when the agent echoes it (#1024 spec B).
+	// A requested or shared secret never reaches an event or the host log, even split across chunks.
 	const stderr = opts.onHarnessStderr;
+	const chunks = new StreamScrubber(secrets);
 	const scrubbed: RunInvestigationOptions = {
 		...opts,
-		...(stderr ? { onHarnessStderr: (c) => stderr(scrub(c, secrets)) } : {}),
+		...(stderr
+			? {
+					onHarnessStderr: (c) => {
+						for (const [out] of chunks.push([c])) stderr(out ?? "");
+					},
+				}
+			: {}),
 	};
-	for await (const ev of runSession(scrubbed)) yield redactEvent(ev, secrets);
+	try {
+		for await (const ev of runSession(scrubbed)) yield redactEvent(ev, secrets);
+	} finally {
+		if (stderr) for (const [out] of chunks.end()) stderr(out ?? "");
+	}
 }
 
 async function* runSession(
@@ -908,12 +975,13 @@ async function* runSession(
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	// session/new carries the gateway bearer; the transcript never stores it (#848).
 	// Nor the GitHub token values the agent's env holds (#1020).
-	const hidden = [
+	const hidden = requestedSecrets([
 		...injectedSecrets(env, [opts.gateway?.token]),
-		...requestedSecrets(opts.secrets),
-	];
+		...(opts.secrets ?? []),
+		...(opts.shared?.hidden ?? []),
+	]);
 	const wire = (direction: "in" | "out", line: string): void => {
-		let m = line;
+		let m = direction === "out" ? withoutSharedDefs(line) : line;
 		for (const s of hidden) m = m.replaceAll(s, "[redacted]");
 		try {
 			appendFileSync(
@@ -928,6 +996,28 @@ async function* runSession(
 	const offer = opts.gateway
 		? gatewayOffer(opts.gateway, descriptor.gatewayDelivery)
 		: null;
+	const sharedServers = opts.shared?.servers ?? [];
+	const mcpServers = offer
+		? (caps: Parameters<typeof offer.pick>[0]) =>
+				offer.pick(caps, sharedServers)
+		: sharedServers.length
+			? (caps: Parameters<ReturnType<typeof gatewayOffer>["pick"]>[0]) =>
+					sharedServers.filter((s) => caps?.http === true || !("type" in s))
+			: null;
+	const row = HARNESS_REGISTRY[opts.harness];
+	const inSystemPrompt = row?.facts?.systemPromptVia?.value === "claude-meta";
+	const reportsInit = row?.loadoutReport === "claude-sdk-init";
+	// An agent with a system-prompt slot takes the set's instructions there; any other, in its first prompt.
+	const sharedText = opts.shared?.instructions ?? null;
+	let sharedTextOwed = !!sharedText && !inSystemPrompt;
+	let loadout: CanonicalEvent | null = null;
+	let loadoutSent = false;
+	/** The session's `agent_loadout`, once, as soon as Claude's init has arrived. */
+	const loadoutDue = (): CanonicalEvent | null => {
+		if (!loadout || loadoutSent) return null;
+		loadoutSent = true;
+		return loadout;
+	};
 	// The brief rides the session, new and load alike, so the first prompt carries only the turn (#817).
 	const brief =
 		descriptor.facts?.systemPromptVia?.value === "claude-meta" &&
@@ -1007,9 +1097,13 @@ async function* runSession(
 				opts.limits?.wallClockMs,
 				Date.now() - spawnedAt,
 			),
-		sessionMeta: brief
-			? { ...descriptor.sessionMeta?.(), systemPrompt: { append: brief } }
-			: descriptor.sessionMeta?.(),
+		sessionMeta: sessionMetaOf(
+			descriptor.sessionMeta?.(),
+			[brief, inSystemPrompt ? sharedText : null].filter(
+				(t): t is string => !!t,
+			),
+			reportsInit && !!opts.shared,
+		),
 		...authenticateOf(descriptor, env),
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
@@ -1028,7 +1122,22 @@ async function* runSession(
 			: opts.resume?.fork
 				? { resume: { fork: opts.resume.fork, fresh: !!opts.resume.fresh } }
 				: {}),
-		...(offer ? { mcpServers: offer.pick } : {}),
+		...(mcpServers ? { mcpServers } : {}),
+		...(reportsInit && opts.shared
+			? {
+					onExtNotification: (method: string, params: unknown) => {
+						const init =
+							method === CLAUDE_SDK_MESSAGE && !loadout ? initOf(params) : null;
+						if (init && opts.shared)
+							loadout = adapter.agentLoadout({
+								profile: opts.shared.profile,
+								cwd: opts.cwd,
+								fingerprint: opts.shared.fingerprint,
+								items: initItems(init),
+							});
+					},
+				}
+			: {}),
 		onDrift: (drift) => {
 			wire("in", JSON.stringify({ drift }));
 			opts.onHarnessDrift?.(
@@ -1075,6 +1184,8 @@ async function* runSession(
 	): AsyncGenerator<CanonicalEvent, TurnEnd> {
 		for await (const item of items) {
 			if (opts.signal?.aborted) session.cancel(opts.signal.reason);
+			const due = loadoutDue();
+			if (due) yield due;
 			if (item.kind === "update") {
 				const u = item.update;
 				// A sub-agent's words and state are its own: never the report's text, the run's usage or mode (#1025).
@@ -1576,7 +1687,20 @@ async function* runSession(
 		)
 			? "message"
 			: "event";
-		yield adapter.sessionOpened(opening, carrier);
+		yield adapter.sessionOpened(
+			opts.shared
+				? {
+						...opening,
+						sharedSet: {
+							revision: opts.shared.revision,
+							servers: sharedServers.map((s) => s.name),
+						},
+					}
+				: opening,
+			carrier,
+		);
+		const loadoutAtOpen = loadoutDue();
+		if (loadoutAtOpen) yield loadoutAtOpen;
 		// A return must not run work the agent started before PrismaLens set its level (#1168).
 		// Watched until its first prompt goes out: the turn's awaited setup is no blind spot.
 		let watching = !!back?.returning && session.reopen !== "fresh";
@@ -1735,6 +1859,11 @@ async function* runSession(
 			yield* recordQueued();
 			if (turns++ > 0 && opts.effort && !(await sendEffort()))
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
+			// The set's instructions open the first prompt after the session opens (§3.3, `first-message`).
+			if (sharedTextOwed && sharedText) {
+				parts = [{ type: "text", text: sharedText }, ...parts];
+				sharedTextOwed = false;
+			}
 			// One turn for the hooks however many tries it takes: a retry takes no second snapshot.
 			const turnId = adapter.peekSeq();
 			await turnHook("start", turnId);

@@ -4,6 +4,7 @@
 import { HARNESS_IDS } from "@prismalens/config/harness";
 import { z } from "zod";
 import { lazySchema } from "../lazy-schema.js";
+import { AgentLoadoutReportSchema } from "./agent-setup.js";
 import {
 	ASK_CLOSED_OUTCOMES,
 	ASK_WHYS,
@@ -769,6 +770,10 @@ export const SessionOpeningSchema = /* @__PURE__ */ lazySchema(() =>
 		returnFailed: z.string().max(200).optional(),
 		/** `fresh` or `handoff` after a rewind: the agent's own fork was abandoned, and why (#1193). */
 		forkFailed: z.string().max(200).optional(),
+		/** The PrismaLens set this session was given: its instructions revision and `pl-*` servers (#1180 §3.3). */
+		sharedSet: z
+			.object({ revision: z.string(), servers: z.array(z.string()) })
+			.optional(),
 	}),
 );
 export type SessionOpening = z.infer<typeof SessionOpeningSchema>;
@@ -1560,6 +1565,12 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			...StreamBaseShape,
 			...SessionOpeningSchema.shape,
 			carrier: z.enum(["event", "message"]),
+		}),
+		z.object({
+			/** What one session reported loading, once per session (#1180 §3.1). */
+			kind: z.literal("agent_loadout"),
+			...StreamBaseShape,
+			...AgentLoadoutReportSchema.shape,
 		}),
 		z.object({
 			/** One prompt PrismaLens sent (#1166); its body is stored apart, by `inputId`. */

@@ -16,6 +16,9 @@ const choice: { effective: { id: string; label: string } | null } = {
 };
 
 // The tree rows have their own tests; here they read the defaults.
+// Each section has its own tests; this page's tests read only the page (#1180).
+vi.mock("./SharedSetOffer", () => ({ SharedSetOffer: () => null }));
+vi.mock("./SharedSetSettings", () => ({ SharedSetSettings: () => null }));
 vi.mock("@/lib/api/hooks/use-app-settings-orpc", () => ({
 	useTreeSettings: () => ({ data: undefined }),
 	useUpdateTreeSettings: () => ({ mutate: vi.fn(), isPending: false }),

@@ -46,6 +46,8 @@ import {
 	ResumeAfterLimitRow,
 } from "./ConversationSettings";
 import { RiskConfirm } from "./RiskConfirm";
+import { SharedSetOffer } from "./SharedSetOffer";
+import { SharedSetSettings } from "./SharedSetSettings";
 import { SignInButton } from "./SignInButton";
 import { accountLine, useForNewRuns } from "./use-for-new-runs";
 
@@ -140,6 +142,7 @@ export function HarnessSettings() {
 				</p>
 			)}
 
+			<SharedSetOffer />
 			<SettingGroup
 				title={settingOf("agent.agents").label}
 				count={listed.length || undefined}
@@ -185,6 +188,8 @@ export function HarnessSettings() {
 					<CheckEveryRow />
 				</Pool>
 			</SettingGroup>
+
+			<SharedSetSettings />
 
 			<SubagentsGroup />
 

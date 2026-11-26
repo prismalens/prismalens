@@ -48,7 +48,13 @@
 // =straggler one id-less message after the answer); FAKE_REPLAY_COMPLETE=1 advertises replayComplete
 // and ends the load replay with the marker, then one state update before the answer; FAKE_LATE_REPLAY=1 sends the whole history again after the load answer,
 // with ids; FAKE_AGENT_NAME names the agent in initialize.
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	appendFileSync,
+	existsSync,
+	readdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 
@@ -703,6 +709,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				process.env.FAKE_RECORD,
 				JSON.stringify({
 					meta: msg.params?._meta ?? null,
+					mcpServers: msg.params?.mcpServers ?? null,
 					argv: process.argv.slice(2),
 					env: Object.fromEntries(
 						(process.env.FAKE_RECORD_ENV ?? "")
@@ -725,6 +732,23 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				...(modes ? { modes } : {}),
 			},
 		});
+		// FAKE_SDK_INIT: Claude's init, sent the way claude-agent-acp forwards it when asked (#1180).
+		if (
+			process.env.FAKE_SDK_INIT &&
+			msg.params?._meta?.claudeCode?.emitRawSDKMessages
+		)
+			send({
+				jsonrpc: "2.0",
+				method: "_claude/sdkMessage",
+				params: {
+					sessionId: "s1",
+					message: {
+						type: "system",
+						subtype: "init",
+						...JSON.parse(process.env.FAKE_SDK_INIT),
+					},
+				},
+			});
 	} else if (msg.method === "session/load" || msg.method === "session/resume") {
 		const sessionId = msg.params?.sessionId;
 		const history = [
@@ -836,6 +860,13 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			if (b.type === "image")
 				process.stderr.write(`fake: image ${b.mimeType}\n`);
 		const text = blocks[0]?.text ?? "";
+		// FAKE_RECORD_PROMPT: each prompt's first text block, one JSON line each.
+		if (process.env.FAKE_RECORD_PROMPT)
+			appendFileSync(
+				process.env.FAKE_RECORD_PROMPT,
+				`${JSON.stringify(text)}
+`,
+			);
 		// FAKE_FAIL_ON: a prompt starting with it answers with an RPC error, in any mode.
 		if (process.env.FAKE_FAIL_ON && text.startsWith(process.env.FAKE_FAIL_ON)) {
 			send({
