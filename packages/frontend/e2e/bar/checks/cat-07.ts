@@ -1048,6 +1048,8 @@ const checks = defineChecks([
 			// 3. Letters typed before the page finishes loading land after the draft too.
 			await page.waitForTimeout(1500);
 			await page.goto(path, { waitUntil: "commit" });
+			// A key sent before the new document exists reaches no page script (#1193): wait for its first listener.
+			await page.waitForFunction(() => "__plEarlyKeys" in window);
 			await page.keyboard.type("qrs", { delay: 30 });
 			await expect(input).toBeVisible({ timeout: 60_000 });
 			await page.waitForTimeout(1500);
