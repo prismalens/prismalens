@@ -195,25 +195,32 @@ export class Citations {
 			if (m && m.threadId !== threadId) cited.set(r.id, m);
 		}
 		for (const c of cited.values()) {
+			const gen = await this.generation(c.threadId);
 			const msg = await this.message(c.threadId, c.key);
-			if (!msg) continue;
+			if (!msg || gen === null) continue;
+			const where = {
+				threadId,
+				sourceThreadId: c.threadId,
+				sourceKey: c.key,
+			};
 			await this.prisma.messageCitation.upsert({
-				where: {
-					threadId_sourceThreadId_sourceKey: {
-						threadId,
-						sourceThreadId: c.threadId,
-						sourceKey: c.key,
-					},
-				},
-				create: {
-					threadId,
-					sourceThreadId: c.threadId,
-					sourceKey: c.key,
-					sourceTurn: msg.turn,
-				},
+				where: { threadId_sourceThreadId_sourceKey: where },
+				create: { ...where, sourceTurn: msg.turn },
 				update: {},
 			});
+			// A reset deletes citations; one landing after it but read before it names the old run.
+			if ((await this.generation(c.threadId)) !== gen)
+				await this.prisma.messageCitation.deleteMany({ where });
 		}
+	}
+
+	/** The thread's reset count: a reset bumps it with the delete of its citations. */
+	private async generation(threadId: string): Promise<number | null> {
+		const t = await this.prisma.investigation.findUnique({
+			where: { id: threadId },
+			select: { eventGeneration: true },
+		});
+		return t?.eventGeneration ?? null;
 	}
 
 	/** A thread's citations both ways: what it cited, and where its own messages were cited. */
@@ -255,6 +262,7 @@ export class Citations {
 		threadId: string,
 		key: string,
 	): Promise<CitedTurn | null> {
+		const gen = await this.generation(threadId);
 		const row = await this.prisma.messageCitation.findUnique({
 			where: {
 				threadId_sourceThreadId_sourceKey: {
@@ -382,6 +390,8 @@ export class Citations {
 					)
 					.join("\n")}`,
 			);
+		// A reset under these reads may have swapped the cited row for a rerun's (#1195).
+		if (gen === null || (await this.generation(threadId)) !== gen) return null;
 		const folded = cited.foldedBy
 			? " The user since edited an earlier message, so this turn is folded: it no longer leads to the thread's current state."
 			: "";
