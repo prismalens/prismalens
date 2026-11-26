@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { ThreadStatus } from "@prismalens/contracts";
+import { fact } from "@/components/kit/fact";
 import { useThreadListModel } from "@/components/shell/ThreadList";
 import { StatusMark } from "@/components/shell/ThreadTree";
 import { lazyPart } from "@/lib/lazy";
@@ -26,7 +27,9 @@ export function BadgeFace({
 }: BadgeFaceProps & { countClassName?: string }) {
 	return (
 		<>
-			<StatusMark status={top} />
+			<span className="flex" {...fact("status")}>
+				<StatusMark status={top} />
+			</span>
 			<span className={countClassName}>{count}</span>
 		</>
 	);
@@ -68,6 +71,7 @@ export const NeedsBadgePart = lazyPart(
 			className={cn(BADGE_CLASS, p.className)}
 			data-testid={p.testId}
 			data-urgent={p.top}
+			data-needs-badge
 		>
 			<BadgeFace
 				count={p.count}

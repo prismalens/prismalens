@@ -74,9 +74,9 @@ export const factPlaces = defineClosed(
 			facts: ["title", "status", "agent", "cause", "startedBy", "activity"],
 		},
 		"home.card": {
-			title: "A card or row on Home and in the Needs you badge's list",
+			title: "A card or row on Home, and the Needs you badge with its list",
 			match:
-				'[data-testid="home-needs-card"], [data-testid="needs-popover"], [data-testid="home-handover"], [data-testid="home"]',
+				'[data-testid="home-needs-card"], [data-needs-badge], [data-testid="needs-popover"], [data-testid="home-handover"], [data-testid="home"]',
 			facts: ["title", "status", "agent", "cause", "activity", "project"],
 		},
 		"list.row": {
@@ -212,6 +212,10 @@ export const facts = defineClosed(
 				{
 					places: ["thread.header", "transcript"],
 					why: "The transcript records how a turn ended; the header says where the thread stands now, and the two can differ.",
+				},
+				{
+					places: ["thread.header", "home.card"],
+					why: "The Needs you badge shows the most urgent status waiting across threads; the header says where this thread stands.",
 				},
 			],
 		},

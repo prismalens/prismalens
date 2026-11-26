@@ -81,6 +81,7 @@ export function NeedsBadgePopover({
 					className={cn(BADGE_CLASS, className)}
 					data-testid={testId}
 					data-urgent={top}
+					data-needs-badge
 				>
 					<BadgeFace count={count} top={top} countClassName={countClassName} />
 				</button>
