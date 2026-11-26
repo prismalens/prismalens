@@ -3,6 +3,7 @@
 
 import {
 	channelOf,
+	codingPlan,
 	defineAgent,
 	modeNamed,
 	offers,
@@ -33,13 +34,31 @@ export const codex = defineAgent({
 				id: "login",
 				label: "ChatGPT account",
 				steps: ["terminal", "browser"],
-				unattended: true,
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://learn.chatgpt.com/docs/auth",
+						clause:
+							"Access tokens are intended for trusted scripts, schedulers, and private CI runners.",
+						readOn: "2026-11-26",
+					},
+				},
 			},
+			codingPlan(["OPENAI_API_KEY", "CODEX_API_KEY"]),
 			{
 				id: "api-key",
 				label: "OPENAI_API_KEY",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "CODEX_API_KEY" }, { name: "OPENAI_API_KEY" }],
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://learn.chatgpt.com/docs/auth",
+						clause:
+							"API keys are still the recommended default for automation.",
+						readOn: "2026-11-26",
+					},
+				},
 			},
 		],
 	},

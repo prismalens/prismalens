@@ -33,13 +33,41 @@ export const grok = defineAgent({
 				id: "login",
 				label: "Grok account",
 				steps: ["terminal", "browser"],
-				unattended: true,
+				acp: "grok.com",
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://docs.x.ai/build/cli/headless-scripting.md",
+						clause:
+							"Use headless mode for scripts, bots, or other machine-friendly tasks.",
+						readOn: "2026-11-26",
+					},
+					against: {
+						url: "https://x.ai/legal/acceptable-use-policy",
+						clause:
+							"Accessing the Services through unauthorized automated or non-human means, whether through a bot, script, or otherwise",
+						readOn: "2026-11-26",
+					},
+					gaps: [
+						"x.ai/legal refuses automated fetches; its AUP was read from the Wayback copy of 2026-11-25",
+					],
+				},
 			},
 			{
 				id: "api-key",
 				label: "XAI_API_KEY",
 				steps: ["credentials"],
-				unattended: true,
+				env: [{ name: "XAI_API_KEY" }],
+				acp: "xai.api_key",
+				terms: {
+					runs: "allowed",
+					source: {
+						url: "https://docs.x.ai/build/cli/headless-scripting.md",
+						clause:
+							"Use headless mode for scripts, bots, or other machine-friendly tasks.",
+						readOn: "2026-11-26",
+					},
+				},
 			},
 		],
 	},
@@ -52,9 +80,6 @@ export const grok = defineAgent({
 		compactTakesFocus: false,
 		acpRegistryIds: ["grok-build"],
 		usageReports: [],
-		// xAI's Acceptable Use Policy (2026-08-14) lists "using bots to access" its Service (#1236).
-		ownSettingsNote: () =>
-			"xAI's API key is made for programs; runs an alert starts on a Grok sign-in are your call under xAI's terms.",
 		install: "npm i -g @xai-official/grok (or the installer at x.ai/cli)",
 		lines: noModeLines("Grok Build"),
 		loginHint: "`grok login`, or `XAI_API_KEY` in env",

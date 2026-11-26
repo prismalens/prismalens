@@ -1,0 +1,70 @@
+# Each agent row quotes its vendor's terms (#1252). Weekly, fetch every source and check the
+# quoted clause is still on the page; a clause that is gone opens an issue to re-read that row.
+name: Agent terms (quoted clauses)
+
+on:
+  schedule:
+    - cron: "41 5 * * 2" # Tuesdays 05:41 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-terms
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Quoted clauses still on their pages
+    if: github.repository == 'prismalens/prismalens'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Registry barrel
+        run: pnpm registry gen
+
+      - name: Check every quoted clause
+        run: pnpm agent:terms check
+
+  report:
+    name: Report the terms check
+    needs: check
+    if: always() && needs.check.result != 'cancelled' && github.repository == 'prismalens/prismalens'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions
+            scripts
+          sparse-checkout-cone-mode: false
+
+      - uses: ./.github/actions/report-failure
+        with:
+          title: "Agent terms changed"
+          labels: bug
+          ok: ${{ needs.check.result == 'success' }}
+          body: |
+            A quoted clause in an agent's sign-in terms is no longer on its page: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Re-read that page, update the row's clause, verdict and `readOn`, and run `pnpm agent:terms check`. This issue closes itself on the next green run.

@@ -18,6 +18,11 @@ export const local = defineAgent({
 				"the user sets its command in Settings; there is nothing to install",
 		},
 		{
+			case: "terms",
+			reason:
+				"it signs in on its own, outside PrismaLens, so it has no vendor terms to read",
+		},
+		{
 			case: "unattended",
 			reason: "it signs in on its own, outside PrismaLens",
 		},
