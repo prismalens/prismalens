@@ -45,20 +45,26 @@ export function RewindRowsProvider({
 	return <RowsContext.Provider value={value}>{children}</RowsContext.Provider>;
 }
 
-/** The page's rows state from its events; the newest edit wins Undo. */
+/**
+ * The page's rows state from its events, as the server rules: the newest edit not undone wins
+ * Undo, and an operation stays restorable while its latest restore kept paths.
+ */
 export function rewindRowsOf(
 	events: readonly CanonicalEvent[],
 ): Pick<RewindRows, "undoable" | "undone" | "restored"> {
-	let latest: string | null = null;
+	const edits: string[] = [];
 	const undone = new Set<string>();
 	const restored = new Set<string>();
 	for (const e of events) {
-		if (e.kind === "thread_rewound") latest = e.rewindId;
+		if (e.kind === "thread_rewound") edits.push(e.rewindId);
 		else if (e.kind === "rewind_undone") undone.add(e.rewindId);
-		else if (e.kind === "rewind_restored") restored.add(e.of);
+		else if (e.kind === "rewind_restored") {
+			if (e.kept.length) restored.delete(e.of);
+			else restored.add(e.of);
+		}
 	}
 	return {
-		undoable: latest && !undone.has(latest) ? latest : null,
+		undoable: edits.filter((id) => !undone.has(id)).at(-1) ?? null,
 		undone,
 		restored,
 	};

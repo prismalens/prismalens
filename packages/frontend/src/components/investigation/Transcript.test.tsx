@@ -13,6 +13,8 @@ import {
 import type { AskRecord } from "@/lib/run-asks";
 import { type RenderedApp, renderWithApp } from "@/test/render";
 import { Transcript } from "./Transcript";
+import { RewindRowsProvider, rewindRowsOf } from "./transcript/nodes.rewind";
+import { hasTranscriptNode } from "./transcript/registry";
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({
@@ -978,5 +980,132 @@ describe("an ask a rewind superseded (#1193)", () => {
 				(l) => l.textContent,
 			),
 		).toEqual(["Superseded by an edit"]);
+	});
+});
+
+describe("a thread's rewind rows (#1193)", () => {
+	const RUN = "00000000-0000-0000-0000-0000000000aa";
+	const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+	const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+	const OP = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+	const event = (e: Record<string, unknown>, seq: number) =>
+		({
+			runId: RUN,
+			branchId: "rewinds",
+			path: [],
+			seq,
+			ts: "2026-11-26T05:00:00.000Z",
+			...e,
+		}) as unknown as CanonicalEvent;
+	const rewound = (rewindId: string, seq: number) =>
+		event(
+			{
+				kind: "thread_rewound",
+				rewindId,
+				fromSeq: 1,
+				turns: 1,
+				messageOrdinal: 1,
+				throughOrdinal: 2,
+				journals: {},
+				reverted: [],
+				kept: [],
+				priorSessions: { agentSessions: null },
+				session: "fork",
+				by: { kind: "you" },
+			},
+			seq,
+		);
+	const interrupted = event(
+		{ kind: "rewind_interrupted", op: OP, written: [] },
+		10,
+	);
+	const restored = (kept: { repo: string; path: string; why: string }[]) =>
+		event(
+			{
+				kind: "rewind_restored",
+				op: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+				of: OP,
+				journals: {},
+				restored: [{ repo: "app", path: "src/a.ts" }],
+				kept,
+			},
+			11,
+		);
+	async function showRows(events: CanonicalEvent[]) {
+		const items = deriveTranscript(events, {
+			run: { id: RUN, status: "completed", live: false },
+			nodes: hasTranscriptNode,
+		});
+		await show(
+			<RewindRowsProvider
+				value={{
+					threadId: "11111111-1111-1111-1111-111111111111",
+					open: () => {},
+					...rewindRowsOf(events),
+				}}
+			>
+				<Transcript
+					items={items}
+					incidentId="inc-1"
+					agent="OpenCode"
+					steps={{
+						all: [],
+						open: new Set<number>(),
+						onToggle: () => {},
+						highlight: null,
+						flagged: new Set<number>(),
+						asks: [],
+					}}
+				/>
+			</RewindRowsProvider>,
+		);
+	}
+
+	it("after edits A then B and an Undo of B, offers Undo on A's row and on no other", async () => {
+		await showRows([
+			rewound(A, 1),
+			rewound(B, 2),
+			event(
+				{
+					kind: "rewind_undone",
+					rewindId: B,
+					journals: {},
+					restored: [],
+					kept: [],
+					replacedSessions: { agentSessions: null },
+				},
+				3,
+			),
+		]);
+		expect(
+			[...container.querySelectorAll('[data-testid="rewind-fold"]')].map(
+				(row) => [
+					row.textContent?.startsWith("Edit undone") ? "undone" : "live",
+					!!row.querySelector('[data-testid="rewind-fold-undo"]'),
+				],
+			),
+		).toEqual([
+			["live", true],
+			["undone", false],
+		]);
+	});
+
+	it("keeps Restore on an interrupted rewind whose restore left paths", async () => {
+		await showRows([
+			interrupted,
+			restored([{ repo: "app", path: "src/b.ts", why: "damaged" }]),
+		]);
+		expect(
+			container.querySelector('[data-testid="rewind-interrupted-restore"]')
+				?.textContent,
+		).toBe("Restore");
+	});
+
+	it("hides Restore on an interrupted rewind whose restore left nothing", async () => {
+		await showRows([interrupted, restored([])]);
+		expect(
+			container.querySelector('[data-testid="rewind-interrupted"]')
+				?.textContent,
+		).toBe("Rewind interrupted · 0 files may have changed · restored");
 	});
 });

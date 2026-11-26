@@ -302,6 +302,8 @@ export interface ComposerProps {
 	/** The text, when the page keeps it (a draft survives a remount). */
 	text?: string;
 	onText?: (text: string) => void;
+	/** Text the page hands back to add once per `id` (a rewind's unsent edit), after a blank line. */
+	append?: { id: number; text: string } | null;
 	/** Files a prefilled draft starts with, and each change to them. */
 	initialFiles?: File[];
 	onFilesChange?: (files: File[]) => void;
@@ -584,6 +586,7 @@ export function Composer({
 	mode,
 	text: keptText,
 	onText,
+	append,
 	initialFiles,
 	onFilesChange,
 	boxRef,
@@ -909,6 +912,20 @@ export function Composer({
 		emitted.current = keptText;
 		setContent(textDoc(keptText));
 	}, [keptText]);
+	// Added to the draft, never replacing it: its text, files and quotes stay.
+	const appended = useRef<number | null>(null);
+	const setContentNow = useRef(setContent);
+	setContentNow.current = setContent;
+	useEffect(() => {
+		if (!append || appended.current === append.id) return;
+		appended.current = append.id;
+		const d = docNow.current;
+		const has = !!docText(d).trim() || docHasChips(d);
+		setContentNow.current(
+			has ? appendText(d, `\n\n${append.text}`) : textDoc(append.text),
+			true,
+		);
+	}, [append]);
 	useEffect(() => {
 		if (!onText || parts.text === emitted.current) return;
 		emitted.current = parts.text;

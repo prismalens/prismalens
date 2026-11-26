@@ -378,6 +378,10 @@ export function ThreadPage({ id }: { id: string }) {
 	const [draft, setDraft] = useState("");
 	// Why a rewind kept its edited text in the box unsent; it goes when the box empties.
 	const [keptWhy, setKeptWhy] = useState<string | null>(null);
+	const [keptText, setKeptText] = useState<{
+		id: number;
+		text: string;
+	} | null>(null);
 	const onDraft = useCallback((t: string) => {
 		setDraft(t);
 		if (!t.trim()) setKeptWhy(null);
@@ -1921,7 +1925,7 @@ export function ThreadPage({ id }: { id: string }) {
 							target={rewind.target}
 							onClose={rewind.close}
 							onKept={(kept) => {
-								setDraft(kept.text);
+								setKeptText((k) => ({ id: (k?.id ?? 0) + 1, text: kept.text }));
 								setKeptWhy(kept.why);
 								setFocusSignal((n) => n + 1);
 							}}
@@ -2026,6 +2030,7 @@ ${about}`
 						blockedQuiet={!!failedDock}
 						text={draft}
 						onText={onDraft}
+						append={keptText}
 						notice={keptWhy ?? undefined}
 						focusSignal={focusSignal}
 						footer={slots.composerFooter}

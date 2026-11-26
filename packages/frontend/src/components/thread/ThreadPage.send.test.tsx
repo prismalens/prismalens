@@ -45,7 +45,7 @@ let capturedProps: {
 	placeholder?: string;
 	sendLabel?: string;
 	nextSession?: string | null;
-	text?: string;
+	append?: { id: number; text: string } | null;
 	notice?: string | null;
 } = {};
 /** The page's transcript edit and its rewind dialog's handback, as the page wired them. */
@@ -72,11 +72,11 @@ vi.mock("./Composer", () => ({
 		placeholder?: string;
 		sendLabel?: string;
 		nextSession?: string | null;
-		text?: string;
+		append?: { id: number; text: string } | null;
 		notice?: string;
 	}) => {
 		capturedProps = {
-			text: props.text ?? "",
+			append: props.append ?? null,
 			notice: props.notice ?? null,
 			blockedReason: props.blockedReason ?? null,
 			...(props.placeholder ? { placeholder: props.placeholder } : {}),
@@ -686,7 +686,7 @@ describe("ThreadPage pane tabs (#1199)", () => {
 });
 
 describe("ThreadPage keeps an edit a rewind did not send (#1193)", () => {
-	it("puts the edited text in the composer's draft and shows why it was not sent", async () => {
+	it("hands the edited text to the composer to add to its draft, and shows why it was not sent", async () => {
 		invState.events = [
 			{
 				kind: "operator_message",
@@ -715,7 +715,7 @@ describe("ThreadPage keeps an edit a rewind did not send (#1193)", () => {
 			}),
 		);
 
-		expect(capturedProps.text).toBe("Use port 8080");
+		expect(capturedProps.append).toEqual({ id: 1, text: "Use port 8080" });
 		expect(capturedProps.notice).toBe("The agent is out of credit.");
 	});
 });
