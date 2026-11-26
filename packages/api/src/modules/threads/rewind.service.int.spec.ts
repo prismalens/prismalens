@@ -364,6 +364,52 @@ describe("RewindService (#1193)", () => {
 		}
 	});
 
+	it("the events reader pages past folded rows: it never returns one, keeps a same-seq group whole, and its cursors skip none", async () => {
+		const { id } = await fixture();
+		const prisma = await pl.prisma();
+		const { _max } = await prisma.investigationEvent.aggregate({ where: { investigationId: id }, _max: { seq: true } });
+		const base = _max.seq ?? 0;
+		const step = (seq: number, branchId: string, text: string) => ({
+			kind: "agent_step" as const,
+			runId: id,
+			branchId,
+			path: [],
+			seq,
+			ts: new Date(0).toISOString(),
+			text,
+			toolCalls: [],
+		});
+		const rows = [
+			{ e: step(base + 1, "run", "a"), folded: null },
+			{ e: step(base + 2, "run", "folded alone"), folded: "r1" },
+			{ e: step(base + 3, "b1", "g1"), folded: null },
+			{ e: step(base + 3, "b2", "g2"), folded: null },
+			{ e: step(base + 3, "b3", "g3"), folded: null },
+			{ e: step(base + 3, "b4", "folded in the group"), folded: "r1" },
+			{ e: step(base + 4, "run", "z"), folded: null },
+		];
+		for (const r of rows)
+			await prisma.investigationEvent.create({
+				data: { investigationId: id, seq: r.e.seq, branchId: r.e.branchId, event: JSON.stringify(r.e), foldedBy: r.folded },
+			});
+		const page = async (cursor: number) => {
+			const p: { events: CanonicalEvent[]; nextCursor?: number | null } = await pl.api(
+				`/investigations/${id}/events?limit=2&cursor=${cursor}`,
+			);
+			return { texts: p.events.map((e) => (e.kind === "agent_step" ? e.text : e.kind)), next: p.nextCursor ?? null };
+		};
+
+		const first = await page(base);
+		const second = await page(first.next as number);
+		const third = await page(second.next as number);
+
+		expect([first, second, third]).toEqual([
+			{ texts: ["a"], next: base + 1 },
+			{ texts: ["g1", "g2", "g3"], next: base + 3 },
+			{ texts: ["z"], next: null },
+		]);
+	});
+
 	it("a view-only device sees the view-only block and its rewind is refused view-only", async () => {
 		const { id } = await fixture();
 		const seq = await seqOf(id, MESSAGE_2);
