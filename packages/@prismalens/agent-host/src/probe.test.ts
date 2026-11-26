@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as realSleep } from "node:timers/promises";
@@ -218,6 +218,42 @@ describe("probeAgent", () => {
 		});
 		expect(rError.outcome).toBe("answers-acp");
 		expect(rError.account).toBeNull();
+	});
+});
+
+describe("probeAgent on a row that names authenticate methods (#1235)", () => {
+	const GATE = resolve(import.meta.dirname, "__fixtures__/method-gate.mjs");
+	async function gate(env: Record<string, string>, budgets?: ProbeInput["budgets"]) {
+		const log = join(cwd, `auth-${Math.random().toString(36).slice(2)}.log`);
+		writeFileSync(log, "");
+		const r = await probeAgent({
+			agent: "antigravity",
+			command: process.execPath,
+			args: [GATE],
+			cwd,
+			env: { PATH: process.env.PATH ?? "", LOG: log, ...env },
+			...(budgets ? { budgets } : {}),
+		});
+		return { r, sent: readFileSync(log, "utf8") };
+	}
+
+	it("sends the Google sign-in method before session/new and answers ACP", async () => {
+		const { r, sent } = await gate({});
+		expect([r.outcome, sent]).toEqual(["answers-acp", "oauth-personal\n"]);
+	});
+
+	it("sends the API-key method when GEMINI_API_KEY is set", async () => {
+		const { r, sent } = await gate({ GEMINI_API_KEY: "k" });
+		expect([r.outcome, sent]).toEqual(["answers-acp", "gemini-api-key\n"]);
+	});
+
+	it("is signed out when authenticate waits on a browser sign-in past its budget", async () => {
+		const { r } = await gate({ GATE: "hang" }, { authenticate: 500 });
+		expect([r.outcome, r.authRequired, r.detail]).toEqual([
+			"sign-in-needed",
+			true,
+			"authenticate oauth-personal: no answer in 1s; finish the sign-in the agent opened, then check again",
+		]);
 	});
 });
 

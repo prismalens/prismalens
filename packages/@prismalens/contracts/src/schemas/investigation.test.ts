@@ -534,10 +534,16 @@ describe("a run's own chips (#673 w52)", () => {
 		).toMatchObject(choice);
 	});
 
-	it("refuses an agent this build does not know, and an empty model", () => {
+	it("refuses an agent this build does not know and an empty model, and takes Cursor and Antigravity", () => {
 		expect(
-			InvestigateIncidentSchema.safeParse({ harness: "cursor" }).success,
+			InvestigateIncidentSchema.safeParse({ harness: "not-an-agent" }).success,
 		).toBe(false);
+		expect(
+			[
+				InvestigateIncidentSchema.safeParse({ harness: "cursor" }).success,
+				InvestigateIncidentSchema.safeParse({ harness: "antigravity" }).success,
+			],
+		).toEqual([true, true]);
 		expect(InvestigateIncidentSchema.safeParse({ model: "" }).success).toBe(
 			false,
 		);

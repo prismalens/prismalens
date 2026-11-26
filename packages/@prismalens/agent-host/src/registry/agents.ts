@@ -5,8 +5,10 @@
  * The agents and their launch facts, one row per file under `agents/`. Every agent speaks ACP over stdio
  * (ADR 0003). Copy, `tested` pins and model resolution stay in each product (#916).
  */
+import { antigravity } from "./agents/antigravity.js";
 import { claudeCode } from "./agents/claude-code.js";
 import { codex } from "./agents/codex.js";
+import { cursor } from "./agents/cursor.js";
 import { deepagents } from "./agents/deepagents.js";
 import { gemini } from "./agents/gemini.js";
 import { local } from "./agents/local.js";
@@ -19,6 +21,8 @@ export const AGENT_IDS = [
 	"claude-code",
 	"codex",
 	"gemini",
+	"cursor",
+	"antigravity",
 	"deepagents",
 	"local",
 ] as const;
@@ -59,6 +63,20 @@ export {
 	SUBAGENTS_ON_STOP_DEFAULT,
 } from "./row.js";
 
+/** One ACP `authenticate` method a row sends before `session/new`, when `env` names a set key or is absent. */
+export interface AuthenticateMethod {
+	methodId: string;
+	env?: string;
+}
+
+/** The first of the row's methods that applies under `env`; null when it has none. */
+export function authenticateMethod(
+	row: Pick<AgentDescriptor, "authenticate">,
+	env: Readonly<Record<string, string | undefined>>,
+): AuthenticateMethod | null {
+	return row.authenticate?.find((m) => !m.env || !!env[m.env]?.trim()) ?? null;
+}
+
 export interface AgentDescriptor {
 	id: AgentId;
 	label: string;
@@ -93,6 +111,8 @@ export interface AgentDescriptor {
 	sandboxedModes?: readonly string[];
 	/** `acp`: the session's own `model` config option; `unsupported`: a set model refuses the run. */
 	modelVia: "acp" | "unsupported";
+	/** ACP `authenticate` methods, first match wins; absent, the agent signs itself in (#1235). */
+	authenticate?: readonly AuthenticateMethod[];
 	/** Its handshake answers signed out: credentials are checked at the first prompt turn. */
 	signInAtFirstTurn?: boolean;
 	/** The host env var naming the model the agent runs when the host sets none. */
@@ -120,6 +140,8 @@ export const AGENT_ROWS = [
 	claudeCode,
 	codex,
 	gemini,
+	cursor,
+	antigravity,
 	deepagents,
 	local,
 ] as const satisfies readonly AgentDescriptor[];

@@ -8,6 +8,8 @@ export {
 	type AgentFact,
 	type AgentFacts,
 	type AgentMarkFact,
+	type AuthenticateMethod,
+	authenticateMethod,
 	type CatalogueSource,
 	type CheckedModes,
 	DEFAULT_ACCESS_LEVEL,

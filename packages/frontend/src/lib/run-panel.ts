@@ -5,33 +5,12 @@ import { isSafeRepoPath, type RunWorkspace } from "@prismalens/contracts";
 import type { RunStep } from "@/components/run/run-steps";
 import { type FileAt, locate } from "./evidence-files";
 
-/** The right panel's tabs, as the URL names them (#973). */
-export const PANEL_TABS = [
-	"incident",
-	"summary",
-	"files",
-	"changes",
-	"steps",
-	"context",
-	"browser",
-] as const;
-export type PanelTab = (typeof PANEL_TABS)[number];
-
-export function panelTab(v: unknown): PanelTab | undefined {
-	return PANEL_TABS.find((t) => t === v);
-}
-
-/** The panel's part of a run address, `?panel=` and `?file=`, kept wherever the address is rewritten. */
-export function panelSearch(search: Record<string, unknown>): {
-	panel?: PanelTab;
-	file?: string;
-} {
-	const panel = panelTab(search.panel);
-	return {
-		...(panel ? { panel } : {}),
-		...(typeof search.file === "string" ? { file: search.file } : {}),
-	};
-}
+export {
+	PANEL_TABS,
+	type PanelTab,
+	panelSearch,
+	panelTab,
+} from "./panel-search";
 
 /** `repo:path#L41-L44`: the file in the URL; the commit always comes from the run. */
 export function fileParam(f: FileAt): string {

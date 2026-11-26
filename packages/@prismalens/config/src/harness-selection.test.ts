@@ -41,13 +41,21 @@ describe("resolveHarnessSelection", () => {
 		expect(s).toMatchObject({ runnable: true, harness: "gemini", auto: false });
 	});
 
+	it.each([
+		["cursor", "cursor-agent"],
+		["antigravity", "agy_acp_server"],
+	])("honours a PRISMALENS_HARNESS pin to %s when %s is on PATH (#1235)", (harness, binary) => {
+		const s = resolveHarnessSelection({ envHarness: harness, isOnPath: onPath([binary]) });
+		expect(s).toMatchObject({ runnable: true, harness, auto: false });
+	});
+
 	it("refuses a pin whose binary is missing, and an unknown pin", () => {
 		expect(resolveHarnessSelection({ envHarness: "codex", isOnPath: onPath([]) })).toMatchObject({
 			runnable: false,
 			failure: "pinned-harness-missing",
 			harness: "codex",
 		});
-		expect(resolveHarnessSelection({ envHarness: "cursor", isOnPath: onPath([]) })).toMatchObject({
+		expect(resolveHarnessSelection({ envHarness: "not-an-agent", isOnPath: onPath([]) })).toMatchObject({
 			runnable: false,
 			failure: "invalid-env-harness",
 		});
@@ -72,7 +80,16 @@ describe("resolveHarnessSelection", () => {
 
 	it("lists every registry row with installed and tested data", () => {
 		const rows = listHarnessStatus({ isOnPath: onPath(["opencode"]) });
-		expect(rows.map((r) => r.id)).toEqual(["opencode", "claude-code", "codex", "gemini", "deepagents", "local"]);
+		expect(rows.map((r) => r.id)).toEqual([
+			"opencode",
+			"claude-code",
+			"codex",
+			"gemini",
+			"cursor",
+			"antigravity",
+			"deepagents",
+			"local",
+		]);
 		// Read from the registry: a pin-bump PR moves `tested`, and this test must not need editing (#914).
 		expect(rows[0]).toMatchObject({
 			installed: true,
