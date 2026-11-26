@@ -34,7 +34,7 @@ import {
 	useAnswerAsk,
 	useAnswerSecret,
 } from "@/lib/api/hooks/use-investigations-orpc";
-import { alwaysLine, askSubject, whyAsked } from "@/lib/ask-lines";
+import { alwaysLine, askSubject, onceOffered, whyAsked } from "@/lib/ask-lines";
 import { askRefusal } from "@/lib/ask-refusal";
 import { formatClock, formatDateTimeUtc } from "@/lib/format-time";
 import { getErrorMessage } from "@/lib/get-error-message";
@@ -452,8 +452,10 @@ function Approval({
 }) {
 	const [reason, setReason] = useState<string | null>(null);
 	const plan = ask.permission?.variant === "plan";
+	const once = onceOffered(ask);
 	useAskKeys(reason === null && !busy, {
 		approve: () =>
+			once &&
 			onAnswer({ kind: "permission", decision: "approve", scope: "once" }),
 		decline: () => onAnswer({ kind: "permission", decision: "deny" }),
 	});
@@ -487,16 +489,18 @@ function Approval({
 		);
 	return (
 		<div className="flex flex-wrap items-center gap-1.5">
-			<Button
-				disabled={busy}
-				onClick={() =>
-					onAnswer({ kind: "permission", decision: "approve", scope: "once" })
-				}
-				aria-keyshortcuts="Alt+Y"
-				data-testid="ask-dock-allow"
-			>
-				{plan ? "Approve" : "Allow once"} <Kbd>Alt Y</Kbd>
-			</Button>
+			{once && (
+				<Button
+					disabled={busy}
+					onClick={() =>
+						onAnswer({ kind: "permission", decision: "approve", scope: "once" })
+					}
+					aria-keyshortcuts="Alt+Y"
+					data-testid="ask-dock-allow"
+				>
+					{plan ? "Approve" : "Allow once"} <Kbd>Alt Y</Kbd>
+				</Button>
+			)}
 			{always && (
 				<Hint label={always}>
 					<Button

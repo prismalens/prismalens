@@ -60,6 +60,13 @@ export function alwaysLine(ask: PendingAsk): string | null {
 		: "Always allows this exact action in this thread from now on.";
 }
 
+/** False when the agent offers only a standing allow, so a once-only approval cannot be sent (#1180). */
+export function onceOffered(ask: PendingAsk): boolean {
+	const p = ask.permission;
+	if (!p || ask.source.kind === "tool" || p.options.length === 0) return true;
+	return p.options.some((o) => o.kind === "allow_once");
+}
+
 /** How long an ask has waited, in the kit's one relative format: "now", "3m". */
 export function waitedFor(openedAt: string, now: number): string {
 	return relTime(openedAt, now, { past: true });

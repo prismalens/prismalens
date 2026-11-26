@@ -3,6 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	type AskContext,
 	askIdentity,
 	askWindow,
 	createAskChannel,
@@ -976,6 +977,41 @@ describe("AskChannel answers (#1024)", () => {
 		channel.answer("a", { ...APPROVE, scope: "always" });
 		expect(await p).toMatchObject({ allow: true, optionId: "always" });
 		channel.close();
+	});
+
+	it("a once approval never answers with allow_always; with no allow_once the ask stays open (#1180)", async () => {
+		const channel = createAskChannel({ timeoutMs: 5000 });
+		const onlyAlways = [
+			{ optionId: "always", kind: "allow_always" },
+			{ optionId: "reject", kind: "reject_once" },
+		] as PermissionRequest["options"];
+		const p = channel.policy(
+			{ options: onlyAlways },
+			{ askId: "a", signal: new AbortController().signal },
+		);
+		expect(channel.answer("a", APPROVE)).toBe("invalid");
+		expect(channel.pending().map((a) => a.askId)).toEqual(["a"]);
+		channel.answer("a", { ...APPROVE, scope: "always" });
+		expect(await p).toMatchObject({ allow: true, optionId: "always" });
+		channel.close();
+	});
+
+	it("a level's auto-approval never picks allow_always; with no allow_once the card asks the person (#1180)", async () => {
+		const card = vi.fn(() => ({ allow: false, outcome: "denied" }) as const);
+		const ctx: AskContext = { askId: "a", signal: new AbortController().signal };
+		const verdict = await levelPolicy("full-access", { policy: card })(
+			{
+				toolCall: { title: "Edit file", kind: "edit" },
+				options: [
+					{ optionId: "always", kind: "allow_always" },
+					{ optionId: "reject", kind: "reject_once" },
+				],
+			} as PermissionRequest,
+			ctx,
+		);
+		expect(verdict).toEqual({ allow: false, outcome: "denied" });
+		expect(card).toHaveBeenCalledTimes(1);
+		expect(ctx.why).toBe("no_allow_option");
 	});
 
 	it("a deny with a reason returns the reason for the host to queue", async () => {
