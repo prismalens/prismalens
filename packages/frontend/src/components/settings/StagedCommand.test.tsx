@@ -93,13 +93,15 @@ describe("StagedCommand (#1180)", () => {
 
 	it("refreshes the status once every check has settled, though one of them failed", async () => {
 		let finish!: () => void;
-		checkHarness.mockImplementation(({ id }: { id: string }) =>
-			id === "codex"
-				? Promise.reject(new Error("no answer"))
-				: new Promise<void>((resolve) => {
-						finish = resolve;
-					}),
-		);
+		let codexRejected = false;
+		checkHarness.mockImplementation(({ id }: { id: string }) => {
+			if (id !== "codex")
+				return new Promise<void>((resolve) => {
+					finish = resolve;
+				});
+			codexRejected = true;
+			return Promise.reject(new Error("no answer"));
+		});
 		const { q, root, status } = await render();
 		await act(async () => q('[data-testid="update"]')?.click());
 		const [, { onEnd }] = stage.mock.calls[0] as [
@@ -108,6 +110,7 @@ describe("StagedCommand (#1180)", () => {
 		];
 		await act(async () => onEnd());
 		await act(() => new Promise((r) => setTimeout(r, 20)));
+		expect(codexRejected).toBe(true);
 		expect(status()).toBe("status v1");
 		await act(async () => finish());
 		await vi.waitFor(() => {
