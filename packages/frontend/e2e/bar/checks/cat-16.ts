@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { defineChecks, notSetUp, verdict } from "../bar";
 import {
@@ -541,6 +543,12 @@ export default defineChecks([
 			const fx = await rewindFixture(page, sim);
 			if (typeof fx === "string") return notSetUp(fx);
 			const fails: string[] = [];
+			// A rewind keeps only what changed after the edited message; the fixture's edit came before it.
+			writeFileSync(
+				join(fx.cwd, "README.md"),
+				`${HAND_EDIT}Edited again.
+`,
+			);
 			const before = await stateOf(page, fx.id, fx.cwd);
 			await open(fx.path, "thread-page");
 			await page
@@ -555,13 +563,11 @@ export default defineChecks([
 			await expect(page.getByTestId("rewind-turns")).toBeVisible({
 				timeout: 30_000,
 			});
+			// A line the dialog leaves out reads empty instead of waiting out the test.
 			const read = async (id: string) =>
-				(
-					(await page
-						.getByTestId(id)
-						.textContent()
-						.catch(() => "")) ?? ""
-				).trim();
+				(await page.getByTestId(id).count())
+					? ((await page.getByTestId(id).textContent()) ?? "").trim()
+					: "";
 			const turns = await read("rewind-turns");
 			const revert = await read("rewind-revert");
 			const kept = await read("rewind-kept");
