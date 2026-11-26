@@ -12,7 +12,11 @@ import type React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SharedSetView, ShareServerForm } from "./SharedSetSettings";
+import {
+	type ReplaceTarget,
+	SharedSetView,
+	ShareServerForm,
+} from "./SharedSetSettings";
 
 vi.mock("@/components/ui/select", async () => {
 	const R = await import("react");
@@ -153,6 +157,7 @@ const approveDisabled = () =>
 const renderForm = async (
 	source: SharedSource,
 	preview: SharedServerPreview,
+	replace?: ReplaceTarget,
 ) => {
 	await act(async () =>
 		root.render(
@@ -164,6 +169,7 @@ const renderForm = async (
 				agents={AGENTS}
 				labelOf={labelOf}
 				initial={source}
+				replace={replace}
 				preview={preview}
 				previewing={false}
 				onPick={onPick}
@@ -257,6 +263,25 @@ describe("ShareServerForm", () => {
 			from: { ...httpSource, revision: "rev-tickets" },
 		});
 		expect(text("share-form")).not.toContain("Starts in each thread's folder");
+	});
+
+	it("Copy again approves under the shared name, not the source key, and only to the server's own recipients", async () => {
+		const knowledge: SharedSource = {
+			agent: "codex",
+			path: "~/.codex/config.toml",
+			key: "knowledge",
+		};
+		await renderForm(
+			knowledge,
+			{ ...httpPreview, source: knowledge },
+			{ name: "tickets", recipients: ["codex"] },
+		);
+		await click("share-path-reveal");
+		await click("share-path-confirm");
+		await click("share-approve");
+		expect(
+			onApprove.mock.calls.map(([input]) => [input.name, input.recipients]),
+		).toEqual([["tickets", ["codex"]]]);
 	});
 
 	it("names a secret argument's value apart from an env var the source already calls ARG_1", async () => {
@@ -382,12 +407,11 @@ describe("SharedSetView", () => {
 				?.querySelector<HTMLElement>('[data-testid="shared-server-copy-again"]')
 				?.click(),
 		);
-		// The entry it was copied from, whatever name it was shared under.
-		expect(onCopyAgain).toHaveBeenCalledWith({
-			agent: "codex",
-			path: "~/.codex/config.toml",
-			key: "knowledge",
-		});
+		// The entry it was copied from, and the shared server it replaces with its recipients.
+		expect(onCopyAgain).toHaveBeenCalledWith(
+			{ agent: "codex", path: "~/.codex/config.toml", key: "knowledge" },
+			{ name: "tickets", recipients: ["claude-code", "codex"] },
+		);
 	});
 
 	it("keeps the typed instructions when saving fails, and shows why", async () => {
@@ -410,6 +434,28 @@ describe("SharedSetView", () => {
 			(byId("shared-set-instructions-input") as HTMLTextAreaElement).value,
 			text("shared-set-instructions-error"),
 		]).toEqual([[["Cite the runbook."]], "Cite the runbook.", "Save failed"]);
+	});
+
+	it("keeps instructions typed while a save is pending once that save lands", async () => {
+		let land: () => void = () => undefined;
+		const save = vi.fn(() => new Promise<void>((r) => (land = r)));
+		await renderView(save);
+		const area = () =>
+			byId("shared-set-instructions-input") as HTMLTextAreaElement;
+		const set = Object.getOwnPropertyDescriptor(
+			HTMLTextAreaElement.prototype,
+			"value",
+		)?.set;
+		const typeIn = (value: string) =>
+			act(async () => {
+				set?.call(area(), value);
+				area().dispatchEvent(new Event("input", { bubbles: true }));
+			});
+		await typeIn("Text A.");
+		await click("shared-set-instructions-save");
+		await typeIn("Text B.");
+		await act(async () => land());
+		expect([save.mock.calls, area().value]).toEqual([[["Text A."]], "Text B."]);
 	});
 
 	it("shows the instructions hint and the saved text", async () => {

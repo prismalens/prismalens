@@ -362,6 +362,12 @@ function Footer({
 	);
 }
 
+/** The shared server Copy again replaces: approval keeps its name and starts from its recipients. */
+export interface ReplaceTarget {
+	name: string;
+	recipients: string[];
+}
+
 const nonEmpty = (values: Record<string, string>) =>
 	Object.fromEntries(Object.entries(values).filter(([, v]) => v));
 
@@ -369,6 +375,7 @@ const nonEmpty = (values: Record<string, string>) =>
 function PreviewServer({
 	preview,
 	agents,
+	replace,
 	onReveal,
 	onApprove,
 	pending,
@@ -376,16 +383,21 @@ function PreviewServer({
 }: {
 	preview: SharedServerPreview;
 	agents: readonly AgentChoice[];
+	replace?: ReplaceTarget;
 	onReveal: (row: number | "path") => Promise<string>;
 	onApprove: (input: ApproveSharedServerInput) => void;
 	pending: boolean;
 	error: unknown;
 }) {
-	const [name, setName] = useState(serverName(preview.source.key));
+	const [name, setName] = useState(
+		replace?.name ?? serverName(preview.source.key),
+	);
 	const [args, setArgs] = useState<RowDraft[]>(preview.args.map(() => BLANK));
 	const [path, setPath] = useState<RowDraft>(BLANK);
 	const [values, setValues] = useState<Record<string, string>>({});
-	const [recipients, setRecipients] = useState(agents.map((a) => a.id));
+	const [recipients, setRecipients] = useState(
+		replace?.recipients ?? agents.map((a) => a.id),
+	);
 	const stdio = preview.transport === "stdio";
 	const argName = (i: number) =>
 		argNames(preview.args.length, preview.env)[i] ?? `ARG_${i + 1}`;
@@ -496,21 +508,25 @@ function PreviewServer({
 /** A server the person types: what they type is what is shared. */
 function TypedServer({
 	agents,
+	replace,
 	onApprove,
 	pending,
 	error,
 }: {
 	agents: readonly AgentChoice[];
+	replace?: ReplaceTarget;
 	onApprove: (input: ApproveSharedServerInput) => void;
 	pending: boolean;
 	error: unknown;
 }) {
-	const [name, setName] = useState("");
+	const [name, setName] = useState(replace?.name ?? "");
 	const [transport, setTransport] = useState<"stdio" | "http">("stdio");
 	const [command, setCommand] = useState("");
 	const [argText, setArgText] = useState("");
 	const [urlText, setUrlText] = useState("");
-	const [recipients, setRecipients] = useState(agents.map((a) => a.id));
+	const [recipients, setRecipients] = useState(
+		replace?.recipients ?? agents.map((a) => a.id),
+	);
 	const stdio = transport === "stdio";
 	const args = parseArgs(argText);
 	const url = cleanUrl(urlText);
@@ -612,6 +628,7 @@ export function ShareServerForm({
 	agents,
 	labelOf,
 	initial,
+	replace,
 	preview,
 	previewing,
 	onPick,
@@ -625,6 +642,8 @@ export function ShareServerForm({
 	labelOf: (id: string) => string;
 	/** A source to start from, as Copy again names it. */
 	initial?: SharedSource;
+	/** The shared server Copy again replaces; a new share has none. */
+	replace?: ReplaceTarget;
 	preview: SharedServerPreview | null;
 	previewing: boolean;
 	onPick: (source: SharedSource) => void;
@@ -667,6 +686,7 @@ export function ShareServerForm({
 			{picked === TYPED ? (
 				<TypedServer
 					agents={agents}
+					replace={replace}
 					onApprove={onApprove}
 					pending={pending}
 					error={error}
@@ -676,6 +696,7 @@ export function ShareServerForm({
 					key={picked}
 					preview={shown}
 					agents={agents}
+					replace={replace}
 					onReveal={onReveal}
 					onApprove={onApprove}
 					pending={pending}
@@ -696,11 +717,13 @@ export function ShareServerDialog({
 	open,
 	onOpenChange,
 	initial,
+	replace,
 	onSaved,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	initial?: SharedSource;
+	replace?: ReplaceTarget;
 	onSaved?: () => void;
 }) {
 	const harnesses = useHarnesses().data?.harnesses ?? [];
@@ -737,6 +760,7 @@ export function ShareServerDialog({
 						agents={installedAgents(harnesses)}
 						labelOf={labelOf}
 						initial={initial}
+						replace={replace}
 						preview={preview.data ?? null}
 						previewing={preview.isPending}
 						onPick={previewMutate}
@@ -861,8 +885,8 @@ export function SharedSetView({
 	onSaveInstructions: (text: string) => Promise<unknown>;
 	saveError?: unknown;
 	onShare: () => void;
-	/** The entry the server was copied from, or null when none is known. */
-	onCopyAgain: (source: SharedSource | null) => void;
+	/** The entry the server was copied from (null when none is known), and the server it replaces. */
+	onCopyAgain: (source: SharedSource | null, replace: ReplaceTarget) => void;
 	onRemove: (name: string) => void;
 	onMember: (id: string, member: boolean) => void;
 }) {
@@ -912,12 +936,13 @@ export function SharedSetView({
 								disabled={
 									draft === null || draft === set.instructions || saving
 								}
-								onClick={() =>
-									void onSaveInstructions(text).then(
-										() => setDraft(null),
+								onClick={() => {
+									const sent = text;
+									void onSaveInstructions(sent).then(
+										() => setDraft((d) => (d === sent ? null : d)),
 										() => undefined,
-									)
-								}
+									);
+								}}
 								data-testid="shared-set-instructions-save"
 							>
 								Save
@@ -950,7 +975,12 @@ export function SharedSetView({
 							server={server}
 							labelOf={labelOf}
 							canEdit={canEdit}
-							onCopyAgain={() => onCopyAgain(server.fromSource)}
+							onCopyAgain={() =>
+								onCopyAgain(server.fromSource, {
+									name: server.name,
+									recipients: server.recipients,
+								})
+							}
 							onRemove={() => onRemove(server.name)}
 						/>
 					))}
@@ -987,9 +1017,10 @@ export function SharedSetSettings() {
 	const update = useUpdateSharedSet();
 	const remove = useRemoveSharedServer();
 	const membership = useSetSharedMembership();
-	const [sharing, setSharing] = useState<{ initial?: SharedSource } | null>(
-		null,
-	);
+	const [sharing, setSharing] = useState<{
+		initial?: SharedSource;
+		replace?: ReplaceTarget;
+	} | null>(null);
 	const [removing, setRemoving] = useState<string | null>(null);
 	const labelOf = (id: string) =>
 		harnesses.find((h) => h.id === id)?.label ?? id;
@@ -1002,8 +1033,8 @@ export function SharedSetSettings() {
 		);
 	if (!set.data) return <Loading rows={3} />;
 	// The entry it was copied from, or none: the person picks a source again.
-	const copyAgain = (source: SharedSource | null) =>
-		setSharing(source ? { initial: source } : {});
+	const copyAgain = (source: SharedSource | null, replace: ReplaceTarget) =>
+		setSharing(source ? { initial: source, replace } : { replace });
 	return (
 		<>
 			<SharedSetView
@@ -1025,6 +1056,7 @@ export function SharedSetSettings() {
 				open={sharing !== null}
 				onOpenChange={(o) => !o && setSharing(null)}
 				initial={sharing?.initial}
+				replace={sharing?.replace}
 			/>
 			<DestructiveConfirm
 				open={removing !== null}
