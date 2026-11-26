@@ -40,6 +40,8 @@
 // FAKE_AUTH_DELAY_MS after initialize; "silent" advertises it and pushes nothing. It also advertises
 // ACP auth.status and answers auth/status: none is unauthenticated, silent unknown, else authenticated.
 // FAKE_AUTH_LABEL / FAKE_AUTH_EMAIL name the account it pushes and answers.
+// FAKE_AUTH_SWITCH_EMAIL=<email> follows the usage_update, in one write, with a push of that
+// account and the same usage_update again.
 // FAKE_MODE_FILE=<path>: the file's text, when present, replaces FAKE_ACP_MODE at startup.
 // FAKE_READ_DIR=<dir under cwd>: "resume" and "continue" first read every file there with a `read`
 // tool call whose output is the file's text, as an agent reading the pre-run copies would.
@@ -550,8 +552,8 @@ async function turn(sessionId, promptText) {
 			sessionUpdate: "agent_message_chunk",
 			content: { type: "text", text: `Heard: ${promptText}\n` },
 		});
-	if (process.env.FAKE_USAGE)
-		notify(sessionId, {
+	if (process.env.FAKE_USAGE) {
+		const usage = {
 			sessionUpdate: "usage_update",
 			used: 182000,
 			size: 440000,
@@ -567,7 +569,30 @@ async function turn(sessionId, promptText) {
 						},
 					}
 				: {}),
-		});
+		};
+		const switched = process.env.FAKE_AUTH_SWITCH_EMAIL;
+		if (!switched) notify(sessionId, usage);
+		else {
+			const update = {
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: { sessionId, update: usage },
+			};
+			const push = {
+				jsonrpc: "2.0",
+				method: "_auth/status_update",
+				params: {
+					authStatus: {
+						kind: process.env.FAKE_AUTH_STATUS,
+						account: { email: switched },
+					},
+				},
+			};
+			process.stdout.write(
+				[update, push, update].map((m) => `${JSON.stringify(m)}\n`).join(""),
+			);
+		}
+	}
 	const valid =
 		mode === "ok" ||
 		mode === "elicit" ||

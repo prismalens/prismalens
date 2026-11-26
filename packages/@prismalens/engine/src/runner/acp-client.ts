@@ -56,8 +56,16 @@ import { turnUsageOf } from "../run/usage.js";
 import { usageLimitText } from "../run/usage-limit.js";
 
 export type AcpStreamItem =
-	/** `sessionId` is set only for a sub-agent's session, never the main one (#1025). */
-	| { kind: "update"; update: AcpUpdate; sessionId?: string }
+	/**
+	 * `sessionId` is set only for a sub-agent's session, never the main one (#1025);
+	 * `account` is the one signed in when a `usage_update` was queued (#1180).
+	 */
+	| {
+			kind: "update";
+			update: AcpUpdate;
+			sessionId?: string;
+			account?: string;
+	  }
 	/** The agent asked; the turn waits until a `permission` item answers `askId`. */
 	| {
 			kind: "permission_asked";
@@ -1440,6 +1448,9 @@ export class AcpSession {
 					kind: "update",
 					update: update as AcpUpdate,
 					...(child ? { sessionId: child } : {}),
+					...(u.sessionUpdate === "usage_update" && this.authAccount
+						? { account: this.authAccount }
+						: {}),
 				});
 			}
 		} else if (msg.method === AUTH_STATUS_UPDATE) {

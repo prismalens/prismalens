@@ -427,8 +427,32 @@ describe("runInvestigation over a fake ACP harness", () => {
 		const { events } = await collect("ok", {
 			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_USAGE: "1", FAKE_RATE_LIMIT: "1" },
 		});
-		const quota = events.find((e) => e.kind === "agent_quota");
-		expect(quota && "account" in quota ? quota.account : "absent").toBe("absent");
+		const quotas = events
+			.filter((e) => e.kind === "agent_quota")
+			.map((e) => [e.usedPercent, "account" in e]);
+		expect(quotas).toEqual([[40, false]]);
+	});
+
+	it("records each usage window under the account in effect when it was queued, though the numbers match", async () => {
+		const { events } = await collect("ok", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_USAGE: "1",
+				FAKE_RATE_LIMIT: "1",
+				FAKE_AUTH_STATUS: "account",
+				FAKE_AUTH_LABEL: "Claude Max",
+				FAKE_AUTH_EMAIL: "dev@example.test",
+				FAKE_AUTH_SWITCH_EMAIL: "other@example.test",
+			},
+		});
+		const quotas = events
+			.filter((e) => e.kind === "agent_quota")
+			.map((e) => [e.usedPercent, e.account]);
+		expect(quotas).toEqual([
+			[40, "dev@example.test"],
+			[40, "other@example.test"],
+		]);
 	});
 
 	it("retries once in the same session when the first report is invalid", async () => {
