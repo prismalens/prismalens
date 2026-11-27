@@ -74,6 +74,7 @@ import {
 	installedByInstaller,
 	launcherIo,
 	planLauncher,
+	receiptPaths,
 } from "./launcher.js";
 import { readLoginShellPath } from "./login-shell-path.js";
 import { appMenuTemplate } from "./menu.js";
@@ -199,36 +200,42 @@ const readText = (path: string): string | null => {
 
 /** An update for the installer's copy comes through `pl upgrade`, which reruns the installer; any other copy downloads it. */
 async function openUpdate(version: string | null): Promise<void> {
-	const installed = installedByInstaller({
-		platform: process.platform,
-		execPath: process.execPath,
-		receipt: readText(join(installerDataDir(), "receipt")),
-		// The installers mark their app: an xattr on the macOS bundle's executable, a file beside the exe elsewhere.
-		installId: (appPath) => {
-			if (process.platform === "darwin") {
-				const r = spawnSync(
-					"xattr",
-					[
-						"-p",
-						"io.prismalens.install-id",
-						join(appPath, "Contents", "MacOS", "PrismaLens"),
-					],
-					{ encoding: "utf8" },
-				);
-				return r.status === 0 ? r.stdout.trim() : null;
-			}
-			const dir =
-				process.platform === "win32" ? path.dirname(appPath) : appPath;
-			return readText(join(dir, ".prismalens-install-id"))?.trim() ?? null;
-		},
-		realpath: (p) => {
-			try {
-				return realpathSync.native(p);
-			} catch {
-				return p;
-			}
-		},
-	});
+	const installed = receiptPaths(
+		process.platform,
+		process.execPath,
+		installerDataDir(),
+	).some((receipt) =>
+		installedByInstaller({
+			platform: process.platform,
+			execPath: process.execPath,
+			receipt: readText(receipt),
+			// The installers mark their app: an xattr on the macOS bundle's executable, a file beside the exe elsewhere.
+			installId: (appPath) => {
+				if (process.platform === "darwin") {
+					const r = spawnSync(
+						"xattr",
+						[
+							"-p",
+							"io.prismalens.install-id",
+							join(appPath, "Contents", "MacOS", "PrismaLens"),
+						],
+						{ encoding: "utf8" },
+					);
+					return r.status === 0 ? r.stdout.trim() : null;
+				}
+				const dir =
+					process.platform === "win32" ? path.dirname(appPath) : appPath;
+				return readText(join(dir, ".prismalens-install-id"))?.trim() ?? null;
+			},
+			realpath: (p) => {
+				try {
+					return realpathSync.native(p);
+				} catch {
+					return p;
+				}
+			},
+		}),
+	);
 	if (!installed) {
 		await shell.openExternal(
 			version ? releaseUrl(version) : latestReleaseUrl(),

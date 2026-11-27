@@ -204,6 +204,28 @@ export function planLauncher(
 }
 
 /**
+ * Receipts that may name this copy: the one in `dataDir`, then the one in the data root the copy
+ * sits in (<root>/desktop/app on Linux, <root>\desktop\<version> on Windows), which a PRISMALENS_HOME
+ * given only to the installer moves. A macOS app sits in ~/Applications, so it has only the first.
+ */
+export function receiptPaths(
+	platform: NodeJS.Platform,
+	execPath: string,
+	dataDir: string,
+): string[] {
+	const p = platform === "win32" ? win32 : posix;
+	const paths = [p.join(dataDir, "receipt")];
+	const desktop = p.dirname(p.dirname(execPath));
+	const inRoot =
+		p.basename(desktop) === "desktop" &&
+		(platform === "win32" ||
+			(platform === "linux" && p.basename(p.dirname(execPath)) === "app"));
+	const own = p.join(p.dirname(desktop), "receipt");
+	if (inRoot && own !== paths[0]) paths.push(own);
+	return paths;
+}
+
+/**
  * Whether the official installer put this copy here, so `pl upgrade` (which reruns it) is how it upgrades.
  * Its receipt says desktop=1 and names, as desktop_app, the app this copy runs from (paths compare
  * canonical), and that app still carries the receipt's desktop_app_id: another app put in its place doesn't.

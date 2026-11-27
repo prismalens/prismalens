@@ -16,6 +16,7 @@ import {
 	installedByInstaller,
 	type LauncherEnv,
 	planLauncher,
+	receiptPaths,
 	type Shortcut,
 } from "./launcher.js";
 
@@ -218,6 +219,27 @@ describe("desktopEntryExec", () => {
 	it("reads past the env or /bin/sh that runs the program", () => {
 		expect(desktopEntryExec('[Desktop Entry]\nExec=/bin/sh "/h/a b/launch"\n')).toBe("/h/a b/launch");
 		expect(desktopEntryExec('[Desktop Entry]\nExec=env "/h/100%%/prismalens"\n')).toBe("/h/100%/prismalens");
+	});
+});
+
+describe("receiptPaths", () => {
+	it("adds the receipt of the data root an installed copy sits in, for a root given only to the installer", () => {
+		expect(receiptPaths("linux", "/srv/pl/desktop/app/prismalens", "/home/ada/.local/share/prismalens")).toEqual([
+			"/home/ada/.local/share/prismalens/receipt",
+			"/srv/pl/receipt",
+		]);
+		expect(receiptPaths("win32", "D:\\pl\\desktop\\0.5.7\\PrismaLens.exe", "C:\\Users\\ada\\AppData\\Local\\prismalens")).toEqual([
+			"C:\\Users\\ada\\AppData\\Local\\prismalens\\receipt",
+			"D:\\pl\\receipt",
+		]);
+	});
+
+	it("is the default receipt alone for a copy outside a data root, and on macOS", () => {
+		expect(receiptPaths("linux", "/home/ada/Downloads/PrismaLens/prismalens", "/d")).toEqual(["/d/receipt"]);
+		expect(receiptPaths("linux", "/d/desktop/app/prismalens", "/d")).toEqual(["/d/receipt"]);
+		expect(receiptPaths("darwin", "/Users/ada/Applications/PrismaLens.app/Contents/MacOS/PrismaLens", "/d")).toEqual([
+			"/d/receipt",
+		]);
 	});
 });
 
