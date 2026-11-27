@@ -272,6 +272,17 @@ describe("useListHold keeps the list still while the reader is in it (#1247 D25)
 			pending: 1,
 		});
 	});
+	it("shows the rows Show more asked for when their page lands after 5 s on a slow link (#1193 bar 17.5)", async () => {
+		await draw(first);
+		await pointer("pointerenter");
+		await act(async () => seen.expectMore());
+		await act(async () => vi.advanceTimersByTime(8_000));
+		await draw(paged);
+		expect(seen).toMatchObject({
+			active: ["a", "b", "old"],
+			pending: 1,
+		});
+	});
 	it("keeps the reader's exemption until their move reaches the list, though the list draws first", async () => {
 		await draw(firstWithC);
 		await pointer("pointerenter");
