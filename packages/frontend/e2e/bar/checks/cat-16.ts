@@ -355,7 +355,8 @@ export default defineChecks([
 			await expect(fileLink).toBeVisible({ timeout: 30_000 });
 			const cited = ((await fileLink.textContent()) ?? "").trim();
 			await fileLink.click();
-			await expect(page).toHaveURL(/panel=files/);
+			// The page can reopen its last pane first, so the click's own URL is the one with a line.
+			await expect(page).toHaveURL(/panel=files.*[?&]line=\d+/);
 			const line = new URL(page.url()).searchParams.get("line");
 			if (line !== cited.split(":")[1]) {
 				fails.push(`cited "${cited}" opened at line ${line}`);
