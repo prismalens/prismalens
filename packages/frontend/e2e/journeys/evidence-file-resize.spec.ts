@@ -143,7 +143,11 @@ const CITING = {
 	nextSteps: [],
 };
 
-async function setupPage(page: Page, report: object | null = null) {
+async function setupPage(
+	page: Page,
+	report: object | null = null,
+	content = buildContent(2000),
+) {
 	await hideQueryDevtools(page);
 
 	await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -167,7 +171,6 @@ async function setupPage(page: Page, report: object | null = null) {
 		...(ended ? [ended] : []),
 	]);
 
-	const content = buildContent(2000);
 	await page.route(
 		(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}/blob`,
 		async (route) => {
@@ -216,7 +219,14 @@ async function palette(name: string): Promise<Set<string>> {
 
 // The file view highlights in the shared worker pool, which draws with the pool's theme, not the
 // view's: this reads the colours the pool painted, not the configuration (#1238).
-/** Opens the cited file in `mode` and waits until every token on a line wears the theme's palette. */
+/** A small TypeScript file, under the 256 KiB plain-text cut, so the pool's worker highlights it; line 20 holds keywords, a string and a number. */
+const TS_FIXTURE = Array.from({ length: 40 }, (_, i) =>
+	i === 19
+		? 'export const limit = Number.parseInt(process.env.LIMIT ?? "50", 10);'
+		: `const value${i + 1} = compute("step", ${i + 1});`,
+).join("\n");
+
+/** Opens the cited TypeScript file in `mode`; the worker must highlight it, in the theme's palette, with colours pierre's lacks. */
 async function expectPooledPalette(
 	page: Page,
 	baseURL: string | undefined,
@@ -230,7 +240,21 @@ async function expectPooledPalette(
 		},
 	]);
 	await page.setViewportSize({ width: 1280, height: 800 });
-	await setupPage(page);
+	// Records what the page asks its workers to render, so the test knows the worker drew the file.
+	await page.addInitScript(() => {
+		const sent: string[] = [];
+		(window as unknown as { workerRequests: string[] }).workerRequests = sent;
+		const post = Worker.prototype.postMessage as (
+			this: Worker,
+			...args: unknown[]
+		) => void;
+		Worker.prototype.postMessage = function (this: Worker, ...args: unknown[]) {
+			const msg = args[0] as { type?: string } | null;
+			if (typeof msg?.type === "string") sent.push(msg.type);
+			post.apply(this, args);
+		} as Worker["postMessage"];
+	});
+	await setupPage(page, null, TS_FIXTURE);
 	await page.goto(
 		`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
 	);
@@ -244,7 +268,7 @@ async function expectPooledPalette(
 	await expect(line).toBeInViewport({ timeout: 5000 });
 	const ours = await palette(DIFF_THEMES[mode]);
 	const pierre = await palette(`pierre-${mode}`);
-	// Highlighting lands after the plain first paint, so poll until every token wears our palette.
+	// Highlighting lands after the plain first paint, so poll until the worker's tokens arrive.
 	await expect
 		.poll(async () => {
 			const painted = await line.evaluate((el) =>
@@ -252,13 +276,23 @@ async function expectPooledPalette(
 					.filter((s) => s.children.length === 0 && s.textContent?.trim())
 					.map((s) => getComputedStyle(s).color),
 			);
+			const sent = await page.evaluate(
+				() =>
+					(window as unknown as { workerRequests: string[] }).workerRequests,
+			);
 			return {
-				tokens: painted.length > 0,
+				workerRendered: sent.includes("file"),
+				highlighted: new Set(painted).size >= 3,
 				foreign: painted.filter((c) => !ours.has(c)),
 				ours: painted.some((c) => !pierre.has(c)),
 			};
 		})
-		.toEqual({ tokens: true, foreign: [], ours: true });
+		.toEqual({
+			workerRendered: true,
+			highlighted: true,
+			foreign: [],
+			ours: true,
+		});
 }
 
 test("the pooled file view paints its tokens in prismalens-light (#1238)", async ({
