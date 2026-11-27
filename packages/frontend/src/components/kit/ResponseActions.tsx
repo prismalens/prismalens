@@ -36,7 +36,10 @@ export function ResponseActions({
 	// Its own Surface: Shift+F10 and the Menu key on a focused icon open the message's menu.
 	return (
 		<Surface id="message" ctx={ctx}>
-			<div className="flex items-center gap-0.5" data-testid="response-actions">
+			<div
+				className="flex items-center gap-0.5 max-sm:gap-1"
+				data-testid="response-actions"
+			>
 				{entries.map((e) => {
 					if ("separator" in e) return null;
 					const done = e.id === copied;

@@ -101,10 +101,12 @@ export default defineChecks([
 
 			// 3. A limited thread previews its limit and reset
 			await page.getByTestId("palette-tab-threads").click();
+			// OpenCode names no thread (80cb358d5), so the limit thread reads its alert's name,
+			// "Simulated limit-mid-turn …", where a named one reads "Session limit mid-turn …".
 			await page.getByTestId("thread-search-input").fill("limit");
 			const limited = page
 				.getByTestId("thread-search-result")
-				.filter({ hasText: "Session limit mid-turn" });
+				.filter({ hasText: /limit-mid-turn|Session limit mid-turn/ });
 			await expect(limited.first()).toBeVisible({ timeout: 10_000 });
 			await limited.first().hover();
 			await expect(preview).toContainText(/Limited/);

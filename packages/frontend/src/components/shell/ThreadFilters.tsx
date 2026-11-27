@@ -4,7 +4,7 @@
 import type { ThreadSection } from "@prismalens/contracts";
 import { PR_TONES } from "@prismalens/contracts";
 import { ListFilter } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type FactId, fact } from "@/components/kit/fact";
 import { statusWord } from "@/components/kit/Status";
 import {
@@ -87,13 +87,18 @@ const PR_OPTIONS: Array<[string, string]> = PR_TONES.map((t) => [
 export function ThreadFilterButton({
 	value,
 	onChange,
-	startOpen = false,
+	takeOpen,
 }: {
 	value: ListFilterParams;
 	onChange: (next: ListFilterParams) => void;
-	startOpen?: boolean;
+	/** True once if its stand-in was clicked while this code loaded. */
+	takeOpen?: () => boolean;
 }) {
-	const [open, setOpen] = useState(startOpen);
+	const [open, setOpen] = useState(false);
+	// Read after commit: a click on the stand-in up to then still opens it (bar 1.7).
+	useEffect(() => {
+		if (takeOpen?.()) setOpen(true);
+	}, [takeOpen]);
 	const count = [value.state, value.pr].filter(Boolean).length;
 	return (
 		<Popover open={open} onOpenChange={setOpen}>

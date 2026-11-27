@@ -555,19 +555,22 @@ test.describe
 		});
 
 		test("A10 a changed place refuses a stale Start", async ({ page }) => {
+			const inv = await ok<{ workspace?: { cwd?: string } | null }>(
+				"GET",
+				`/investigations/${thread}`,
+			);
+			const cwd = inv.workspace?.cwd ?? "";
+			// The fixture leaves the worktree on the PR's branch; off it, the PR is not the thread's own.
+			execFileSync("git", ["-C", cwd, "checkout", "-q", "--", "."]);
+			execFileSync("git", ["-C", cwd, "switch", "-q", "--detach"]);
 			const before = await preview(prs[412] as string, checks("20"));
+			expect(before.place).toMatchObject({ own: false });
 			await openPr(page, prs[412] as string);
 			const row = await checkRow(page, OTHER_UNIT);
 			await row.getByTestId("pr-fix-thread").click();
 			await expect(page.getByTestId("fix-start")).toBeEnabled();
 			// The source's place changes under the open preview: its worktree moves onto the PR's
 			// branch, so `own` (a field the digest binds) turns true.
-			const inv = await ok<{ workspace?: { cwd?: string } | null }>(
-				"GET",
-				`/investigations/${thread}`,
-			);
-			const cwd = inv.workspace?.cwd ?? "";
-			execFileSync("git", ["-C", cwd, "checkout", "-q", "--", "."]);
 			execFileSync("git", ["-C", cwd, "switch", "-q", "fix/orders-index"]);
 			const after = await preview(prs[412] as string, checks("20"));
 			expect(after.place).toMatchObject({ own: true });

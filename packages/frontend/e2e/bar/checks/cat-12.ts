@@ -101,10 +101,11 @@ export default defineChecks([
 			const threadPath = sim.thread("seed: long-thread");
 			const id = threadPath.split("/").pop() ?? "";
 
-			await open(threadPath);
-			await expect(page.getByText("Turn 242:").first()).toBeVisible({
-				timeout: 60_000,
-			});
+			// A bare open lands at the read mark, which earlier checks move: a mid-thread item has pages both ways.
+			await open(`${threadPath}#item-main:3000`);
+			await expect(
+				page.getByTestId("transcript").locator("[data-at]").first(),
+			).toBeVisible({ timeout: 60_000 });
 
 			// 1. DOM stays bounded at 5,000+ items
 			const count = await rowsInDom(page);
@@ -116,6 +117,12 @@ export default defineChecks([
 
 			// 2. Scroll holds while a page is prepended
 			const scroller = page.getByTestId("transcript-scroller");
+			// The open asks for its own earlier page (#1250): once it lands, the next is the scroll's.
+			await expect(page.getByTestId("transcript-edge-before")).toHaveAttribute(
+				"data-state",
+				"idle",
+				{ timeout: 40_000 },
+			);
 			const prepended = page.waitForResponse(
 				(r) =>
 					r.url().includes(`/api/investigations/${id}/window/page`) &&
@@ -309,10 +316,11 @@ export default defineChecks([
 			const fails: string[] = [];
 			const threadPath = sim.thread("seed: long-thread");
 
-			await open(threadPath);
-			await expect(page.getByText("Turn 242:").first()).toBeVisible({
-				timeout: 60_000,
-			});
+			// A bare open lands at the read mark, which earlier checks move: a mid-thread item has pages both ways.
+			await open(`${threadPath}#item-main:3000`);
+			await expect(
+				page.getByTestId("transcript").locator("[data-at]").first(),
+			).toBeVisible({ timeout: 60_000 });
 
 			// 1. A folded turn does not need its contents loaded: none was asked for until it opens
 			const turnReads: string[] = [];
@@ -340,12 +348,17 @@ export default defineChecks([
 			);
 
 			const scroller = page.getByTestId("transcript-scroller");
-			await scroller.evaluate((el) => el.scrollTo(0, 0));
-
 			const edge = page.getByTestId("transcript-edge-before");
-			await expect(edge).toHaveAttribute("data-state", "error", {
-				timeout: 30_000,
-			});
+			// A page already in flight lands and holds the reader's place: keep scrolling up, as a reader would.
+			await expect
+				.poll(
+					async () => {
+						await scroller.evaluate((el) => el.scrollTo(0, 0));
+						return edge.getAttribute("data-state");
+					},
+					{ timeout: 30_000 },
+				)
+				.toBe("error");
 			const edgeText = (await edge.textContent()) ?? "";
 			if (!edgeText.includes("Couldn't load earlier messages")) {
 				fails.push(

@@ -80,6 +80,14 @@ const paged = threadList([
 	unit("b", "working", "2026-11-12T10:00:00.000Z"),
 	unit("old", "working", "2026-11-12T07:00:00.000Z"),
 ]);
+// The next page of the same Show more.
+const pagedTwice = threadList([
+	unit("n", "working", "2026-11-12T11:45:00.000Z"),
+	unit("a", "working", "2026-11-12T11:00:00.000Z"),
+	unit("b", "working", "2026-11-12T10:00:00.000Z"),
+	unit("old", "working", "2026-11-12T07:00:00.000Z"),
+	unit("older", "working", "2026-11-12T06:00:00.000Z"),
+]);
 // b starts waiting after a's move was applied.
 const fourth = threadList([
 	unit("a", "question", "2026-11-12T11:00:00.000Z"),
@@ -269,6 +277,29 @@ describe("useListHold keeps the list still while the reader is in it (#1247 D25)
 		await draw(paged);
 		expect(seen).toMatchObject({
 			active: ["a", "b", "old"],
+			pending: 1,
+		});
+	});
+	it("shows the rows Show more asked for when their page lands after 5 s on a slow link (#1193 bar 17.5)", async () => {
+		await draw(first);
+		await pointer("pointerenter");
+		await act(async () => seen.expectMore());
+		await act(async () => vi.advanceTimersByTime(8_000));
+		await draw(paged);
+		expect(seen).toMatchObject({
+			active: ["a", "b", "old"],
+			pending: 1,
+		});
+	});
+	it("keeps joining every page one Show more asked for, the second landing after the first (#1193 bar 17.5)", async () => {
+		await draw(first);
+		await pointer("pointerenter");
+		await act(async () => seen.expectMore());
+		await draw(paged);
+		await act(async () => vi.advanceTimersByTime(8_000));
+		await draw(pagedTwice);
+		expect(seen).toMatchObject({
+			active: ["a", "b", "old", "older"],
 			pending: 1,
 		});
 	});

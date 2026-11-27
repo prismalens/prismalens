@@ -14,7 +14,7 @@ interface Simulator {
 	/** The observed fields its stamp records. */
 	stamps: readonly string[];
 	/** What the API must load for it (scripts/fakes/conditions/api-preload.mjs); `pnpm sim` reads it. */
-	api?: "standby" | "low-disk";
+	api?: "standby" | "low-disk" | "fake-code-host";
 }
 
 /** What induces a condition: the only thing that writes a stamp (#1101). */
@@ -189,6 +189,8 @@ export const simulators = defineClosed(
 			run: "node scripts/fakes/huge-diff.mjs --url <url> --measure",
 			status: "built",
 			stamps: ["files", "bytesBeforeFirstFile", "longestTaskMs"],
+			// Its PR thread has acme/shop as origin (--remote): reads go to the fake host, never GitHub.
+			api: "fake-code-host",
 		},
 		"seed.huge-output": {
 			title:

@@ -491,6 +491,8 @@ describe("RewindService (#1193)", () => {
 		expect((await visible(id)).length).toBe(count);
 	}, 60_000);
 
+	// Two turns (5.6 s), a preview (0.5 s) and a rewind that writes, then puts files back (3.3 s):
+	// 8.9-9.6 s over 5 local runs, 12.1 s on CI; no wait or timer to cut.
 	it("a row appended to a folded branch during the file writes refuses the rewind stale, folds nothing, and puts the files back", async () => {
 		const { id, cwd } = await fixture();
 		const seq = await seqOf(id, MESSAGE_2);
@@ -520,7 +522,7 @@ describe("RewindService (#1193)", () => {
 		expect((await visible(id)).some((e) => e.kind === "thread_rewound")).toBe(false);
 		expect(await interruptedOf(id)).toEqual([]);
 		expect(read(cwd, "src/app.txt")).toBe(APP_TURN_2);
-	});
+	}, 60_000);
 
 	it("a rewind whose file writer fails partway is refused interrupted, folds nothing, and marks its operation interrupted for Restore", async () => {
 		const { id, cwd } = await fixture();

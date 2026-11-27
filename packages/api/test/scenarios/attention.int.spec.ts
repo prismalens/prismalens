@@ -109,6 +109,34 @@ describe("attention: read state, presence and the away view (#1101 categories 3 
 		expect(after.newCount).toBe(0);
 	}, 30_000);
 
+	it("the unread count counts threads with an unread event, as the list draws one row per thread (#1193)", async () => {
+		const { investigationId: id } = await pl.api<{ investigationId: string }>("/threads", {
+			method: "POST",
+			body: { subject: { kind: "none" }, text: ASK, place: "alerts" },
+		});
+		await finished(id);
+		// The scan shows only the newer end of two turns that end between its ticks.
+		await eventually(
+			unread,
+			(e) => e.events.some((x) => x.threadId === id),
+			"the first finish to be recorded",
+		);
+		await pl.api(`/investigations/${id}/messages`, {
+			method: "POST",
+			body: { text: "fake-session:echo And the backoff?" },
+		});
+		await finished(id);
+
+		const page = await eventually(
+			unread,
+			(e) => e.events.filter((x) => x.threadId === id).length === 2,
+			"both finishes to be recorded",
+		);
+
+		expect(page.events.filter((e) => e.threadId === id).map((e) => e.kind)).toEqual(["finished", "finished"]);
+		expect(page.unread).toBe(new Set(page.events.map((e) => e.threadId)).size);
+	}, 30_000);
+
 	it("a visible tab after a long gap opens a long away view since the last visit", async () => {
 		const prisma = await pl.prisma();
 		const lastSeen = new Date(Date.now() - 3 * 60 * 60_000);

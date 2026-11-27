@@ -3,6 +3,7 @@
 
 import { expect, type Page } from "@playwright/test";
 import { defineChecks, notSetUp, verdict } from "../bar";
+import { apiGet } from "./help-rewind";
 
 /** The PR's entry on screen: the header chip, or the box's PR row where the box shows (wide screens). */
 const prEntry = (page: Page) =>
@@ -139,24 +140,48 @@ export default defineChecks([
 			await prEntry(page).click();
 			await expect(page.getByTestId("pr-view")).toBeVisible();
 
+			// The header opens #414; #412 is the PR on the thread's own branch, where the action lives (#1176 D5).
+			const id =
+				sim.thread("huge.diff", 2).split("?")[0]?.split("/").pop() ?? "";
+			const context = await apiGet<{
+				pullRequests: { number: number; headSha: string | null }[];
+			}>(page, `/threads/${id}/context`);
+			const sha = (
+				context.pullRequests.find((p) => p.number === 412)?.headSha ?? ""
+			).slice(0, 7);
+			await page.getByTestId("pr-view-back").click();
+			await page
+				.getByTestId("pr-row")
+				.filter({ hasText: "#412" })
+				.getByRole("button")
+				.first()
+				.click();
+			await expect(page.getByTestId("pr-view-title")).toHaveText(
+				/orders index/,
+			);
+
 			const fails: string[] = [];
 			// Action on failing check drafts an editable fix message
-			const fixBtn = page.getByTestId("pr-fix-check");
+			const unit = page
+				.locator('[data-testid="pr-check-run"][data-name="unit tests"]')
+				.first();
+			const toggle = unit.getByTestId("pr-check-toggle");
+			if ((await toggle.getAttribute("aria-expanded")) === "false")
+				await toggle.click();
+			const fixBtn = unit.getByTestId("pr-fix-check");
 			await expect(fixBtn).toBeVisible();
 			await fixBtn.click();
 
 			// Composer should contain the drafted message carrying check name, log excerpt, head SHA
-			const composer = page
-				.locator(".ProseMirror, textarea[data-testid='composer-input']")
-				.first();
-			await expect(composer).toBeVisible();
+			const composer = page.getByTestId("composer-input");
+			await expect(composer).toContainText("unit tests");
 			const text = await composer.innerText();
 
 			if (!text.includes("unit tests"))
 				fails.push(
 					`draft missing check name "unit tests" (got: "${text.slice(0, 60)}")`,
 				);
-			if (!text.includes("9f3c2ab"))
+			if (!sha || !text.includes(sha))
 				fails.push(`draft missing head SHA (got: "${text.slice(0, 60)}")`);
 			if (!text.includes("AssertionError") && !text.includes("Log excerpt"))
 				fails.push("draft missing log excerpt");
@@ -226,43 +251,64 @@ export default defineChecks([
 			await expect(page.getByTestId("pr-view")).toBeVisible();
 
 			const fails: string[] = [];
-			const watch = page.getByTestId("pr-watch");
-			await expect(watch).toBeVisible();
-
-			const mark = page.getByTestId("pr-watch-mark");
-			const markText = (await mark.getAttribute("aria-label")) ?? "";
-			if (!markText.includes("Watch")) {
-				fails.push(
-					`watch state mark missing accessible label (got: "${markText}")`,
-				);
+			// The watch is the PR's subscriptions since #1179: "No subscriptions", or one row each.
+			const empty = page.getByTestId("pr-subs-empty");
+			const row = page.getByTestId("pr-sub-row").first();
+			await expect(empty.or(row)).toBeVisible();
+			const stateOf = async () =>
+				(await empty.isVisible())
+					? "none"
+					: ((await row.getAttribute("data-state")) ?? "");
+			const before = await stateOf();
+			const cancel = async () => {
+				await row.getByTestId("pr-sub-cancel").click();
+				const confirm = page.getByRole("button", {
+					name: "Cancel subscription",
+				});
+				if (await confirm.isVisible().catch(() => false)) await confirm.click();
+				await expect(row).toHaveAttribute("data-state", "ended");
+			};
+			// Change it, then put it back as near as the model allows: a cancel leaves an ended row.
+			if (before === "none" || before === "ended") {
+				await (before === "none"
+					? page.getByTestId("pr-sub-start")
+					: row.getByTestId("pr-sub-resume")
+				).click();
+				await expect(row).not.toHaveAttribute("data-state", "ended");
+				await cancel();
+			} else {
+				await cancel();
+				await row.getByTestId("pr-sub-resume").click();
+				await expect(row).not.toHaveAttribute("data-state", "ended");
 			}
+			const word = (
+				await page.getByTestId("pr-sub-state").first().innerText()
+			).trim();
 
-			const watchBtn = watch.locator("button");
-			const btnText = await watchBtn.innerText();
-			if (btnText !== "Stop watching" && btnText !== "Watch") {
-				fails.push(`unexpected watch button label "${btnText}"`);
-			}
-
-			// Click button to toggle watch state and await state mutation
-			const expectedNext =
-				btnText === "Stop watching" ? "Watch" : "Stop watching";
-			await watchBtn.click();
-			await expect(watchBtn).toHaveText(expectedNext);
-
-			// Restore initial state to avoid dirtying shared sim state
-			await watchBtn.click();
-			await expect(watchBtn).toHaveText(btnText);
-
-			// Pushed status node in transcript
+			// Pushed status node in transcript. The fixture's statuses sit near the record's start and
+			// the thread opens at its end, so the transcript is scrolled up until they draw.
 			const statusLines = page.getByTestId("pr-status-line");
-			const hasStatus = (await statusLines.count()) > 0;
+			const scroller = page.getByTestId("transcript-scroller");
+			const hasStatus = await expect
+				.poll(
+					async () => {
+						await scroller.evaluate((el) => el.scrollTo(0, 0)).catch(() => {});
+						return statusLines.count();
+					},
+					{ timeout: 30_000, intervals: [500] },
+				)
+				.toBeGreaterThan(0)
+				.then(
+					() => true,
+					() => false,
+				);
 			if (!hasStatus) {
 				fails.push("no pushed pr-status-line found in transcript");
 			}
 
 			return verdict(
 				fails,
-				`watch state is visible ("${markText}") and changeable ("${btnText}" <-> "${expectedNext}"); pushed status in transcript`,
+				`watch state is visible (was "${before}", now "${word}") and changeable from the panel; pushed status in transcript`,
 			);
 		},
 	},

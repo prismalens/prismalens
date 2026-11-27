@@ -413,7 +413,15 @@ export default defineChecks([
 
 			// Home opens on OpenCode, whose modes are not levels above a default; Claude Code's are (#1101).
 			await chips.model.click();
-			await page.getByPlaceholder("Search models").fill("Claude Fable");
+			// The picker lists only its rail tile's models (14406ceb3): Claude Code's tab first.
+			const tab = page
+				.getByTestId("picker-rail")
+				.getByRole("tab", { name: "Claude Code", exact: true });
+			await tab.click();
+			await expect(tab).toHaveAttribute("aria-selected", "true");
+			await page
+				.getByPlaceholder("Search Claude Code models")
+				.fill("Claude Fable");
 			await page
 				.locator('[data-testid="model-option"][data-value*="claude-code::"]')
 				.first()

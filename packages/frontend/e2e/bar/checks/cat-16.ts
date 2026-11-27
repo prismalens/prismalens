@@ -355,7 +355,8 @@ export default defineChecks([
 			await expect(fileLink).toBeVisible({ timeout: 30_000 });
 			const cited = ((await fileLink.textContent()) ?? "").trim();
 			await fileLink.click();
-			await expect(page).toHaveURL(/panel=files/);
+			// The page can reopen its last pane first, so the click's own URL is the one with a line.
+			await expect(page).toHaveURL(/panel=files.*[?&]line=\d+/);
 			const line = new URL(page.url()).searchParams.get("line");
 			if (line !== cited.split(":")[1]) {
 				fails.push(`cited "${cited}" opened at line ${line}`);
@@ -730,14 +731,32 @@ export default defineChecks([
 				interrupted = ((await row.textContent()) ?? "").trim();
 				if (!/Rewind interrupted/.test(interrupted))
 					fails.push(`the interrupted row reads "${interrupted}"`);
+				// One crash fixture per sim: an earlier run on this sim may have restored it already.
+				if (/restored/.test(interrupted))
+					return notSetUp(
+						`the sim's crash fixture was restored by an earlier run ("${interrupted}"); restage it`,
+					);
 				await page.getByTestId("rewind-interrupted-restore").first().click();
 				await expect(page.getByTestId("rewind-restore-preview")).toBeVisible({
 					timeout: 30_000,
 				});
+				// The server's answer first: a refusal or a slow write then reads as itself, not as a missing row.
+				const answered = page.waitForResponse(
+					(r) =>
+						r.url().includes("/rewind/restore") &&
+						r.request().method() === "POST",
+					{ timeout: 60_000 },
+				);
 				await page.getByRole("button", { name: "Restore" }).last().click();
-				await expect(page.getByTestId("rewind-restored").first()).toBeVisible({
-					timeout: 30_000,
-				});
+				const answer = await (await answered).json().catch(() => null);
+				if (answer?.state !== "done")
+					fails.push(`Restore answered ${JSON.stringify(answer)}`);
+				else
+					await expect(page.getByTestId("rewind-restored").first()).toBeVisible(
+						{
+							timeout: 30_000,
+						},
+					);
 			}
 
 			// A folded ask closing as superseded is covered in rewind.service.int.spec.ts and
