@@ -850,12 +850,9 @@ test("design coverage matrix", async ({
 		for (let i = 0; i < 12 && (await limitTick.count()) === 0; i++)
 			await page.keyboard.press("PageUp");
 		await expect(limitTick).toBeAttached({ timeout: 10_000 });
-		const tick = await limitTick.boundingBox();
-		expect(tick).not.toBeNull();
-		await page.mouse.move(
-			(tick?.x ?? 0) + (tick?.width ?? 0) / 2,
-			(tick?.y ?? 0) + (tick?.height ?? 0) / 2,
-		);
+		// Not a box read once: PageUp moves the window, so a box read mid-move put the pointer on a
+		// neighbour's dash (#1238). hover() waits for the dash to hold still and checks it takes the pointer.
+		await limitTick.hover();
 		// Hover shows the dash's card beside it: one dash per turn or break.
 		await expect(rail.getByTestId("rail-card")).toContainText("Usage limit", {
 			timeout: 5_000,

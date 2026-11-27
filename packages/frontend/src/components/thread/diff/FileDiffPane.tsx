@@ -33,6 +33,7 @@ import { Surface, SurfaceMore } from "@/components/kit/Surface";
 import { CODE_STYLE, POOL } from "@/components/run/EvidenceFileView";
 import { Hint } from "@/components/shared/Hint";
 import { Empty, Loading, Problem } from "@/components/shared/State";
+import { DIFF_THEMES } from "@/components/thread/diff/diff-themes";
 import { diffHunkBlock } from "@/components/thread/diff/file.blocks";
 import {
 	AlertDialog,
@@ -239,6 +240,7 @@ export function FileDiffPane({
 			diffStyle: split ? ("split" as const) : ("unified" as const),
 			overflow: wrap ? ("wrap" as const) : ("scroll" as const),
 			themeType: themeType as "dark" | "light",
+			theme: DIFF_THEMES,
 			disableFileHeader: true,
 			preferredHighlighter: "shiki-js" as const,
 			enableGutterUtility: true,

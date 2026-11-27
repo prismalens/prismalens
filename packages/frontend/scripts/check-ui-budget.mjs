@@ -9,7 +9,7 @@
  */
 import { readFileSync } from "node:fs";
 import { factCeiling, factRules, factTotal } from "./fact-repeats.mjs";
-import { measures } from "./ui-measure.mjs";
+import { heldOn, measures } from "./ui-measure.mjs";
 
 const dir = process.argv[2];
 if (!dir) {
@@ -17,6 +17,12 @@ if (!dir) {
 	process.exit(2);
 }
 const budget = JSON.parse(readFileSync("ui-budget.json", "utf8"));
+if (!heldOn(budget, process.platform)) {
+	console.log(
+		`ui budget: measured on ${budget.platform}; a ${process.platform} run is not held to it`,
+	);
+	process.exit(0);
+}
 const now = measures(dir);
 const fails = [];
 for (const [state, m] of Object.entries(now)) {

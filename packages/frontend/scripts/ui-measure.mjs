@@ -27,3 +27,8 @@ export function measures(dir) {
 	}
 	return out;
 }
+
+/** Whether a run on `platform` is held to `budget`: its counts move with the OS's fonts and scrollbars (#1238). */
+export function heldOn(budget, platform) {
+	return !budget.platform || budget.platform === platform;
+}

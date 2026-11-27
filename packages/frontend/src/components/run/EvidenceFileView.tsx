@@ -13,6 +13,7 @@ import { ChevronLeft } from "lucide-react";
 import { type CSSProperties, useEffect, useMemo, useRef } from "react";
 import { Block } from "@/components/kit/Block";
 import { Loading, Problem } from "@/components/shared/State";
+import { DIFF_THEMES } from "@/components/thread/diff/diff-themes";
 import {
 	fileExcerptBlock,
 	fileLines,
@@ -33,7 +34,11 @@ const PLAIN_TEXT_OVER = 256 * 1024;
 export const POOL = {
 	poolOptions: { workerFactory: () => new DiffsWorker(), poolSize: 2 },
 	// WebAssembly is blocked by the app's CSP (no 'wasm-unsafe-eval'), so the JS regex engine.
-	highlighterOptions: { preferredHighlighter: "shiki-js" as const },
+	// A pooled view draws with the pool's theme, not its own `theme` option (#1238).
+	highlighterOptions: {
+		preferredHighlighter: "shiki-js" as const,
+		theme: DIFF_THEMES,
+	},
 };
 
 export const CODE_STYLE = {
@@ -291,6 +296,7 @@ function Code({
 						options={{
 							overflow: "wrap",
 							themeType: theme === "dark" ? "dark" : "light",
+							theme: DIFF_THEMES,
 							disableFileHeader: true,
 							preferredHighlighter: "shiki-js",
 						}}
