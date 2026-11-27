@@ -47,7 +47,7 @@ export function layoutOf(m: ThreadListModel): HeldLayout {
 export function heldModel(
 	live: ThreadListModel,
 	held: HeldLayout,
-	/** The reader asked for more rows: new ones below every held row of a section join it. */
+	/** The reader asked for more rows: new ones below a section's first held row join its foot. */
 	tail = false,
 ): Held {
 	const where = new Map<string, HoldSection>();
@@ -75,9 +75,12 @@ export function heldModel(
 			.filter((id) => ids.includes(id));
 		pending += stayed.filter((id, i) => liveStayed[i] !== id).length;
 		if (!tail) continue;
+		// A later page's rows can sort among held ones; they join below them, and only a row
+		// above every held one waits, as a new arrival (#1193 bar 17.5).
 		const liveIds = live[s].map((n) => n.id);
-		const last = Math.max(-1, ...ids.map((id) => liveIds.indexOf(id)));
-		for (const n of live[s].slice(last + 1))
+		const at = ids.map((id) => liveIds.indexOf(id)).filter((i) => i >= 0);
+		const first = at.length ? Math.min(...at) : -1;
+		for (const n of live[s].slice(first + 1))
 			if (!held.nodes.has(n.id)) out[s].push(n);
 	}
 	const shown = new Set(SECTIONS.flatMap((s) => out[s].map((n) => n.id)));

@@ -96,4 +96,22 @@ describe("heldModel keeps every row where the reader saw it (#1247 D25)", () => 
 		expect(held.moving.size).toBe(0);
 		expect(held.pending).toBe(0);
 	});
+
+	it("joins rows a later page brings in among held rows below them when the reader asked for more, keeping a newer arrival out (#1193 bar 17.5)", () => {
+		const live = threadList([
+			row("ask", "question", "2026-11-12T09:00:00.000Z"),
+			row("new", "working", "2026-11-12T11:30:00.000Z"),
+			row("a", "working", "2026-11-12T11:00:00.000Z"),
+			row("mid", "working", "2026-11-12T10:30:00.000Z"),
+			row("b", "done", "2026-11-12T10:00:00.000Z"),
+			row("old", "done", "2026-11-12T08:00:00.000Z"),
+		]);
+		const held = heldModel(live, layoutOf(before), true);
+		expect(ids(held.model)).toEqual({
+			needs: ["ask"],
+			active: ["a", "b", "mid", "old"],
+		});
+		expect(held.moving.size).toBe(0);
+		expect(held.pending).toBe(1);
+	});
 });
