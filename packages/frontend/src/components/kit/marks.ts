@@ -108,6 +108,10 @@ export interface MarkDef<State extends string = string> {
 	rows?: "always" | "unlessDefault";
 }
 
+/** Whether a row or card draws the mark, by its `rows` rule; `isDefault` when it names the person's default. */
+export const inRows = (mark: MarkDef, isDefault: boolean) =>
+	mark.rows !== "unlessDefault" || !isDefault;
+
 export function defineMark<const M extends MarkDef>(mark: M): M {
 	return mark;
 }
