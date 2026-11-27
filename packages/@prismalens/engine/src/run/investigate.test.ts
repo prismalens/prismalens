@@ -373,7 +373,7 @@ describe("runInvestigation over a fake ACP harness", () => {
 
 	it("records a value the ACP SDK does not know in the transcript and hands the host a warning (#639)", async () => {
 		const warnings: string[] = [];
-		const { runDir, events } = await collect("tolerant", { onHarnessDrift: (m) => warnings.push(m) });
+		const { runDir } = await collect("tolerant", { onHarnessDrift: (m) => warnings.push(m) });
 		const drift = readFileSync(join(runDir, "transcript.jsonl"), "utf8")
 			.split("\n")
 			.filter(Boolean)
@@ -388,11 +388,21 @@ describe("runInvestigation over a fake ACP harness", () => {
 			});
 		expect(drift).toContainEqual({ method: "session/update", field: "sessionUpdate", value: "unknown_session_update_kind" });
 		expect(warnings.join("\n")).toContain("unknown_stop_reason");
-		// SDK 2.8's cursor_update is known: no drift entry, no drift row (#1262).
-		expect(JSON.stringify(drift)).not.toContain("cursor_update");
-		expect(events.filter((e) => e.kind === "agent_drift").map((e) => (e as { update?: string }).update)).toEqual([
-			"unknown_session_update_kind",
-		]);
+	});
+
+	it("adds no event and no drift for a cursor_update, which the SDK knows (#1262)", async () => {
+		const run = async (cursor: boolean) => {
+			const drift: string[] = [];
+			const { events } = await collect("tolerant", {
+				env: { ...process.env, FAKE_ACP_MODE: "tolerant", ...(cursor ? { FAKE_CURSOR: "1" } : {}) },
+				onHarnessDrift: (m) => drift.push(m),
+			});
+			return { kinds: events.map((e) => e.kind), drift: drift.join("\n") };
+		};
+		const without = await run(false);
+		const withCursor = await run(true);
+		expect(withCursor.kinds).toEqual(without.kinds);
+		expect(withCursor.drift).not.toContain("cursor_update");
 	});
 
 	it("hands the host the harness's usage_update, and nothing from a harness that sends none", async () => {
