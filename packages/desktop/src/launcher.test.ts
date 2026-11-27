@@ -138,16 +138,17 @@ describe("planLauncher on Linux", () => {
 describe("planLauncher on macOS", () => {
 	const exe = (dir: string) => `${dir}/PrismaLens.app/Contents/MacOS/PrismaLens`;
 
-	it("offers the move from Downloads, and stays quiet in /Applications or ~/Applications", () => {
+	it("offers the move from Downloads", () => {
 		expect(planLauncher(env("darwin", {}, { execPath: exe("/Users/ada/Downloads/mac-arm64") }), noShortcut)).toEqual({
 			kind: "offer-move",
 		});
-		for (const dir of ["/Applications", "/home/ada/Applications"]) {
-			expect(planLauncher(env("darwin", {}, { execPath: exe(dir) }), noShortcut)).toEqual({
-				kind: "none",
-				reason: "in Applications",
-			});
-		}
+	});
+
+	it.each(["/Applications", "/home/ada/Applications"])("stays quiet in %s", (dir) => {
+		expect(planLauncher(env("darwin", {}, { execPath: exe(dir) }), noShortcut)).toEqual({
+			kind: "none",
+			reason: "in Applications",
+		});
 	});
 });
 
