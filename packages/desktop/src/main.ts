@@ -17,6 +17,7 @@ import {
 	lstatSync,
 	mkdirSync,
 	readFileSync,
+	realpathSync,
 	writeFileSync,
 } from "node:fs";
 import path, { join } from "node:path";
@@ -199,9 +200,14 @@ async function openUpdate(version: string | null): Promise<void> {
 	const installed = installedByInstaller({
 		platform: process.platform,
 		execPath: process.execPath,
-		home: app.getPath("home"),
-		installerDataDir: installerDataDir(),
 		receipt: readText(join(installerDataDir(), "receipt")),
+		realpath: (p) => {
+			try {
+				return realpathSync.native(p);
+			} catch {
+				return p;
+			}
+		},
 	});
 	if (!installed) {
 		await shell.openExternal(

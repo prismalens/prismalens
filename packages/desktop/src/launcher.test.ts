@@ -174,6 +174,24 @@ describe("planLauncher beside a package manager or a launcher it can't read", ()
 		const linked = env("linux", { [entryPath]: desktopEntry("/gone/prismalens", null) }, { isLink: (p) => p === entryPath });
 		expect(planLauncher(linked, noShortcut)).toEqual({ kind: "none", reason: `${entryPath} isn't ours` });
 	});
+
+	it("leaves a desktop entry that exists but can't be read", () => {
+		const unreadable = env("linux", { [entryPath]: "" }, { readText: () => null });
+		expect(planLauncher(unreadable, noShortcut)).toEqual({ kind: "none", reason: `${entryPath} can't be read` });
+	});
+
+	it("leaves a marked entry whose program is found on PATH", () => {
+		const onPath = env("linux", { [entryPath]: `[Desktop Entry]\nExec=prismalens\n${DESKTOP_ENTRY_MARKER}\n` });
+		expect(planLauncher(onPath, noShortcut)).toEqual({ kind: "none", reason: `${entryPath} opens prismalens from PATH` });
+	});
+
+	it("writes no entry for a path with a line break, which an entry can't hold", () => {
+		const broken = env("linux", {}, { execPath: "/home/ada/a\nb/prismalens" });
+		expect(planLauncher(broken, noShortcut)).toEqual({
+			kind: "none",
+			reason: "/home/ada/a\nb/prismalens has a line break, which a desktop entry can't hold",
+		});
+	});
 });
 
 describe("desktopEntry escaping", () => {
@@ -193,57 +211,52 @@ describe("desktopEntryExec", () => {
 });
 
 describe("installedByInstaller", () => {
-	const receipt = "version=0.5.7\nchannel=installer\ndesktop=1\n";
-	const base = { home: "/Users/ada", receipt };
+	const receipt = (app: string) => `version=0.5.7\nchannel=installer\ndesktop=1\ndesktop_app=${app}\n`;
+	const winApp = "C:\\Users\\ada\\AppData\\Local\\prismalens\\desktop\\0.5.7\\PrismaLens.exe";
+	const linuxApp = "/home/ada/.local/share/prismalens/desktop/app";
+	const macApp = "/Users/ada/Applications/PrismaLens.app";
 
-	it("is the installer's copy where its receipt says desktop=1 and the app sits in its place", () => {
+	it("is the installer's copy where its receipt names the app this copy runs from", () => {
+		expect(installedByInstaller({ platform: "win32", execPath: winApp.toLowerCase(), receipt: receipt(winApp) })).toBe(true);
+		expect(installedByInstaller({ platform: "linux", execPath: `${linuxApp}/prismalens`, receipt: receipt(linuxApp) })).toBe(true);
 		expect(
-			installedByInstaller({
-				...base,
-				platform: "win32",
-				execPath: "C:\\Users\\ada\\AppData\\Local\\prismalens\\desktop\\0.5.7\\PrismaLens.exe",
-				installerDataDir: "C:\\Users\\ada\\AppData\\Local\\prismalens",
-			}),
+			installedByInstaller({ platform: "darwin", execPath: `${macApp}/Contents/MacOS/PrismaLens`, receipt: receipt(macApp) }),
 		).toBe(true);
+	});
+
+	it("compares canonical paths, so a symlinked home still matches", () => {
+		const realpath = (p: string) => p.replace(/^\/home\//, "/var/home/");
 		expect(
 			installedByInstaller({
-				...base,
 				platform: "linux",
-				execPath: "/home/ada/.local/share/prismalens/desktop/app/prismalens",
-				installerDataDir: "/home/ada/.local/share/prismalens",
-			}),
-		).toBe(true);
-		expect(
-			installedByInstaller({
-				...base,
-				platform: "darwin",
-				execPath: "/Users/ada/Applications/PrismaLens.app/Contents/MacOS/PrismaLens",
-				installerDataDir: "/Users/ada/.local/share/prismalens",
+				execPath: "/var/home/ada/.local/share/prismalens/desktop/app/prismalens",
+				receipt: receipt(linuxApp),
+				realpath,
 			}),
 		).toBe(true);
 	});
 
-	it("is not for a downloaded copy, a /Applications copy, or a receipt without the app", () => {
-		const linux = {
-			...base,
-			platform: "linux" as const,
-			installerDataDir: "/home/ada/.local/share/prismalens",
-		};
-		expect(installedByInstaller({ ...linux, execPath: "/home/ada/Downloads/linux-unpacked/prismalens" })).toBe(false);
+	it("is not for a copy the receipt doesn't name, even where desktop=1 and the path is the usual one", () => {
 		expect(
 			installedByInstaller({
-				...linux,
-				execPath: "/home/ada/.local/share/prismalens/desktop/app/prismalens",
-				receipt: "version=0.5.7\ndesktop=0\n",
-			}),
-		).toBe(false);
-		expect(
-			installedByInstaller({
-				...base,
 				platform: "darwin",
-				execPath: "/Applications/PrismaLens.app/Contents/MacOS/PrismaLens",
-				installerDataDir: "/Users/ada/.local/share/prismalens",
+				execPath: `${macApp}/Contents/MacOS/PrismaLens`,
+				receipt: "version=0.5.7\ndesktop=1\n",
 			}),
 		).toBe(false);
+		expect(
+			installedByInstaller({ platform: "linux", execPath: "/home/ada/Downloads/linux-unpacked/prismalens", receipt: receipt(linuxApp) }),
+		).toBe(false);
+		expect(
+			installedByInstaller({ platform: "linux", execPath: `${linuxApp}-other/prismalens`, receipt: receipt(linuxApp) }),
+		).toBe(false);
+		expect(
+			installedByInstaller({
+				platform: "linux",
+				execPath: `${linuxApp}/prismalens`,
+				receipt: `version=0.5.7\ndesktop=0\ndesktop_app=${linuxApp}\n`,
+			}),
+		).toBe(false);
+		expect(installedByInstaller({ platform: "linux", execPath: `${linuxApp}/prismalens`, receipt: null })).toBe(false);
 	});
 });

@@ -271,14 +271,35 @@ function Install-Desktop([string]$ZipFile) {
 	$out = & (Join-Path $env:SystemRoot "System32\tar.exe") -xf $ZipFile -C $unpacked --strip-components 1 2>&1
 	if ($LASTEXITCODE -ne 0) { Remove-Item $unpacked -Recurse -Force -ErrorAction SilentlyContinue; throw "couldn't unpack it: $(($out | Out-String).Trim())" }
 	if (-not (Test-Path (Join-Path $unpacked "PrismaLens.exe"))) { Remove-Item $unpacked -Recurse -Force -ErrorAction SilentlyContinue; throw "the archive has no PrismaLens.exe" }
-	if ((Test-Path $dest) -and -not (Remove-Unused $dest)) {
-		Remove-Item $unpacked -Recurse -Force -ErrorAction SilentlyContinue
-		throw "PrismaLens $Version is running from $dest; quit it and run the installer again"
+	# A same-version reinstall keeps the current copy aside until the new one is in place.
+	$backup = ""
+	if (Test-Path $dest) {
+		$backup = "$dest.old-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
+		try { Rename-Item -Path $dest -NewName (Split-Path $backup -Leaf) -ErrorAction Stop } catch {
+			Remove-Item $unpacked -Recurse -Force -ErrorAction SilentlyContinue
+			throw "PrismaLens $Version is running from $dest; quit it and run the installer again"
+		}
 	}
-	Move-Item -Path $unpacked -Destination $dest
+	try {
+		# Test seam: the one failure a test can't otherwise cause between the two renames.
+		if ($env:PRISMALENS_TEST_FAIL_DESKTOP_MOVE -eq "1") { throw "the test made the move fail" }
+		Move-Item -Path $unpacked -Destination $dest -ErrorAction Stop
+	} catch {
+		$why = "$_"
+		Remove-Item $unpacked -Recurse -Force -ErrorAction SilentlyContinue
+		if ($backup) {
+			try { Rename-Item -Path $backup -NewName (Split-Path $dest -Leaf) -ErrorAction Stop } catch { throw "couldn't move it into place ($why), nor put the old copy back; it is in $backup" }
+		}
+		throw "couldn't move it into place: $why"
+	}
+	if ($backup) { Remove-Item $backup -Recurse -Force -ErrorAction SilentlyContinue }
 	$exe = Join-Path $dest "PrismaLens.exe"
 	New-Item -ItemType Directory -Path $shortcutDir -Force | Out-Null
 	$old = Get-ShortcutTarget $shortcut
+	# Another copy may have registered its shortcut while the zip downloaded.
+	if ($old -and -not (Test-Ours $old) -and (Test-Path -LiteralPath $old)) {
+		throw "the Start menu's PrismaLens shortcut now opens $old, which isn't this installer's; it was left as it is"
+	}
 	if ($old -and -not (Test-Ours $old)) { Warn "Replaced the Start menu shortcut to $old, which no longer exists." }
 	$link = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)
 	$link.TargetPath = $exe
@@ -302,6 +323,8 @@ if ($Uninstall) {
 	if (Get-DesktopProcesses) { Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run this again. Nothing was removed." }
 	$rec = Read-Receipt
 	$dir = if ($rec["bin_dir"]) { $rec["bin_dir"] } else { $binDir }
+	# First, so an app Windows won't let go of leaves pl as it was.
+	Remove-Desktop
 	foreach ($name in "pl.cmd", "prismalens.cmd") {
 		$f = Join-Path $dir $name
 		if ((Test-Path $f) -and (Select-String -Path $f -SimpleMatch $marker -Quiet)) {
@@ -314,7 +337,6 @@ if ($Uninstall) {
 		Set-UserPath ($parts -join ';')
 		Done "Removed $dir from your user PATH"
 	}
-	Remove-Desktop
 	if (Test-Path $dataRoot) {
 		Remove-Item $dataRoot -Recurse -Force
 		Done "Removed $dataRoot"
@@ -434,10 +456,15 @@ try {
 	# The desktop app is the release's own zip, verified like the CLI; a failure here leaves the CLI installed.
 	# desktop= is the user's choice; the app and shortcut uninstall removes are the ones in $desktopRoot.
 	$desktop = if ($rec["desktop"]) { $rec["desktop"] } else { "" }
+	# desktop_app names the copy this installer owns; the app reads it to tell it's the installer's.
+	$desktopApp = if ($rec["desktop_app"]) { $rec["desktop_app"] } else { "" }
+	$desktopVersion = if ($rec["desktop_version"]) { $rec["desktop_version"] } else { "" }
 	$launcher = ""
 	if ($NoDesktop -or $env:PRISMALENS_DESKTOP -eq "0") {
 		$desktop = "0"
 		Remove-Desktop
+		$desktopApp = ""
+		$desktopVersion = ""
 	} elseif ($env:PRISMALENS_DESKTOP -eq "1") {
 		$desktop = "1"
 	}
@@ -450,12 +477,14 @@ try {
 			Warn "PrismaLens $Version has no desktop app for $target, so only the CLI was installed."
 		} else {
 			$appZip = Join-Path $staging $desktopAsset
-			$why = Fetch-Verified $desktopAsset $appSum $appZip "the PrismaLens $Version desktop app"
 			try {
+				$why = Fetch-Verified $desktopAsset $appSum $appZip "the PrismaLens $Version desktop app"
 				if ($why) { throw "couldn't download it from $(Hosts-Tried): $why" }
 				$running = Get-DesktopProcesses | Where-Object { -not (Get-LongPath $_.Path).StartsWith("$(Get-LongPath (Join-Path $desktopRoot $Version))\", [StringComparison]::OrdinalIgnoreCase) }
 				$launcher = Install-Desktop $appZip
 				$desktop = "1"
+				$desktopApp = Join-Path $desktopRoot "$Version\PrismaLens.exe"
+				$desktopVersion = $Version
 				Done "Desktop app installed to $(Join-Path $desktopRoot $Version)"
 				if ($running) { Warn "An older PrismaLens app is still running; quit it and open it again for $Version." }
 			} catch {
@@ -471,6 +500,8 @@ try {
 		"bin_dir=$binDir",
 		"path_added=$pathAdded",
 		"desktop=$desktop",
+		"desktop_app=$desktopApp",
+		"desktop_version=$desktopVersion",
 		"installed_at=$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"
 	) | Set-Content -Path $receipt -Encoding ASCII
 

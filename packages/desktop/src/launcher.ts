@@ -151,14 +151,23 @@ export function planLauncher(
 	}
 	if (env.platform === "linux") {
 		const path = desktopEntryPath(env);
+		if (/[\r\n]/.test(env.execPath))
+			return {
+				kind: "none",
+				reason: `${env.execPath} has a line break, which a desktop entry can't hold`,
+			};
 		const icon = posix.join(env.resourcesPath, "icon.png");
 		const contents = desktopEntry(env.execPath, env.exists(icon) ? icon : null);
 		if (env.isLink(path)) return { kind: "none", reason: `${path} isn't ours` };
+		if (!env.exists(path)) return { kind: "desktop-entry", path, contents };
 		const text = env.readText(path);
-		if (text === null) return { kind: "desktop-entry", path, contents };
+		if (text === null) return { kind: "none", reason: `${path} can't be read` };
 		if (!text.split("\n").includes(DESKTOP_ENTRY_MARKER))
 			return { kind: "none", reason: `${path} isn't ours` };
 		const exec = desktopEntryExec(text);
+		// A bare name runs from PATH, so whether it still exists can't be told here.
+		if (exec && !posix.isAbsolute(exec))
+			return { kind: "none", reason: `${path} opens ${exec} from PATH` };
 		if (exec && env.exists(exec) && exec !== env.execPath)
 			return { kind: "none", reason: `${path} opens ${exec}` };
 		return text === contents
@@ -182,32 +191,21 @@ export function planLauncher(
 
 /**
  * Whether the official installer put this copy here, so `pl upgrade` (which reruns it) is how it upgrades.
- * Its receipt says desktop=1, and the copy sits where the installer puts the app.
+ * Its receipt says desktop=1 and names, as desktop_app, the app this copy runs from; paths compare canonical.
  */
 export function installedByInstaller(input: {
 	platform: NodeJS.Platform;
 	execPath: string;
-	home: string;
-	installerDataDir: string;
 	receipt: string | null;
+	realpath?: (path: string) => string;
 }): boolean {
 	if (!input.receipt || !/^desktop=1\r?$/m.test(input.receipt)) return false;
-	if (input.platform === "darwin")
-		return (
-			input.execPath ===
-			posix.join(
-				input.home,
-				"Applications",
-				"PrismaLens.app",
-				"Contents",
-				"MacOS",
-				"PrismaLens",
-			)
-		);
+	const app = /^desktop_app=(.+?)\r?$/m.exec(input.receipt)?.[1];
+	if (!app) return false;
+	const real = input.realpath ?? ((path: string) => path);
 	const p = input.platform === "win32" ? win32 : posix;
-	const rel = p.relative(
-		p.join(input.installerDataDir, "desktop"),
-		input.execPath,
-	);
-	return rel !== "" && !rel.startsWith("..") && !p.isAbsolute(rel);
+	const fold = (path: string) =>
+		input.platform === "win32" ? path.toLowerCase() : path;
+	const rel = p.relative(fold(real(app)), fold(real(input.execPath)));
+	return rel === "" || (!rel.startsWith("..") && !p.isAbsolute(rel));
 }

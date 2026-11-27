@@ -196,10 +196,15 @@ else
 fi
 (cd "$app_base_dir" && { sha256sum ./* 2>/dev/null || shasum -a 256 ./*; } | sed 's# \./# #' >SHA256SUMS)
 app_base="file://$work/base-app"
-# A fresh user with a display: DISPLAY is all the installer looks at.
+# A fresh user with a display: DISPLAY is all the Linux installer looks at. A Mac run over SSH has
+# no console login, which the installer rightly skips, so the macOS journey asks for the app.
+if [ "$(uname -s)" = Darwin ]; then want_app=1; else want_app=; fi
+printf '0\n' >"$work/userns-off"
+printf '1\n' >"$work/userns-on"
 run_app_installer() {
-	env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash DISPLAY=:99 PRISMALENS_DESKTOP="${PRISMALENS_DESKTOP:-}" \
-		PRISMALENS_RELEASE_BASE_URL="$app_base" sh "$installer" --version "$new_version" --no-modify-path "$@"
+	env -i HOME="${APP_HOME:-$work/home}" PATH="$clean_path" SHELL=/bin/bash DISPLAY=:99 PRISMALENS_DESKTOP="${PRISMALENS_DESKTOP:-$want_app}" \
+		PRISMALENS_USERNS_SYSCTL="${USERNS:-$work/userns-off}" PRISMALENS_APPARMOR_PROFILE="$work/apparmor.d/prismalens" \
+		PRISMALENS_RELEASE_BASE_URL="${APP_BASE:-$app_base}" sh "$installer" --version "$new_version" --no-modify-path "$@"
 }
 rm -rf "$work/home" && mkdir -p "$work/home"
 entry="$work/home/.local/share/applications/prismalens.desktop"
@@ -229,6 +234,7 @@ else
 		sh "$installer" --version "$new_version" --no-modify-path 2>&1) || { echo "$out"; fail "install without a display"; }
 	case "$out" in *"Desktop app skipped: no display (DISPLAY and WAYLAND_DISPLAY are unset)"*) ;; *) echo "$out"; fail "no display wasn't detected" ;; esac
 	[ ! -e "$entry" ] || fail "a desktop entry was written without a display"
+	[ ! -e "$app" ] || fail "the app was installed without a display"
 	pass "no display: the app is skipped by itself"
 fi
 
@@ -242,7 +248,7 @@ pass "uninstall: the app and its launcher gone"
 run_app_installer >/dev/null 2>&1 || fail "install before --no-desktop"
 out=$(PRISMALENS_DESKTOP=1 run_app_installer --no-desktop 2>&1) || { echo "$out"; fail "install with --no-desktop"; }
 case "$out" in *"Desktop app skipped: you asked for the CLI only"*) ;; *) echo "$out"; fail "--no-desktop wasn't honoured over PRISMALENS_DESKTOP=1" ;; esac
-[ ! -e "$entry" ] && [ ! -e "$mac_app" ] || fail "--no-desktop left the app it had installed"
+[ ! -e "$entry" ] && [ ! -e "$mac_app" ] && [ ! -e "$work/home/.local/share/prismalens/desktop/app" ] || fail "--no-desktop left the app it had installed"
 grep -qx "desktop=0" "$work/home/.local/share/prismalens/receipt" || fail "--no-desktop wasn't saved"
 out=$(run_app_installer 2>&1) || fail "reinstall after --no-desktop"
 case "$out" in *"an earlier install left it out"*) ;; *) echo "$out"; fail "a later install dropped the opt-out" ;; esac
@@ -276,4 +282,79 @@ if [ "$(uname -s)" != Darwin ]; then
 	run_installer "$app_base" --uninstall >/dev/null 2>&1 || fail "uninstall beside the download's entry"
 	[ "$(cat "$entry")" = "$before" ] || fail "install or uninstall changed the download's entry"
 	pass "the download's own marked entry: left byte for byte through install and uninstall"
+fi
+
+# 9. Installs and upgrades never lose a working app the user has, nor delete one that isn't theirs.
+if [ "$(uname -s)" = Darwin ]; then
+	data="$work/home/.local/share/prismalens" app="$mac_app" stage="$work/home/Applications/.prismalens-new.killed"
+	app_runs() { [ "$("$mac_app/Contents/MacOS/PrismaLens")" = "stand-in app" ]; }
+else
+	data="$work/home/.local/share/prismalens" app="$work/home/.local/share/prismalens/desktop/app" stage="$work/home/.local/share/prismalens/desktop/.new.killed"
+	app_runs() { [ "$("$app/prismalens")" = "stand-in app" ]; }
+fi
+
+# An install killed between its two renames, rerun with no downloads: the old app comes back.
+rm -rf "$work/home" && mkdir -p "$work/home"
+run_app_installer >/dev/null 2>&1 || fail "install before the interrupted upgrade"
+mkdir -p "$stage" && mv "$app" "$stage/previous"
+mkdir -p "$work/no-downloads"
+out=$(APP_BASE="file://$work/no-downloads" run_app_installer 2>&1) && fail "an install with no downloads succeeded"
+case "$out" in *"Put back the desktop app an interrupted install had moved aside"*) ;; *) echo "$out"; fail "the moved-aside app wasn't put back" ;; esac
+app_runs || fail "the app put back doesn't run"
+[ ! -e "$stage" ] || fail "the emptied staging folder was left"
+pass "interrupted upgrade: a rerun with no downloads puts the old app back"
+
+# A different app in the installer's place (the user's own download) is never replaced or deleted.
+# The old folder is freed only after the new one exists, so the new one can't reuse its inode.
+mv "$app" "$work/replaced-app"
+if [ "$(uname -s)" = Darwin ]; then
+	mkdir -p "$app/Contents/MacOS" && printf '#!/bin/sh\necho users own\n' >"$app/Contents/MacOS/PrismaLens"
+	mine="$app/Contents/MacOS/PrismaLens"
+else
+	mkdir -p "$app" && printf '#!/bin/sh\necho users own\n' >"$app/prismalens"
+	mine="$app/prismalens"
+fi
+rm -rf "$work/replaced-app"
+out=$(run_app_installer 2>&1) || { echo "$out"; fail "install beside a replaced app"; }
+case "$out" in *"Desktop app skipped: $app"*) ;; *) echo "$out"; fail "the replaced app wasn't detected" ;; esac
+run_app_installer --no-desktop >/dev/null 2>&1 || fail "--no-desktop beside a replaced app"
+[ "$(cat "$mine")" = "$(printf '#!/bin/sh\necho users own')" ] || fail "--no-desktop changed the app that replaced the installer's"
+pass "a replaced app: install and --no-desktop leave it as it is"
+
+if [ "$(uname -s)" != Darwin ]; then
+	# A running app under a path with regex characters still counts as running.
+	odd_home="$work/home [QA] (1)+"
+	rm -rf "$odd_home" && mkdir -p "$odd_home"
+	APP_HOME="$odd_home" run_app_installer >/dev/null 2>&1 || fail "install under $odd_home"
+	odd_app="$odd_home/.local/share/prismalens/desktop/app"
+	cp "$(command -v sleep)" "$odd_app/prismalens"
+	"$odd_app/prismalens" 30 &
+	running=$!
+	out=$(APP_HOME="$odd_home" run_app_installer --no-desktop 2>&1) && { kill "$running"; echo "$out"; fail "--no-desktop removed a running app"; }
+	kill "$running"
+	case "$out" in *"The PrismaLens app is running; quit it and run the installer again to leave it out. Nothing was changed."*) ;; *) echo "$out"; fail "the running app wasn't seen" ;; esac
+	[ -x "$odd_app/prismalens" ] || fail "the running app was removed"
+	pass "running app under [QA] (1)+: seen as running, and left in place"
+
+	# Ubuntu's user-namespace restriction: the app installs and the installer prints Ubuntu's
+	# documented AppArmor profile step, never a setuid one.
+	rm -rf "$work/home" "$work/apparmor.d" && mkdir -p "$work/home"
+	out=$(USERNS="$work/userns-on" run_app_installer 2>&1) || { echo "$out"; fail "install under the userns restriction"; }
+	step_line="sudo install -m 644 '$data/desktop/apparmor-profile' '$work/apparmor.d/prismalens' && sudo apparmor_parser -r '$work/apparmor.d/prismalens'"
+	case "$out" in *"Ubuntu's documented fix is a profile for the app; adding it needs root, once:"*"$step_line"*) ;; *) echo "$out"; fail "the installer didn't print Ubuntu's profile step" ;; esac
+	case "$out" in *chmod*|*chown*|*setuid*) echo "$out"; fail "the installer advised a setuid step" ;; esac
+	grep -qxF "profile prismalens \"$app/prismalens\" flags=(unconfined) {" "$data/desktop/apparmor-profile" &&
+		grep -qx "  userns," "$data/desktop/apparmor-profile" &&
+		grep -qx "abi <abi/4.0>," "$data/desktop/apparmor-profile" || { cat "$data/desktop/apparmor-profile"; fail "the profile isn't Ubuntu's userns profile for the app"; }
+	[ -e "$entry" ] || fail "the app's entry wasn't written under the restriction"
+	pass "userns restriction: the app installs and the installer prints the AppArmor profile step"
+
+	# A path a menu entry can't hold: the app is skipped, the CLI installed.
+	nl_home="$work/line
+break"
+	rm -rf "$nl_home" && mkdir -p "$nl_home"
+	out=$(APP_HOME="$nl_home" run_app_installer 2>&1) || { echo "$out"; fail "install under a path with a line break"; }
+	case "$out" in *"has a line break, which a menu entry can't hold"*) ;; *) echo "$out"; fail "the line break wasn't caught" ;; esac
+	[ ! -e "$nl_home/.local/share/applications/prismalens.desktop" ] || fail "an entry was written for a path with a line break"
+	pass "line break in the path: the app is skipped, the CLI installed"
 fi

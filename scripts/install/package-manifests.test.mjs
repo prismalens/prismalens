@@ -97,9 +97,11 @@ test("the app's cask is prismalens-app: the arm64 zip, its hash, the app inside,
 		rb,
 		/^cask "prismalens-app" do\n {2}version "1\.2\.3"\n {2}sha256 "f7"\n/,
 	);
-	assert.match(
+	assert.ok(
+		rb
+			.split("\n")
+			.includes(`  url "${BASE}/PrismaLens-macOS-ARM64-unsigned.zip"`),
 		rb,
-		new RegExp(`url "${BASE}/PrismaLens-macOS-ARM64-unsigned.zip"`),
 	);
 	assert.match(rb, /depends_on arch: :arm64/);
 	assert.match(rb, /app "mac-arm64\/PrismaLens\.app"/);

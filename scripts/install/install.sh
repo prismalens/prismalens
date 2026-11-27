@@ -28,6 +28,11 @@ xdg_data="${XDG_DATA_HOME:-$HOME/.local/share}"
 desktop_file="$xdg_data/applications/prismalens.desktop"
 mac_app="$HOME/Applications/PrismaLens.app"
 desktop_marker="X-PrismaLens-Installer=true"
+# Test seams: where the kernel's user-namespace restriction and the app's AppArmor profile are read.
+userns_sysctl="${PRISMALENS_USERNS_SYSCTL:-/proc/sys/kernel/apparmor_restrict_unprivileged_userns}"
+apparmor_profile="${PRISMALENS_APPARMOR_PROFILE:-/etc/apparmor.d/prismalens}"
+nl='
+'
 action=install
 
 usage() {
@@ -242,6 +247,36 @@ entry_ours() {
 	[ -f "$desktop_file" ] && [ ! -L "$desktop_file" ] && grep -qxF "Exec=$(desktop_exec "$data_root/desktop/app/prismalens")" "$desktop_file"
 }
 
+# $1 as one single-quoted sh word.
+sh_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
+
+# A folder's inode: a bundle someone put in the installer's place is a different folder.
+inode_of() { stat -c %i "$1" 2>/dev/null || stat -f %i "$1" 2>/dev/null; }
+
+# Whether $1 is the app this installer put there: the receipt names it and it is still that folder.
+app_ours() {
+	[ -n "$1" ] && [ -d "$1" ] && [ "$(receipt_get desktop_app)" = "$1" ] &&
+		[ -n "$(receipt_get desktop_app_id)" ] && [ "$(inode_of "$1")" = "$(receipt_get desktop_app_id)" ]
+}
+
+# A run killed between its two renames left the installer's old app in that run's staging
+# folder; put it back before anything else, so the launcher works even if no download does.
+desktop_recover() {
+	if [ "$platform" = darwin ]; then
+		r_dest="$mac_app" r_stage="$HOME/Applications/.prismalens-new."
+	else
+		r_dest="$data_root/desktop/app" r_stage="$data_root/desktop/.new."
+	fi
+	[ ! -e "$r_dest" ] && [ "$(receipt_get desktop_app)" = "$r_dest" ] || return 0
+	for r_prev in "$r_stage"*/previous; do
+		[ "$(inode_of "$r_prev")" = "$(receipt_get desktop_app_id)" ] || continue
+		mv "$r_prev" "$r_dest" || continue
+		rm -rf "$(dirname "$r_prev")"
+		done_ "Put back the desktop app an interrupted install had moved aside"
+		return 0
+	done
+}
+
 # Homebrew's prismalens-app, whichever folder its --appdir put PrismaLens.app in.
 cask_app() {
 	for c in /opt/homebrew/Caskroom /usr/local/Caskroom; do [ ! -d "$c/prismalens-app" ] || return 0; done
@@ -254,7 +289,7 @@ desktop_skip() {
 	if [ "$platform" = darwin ] && cask_app; then
 		echo "Homebrew's prismalens-app is installed; it upgrades with brew upgrade"
 		return 0
-	elif [ "$platform" = darwin ] && [ -d "$mac_app" ] && [ "$(receipt_get desktop_app)" != "$mac_app" ]; then
+	elif [ "$platform" = darwin ] && [ -d "$mac_app" ] && ! app_ours "$mac_app"; then
 		echo "$mac_app is already there and this installer didn't put it there; it was left as it is"
 		return 0
 	elif [ "$platform" = darwin ] && [ -d /Applications/PrismaLens.app ]; then
@@ -263,6 +298,15 @@ desktop_skip() {
 	elif [ "$platform" = linux ] && { [ -e "$desktop_file" ] || [ -L "$desktop_file" ]; } && ! entry_ours; then
 		echo "$desktop_file opens another copy of PrismaLens, not the installer's; it was left as it is"
 		return 0
+	elif [ "$platform" = linux ] && [ -e "$data_root/desktop/app" ] && ! app_ours "$data_root/desktop/app"; then
+		echo "$data_root/desktop/app isn't the app this installer put there; it was left as it is"
+		return 0
+	elif [ "$platform" = linux ]; then
+		case "$data_root" in *"$nl"*)
+			echo "$data_root has a line break, which a menu entry can't hold"
+			return 0
+			;;
+		esac
 	fi
 	[ "$want_desktop" != 1 ] || return 0
 	if [ "$(receipt_get desktop)" = 0 ]; then
@@ -282,9 +326,11 @@ desktop_skip() {
 desktop_running() {
 	command -v pgrep >/dev/null 2>&1 || return 1
 	case "$1" in
-	*.app) pgrep -f "$1/Contents/MacOS/PrismaLens" >/dev/null 2>&1 ;;
-	*) pgrep -f "$1/prismalens" >/dev/null 2>&1 ;;
+	*.app) d_exe="$1/Contents/MacOS/PrismaLens" ;;
+	*) d_exe="$1/prismalens" ;;
 	esac
+	# pgrep -f takes an extended regex: escape the path, and match it as the command itself.
+	pgrep -f "^$(printf '%s' "$d_exe" | sed -e 's/[][\\.*^$+?(){}|]/\\&/g')( |\$)" >/dev/null 2>&1
 }
 
 desktop_asset() {
@@ -307,14 +353,23 @@ remove_desktop() {
 	if [ "$(uname -s)" = Darwin ] && cask_app; then
 		r_app=
 	fi
-	if [ -n "$r_app" ] && [ -d "$r_app" ]; then
+	if [ -n "$r_app" ] && desktop_running "$r_app"; then
+		warn "The PrismaLens app started meanwhile, so $r_app stays; quit it and run this again to remove it."
+		return 1
+	fi
+	if app_ours "$r_app"; then
 		rm -rf "$r_app"
 		done_ "Removed the desktop app $r_app"
+	elif [ -n "$r_app" ] && [ -e "$r_app" ]; then
+		warn "$r_app isn't the app this installer put there; it was left as it is"
 	fi
 	if entry_ours; then
 		rm -f "$desktop_file"
 		done_ "Removed the app menu entry $desktop_file"
 	fi
+	rm -f "$data_root/desktop/apparmor-profile"
+	[ ! -e "$apparmor_profile" ] || warn "$apparmor_profile stays; it needs root to remove: sudo apparmor_parser -R $(sh_quote "$apparmor_profile") && sudo rm $(sh_quote "$apparmor_profile")"
+	return 0
 }
 
 # install_desktop <zip>: the app in the OS's usual per-user place; sets $launcher to how it opens
@@ -343,13 +398,17 @@ install_desktop() {
 	[ -n "$d_src" ] || { rm -rf "$d_stage"; why="the archive doesn't hold the app"; return 1; }
 	[ ! -e "$d_dest" ] || mv "$d_dest" "$d_stage/previous" || { rm -rf "$d_stage"; why="couldn't move the old app aside"; return 1; }
 	if ! mv "$d_src" "$d_dest"; then
-		[ ! -e "$d_stage/previous" ] || mv "$d_stage/previous" "$d_dest"
+		if [ -e "$d_stage/previous" ] && ! mv "$d_stage/previous" "$d_dest"; then
+			why="couldn't move it into place at $d_dest, nor put the old app back; it is in $d_stage/previous, and the next install puts it back"
+			return 1
+		fi
 		rm -rf "$d_stage"
 		why="couldn't move it into place at $d_dest"
 		return 1
 	fi
 	rm -rf "$d_stage"
 	owned="$d_dest"
+	owned_id=$(inode_of "$d_dest")
 	if [ "$platform" = darwin ]; then
 		# Launchpad and Spotlight would find it on their own; registering makes it immediate.
 		lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -370,12 +429,18 @@ install_desktop() {
 		return 1
 	fi
 	launcher="your app menu: PrismaLens (${desktop_file})"
-	# Chromium's sandbox needs user namespaces or a root-owned setuid helper; every fix Chromium documents needs root.
-	if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ] ||
-		[ "$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null)" = 0 ]; then
-		sandbox_note="This system restricts the user namespaces Chromium's sandbox needs, so the app may not open. Chromium's fix needs root, once per install or upgrade:
-      sudo chown root:root \"$d_dest/chrome-sandbox\" && sudo chmod 4755 \"$d_dest/chrome-sandbox\"
-    (https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md)"
+	# Ubuntu's documented fix for its user-namespace restriction is a userns profile for the app
+	# (noble release notes, Security Improvements); the app's sandbox stays on.
+	l_rule=$(printf '%s' "$d_dest/prismalens" | sed -e 's/[][\\"*?{}^]/\\&/g')
+	printf '%s\n' "abi <abi/4.0>," "include <tunables/global>" "" \
+		"profile prismalens \"$l_rule\" flags=(unconfined) {" "  userns," "" "  include if exists <local/prismalens>" "}" \
+		>"$data_root/desktop/apparmor-profile" || true
+	if [ "$(cat "$userns_sysctl" 2>/dev/null)" = 1 ] && [ ! -e "$apparmor_profile" ]; then
+		sandbox_note="Ubuntu restricts the user namespaces the app's sandbox needs, so it opens once AppArmor allows it. Ubuntu's documented fix is a profile for the app; adding it needs root, once:
+      sudo install -m 644 $(sh_quote "$data_root/desktop/apparmor-profile") $(sh_quote "$apparmor_profile") && sudo apparmor_parser -r $(sh_quote "$apparmor_profile")
+    (https://discourse.ubuntu.com/t/noble-numbat-release-notes/39890, Security Improvements)"
+	elif [ "$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null)" = 0 ]; then
+		sandbox_note="This system turns off the user namespaces the app's sandbox needs, so the app may not open; pl up opens PrismaLens in your browser instead."
 	fi
 	return 0
 }
@@ -393,7 +458,7 @@ if [ "$action" = uninstall ]; then
 	if [ -f "$dir/pl" ] && { [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/prismalens.service" ] || [ -f "$HOME/Library/LaunchAgents/io.prismalens.server.plist" ]; }; then
 		"$dir/pl" service uninstall >/dev/null 2>&1 && done_ "Removed the background service"
 	fi
-	remove_desktop
+	remove_desktop || fail "Nothing else was removed."
 	for name in pl prismalens; do
 		if [ -f "$dir/$name" ] && grep -q "$marker" "$dir/$name"; then
 			rm -f "$dir/$name"
@@ -439,6 +504,7 @@ x86_64 | amd64) arch=x64 ;;
 esac
 target="${platform}-${arch}"
 command -v tar >/dev/null 2>&1 || fail "tar is required"
+desktop_recover
 
 staging=$(mktemp -d)
 trap 'rm -rf "$staging"' EXIT INT TERM
@@ -537,13 +603,14 @@ esac
 # desktop= is the user's choice; desktop_app= is what this installer put there, and all uninstall removes.
 desktop=$(receipt_get desktop)
 owned=$(receipt_get desktop_app)
+owned_id=$(receipt_get desktop_app_id)
 launcher=
 sandbox_note=
 if [ "$want_desktop" = 0 ]; then
 	desktop=0
-	if [ -n "$owned" ]; then
-		remove_desktop
+	if [ -n "$owned" ] && remove_desktop; then
 		owned=
+		owned_id=
 	fi
 fi
 [ "$want_desktop" != 1 ] || desktop=1
@@ -579,6 +646,7 @@ bin_dir=$bin_dir
 rc=$rc
 desktop=$desktop
 desktop_app=$owned
+desktop_app_id=$owned_id
 installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
 

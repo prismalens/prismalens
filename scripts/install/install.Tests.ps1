@@ -250,7 +250,7 @@ Describe "install.ps1 and the desktop app" {
 		function Get-Receipt { Get-Content (Join-Path $work "data\receipt") }
 	}
 
-	It "installs the app beside the CLI, points a Start menu shortcut with its icon at it, and says where" {
+	It "installs the app beside the CLI, points a Start menu shortcut with its icon at it, says where, and records it" {
 		$run = Invoke-Installer $work $base $want
 
 		$run.ExitCode | Should -Be 0 -Because $run.Stderr
@@ -261,6 +261,8 @@ Describe "install.ps1 and the desktop app" {
 		$run.Stderr | Should -Match ([regex]::Escape("Open the desktop app from the Start menu: PrismaLens   ($lnk)"))
 		$run.Stderr | Should -Match "If Windows SmartScreen stops it, choose More info, then Run anyway"
 		Get-Receipt | Should -Contain "desktop=1"
+		Get-Receipt | Should -Contain "desktop_app=$app"
+		Get-Receipt | Should -Contain "desktop_version=$version"
 	}
 
 	It "keeps its own shortcut when PRISMALENS_HOME is given as an 8.3 short path" {
@@ -281,15 +283,66 @@ Describe "install.ps1 and the desktop app" {
 		$running = Start-Process -FilePath $app -ArgumentList "-n", "60", "127.0.0.1" -WindowStyle Hidden -PassThru
 		try {
 			$receiptBefore = Get-Content (Join-Path $work "data\receipt") -Raw
+			$wrapperBefore = Get-Content (Join-Path $work "bin\pl.cmd") -Raw
+			# A rerun of the same version would unpack this runtime again; the marker shows whether it did.
+			Set-Content -Path (Join-Path $work "data\runtime\$version\bin\pl.cmd") -Encoding ASCII -Value "@echo before"
+			$runtimeBefore = Get-Content (Join-Path $work "data\runtime\$version\bin\pl.cmd") -Raw
 			$run = Invoke-Installer $work $base "" "-NoDesktop"
 
 			$run.ExitCode | Should -Not -Be 0
 			$run.Stderr | Should -Match "The PrismaLens app is running; quit it \(tray icon, then Quit\) and run this again to leave it out. Nothing was changed."
 			$run.Stderr | Should -Not -Match "Downloading"
 			Get-Content (Join-Path $work "data\receipt") -Raw | Should -BeExactly $receiptBefore
+			Get-Content (Join-Path $work "bin\pl.cmd") -Raw | Should -BeExactly $wrapperBefore
+			Get-Content (Join-Path $work "data\runtime\$version\bin\pl.cmd") -Raw | Should -BeExactly $runtimeBefore
 			Get-Target $lnk | Should -BeExactly $app
 		} finally {
 			Stop-Process -Id $running.Id -Force -ErrorAction SilentlyContinue
+		}
+	}
+
+	It "a reinstall whose new copy can't be moved into place keeps the working copy and its shortcut" {
+		$null = Invoke-Installer $work $base $want
+		Set-Content -Path (Join-Path (Split-Path $app) "marker.txt") -Value "the working copy"
+		$run = Invoke-Installer $work $base "$want`n`$env:PRISMALENS_TEST_FAIL_DESKTOP_MOVE = '1'"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match "The desktop app wasn't installed: couldn't move it into place: the test made the move fail"
+		Get-Content (Join-Path (Split-Path $app) "marker.txt") | Should -BeExactly "the working copy"
+		Test-Path $app | Should -BeTrue
+		Get-Target $lnk | Should -BeExactly $app
+		@(Get-ChildItem (Join-Path $work "data\desktop") -Directory | ForEach-Object Name) | Should -BeExactly @($version)
+	}
+
+	It "uninstall that can't remove the app leaves pl and the shortcut as they were" {
+		$null = Invoke-Installer $work $base $want
+		$held = [System.IO.File]::Open($app, "Open", "Read", "Read")
+		try {
+			$run = Invoke-Installer $work $base "" "-Uninstall"
+
+			$run.ExitCode | Should -Not -Be 0
+			$run.Stderr | Should -Match ([regex]::Escape("Couldn't remove the desktop app in $(Join-Path $work 'data\desktop'): a file in it is open. Nothing was removed."))
+			Test-Path (Join-Path $work "bin\pl.cmd") | Should -BeTrue
+			Get-Target $lnk | Should -BeExactly $app
+		} finally {
+			$held.Dispose()
+		}
+	}
+
+	It "an app download that throws still records the CLI it installed" {
+		$zip = Join-Path $work "release\v$version\PrismaLens-Windows-X64-unsigned.zip"
+		$me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+		& (Join-Path $system32 "icacls.exe") $zip /deny "${me}:(R)" | Out-Null
+		try {
+			$run = Invoke-Installer $work $base $want
+
+			$run.ExitCode | Should -Be 0 -Because $run.Stderr
+			$run.Stderr | Should -Match "The desktop app wasn't installed: "
+			Get-Receipt | Should -Contain "version=$version"
+			Get-Receipt | Should -Contain "desktop_app="
+			Test-Path (Join-Path $work "bin\pl.cmd") | Should -BeTrue
+		} finally {
+			& (Join-Path $system32 "icacls.exe") $zip /remove:d $me | Out-Null
 		}
 	}
 
@@ -363,6 +416,7 @@ Describe "install.ps1 and the desktop app" {
 		$run.ExitCode | Should -Be 0 -Because $run.Stderr
 		$run.Stderr | Should -Match "Desktop app skipped: Scoop's prismalens-app is installed; it upgrades with scoop update"
 		Test-Path $lnk | Should -BeFalse
+		Test-Path (Join-Path $work "data\desktop") | Should -BeFalse
 	}
 
 	It "-NoDesktop after an install removes the app and its shortcut, even with PRISMALENS_DESKTOP=1 set" {
