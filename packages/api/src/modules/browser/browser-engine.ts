@@ -14,15 +14,30 @@ export interface Engine {
 
 type Launch = { name: string; options: Record<string, unknown> };
 
+/** Why one browser did not start; `timedOut` means it is installed but slow (#1238). */
+export interface LaunchFailure {
+	name: string;
+	message: string;
+	timedOut: boolean;
+}
+
+export const LAUNCH_MS = 20_000;
+
 /**
  * Starts the host browser on the persistent profile (#1061): Playwright's own Chromium if
- * installed, else Chrome, else Edge. Nothing is downloaded; null when none starts.
+ * installed, else Chrome, else Edge. Nothing is downloaded; null when none starts, with each
+ * try's reason pushed to `failures`.
  */
-export async function launchEngine(profileDir: string): Promise<Engine | null> {
+export async function launchEngine(
+	profileDir: string,
+	failures: LaunchFailure[] = [],
+	timeout = LAUNCH_MS,
+): Promise<Engine | null> {
 	let pw: typeof import("playwright-core");
 	try {
 		pw = await import("playwright-core");
-	} catch {
+	} catch (e) {
+		failures.push(launchFailure("playwright-core", e));
 		return null;
 	}
 	mkdirSync(profileDir, { recursive: true, mode: 0o700 });
@@ -50,10 +65,20 @@ export async function launchEngine(profileDir: string): Promise<Engine | null> {
 				args: [
 					"--disable-features=PasswordManagerOnboarding,AutofillServerCommunication",
 				],
-				timeout: 20_000,
+				timeout,
 			});
 			return { context, name: t.name };
-		} catch {}
+		} catch (e) {
+			failures.push(launchFailure(t.name, e));
+		}
 	}
 	return null;
+}
+
+/** One try's reason: its first error line, and whether Playwright's launch timeout hit. */
+export function launchFailure(name: string, e: unknown): LaunchFailure {
+	const message = String(e instanceof Error ? e.message : e)
+		.split("\n")[0]
+		.slice(0, 300);
+	return { name, message, timedOut: /Timeout \d+ms exceeded/.test(message) };
 }

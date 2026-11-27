@@ -31,7 +31,13 @@ import type {
 	BrowserAction,
 	BrowserToolCall,
 } from "../gateway/tools/browser.js";
-import { type Engine, launchEngine, VIEWPORT } from "./browser-engine.js";
+import {
+	type Engine,
+	LAUNCH_MS,
+	type LaunchFailure,
+	launchEngine,
+	VIEWPORT,
+} from "./browser-engine.js";
 import {
 	type ElementFacts,
 	elementFacts,
@@ -150,6 +156,8 @@ export class BrowserHostService implements OnModuleDestroy {
 	private starting: Promise<Engine | null> | null = null;
 	private engineName: string | null = null;
 	private missing = false;
+	/** Why the last start failed; a timeout means the engine is there but slow (#1238). */
+	private failures: LaunchFailure[] = [];
 	private readonly tabs = new Map<string, Tab>();
 	/** Each thread's current tab: the one its agent last opened or switched to. */
 	private readonly current = new Map<string, string>();
@@ -212,9 +220,16 @@ export class BrowserHostService implements OnModuleDestroy {
 	private async context(): Promise<BrowserContext | null> {
 		if (this.engine) return this.engine.context;
 		this.starting ??= (async () => {
-			const engine = await launchEngine(this.profileDir);
-			this.missing = !engine;
-			if (!engine) return null;
+			const failures: LaunchFailure[] = [];
+			const engine = await launchEngine(this.profileDir, failures);
+			this.failures = failures;
+			this.missing = !engine && !failures.some((f) => f.timedOut);
+			if (!engine) {
+				logger.warn(
+					`No browser engine started: ${failures.map((f) => `${f.name}: ${f.message}`).join("; ")}`,
+				);
+				return null;
+			}
 			this.engine = engine;
 			this.engineName = engine.name;
 			engine.context.on("page", (page) => this.adoptPopup(page));
@@ -230,6 +245,11 @@ export class BrowserHostService implements OnModuleDestroy {
 			this.starting = null;
 		});
 		return (await this.starting)?.context ?? null;
+	}
+
+	/** The engine whose last start timed out, if any. */
+	private slowEngine(): string | undefined {
+		return this.failures.find((f) => f.timedOut)?.name;
 	}
 
 	/** Closes the browser after a quiet spell with no tabs; the profile stays on disk. */
@@ -634,11 +654,17 @@ export class BrowserHostService implements OnModuleDestroy {
 			);
 		const ctx = await this.context();
 		if (!ctx)
-			return fail(
-				"disabled",
-				"No browser engine was found on this PrismaLens host.",
-				"Use your own browser tools; the user can install one with `npx playwright-core install chromium`.",
-			);
+			return this.slowEngine()
+				? fail(
+						"disabled",
+						`${this.slowEngine()} is installed but did not start within ${LAUNCH_MS / 1000} s.`,
+						"Try again; the next open starts it afresh.",
+					)
+				: fail(
+						"disabled",
+						"No browser engine was found on this PrismaLens host.",
+						"Use your own browser tools; the user can install one with `npx playwright-core install chromium`.",
+					);
 		const tab = this.track(await ctx.newPage(), threadId, "agent");
 		this.current.set(threadId, tab.id);
 		return this.inLane(tab, signal, () =>
@@ -957,7 +983,12 @@ export class BrowserHostService implements OnModuleDestroy {
 		if (refused) throw new BrowserError("BAD_REQUEST", refused);
 		const ctx = await this.context();
 		if (!ctx)
-			throw new BrowserError("NOT_FOUND", "No browser engine on this host.");
+			throw new BrowserError(
+				"NOT_FOUND",
+				this.slowEngine()
+					? `${this.slowEngine()} did not start within ${LAUNCH_MS / 1000} s. Try again.`
+					: "No browser engine on this host.",
+			);
 		const tab = this.track(await ctx.newPage(), threadId, "human");
 		await tab.page
 			.goto(url.href, { timeout: LOAD_MS, waitUntil: "domcontentloaded" })

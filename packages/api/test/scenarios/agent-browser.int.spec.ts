@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { CanonicalEvent } from "@prismalens/contracts";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { type LaunchFailure, launchEngine } from "../../src/modules/browser/browser-engine.js";
 import { eventually, ScenarioApp } from "./support/scenario-app.js";
 
 vi.setConfig({ testTimeout: 20_000 }); // slowest test 6396 ms; 3x, rounded up to the second, at least 5 s (#1154)
@@ -38,6 +42,17 @@ async function said(id: string): Promise<string> {
 }
 
 beforeAll(async () => {
+	// A cold engine under the full suite can miss the app's 20 s start (#1238): start it once
+	// here, 45 s a try for up to three tries, and fail with the reasons when this runner has none.
+	const probeDir = mkdtempSync(join(tmpdir(), "pl-engine-probe-"));
+	const failures: LaunchFailure[] = [];
+	const probe = await launchEngine(probeDir, failures, 45_000);
+	await probe?.context.close();
+	rmSync(probeDir, { recursive: true, force: true });
+	if (!probe)
+		throw new Error(
+			`no browser engine on this runner: ${failures.map((f) => `${f.name}: ${f.message}`).join("; ")}`,
+		);
 	site = createServer((req, res) => {
 		if (req.method === "POST") {
 			let body = "";
@@ -60,7 +75,7 @@ beforeAll(async () => {
 		body: { subject: { kind: "none" }, text: `fake-session:browser Read ${base}/form` },
 	});
 	thread = started.investigationId;
-}, 120_000);
+}, 255_000); // three 45 s tries, then the 120 s boot and first message
 
 afterAll(async () => {
 	await pl.dispose();
