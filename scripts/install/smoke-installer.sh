@@ -557,8 +557,7 @@ if [ "$(uname -s)" != Darwin ]; then
 	run_app_installer >/dev/null 2>&1 || fail "install before the running-app upgrade"
 	grep -qx "desktop_version=$new_version" "$data/receipt" || fail "the receipt doesn't record the app's version"
 	sed -i.bak "s/^desktop_version=.*/desktop_version=0.0.1/" "$data/receipt"
-	cp "$(command -v sleep)" "$app/prismalens"
-	"$app/prismalens" 30 &
+	bash -c 'exec -a "$0" sleep 30' "$app/prismalens" &
 	running=$!
 	out=$(run_app_installer 2>&1) || { kill "$running"; echo "$out"; fail "install while the app runs"; }
 	kill "$running"
