@@ -731,6 +731,11 @@ export default defineChecks([
 				interrupted = ((await row.textContent()) ?? "").trim();
 				if (!/Rewind interrupted/.test(interrupted))
 					fails.push(`the interrupted row reads "${interrupted}"`);
+				// One crash fixture per sim: an earlier run on this sim may have restored it already.
+				if (/restored/.test(interrupted))
+					return notSetUp(
+						`the sim's crash fixture was restored by an earlier run ("${interrupted}"); restage it`,
+					);
 				await page.getByTestId("rewind-interrupted-restore").first().click();
 				await expect(page.getByTestId("rewind-restore-preview")).toBeVisible({
 					timeout: 30_000,

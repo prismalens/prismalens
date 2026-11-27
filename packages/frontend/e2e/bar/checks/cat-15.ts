@@ -285,9 +285,23 @@ export default defineChecks([
 				await page.getByTestId("pr-sub-state").first().innerText()
 			).trim();
 
-			// Pushed status node in transcript
+			// Pushed status node in transcript. The fixture's statuses sit near the record's start and
+			// the thread opens at its end, so the transcript is scrolled up until they draw.
 			const statusLines = page.getByTestId("pr-status-line");
-			const hasStatus = (await statusLines.count()) > 0;
+			const scroller = page.getByTestId("transcript-scroller");
+			const hasStatus = await expect
+				.poll(
+					async () => {
+						await scroller.evaluate((el) => el.scrollTo(0, 0)).catch(() => {});
+						return statusLines.count();
+					},
+					{ timeout: 30_000, intervals: [500] },
+				)
+				.toBeGreaterThan(0)
+				.then(
+					() => true,
+					() => false,
+				);
 			if (!hasStatus) {
 				fails.push("no pushed pr-status-line found in transcript");
 			}
