@@ -267,7 +267,8 @@ describe("installedByInstaller", () => {
 			installedByInstaller({
 				platform: "linux",
 				execPath: `${linuxApp}/prismalens`,
-				receipt: `version=0.5.7\ndesktop=0\ndesktop_app=${linuxApp}\n`,
+				receipt: receipt(linuxApp).replace("desktop=1", "desktop=0"),
+				installId: marked,
 			}),
 		).toBe(false);
 		expect(installedByInstaller({ platform: "linux", execPath: `${linuxApp}/prismalens`, receipt: null, installId: marked })).toBe(false);

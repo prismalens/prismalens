@@ -179,6 +179,8 @@ if [ -z "$app_zip" ]; then
 	echo "note: no desktop app is built for $(uname -s)-$(uname -m); section 7 skipped"
 	exit 0
 fi
+# Each desktop case says whether it asks for the app; one from the caller's shell would override that.
+unset PRISMALENS_DESKTOP
 app_base_dir="$work/base-app/v$new_version"
 mkdir -p "$app_base_dir" "$work/fake-app"
 cp "$new_dir"/prismalens-"$new_version"-*.tar.gz "$app_base_dir/"
@@ -323,6 +325,19 @@ run_app_installer --no-desktop >/dev/null 2>&1 || fail "--no-desktop beside a re
 [ "$(cat "$mine")" = "$(printf '#!/bin/sh\necho users own')" ] || fail "--no-desktop changed the app that replaced the installer's"
 pass "a replaced app, in the same folder: install and --no-desktop leave it as it is"
 
+# Uninstall deletes its data folder, but not the replaced app in it: that is moved aside and named.
+out=$(run_installer "$app_base" --uninstall 2>&1) || { echo "$out"; fail "uninstall beside a replaced app"; }
+if [ "$(uname -s)" = Darwin ]; then
+	kept_app="$app"
+else
+	case "$out" in *"$app isn't the app this installer put there; it was moved to $data-kept/app."*/app*) ;; *) echo "$out"; fail "uninstall didn't say where the replaced app went" ;; esac
+	kept_app=$(find "$data-kept" -mindepth 2 -maxdepth 2 -name app 2>/dev/null || true)
+	[ ! -e "$data" ] || fail "uninstall left its data folder"
+fi
+[ "$(cat "$kept_app/${mine#"$app"/}")" = "$(printf '#!/bin/sh\necho users own')" ] || fail "uninstall deleted the app that replaced the installer's"
+rm -rf "$data-kept"
+pass "a replaced app: uninstall keeps it and says where"
+
 if [ "$(uname -s)" != Darwin ]; then
 	# Another app appears in the installer's place while the zip downloads: it's left, not moved aside.
 	rm -rf "$work/home" && mkdir -p "$work/home" "$work/shim"
@@ -334,6 +349,16 @@ if [ "$(uname -s)" != Darwin ]; then
 	case "$out" in *"The desktop app wasn't installed: $app isn't the app this installer put there; it was left as it is"*) ;; *) echo "$out"; fail "the app that appeared during the download wasn't seen" ;; esac
 	[ "$(cat "$app/prismalens")" = "users own" ] || fail "the app that appeared during the download was replaced"
 	pass "an app that appears during the download: left as it is"
+
+	# Another copy registers its menu entry while the zip downloads: the entry is left, byte for byte.
+	rm -rf "$work/home" && mkdir -p "$work/home" "$work/shim-entry"
+	printf '#!/bin/sh\nmkdir -p "%s" && printf "[Desktop Entry]\\nExec=/opt/other/prismalens\\n" >"%s"\nexec /usr/bin/unzip "$@"\n' \
+		"$(dirname "$entry")" "$entry" >"$work/shim-entry/unzip"
+	chmod 755 "$work/shim-entry/unzip"
+	out=$(SHIM="$work/shim-entry" run_app_installer 2>&1) || { echo "$out"; fail "install while another entry appears"; }
+	case "$out" in *"The desktop app wasn't installed: the app is in $app, but $entry now opens another copy of PrismaLens; it was left as it is"*) ;; *) echo "$out"; fail "the entry that appeared during the download wasn't seen" ;; esac
+	[ "$(cat "$entry")" = "$(printf '[Desktop Entry]\nExec=/opt/other/prismalens')" ] || { cat "$entry"; fail "the entry that appeared during the download was overwritten"; }
+	pass "a menu entry that appears during the download: left byte for byte"
 fi
 
 # Another app arrives after the ownership check, just before the old app is moved aside: it is put

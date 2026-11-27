@@ -329,6 +329,41 @@ Describe "install.ps1 and the desktop app" {
 		}
 	}
 
+	It "a folder someone else put at desktop\<version>: a reinstall leaves it, and uninstall moves it aside and says where" {
+		$null = Invoke-Installer $work $base $want
+		$theirs = Split-Path $app
+		Remove-Item -LiteralPath (Join-Path $theirs ".prismalens-install-id")
+		Set-Content -Path (Join-Path $theirs "marker.txt") -Value "theirs"
+		$run = Invoke-Installer $work $base $want
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match ([regex]::Escape("The desktop app wasn't installed: $theirs isn't the app this installer put there; it was left as it is"))
+		Get-Content (Join-Path $theirs "marker.txt") | Should -BeExactly "theirs"
+
+		$run = Invoke-Installer $work $base "" "-Uninstall"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$kept = @(Get-ChildItem (Join-Path $work "data-kept") -Directory)
+		$kept.Count | Should -Be 1
+		$run.Stderr | Should -Match ([regex]::Escape("$theirs isn't the app this installer put there; it was moved to $($kept[0].FullName)"))
+		Get-Content (Join-Path $kept[0].FullName "marker.txt") | Should -BeExactly "theirs"
+		Test-Path (Join-Path $work "data") | Should -BeFalse
+	}
+
+	It "an older version's folder the installer didn't make is moved aside when it prunes, not deleted" {
+		$theirs = Join-Path $work "data\desktop\0.0.1"
+		New-Item -ItemType Directory -Path $theirs -Force | Out-Null
+		Set-Content -Path (Join-Path $theirs "marker.txt") -Value "theirs"
+		$run = Invoke-Installer $work $base $want
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$kept = @(Get-ChildItem (Join-Path $work "data-kept") -Directory)
+		$kept.Count | Should -Be 1
+		$run.Stderr | Should -Match ([regex]::Escape("$theirs isn't the app this installer put there; it was moved to $($kept[0].FullName)"))
+		Get-Content (Join-Path $kept[0].FullName "marker.txt") | Should -BeExactly "theirs"
+		Test-Path $app | Should -BeTrue
+	}
+
 	It "an app download that throws still records the CLI it installed" {
 		$zip = Join-Path $work "release\v$version\PrismaLens-Windows-X64-unsigned.zip"
 		$me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name

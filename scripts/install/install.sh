@@ -17,6 +17,7 @@ fi
 sums_base=${bases##* }
 data_root="${PRISMALENS_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/prismalens}"
 runtime_root="${data_root}/runtime"
+kept_root="${data_root}-kept"
 receipt="${data_root}/receipt"
 bin_dir="${PRISMALENS_INSTALL_BIN_DIR:-$HOME/.local/bin}"
 marker="# Added by the PrismaLens installer"
@@ -275,6 +276,28 @@ app_ours() {
 		[ -n "$(receipt_get desktop_app_id)" ] && [ "$(app_id_of "$1")" = "$(receipt_get desktop_app_id)" ]
 }
 
+# The only way this installer deletes a folder. An app in it that doesn't carry the receipt's ID or
+# this run's is moved to $kept_root and named instead; if that move fails, nothing is deleted.
+# Apps sit in desktop/app, a staging folder's previous, or a *.app bundle; the CLI's runtime holds none.
+discard() {
+	[ -e "$1" ] || [ -L "$1" ] || return 0
+	k_left=$(find "$1" -maxdepth 3 \( -name unpacked -o -name runtime -o -name node_modules \) -prune -o -type d \( -name previous -o -name '*.app' -o -path '*/desktop/app' \) -prune -print |
+		while IFS= read -r k_app; do
+			k_id=$(app_id_of "$k_app" || true)
+			if [ -n "$k_id" ] && { [ "$k_id" = "$(receipt_get desktop_app_id)" ] || [ "$k_id" = "${d_id:-}" ]; }; then continue; fi
+			if [ "$(uname -s)" = Darwin ]; then k_name=PrismaLens.app; else k_name=app; fi
+			if mkdir -p "$kept_root" && k_to=$(mktemp -d "$kept_root/app.XXXXXX") && mv "$k_app" "$k_to/$k_name"; then
+				warn "$k_app isn't the app this installer put there; it was moved to $k_to/$k_name"
+			else
+				warn "$k_app isn't the app this installer put there and couldn't be moved aside, so $1 is kept"
+				echo kept
+			fi
+		done && echo checked)
+	# Only a loop that ran to its end, keeping nothing, lets the folder go.
+	[ "$k_left" = checked ] || return 1
+	rm -rf "$1"
+}
+
 # A run killed between its two renames left the installer's old app in that run's staging
 # folder; put it back before anything else, so the launcher works even if no download does.
 desktop_recover() {
@@ -287,7 +310,7 @@ desktop_recover() {
 	for r_prev in "$r_stage"*/previous; do
 		[ "$(app_id_of "$r_prev")" = "$(receipt_get desktop_app_id)" ] || continue
 		mv "$r_prev" "$r_dest" || continue
-		rm -rf "$(dirname "$r_prev")"
+		discard "$(dirname "$r_prev")"
 		done_ "Put back the desktop app an interrupted install had moved aside"
 		return 0
 	done
@@ -373,11 +396,10 @@ remove_desktop() {
 		warn "The PrismaLens app started meanwhile, so $r_app stays; quit it and run this again to remove it."
 		return 1
 	fi
-	if app_ours "$r_app"; then
-		rm -rf "$r_app"
+	if app_ours "$r_app" && discard "$r_app"; then
 		done_ "Removed the desktop app $r_app"
 	elif [ -n "$r_app" ] && [ -e "$r_app" ]; then
-		warn "$r_app isn't the app this installer put there; it was left as it is"
+		warn "$r_app isn't the app this installer put there, so it wasn't removed"
 	fi
 	if entry_ours; then
 		rm -f "$desktop_file"
@@ -396,38 +418,39 @@ install_desktop() {
 		d_dest="$mac_app"
 		mkdir -p "$HOME/Applications"
 		d_stage=$(mktemp -d "$HOME/Applications/.prismalens-new.XXXXXX") || { why="couldn't write to $HOME/Applications"; return 1; }
-		ditto -x -k "$1" "$d_stage/unpacked" || { rm -rf "$d_stage"; why="couldn't unpack it"; return 1; }
+		ditto -x -k "$1" "$d_stage/unpacked" || { discard "$d_stage"; why="couldn't unpack it"; return 1; }
 		d_src=$(find "$d_stage/unpacked" -maxdepth 2 -name PrismaLens.app -type d | head -n 1)
 	else
 		d_dest="$data_root/desktop/app"
 		mkdir -p "$data_root/desktop"
 		d_stage=$(mktemp -d "$data_root/desktop/.new.XXXXXX") || { why="couldn't write to $data_root/desktop"; return 1; }
 		if command -v unzip >/dev/null 2>&1; then
-			unzip -q "$1" -d "$d_stage/unpacked" || { rm -rf "$d_stage"; why="couldn't unpack it"; return 1; }
+			unzip -q "$1" -d "$d_stage/unpacked" || { discard "$d_stage"; why="couldn't unpack it"; return 1; }
 		else
 			mkdir -p "$d_stage/unpacked"
-			bsdtar -xf "$1" -C "$d_stage/unpacked" || { rm -rf "$d_stage"; why="couldn't unpack it"; return 1; }
+			bsdtar -xf "$1" -C "$d_stage/unpacked" || { discard "$d_stage"; why="couldn't unpack it"; return 1; }
 		fi
 		d_src=$(find "$d_stage/unpacked" -mindepth 1 -maxdepth 1 -type d | head -n 1)
 		[ -z "$d_src" ] || [ -x "$d_src/prismalens" ] || d_src=
 	fi
-	[ -n "$d_src" ] || { rm -rf "$d_stage"; why="the archive doesn't hold the app"; return 1; }
+	[ -n "$d_src" ] || { discard "$d_stage"; why="the archive doesn't hold the app"; return 1; }
 	# Checked again here: another app can appear in this place while the zip downloads.
 	if [ -e "$d_dest" ] && ! app_ours "$d_dest"; then
-		rm -rf "$d_stage"
+		discard "$d_stage"
 		why="$d_dest isn't the app this installer put there; it was left as it is"
 		return 1
 	fi
 	d_id=$(new_install_id)
-	set_app_id "$d_src" "$d_id" || { rm -rf "$d_stage"; why="couldn't mark the app as this installer's"; return 1; }
-	[ ! -e "$d_dest" ] || mv "$d_dest" "$d_stage/previous" || { rm -rf "$d_stage"; why="couldn't move the old app aside"; return 1; }
+	set_app_id "$d_src" "$d_id" || { discard "$d_stage"; why="couldn't mark the app as this installer's"; return 1; }
+	[ ! -e "$d_dest" ] || mv "$d_dest" "$d_stage/previous" || { discard "$d_stage"; why="couldn't move the old app aside"; return 1; }
 	# What was moved aside is checked once more: an app that arrived after the check above goes
 	# back, or is kept where it is; staging is only deleted with the installer's own app in it.
 	if [ -e "$d_stage/previous" ] && [ "$(app_id_of "$d_stage/previous")" != "$(receipt_get desktop_app_id)" ]; then
-		rm -rf "$d_src"
 		if [ ! -e "$d_dest" ] && mv "$d_stage/previous" "$d_dest"; then
-			rm -rf "$d_stage"
+			discard "$d_stage"
 			why="$d_dest isn't the app this installer put there; it was left as it is"
+		elif discard "$d_stage"; then
+			why="$d_dest isn't the app this installer put there, and couldn't go back; it was moved aside, as said above"
 		else
 			why="$d_dest isn't the app this installer put there, and couldn't go back; it is kept in $d_stage/previous"
 		fi
@@ -438,11 +461,11 @@ install_desktop() {
 			why="couldn't move it into place at $d_dest, nor put the old app back; it is in $d_stage/previous, and the next install puts it back"
 			return 1
 		fi
-		rm -rf "$d_stage"
+		discard "$d_stage"
 		why="couldn't move it into place at $d_dest"
 		return 1
 	fi
-	rm -rf "$d_stage"
+	discard "$d_stage"
 	owned="$d_dest"
 	owned_id=$d_id
 	if [ "$platform" = darwin ]; then
@@ -453,6 +476,11 @@ install_desktop() {
 		return 0
 	fi
 	mkdir -p "$(dirname "$desktop_file")"
+	# Checked again here: another copy can register its entry while the zip downloads.
+	if { [ -e "$desktop_file" ] || [ -L "$desktop_file" ]; } && ! entry_ours; then
+		why="the app is in $d_dest, but $desktop_file now opens another copy of PrismaLens; it was left as it is"
+		return 1
+	fi
 	# printf, not echo: some shells' echo rewrites the backslashes Exec escapes with.
 	if ! {
 		printf '%s\n' "[Desktop Entry]" "Type=Application" "Name=PrismaLens" \
@@ -515,8 +543,7 @@ if [ "$action" = uninstall ]; then
 		done_ "Removed the PATH line from $rc"
 	fi
 	if [ -d "$data_root" ]; then
-		rm -rf "$data_root"
-		done_ "Removed $data_root"
+		if discard "$data_root"; then done_ "Removed $data_root"; else warn "$data_root was kept"; fi
 	fi
 	[ -n "$installed_bin$rc" ] || [ -d "$data_root" ] || warn "Nothing installed by this installer was found."
 	printf '\n  Your workspace is kept: %s\n  To delete it as well, run %spl reset%s first, or remove that folder.\n\n' \
@@ -543,7 +570,7 @@ command -v tar >/dev/null 2>&1 || fail "tar is required"
 desktop_recover
 
 staging=$(mktemp -d)
-trap 'rm -rf "$staging"' EXIT INT TERM
+trap 'discard "$staging"' EXIT INT TERM
 
 # The newest release with its archives attached. build-standalone-cli.yml builds them for
 # about 20 minutes after a release publishes, so fall back to the one before.
@@ -592,9 +619,9 @@ step "Installing to ${runtime_root}/${version}"
 tar -xzf "$staging/$archive" -C "$staging"
 [ -d "$staging/prismalens-${version}-${target}" ] || fail "Unexpected archive layout"
 mkdir -p "$runtime_root"
-rm -rf "${runtime_root:?}/${version}.new"
+discard "${runtime_root:?}/${version}.new"
 mv "$staging/prismalens-${version}-${target}" "$runtime_root/${version}.new"
-rm -rf "${runtime_root:?}/${version}"
+discard "${runtime_root:?}/${version}"
 mv "$runtime_root/${version}.new" "$runtime_root/${version}"
 
 mkdir -p "$bin_dir"
@@ -611,7 +638,7 @@ done
 for dir in "$runtime_root"/*; do
 	[ -d "$dir" ] || continue
 	v=${dir##*/}
-	[ "$v" = "$version" ] || [ "$v" = "$installed" ] || rm -rf "$dir"
+	[ "$v" = "$version" ] || [ "$v" = "$installed" ] || discard "$dir"
 done
 
 rc=$(receipt_get rc)
