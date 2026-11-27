@@ -173,9 +173,14 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		const button = document.createElement("button");
 		surface.appendChild(button);
 		document.body.appendChild(surface);
+		button.focus();
+		expect(document.activeElement).toBe(button);
 		press(button, "c");
-		surface.remove();
-		expect([...new Set(takeEarlyKeys().map((k) => k.k))]).toEqual(["c"]);
+		try {
+			expect([...new Set(takeEarlyKeys().map((k) => k.k))]).toEqual(["c"]);
+		} finally {
+			surface.remove();
+		}
 	});
 
 	it("keys pressed after mounting are handled once, not replayed", async () => {
