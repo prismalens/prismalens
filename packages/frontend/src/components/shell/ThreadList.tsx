@@ -531,6 +531,7 @@ export function ThreadList() {
 					onMoreNeeds={more}
 					activeTotal={activeTotal}
 					pages={feed.data?.pages.length}
+					hasMoreActive={feed.hasNextPage}
 					moving={held.moving}
 					needsAll={needsAllFor === filterKey}
 					onShowAllNeeds={() => setNeedsAllFor(filterKey)}

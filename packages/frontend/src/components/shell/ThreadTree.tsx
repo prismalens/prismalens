@@ -254,6 +254,8 @@ export interface TreeProps {
 	/** Feed pages loaded: a page that brings no Threads row still asks for the next. */
 	pages?: number;
 	onMoreActive?: () => void;
+	/** The feed holds another page: with no total, Show more stays, unnumbered, until the last. */
+	hasMoreActive?: boolean;
 	/** Every row open and the settled group shown: the design gallery's frames. */
 	expandAll?: boolean;
 	/** Rows not matching a filter are left out. */
@@ -285,6 +287,7 @@ export function ThreadTreeView({
 	activeTotal,
 	pages,
 	onMoreActive,
+	hasMoreActive,
 	expandAll = false,
 	filter,
 	threadsAction,
@@ -335,6 +338,8 @@ export function ThreadTreeView({
 	// Rows past the loaded pages count too, so "Show N more" stays until the last (#1101 cat 1.5).
 	const activeLeft =
 		Math.max(active.length, filter ? 0 : (activeTotal ?? 0)) - rowsShown;
+	const activeUncounted =
+		!filter && activeTotal === undefined && !!hasMoreActive;
 	// Settled rows sit on the feed's later pages: an open group loads until it can show its count (#1101 cat 1.5).
 	const settledWanted = Math.min(settledShown, model.settledCount);
 	const settledShort = settledOpen && model.settled.length < settledWanted;
@@ -428,9 +433,9 @@ export function ThreadTreeView({
 						.slice(0, expandAll ? undefined : activeDrawn)
 						.flatMap((n) => rows(n))
 				)}
-				{!expandAll && activeLeft > 0 && (
+				{!expandAll && (activeLeft > 0 || activeUncounted) && (
 					<MoreButton
-						n={activeLeft}
+						n={activeUncounted ? undefined : activeLeft}
 						onClick={() => {
 							setRowsShown((v) => v + 25);
 							if (active.length < rowsShown + 25) onMoreActive?.();
@@ -540,7 +545,8 @@ function MoreButton({
 	onClick,
 	testId,
 }: {
-	n: number;
+	/** Absent when the count is unknown. */
+	n?: number;
 	onClick: () => void;
 	testId: string;
 }) {
@@ -551,7 +557,7 @@ function MoreButton({
 			className="flex h-7 items-center rounded-control px-2.5 text-meta text-text-3 hover:bg-surface-2 hover:text-text-1"
 			data-testid={testId}
 		>
-			Show {n} more
+			{n === undefined ? "Show more" : `Show ${n} more`}
 		</button>
 	);
 }

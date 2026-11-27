@@ -122,6 +122,7 @@ function Feed({
 		currentId: null,
 		activeTotal: total,
 		pages: n,
+		hasMoreActive: n < pages.length,
 		onMoreActive: more,
 	});
 }
@@ -168,7 +169,24 @@ describe("Show more on the thread list (#1193 bar 17.5, 17.8)", () => {
 
 	it("keeps loading toward the rows asked for when the list has no total", async () => {
 		await draw([page(35, 0), page(35, 0, "settled"), page(35, 35)], undefined);
-		await showAll();
+		await act(async () => more()?.click());
+		for (let i = 0; i < 10 && feed.asked; i++)
+			await act(async () => feed.land());
 		expect(rows()).toBe(40);
+	});
+
+	it("keeps an unnumbered Show more while another page exists when the list has no total, until every row shows", async () => {
+		// Each page ends where Show more stops, so no loaded row is left to count.
+		await draw([page(15, 0), page(25, 15), page(25, 40)], undefined);
+		for (let i = 0; i < 30 && (more() || feed.asked); i++) {
+			await act(async () => more()?.click());
+			await act(async () => feed.land());
+		}
+		expect([rows(), more()]).toEqual([65, null]);
+	});
+
+	it("labels Show more without a count while the list has no total", async () => {
+		await draw([page(35, 0), page(35, 35)], undefined);
+		expect(more()?.textContent).toBe("Show more");
 	});
 });
