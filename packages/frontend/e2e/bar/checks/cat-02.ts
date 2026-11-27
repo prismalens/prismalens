@@ -57,6 +57,11 @@ export default defineChecks([
 			if (count === 0) {
 				fails.push("no idle unsettled threads with status Done found");
 			}
+			// Settle's code loads after the page's first content (c8b45fa46), so it can trail the rows.
+			if (count > 0)
+				await expect(activeSection.getByTestId("thread-settle").first())
+					.toBeAttached({ timeout: 30_000 })
+					.catch(() => undefined);
 
 			const evaluated = await doneRows.evaluateAll((els) =>
 				els.map((el) => {
@@ -424,8 +429,9 @@ export default defineChecks([
 				fails.push(`the row reads ${state}, not blocked`);
 			const wrap = page.getByTestId("thread-row-wrap").filter({ has: row });
 			const fix = wrap.getByTestId("row-fix");
+			// The fix is a lazy part loaded after first content: 10 s behind the row on the slow link.
 			const fixId = await fix
-				.getAttribute("data-fix", { timeout: 10_000 })
+				.getAttribute("data-fix", { timeout: 30_000 })
 				.catch(() => null);
 			if (fixId !== "needs.freeSpace")
 				fails.push(`the row offers ${fixId ?? "no fix"}, not Free space`);

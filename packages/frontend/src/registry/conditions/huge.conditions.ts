@@ -27,7 +27,7 @@ export const hugeDiff = define.condition({
 	ci: { debt: "climb" },
 	status: "active",
 	stage: {
-		run: "node scripts/fakes/huge-diff.mjs --url {url} --base 8dc349a12 --head 59c3bd39e --measure && node scripts/fakes/diff-turns.mjs --url {url} && pnpm --filter @prismalens/api fixture:pr-checks --url {url}",
+		run: "node scripts/fakes/huge-diff.mjs --url {url} --base 8dc349a12 --head 59c3bd39e --measure && node scripts/fakes/diff-turns.mjs --url {url} && pnpm --filter @prismalens/api fixture:pr-checks --url {url} --remote",
 		live: "the thread Review the integration branch, its Changes pane; the diff-turns thread's turn-end cards; the PR checks thread's Files tab; the incident thread with its own PR (#418) and a confirmed cause",
 	},
 	pairsWith: ["net.slow-link"],

@@ -33,10 +33,12 @@ async function rowOf(page: Page, id: string) {
 		await page
 			.getByTestId("thread-row")
 			.last()
-			.scrollIntoViewIfNeeded()
+			.scrollIntoViewIfNeeded({ timeout: 5_000 })
 			.catch(() => undefined);
 		const more = page.getByTestId("threads-show-more");
-		if (await more.isVisible()) await more.click();
+		// The button leaves once every row is shown, so a click can find it gone.
+		if (await more.isVisible())
+			await more.click({ timeout: 5_000 }).catch(() => undefined);
 		await page.waitForTimeout(800);
 	}
 	if ((await row.count()) === 0)
@@ -44,24 +46,38 @@ async function rowOf(page: Page, id: string) {
 			found: false,
 			state: "",
 			age: "",
+			clock: "",
 			label: `not among the ${await page.getByTestId("thread-row").count()} rows the sidebar loaded`,
 		};
-	await row.scrollIntoViewIfNeeded();
+	await row.scrollIntoViewIfNeeded({ timeout: 10_000 });
 	const wrap = page.getByTestId("thread-row-wrap").filter({ has: row });
 	return {
 		found: true,
-		state: (await row.getAttribute("data-state")) ?? "",
-		age: ((await wrap.getByTestId("row-age").textContent()) ?? "").trim(),
+		state: (await row.getAttribute("data-state", { timeout: 10_000 })) ?? "",
+		age: (
+			(await wrap.getByTestId("row-age").textContent({ timeout: 10_000 })) ?? ""
+		).trim(),
+		// The slot reads relative ("in 4h"); its `dateTime` is the instant, in the dock's clock form.
+		clock: await wrap.getByTestId("row-age").evaluate((el) => {
+			const at = el.getAttribute("datetime");
+			return at
+				? new Intl.DateTimeFormat(undefined, {
+						hour: "2-digit",
+						minute: "2-digit",
+						hour12: false,
+					}).format(new Date(at))
+				: "";
+		}),
 		label: (
 			(await wrap
 				.getByTestId("status-label")
 				.first()
-				.getAttribute("aria-label")
+				.getAttribute("aria-label", { timeout: 5_000 })
 				.catch(() => null)) ??
 			(await wrap
 				.locator('[role="img"][data-fact="status"]')
 				.first()
-				.getAttribute("aria-label")
+				.getAttribute("aria-label", { timeout: 5_000 })
 				.catch(() => null)) ??
 			""
 		).trim(),
@@ -337,13 +353,13 @@ export default defineChecks([
 			else if (row.state !== "limited")
 				fails.push(`the limit thread's row reads "${row.state}", not limited`);
 			if (!row.age) fails.push("the Limited row's slot shows no time");
-			else if (!dockText.includes(row.age))
+			else if (!row.clock || !dockText.includes(row.clock))
 				fails.push(
-					`row slot "${row.age}" is not the dock's time: "${dockText.slice(0, 160)}"`,
+					`row slot "${row.age}" (${row.clock || "no instant"}) is not the dock's time: "${dockText.slice(0, 160)}"`,
 				);
 			return verdict(
 				fails,
-				`the limit thread's row is ${row.state} with "${row.age}", the dock's reset time (the away notification is not checked here)`,
+				`the limit thread's row is ${row.state} with "${row.age}", at ${row.clock}, the dock's reset time (the away notification is not checked here)`,
 			);
 		},
 	},
@@ -471,6 +487,8 @@ export default defineChecks([
 				...settings,
 				agentsStartThreads: "allow",
 				children: Math.max(Number(settings.children ?? 0), 4),
+				// The sim seeds 11 running agent-started threads: the total cap must clear them too.
+				perTree: 50,
 			});
 			const fails: string[] = [];
 			try {

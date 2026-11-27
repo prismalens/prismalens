@@ -100,6 +100,8 @@ export function QuotePopover({
 			window.getSelection()?.removeAllRanges();
 		};
 		document.addEventListener("selectionchange", update);
+		// This part loads after the transcript: a selection made before then is read now (bar 6.7).
+		update();
 		const offKey = listenKeys(onKey, { target: document });
 		return () => {
 			cancelAnimationFrame(frame);

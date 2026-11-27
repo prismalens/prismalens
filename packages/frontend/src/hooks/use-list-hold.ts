@@ -59,8 +59,10 @@ export function useListHold(
 	const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const slideFrom = useRef<Map<string, number> | null>(null);
 	const latest = useRef(live);
-	// Until then, rows a Show more or an opened Settled brings join the held list below.
+	// Until then, rows a Show more or an opened Settled brings join the held list below;
+	// `asked` keeps that open until the hold ends, however slow or many the pages (#1193 bar 17.5).
 	const moreUntil = useRef(0);
+	const asked = useRef(false);
 	const [, redraw] = useReducer((n: number) => n + 1, 0);
 
 	const engaged = useCallback(() => {
@@ -108,7 +110,7 @@ export function useListHold(
 		),
 	);
 	const base = heldNow && own.size ? rebase(heldNow, live, own) : heldNow;
-	const tail = Date.now() < moreUntil.current;
+	const tail = asked.current || Date.now() < moreUntil.current;
 	const result: Held = base
 		? heldModel(live, base, tail)
 		: { model: live, moving: new Map(), pending: 0 };
@@ -123,7 +125,10 @@ export function useListHold(
 			for (const id of own) moved.delete(id);
 		}
 		if (held.current && tail) held.current = layoutOf(result.model);
-		if (!held.current) shown.current = layoutOf(live);
+		if (!held.current) {
+			shown.current = layoutOf(live);
+			asked.current = false;
+		}
 	});
 
 	useEffect(() => {
@@ -195,6 +200,7 @@ export function useListHold(
 
 	const expectMore = useCallback(() => {
 		moreUntil.current = Date.now() + OWN_MS;
+		asked.current = true;
 	}, []);
 	return { ...result, update: release, expectMore };
 }

@@ -530,6 +530,8 @@ export function ThreadList() {
 					onMoreActive={more}
 					onMoreNeeds={more}
 					activeTotal={activeTotal}
+					pages={feed.data?.pages.length}
+					hasMoreActive={feed.hasNextPage}
 					moving={held.moving}
 					needsAll={needsAllFor === filterKey}
 					onShowAllNeeds={() => setNeedsAllFor(filterKey)}
@@ -559,6 +561,11 @@ const HIDE_AGENTS_KEY = "pl.threads.hideAgentStarted";
 
 /** A click before the popover's code arrives opens it once it does. */
 let filterOpenOnLoad = false;
+const takeFilterOpen = () => {
+	const open = filterOpenOnLoad;
+	filterOpenOnLoad = false;
+	return open;
+};
 // The field loads when a rename starts.
 const RenameField = lazyPart(
 	() => import("./RenameField").then((m) => m.RenameField),
@@ -566,13 +573,12 @@ const RenameField = lazyPart(
 	{ now: true },
 );
 
-const FilterMenu = lazyPart(
+/** The sidebar's Filter: a stand-in trigger until the popover's code lands. */
+export const FilterMenu = lazyPart(
 	() =>
-		import("./ThreadFilters").then((m) => (props: FilterProps) => {
-			const startOpen = filterOpenOnLoad;
-			filterOpenOnLoad = false;
-			return <m.ThreadFilterButton {...props} startOpen={startOpen} />;
-		}),
+		import("./ThreadFilters").then((m) => (props: FilterProps) => (
+			<m.ThreadFilterButton {...props} takeOpen={takeFilterOpen} />
+		)),
 	(props: FilterProps) => (
 		<FilterTrigger
 			count={[props.value.state, props.value.pr].filter(Boolean).length}

@@ -12,9 +12,14 @@ on:
       - "scripts/artifact-budgets.json"
       - "scripts/lib/**"
       - "packages/@prismalens/agent-adapters/scripts/**"
-      # The archives install the packed tarball, so any dependency change can grow them (#1269).
+      # The archives ship every package's build and dependencies, so any of them can grow
+      # the file count; a source-only PR once took main over budget unseen (#1269).
       - "package.json"
-      - "packages/**/package.json"
+      - "packages/**"
+      - "!packages/**/*.test.*"
+      - "!packages/**/*.spec.*"
+      - "!packages/**/*.md"
+      - "!packages/frontend/e2e/**"
       - ".nvmrc"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"

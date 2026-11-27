@@ -342,6 +342,8 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 		let attempt = 0;
 		let stopped = false;
 		let disposed = false;
+		// Done closes the source at once; the frames it sent before done still apply (#1193 bar 16.12).
+		let finished = false;
 		// Frames wait, in order, for the schemas chunk; the stream's own control (close, stop,
 		// reconnect) never does. A frame from a closed source is dropped: the cursor resends it.
 		let queued: ((s: ThreadSchemas) => void)[] = [];
@@ -409,9 +411,10 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 				const raw = (m as MessageEvent).data;
 				alive.stop();
 				es.close();
-				stopped = true;
+				finished = true;
 				setConnection("idle");
 				withSchemas((s) => {
+					stopped = true;
 					if (disposed || source !== es) return;
 					const f = parse(s.DoneFrameSchema, raw);
 					if (f) store.applyDone(f);
@@ -436,7 +439,7 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 			es.onerror = () => {
 				alive.stop();
 				es.close();
-				if (stopped || source !== es) return;
+				if (stopped || finished || source !== es) return;
 				setConnection("reconnecting");
 				const wait =
 					RECONNECT_MS[Math.min(attempt, RECONNECT_MS.length - 1)] ?? 15_000;
@@ -445,7 +448,12 @@ export function useThreadWindow(id: string, opts: ThreadWindowOptions) {
 			};
 		};
 		const online = () => {
-			if (stopped || !source || source.readyState !== EventSource.CLOSED)
+			if (
+				stopped ||
+				finished ||
+				!source ||
+				source.readyState !== EventSource.CLOSED
+			)
 				return;
 			clearTimeout(timer);
 			connect();
