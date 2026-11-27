@@ -118,6 +118,7 @@ const server = createServer((req, res) => {
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
+writeFileSync(join(scratch, "userns-off"), "0\n");
 
 const env = (v) => ({
 	...process.env,
@@ -132,7 +133,11 @@ const env = (v) => ({
 				PRISMALENS_HOME: join(scratch, "data"),
 				PRISMALENS_INSTALL_BIN_DIR: join(scratch, "bin"),
 			}
-		: { XDG_DATA_HOME: join(home, ".local", "share") }),
+		: {
+				XDG_DATA_HOME: join(home, ".local", "share"),
+				// The smoke opens the app unsandboxed, so the launcher's AppArmor guard doesn't apply.
+				PRISMALENS_USERNS_SYSCTL: join(scratch, "userns-off"),
+			}),
 });
 // The installers print to stderr; capture it with the exit status.
 const runInstaller = (args, v = version) => {
@@ -175,11 +180,24 @@ const launcher = win
 		: join(home, ".local", "share", "applications", "prismalens.desktop");
 
 const first = await runInstaller([], older);
-check(first.code === 0, `${older} installed with its app (${first.code})`);
+check(first.code === 0, `${older} installed (${first.code})`);
+check(
+	first.text.includes("Desktop app installed"),
+	`${older}'s install added the app, not skipped it`,
+);
+// Both releases carry one app build; a file only the old copy has shows the upgrade replaced it.
+const installedApp = win
+	? join(scratch, "data", "desktop", older)
+	: mac
+		? join(home, "Applications", "PrismaLens.app", "Contents")
+		: join(home, ".local", "share", "prismalens", "desktop", "app");
+const oldMark = join(installedApp, "smoke-older-copy");
+writeFileSync(oldMark, older);
 const upgraded = await runInstaller([]);
 console.log(upgraded.text);
 check(upgraded.code === 0, `the upgrade to ${version} exited 0`);
 check(existsSync(launcher), `the launcher is at ${launcher}`);
+check(!existsSync(oldMark), `the upgrade replaced ${older}'s app`);
 check(upgraded.text.includes(launcher), "the final message names it");
 
 const smokeEnv = {
@@ -253,20 +271,15 @@ if (win) {
 		]);
 } else {
 	entryBefore = readFileSync(launcher, "utf8");
-	const exec = /^Exec="([^"]+)"$/m.exec(entryBefore)?.[1];
+	const exec = /^Exec=\/bin\/sh "([^"]+)"$/m.exec(entryBefore)?.[1];
 	const icon = /^Icon=(.+)$/m.exec(entryBefore)?.[1];
+	const desktopDir = join(home, ".local", "share", "prismalens", "desktop");
+	check(exec === join(desktopDir, "launch"), `the entry runs ${exec}`);
 	check(
-		exec ===
-			join(
-				home,
-				".local",
-				"share",
-				"prismalens",
-				"desktop",
-				"app",
-				"prismalens",
-			),
-		`the entry runs ${exec}`,
+		readFileSync(join(desktopDir, "launch"), "utf8").includes(
+			`exec '${join(desktopDir, "app", "prismalens")}' "$@"`,
+		),
+		"its launcher opens the installed app",
 	);
 	check(
 		!!icon && existsSync(icon) && statSync(icon).size > 1000,
@@ -274,7 +287,10 @@ if (win) {
 	);
 	// A CI runner's Chromium sandbox helper is not setuid; the smoke runs unsandboxed there.
 	open = () =>
-		spawn(exec, ["--no-sandbox"], { env: smokeEnv, stdio: "ignore" });
+		spawn("/bin/sh", [exec, "--no-sandbox"], {
+			env: smokeEnv,
+			stdio: "ignore",
+		});
 }
 
 open();

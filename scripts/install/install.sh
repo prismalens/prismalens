@@ -26,7 +26,6 @@ dir_path() {
 }
 data_root=$(dir_path "${PRISMALENS_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/prismalens}")
 runtime_root="${data_root}/runtime"
-kept_root="${data_root}-kept"
 receipt="${data_root}/receipt"
 bin_dir="${PRISMALENS_INSTALL_BIN_DIR:-$HOME/.local/bin}"
 marker="# Added by the PrismaLens installer"
@@ -38,6 +37,7 @@ xdg_data="${XDG_DATA_HOME:-$HOME/.local/share}"
 desktop_file="$xdg_data/applications/prismalens.desktop"
 mac_app="$HOME/Applications/PrismaLens.app"
 desktop_marker="X-PrismaLens-Installer=true"
+desktop_launch="$data_root/desktop/launch"
 # Test seams: where the kernel's user-namespace restriction and the app's AppArmor profile are read.
 userns_sysctl="${PRISMALENS_USERNS_SYSCTL:-/proc/sys/kernel/apparmor_restrict_unprivileged_userns}"
 apparmor_profile="${PRISMALENS_APPARMOR_PROFILE:-/etc/apparmor.d/prismalens}"
@@ -256,9 +256,10 @@ sum_of() { grep -E "(^|[[:space:]]|\*)$1\$" "$staging/SHA256SUMS" | cut -d' ' -f
 # Only the [Desktop Entry] group counts: an action's Exec isn't what the menu opens.
 entry_ours() {
 	[ -f "$desktop_file" ] && [ ! -L "$desktop_file" ] &&
-		E_WANT="Exec=$(desktop_exec "$data_root/desktop/app/prismalens")" E_MARK="$desktop_marker" awk '
+		E_LAUNCH="Exec=/bin/sh $(desktop_exec "$desktop_launch")" E_APP="Exec=$(desktop_exec "$data_root/desktop/app/prismalens")" \
+			E_MARK="$desktop_marker" awk '
 			/^\[/ { main = ($0 == "[Desktop Entry]"); next }
-			main && $0 == ENVIRON["E_WANT"] { exec_ok = 1 }
+			main && ($0 == ENVIRON["E_LAUNCH"] || $0 == ENVIRON["E_APP"]) { exec_ok = 1 }
 			main && $0 == ENVIRON["E_MARK"] { marked = 1 }
 			END { exit !(exec_ok && marked) }' "$desktop_file"
 }
@@ -294,57 +295,82 @@ app_ours() {
 # Where an app sits: desktop/app, a staging folder's previous, or a *.app bundle.
 is_app_slot() { case "$1" in */desktop/app | */previous | *.app) return 0 ;; esac; return 1; }
 
-# Leaves the app at $1 to be deleted when it carries the receipt's ID or this run's; moves anything
-# else there, a link included, to $kept_root and names it. 1 when that move fails.
-keep_foreign() {
-	if [ ! -L "$1" ]; then
-		k_id=$(app_id_of "$1" || true)
-		if [ -n "$k_id" ] && { [ "$k_id" = "$(receipt_get desktop_app_id)" ] || [ "$k_id" = "${d_id:-}" ]; }; then return 0; fi
-	fi
-	if [ "$(uname -s)" = Darwin ]; then k_name=PrismaLens.app; else k_name=app; fi
-	if mkdir -p "$kept_root" && k_to=$(mktemp -d "$kept_root/app.XXXXXX") && mv "$1" "$k_to/$k_name"; then
-		warn "$1 isn't the app this installer put there; it was moved to $k_to/$k_name"
-		return 0
-	fi
-	warn "$1 isn't the app this installer put there and couldn't be moved aside, so it was left as it is"
-	return 1
+# Whether the app at $1 is one this install unpacked: it sits where the receipt says or in this
+# installer's staging, and carries the receipt's ID or this run's. A copy elsewhere is the user's.
+app_mine() {
+	[ ! -L "$1" ] || return 1
+	case "$1" in
+	"$(receipt_get desktop_app)" | "$data_root"/desktop/.new.*/previous | "$HOME"/Applications/.prismalens-new.*/previous) ;;
+	*) return 1 ;;
+	esac
+	k_id=$(app_id_of "$1" || true)
+	[ -n "$k_id" ] && { [ "$k_id" = "$(receipt_get desktop_app_id)" ] || [ "$k_id" = "${d_id:-}" ]; }
 }
 
-# The only way this installer deletes a folder: every app in it goes through keep_foreign first,
-# and nothing is deleted unless all of it was looked through and kept. The CLI's runtime holds none.
-discard() {
-	[ -e "$1" ] || [ -L "$1" ] || return 0
-	case "$(dir_path "$kept_root" -P)/" in "$(dir_path "$1" -P)/"*)
-		warn "$kept_root, where apps that aren't the installer's are kept, is inside $1, so $1 was left as it is"
-		return 1
-		;;
-	esac
-	if is_app_slot "$1"; then
-		keep_foreign "$1" || return 1
-	else
-		k_list=$(mktemp) || return 1
-		# Below $1 only: $1 itself may be named like a pruned folder (PRISMALENS_HOME=.../runtime).
-		if ! find "$1" -mindepth 1 -maxdepth 3 \( -name unpacked -o -name runtime -o -name node_modules \) -prune -o \
-			\( -type d -o -type l \) \( -name previous -o -name '*.app' -o -path '*/desktop/app' \) -prune -print >"$k_list"; then
-			rm -f "$k_list"
-			warn "couldn't look through $1, so it was left as it is"
-			return 1
-		fi
-		k_failed=
-		while IFS= read -r k_app; do keep_foreign "$k_app" || k_failed=1; done <"$k_list"
-		rm -f "$k_list"
-		[ -z "$k_failed" ] || return 1
-	fi
-	[ -e "$1" ] || [ -L "$1" ] || return 0
-	# The install ID goes last, so a delete that stops partway leaves an app still marked as ours.
+# purge <path>: deletes it, the install ID last, so a delete that stops partway leaves an app still marked as ours.
+purge() {
 	find "$1" ! -type d ! -name .prismalens-install-id ! -path '*/Contents/MacOS/PrismaLens' -exec rm -f {} + || return 1
+	# Then the folders left empty; the ID goes only once every folder still there can be changed.
+	find "$1" -mindepth 1 -depth -type d -exec rmdir {} + 2>/dev/null || true
+	[ -w "$(dirname -- "$1")" ] && [ -z "$(find "$1" -type d ! -exec test -w {} \; -print)" ] || return 1
 	rm -rf "$1"
 }
 
+# delete_around <dir> <list>: deletes what's in <dir> except the paths in <list> and the folders
+# that hold them. A subshell per level keeps each level's loop variables its own.
+delete_around() {
+	a_st=0
+	for a_c in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+		[ -e "$a_c" ] || [ -L "$a_c" ] || continue
+		if grep -qxF -- "$a_c" "$2"; then
+			continue
+		elif A_P="$a_c/" awk 'index($0, ENVIRON["A_P"]) == 1 { f = 1 } END { exit !f }' "$2"; then
+			(delete_around "$a_c" "$2") || a_st=1
+		else
+			purge "$a_c" || a_st=1
+		fi
+	done
+	return "$a_st"
+}
+
+# The only way this installer deletes a folder. What it put there goes; an app it didn't (no
+# receipt ID nor this run's, or a link at an app's place) stays where it is with the folders
+# around it, and is named. 1 when something couldn't be looked through or deleted.
+discard() {
+	[ -e "$1" ] || [ -L "$1" ] || return 0
+	if is_app_slot "$1"; then
+		app_mine "$1" || { warn "$1 isn't the app this installer put there; it was left as it is"; return 0; }
+		purge "$1"
+		return
+	fi
+	k_list=$(mktemp) || return 1
+	# Below $1 only: $1 itself may be named like a pruned folder (PRISMALENS_HOME=.../runtime).
+	if ! find "$1" -mindepth 1 -maxdepth 3 \( -name unpacked -o -name runtime -o -name node_modules \) -prune -o \
+		\( -type d -o -type l \) \( -name previous -o -name '*.app' -o -path '*/desktop/app' \) -prune -print >"$k_list"; then
+		rm -f "$k_list"
+		warn "couldn't look through $1, so it was left as it is"
+		return 1
+	fi
+	k_left=$(mktemp) || { rm -f "$k_list"; return 1; }
+	while IFS= read -r k_app; do app_mine "$k_app" || printf '%s\n' "$k_app" >>"$k_left"; done <"$k_list"
+	rm -f "$k_list"
+	if [ ! -s "$k_left" ]; then
+		rm -f "$k_left"
+		purge "$1"
+		return
+	fi
+	while IFS= read -r k_app; do warn "$k_app isn't the app this installer put there; it and the folders that hold it were left as they are"; done <"$k_left"
+	k_st=0
+	(delete_around "$1" "$k_left") || k_st=1
+	rm -f "$k_left"
+	return "$k_st"
+}
+
 # A run killed between its two renames left the installer's old app in that run's staging
-# folder; put it back before anything else, so the launcher works even if no download does.
+# folder; put it back before anything else, so the launcher works even if no download does, and
+# uninstall finds it where the receipt says. uname, not $platform: uninstall runs before it is set.
 desktop_recover() {
-	if [ "$platform" = darwin ]; then
+	if [ "$(uname -s)" = Darwin ]; then
 		r_dest="$mac_app" r_stage="$HOME/Applications/.prismalens-new."
 	else
 		r_dest="$data_root/desktop/app" r_stage="$data_root/desktop/.new."
@@ -455,7 +481,7 @@ remove_desktop() {
 		rm -f "$desktop_file" || { warn "Couldn't remove the app menu entry $desktop_file; running this again retries."; return 1; }
 		done_ "Removed the app menu entry $desktop_file"
 	fi
-	rm -f "$data_root/desktop/apparmor-profile"
+	rm -f "$desktop_launch" "$data_root/desktop/apparmor-profile"
 	[ ! -e "$apparmor_profile" ] || warn "$apparmor_profile stays; it needs root to remove: sudo apparmor_parser -R $(sh_quote "$apparmor_profile") && sudo rm $(sh_quote "$apparmor_profile")"
 	return 0
 }
@@ -499,9 +525,8 @@ install_desktop() {
 		if [ ! -e "$d_dest" ] && mv "$d_stage/previous" "$d_dest"; then
 			discard "$d_stage"
 			why="$d_dest isn't the app this installer put there; it was left as it is"
-		elif discard "$d_stage"; then
-			why="$d_dest isn't the app this installer put there, and couldn't go back; it was moved aside, as said above"
 		else
+			discard "$d_stage" || true
 			why="$d_dest isn't the app this installer put there, and couldn't go back; it is kept in $d_stage/previous"
 		fi
 		return 1
@@ -530,17 +555,19 @@ install_desktop() {
 		launcher="Launchpad or Spotlight: PrismaLens (${d_dest})"
 		return 0
 	fi
+	write_launch "$d_dest/prismalens" || { why="the app is in $d_dest, but $desktop_launch couldn't be written"; return 1; }
 	mkdir -p "$(dirname "$desktop_file")"
 	# Checked again here: another copy can register its entry while the zip downloads.
 	if { [ -e "$desktop_file" ] || [ -L "$desktop_file" ]; } && ! entry_ours; then
 		why="the app is in $d_dest, but $desktop_file now opens another copy of PrismaLens; it was left as it is"
 		return 1
 	fi
-	# printf, not echo: some shells' echo rewrites the backslashes Exec escapes with.
+	# printf, not echo: some shells' echo rewrites the backslashes Exec escapes with. /bin/sh is
+	# argv[0] because GLib looks argv[0] up before it turns %% back into %, so a % path hid the entry.
 	if ! {
 		printf '%s\n' "[Desktop Entry]" "Type=Application" "Name=PrismaLens" \
 			"Comment=Investigate alerts with the coding agent you already use" \
-			"Exec=$(desktop_exec "$d_dest/prismalens")"
+			"Exec=/bin/sh $(desktop_exec "$desktop_launch")"
 		[ ! -f "$d_dest/resources/icon.png" ] || printf 'Icon=%s\n' "$(printf '%s' "$d_dest/resources/icon.png" | sed -e 's/\\/\\\\/g')"
 		printf '%s\n' "Terminal=false" "Categories=Development;" "StartupWMClass=PrismaLens" "$desktop_marker"
 	} >"$desktop_file"; then
@@ -556,7 +583,7 @@ install_desktop() {
 		>"$data_root/desktop/apparmor-profile" || true
 	if [ "$(cat "$userns_sysctl" 2>/dev/null)" = 1 ] && [ ! -e "$apparmor_profile" ]; then
 		sandbox_note="Ubuntu restricts the user namespaces the app's sandbox needs, so it opens once AppArmor allows it. Ubuntu's documented fix is a profile for the app; adding it needs root, once:
-      sudo install -m 644 $(sh_quote "$data_root/desktop/apparmor-profile") $(sh_quote "$apparmor_profile") && sudo apparmor_parser -r $(sh_quote "$apparmor_profile")
+      $(apparmor_command)
     (https://discourse.ubuntu.com/t/noble-numbat-release-notes/39890, Security Improvements)"
 	elif [ "$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null)" = 0 ]; then
 		sandbox_note="This system turns off the user namespaces the app's sandbox needs, so the app may not open; pl up opens PrismaLens in your browser instead."
@@ -576,15 +603,70 @@ rc=$rc
 desktop=$desktop
 desktop_app=$1
 desktop_app_id=$2
+desktop_version=$desktop_version
 installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
 	mv -f "$receipt.new" "$receipt"
+}
+
+# The one root step that lets the app's sandbox run under Ubuntu's user-namespace restriction.
+apparmor_command() {
+	printf 'sudo install -m 644 %s %s && sudo apparmor_parser -r %s' \
+		"$(sh_quote "$data_root/desktop/apparmor-profile")" "$(sh_quote "$apparmor_profile")" "$(sh_quote "$apparmor_profile")"
+}
+
+# write_launch <app binary>: what the menu entry runs. A menu entry can't say why an app didn't
+# open, so where AppArmor would stop the sandbox, the launcher says it and how to allow it.
+write_launch() {
+	l_msg="Ubuntu's AppArmor stops the PrismaLens sandbox until the app has a profile. Run this once in a terminal, then open PrismaLens again: $(apparmor_command)"
+	{
+		printf '%s\n' "#!/bin/sh" "# Written by the PrismaLens installer; the app menu entry runs it."
+		printf 'if [ "$(cat %s 2>/dev/null)" = 1 ] && [ ! -e %s ]; then\n' "$(sh_quote "$userns_sysctl")" "$(sh_quote "$apparmor_profile")"
+		printf '\tmsg=%s\n' "$(sh_quote "$l_msg")"
+		cat <<'LAUNCH'
+	printf '%s\n' "$msg" >&2
+	notify-send -a PrismaLens "PrismaLens can't open yet" "$msg" 2>/dev/null ||
+		zenity --error --text="$msg" 2>/dev/null || kdialog --error "$msg" 2>/dev/null || true
+	exit 1
+fi
+LAUNCH
+		printf 'exec %s "$@"\n' "$(sh_quote "$1")"
+	} >"$desktop_launch" || return 1
+	chmod 755 "$desktop_launch"
+}
+
+# One installer at a time per data root: two at once could each delete what the other put in place.
+# The lock is a folder beside the data root holding its installer's process ID; one whose process
+# is gone was left by a killed run and is taken over.
+lock_dir="${data_root}.lock"
+take_lock() {
+	mkdir -p "$(dirname -- "$lock_dir")"
+	if ! mkdir "$lock_dir" 2>/dev/null; then
+		l_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
+		if [ -z "$l_pid" ] || kill -0 "$l_pid" 2>/dev/null; then
+			fail "Another PrismaLens installer is running${l_pid:+ (process $l_pid)}; run this again once it finishes. Nothing was changed. If none is running, remove $lock_dir."
+		fi
+		rm -f "$lock_dir/pid"
+		rmdir "$lock_dir" 2>/dev/null || true
+		mkdir "$lock_dir" 2>/dev/null || fail "Another PrismaLens installer just started; run this again once it finishes. Nothing was changed."
+	fi
+	echo "$$" >"$lock_dir/pid"
+	lock_held=1
+	trap 'release_lock' EXIT
+	trap 'exit 130' INT TERM
+}
+release_lock() {
+	[ -n "${lock_held:-}" ] || return 0
+	rm -f "$lock_dir/pid"
+	rmdir "$lock_dir" 2>/dev/null || true
 }
 
 # --- uninstall --------------------------------------------------------------
 
 if [ "$action" = uninstall ]; then
 	banner uninstaller
+	take_lock
+	desktop_recover
 	if [ -n "$(receipt_get desktop_app)" ] && desktop_running "$(receipt_get desktop_app)"; then
 		fail "The PrismaLens app is running; quit it and run the uninstaller again. Nothing was removed."
 	fi
@@ -621,7 +703,7 @@ if [ "$action" = uninstall ]; then
 		elif case "$workspace/" in "$(dir_path "$data_root" -P)/"*) true ;; *) false ;; esac; then
 			warn "Your workspace is inside $data_root, so $data_root was left as it is"
 		elif discard "$data_root"; then
-			done_ "Removed $data_root"
+			if [ -e "$data_root" ]; then warn "$data_root stays, holding only what this installer didn't put there"; else done_ "Removed $data_root"; fi
 		else
 			warn "$data_root was kept"
 		fi
@@ -635,6 +717,7 @@ fi
 # --- install ----------------------------------------------------------------
 
 banner installer
+take_lock
 
 case "$(uname -s)" in
 Darwin) platform=darwin ;;
@@ -651,7 +734,7 @@ command -v tar >/dev/null 2>&1 || fail "tar is required"
 desktop_recover
 
 staging=$(mktemp -d)
-trap 'discard "$staging"' EXIT INT TERM
+trap 'discard "$staging"; release_lock' EXIT
 
 # The newest release with its archives attached. build-standalone-cli.yml builds them for
 # about 20 minutes after a release publishes, so fall back to the one before.
@@ -700,6 +783,13 @@ expected=$(sum_of "$archive")
 fetch_verified "$archive" "$expected" "$staging/$archive" "PrismaLens ${version} for ${target}" ||
 	fail "Couldn't install ${archive} from $(hosts_tried); nothing was installed. ${tried}"
 
+# A pl or prismalens in the bin dir that this installer didn't write is someone's own: never replaced.
+for name in pl prismalens; do
+	if [ -L "$bin_dir/$name" ] || { [ -e "$bin_dir/$name" ] && ! grep -q "$marker" "$bin_dir/$name" 2>/dev/null; }; then
+		fail "$bin_dir/$name isn't a wrapper this installer wrote, so nothing was installed; it was left as it is. Set PRISMALENS_INSTALL_BIN_DIR to install pl somewhere else."
+	fi
+done
+
 step "Installing to ${runtime_root}/${version}"
 tar -xzf "$staging/$archive" -C "$staging"
 [ -d "$staging/prismalens-${version}-${target}" ] || fail "Unexpected archive layout"
@@ -711,12 +801,13 @@ mv "$runtime_root/${version}.new" "$runtime_root/${version}"
 
 mkdir -p "$bin_dir"
 for name in pl prismalens; do
-	cat >"$bin_dir/$name" <<EOF
+	cat >"$bin_dir/$name.new" <<EOF
 #!/bin/sh
 $marker
 exec "$runtime_root/$version/bin/$name" "\$@"
 EOF
-	chmod 755 "$bin_dir/$name"
+	chmod 755 "$bin_dir/$name.new"
+	mv -f "$bin_dir/$name.new" "$bin_dir/$name"
 done
 
 # Keep this version and the one it replaced, for rollback.
@@ -752,12 +843,14 @@ esac
 desktop=$(receipt_get desktop)
 owned=$(receipt_get desktop_app)
 owned_id=$(receipt_get desktop_app_id)
+desktop_version=$(receipt_get desktop_version)
 launcher=
 sandbox_note=
 if [ "$want_desktop" = 0 ]; then
 	desktop=0
 	owned=
 	owned_id=
+	desktop_version=
 fi
 [ "$want_desktop" != 1 ] || desktop=1
 skip=$(desktop_skip)
@@ -766,10 +859,11 @@ if [ -n "$skip" ]; then
 	step "Desktop app skipped: $skip"
 elif [ -z "$app_asset" ] || [ -z "$(sum_of "$app_asset")" ]; then
 	warn "PrismaLens ${version} has no desktop app for ${target}, so only the CLI was installed."
+elif [ -n "$owned" ] && desktop_running "$owned"; then
+	# Replacing a running app's files under it breaks the helpers it starts later.
+	warn "The PrismaLens app is running, so it stays at ${desktop_version:-the version it has}; quit it and run the installer again to update it."
 else
 	why=
-	was_running=false
-	[ -z "$owned" ] || ! desktop_running "$owned" || was_running=true
 	if fetch_verified "$app_asset" "$(sum_of "$app_asset")" "$staging/$app_asset" "the PrismaLens ${version} desktop app"; then
 		# One ID for every copy this install unpacks, recorded with the app's path before it's
 		# unpacked, so a copy a killed run leaves is still the installer's.
@@ -781,8 +875,8 @@ else
 	fi
 	if [ -n "$launcher" ]; then
 		desktop=1
+		desktop_version=$version
 		done_ "Desktop app installed"
-		! "$was_running" || warn "The PrismaLens app is still running the version it started with; quit it and open it again for ${version}."
 	else
 		warn "The desktop app wasn't installed: ${why}. The CLI is; run the installer again for the app."
 	fi

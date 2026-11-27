@@ -81,7 +81,8 @@ export function desktopEntry(execPath: string, icon: string | null): string {
 		"Type=Application",
 		"Name=PrismaLens",
 		"Comment=Investigate alerts with the coding agent you already use",
-		`Exec=${desktopExecValue(execPath)}`,
+		// env is argv[0]: GLib looks argv[0] up before it turns %% back into %, so a % path hid the entry.
+		`Exec=env ${desktopExecValue(execPath)}`,
 		...(icon ? [`Icon=${icon.replace(/\\/g, "\\\\")}`] : []),
 		"Terminal=false",
 		"Categories=Development;",
@@ -91,7 +92,7 @@ export function desktopEntry(execPath: string, icon: string | null): string {
 	].join("\n");
 }
 
-/** The program an entry's Exec line runs: the spec's escapes undone, quoted or not. */
+/** The program an entry's Exec line runs, past the env or /bin/sh that starts it; the spec's escapes undone. */
 export function desktopEntryExec(text: string): string | null {
 	const raw = /^Exec=(.*)$/m.exec(text)?.[1]?.trim();
 	if (!raw) return null;
@@ -100,17 +101,27 @@ export function desktopEntryExec(text: string): string | null {
 			c === "s" ? " " : c === "\\" ? "\\" : `\\${c}`,
 		)
 		.replace(/%%/g, "%");
-	if (!line.startsWith('"')) return line.split(/\s+/)[0] ?? null;
-	let out = "";
-	for (let i = 1; i < line.length; i++) {
-		const c = line[i];
-		if (c === '"') return out;
-		if (c === "\\" && i + 1 < line.length) {
+	const args: string[] = [];
+	let i = 0;
+	while (i < line.length) {
+		if (/\s/.test(line[i] ?? "")) {
 			i++;
-			out += line[i];
-		} else out += c;
+			continue;
+		}
+		let arg = "";
+		if (line[i] === '"') {
+			for (i++; i < line.length && line[i] !== '"'; i++) {
+				if (line[i] === "\\" && i + 1 < line.length) i++;
+				arg += line[i];
+			}
+			i++;
+		} else {
+			for (; i < line.length && !/\s/.test(line[i] ?? ""); i++) arg += line[i];
+		}
+		args.push(arg);
 	}
-	return null;
+	const starter = ["env", "/usr/bin/env", "/bin/sh"].includes(args[0] ?? "");
+	return (starter ? args[1] : args[0]) ?? null;
 }
 
 const samePath = (a: string, b: string, platform: NodeJS.Platform) =>
@@ -190,6 +201,28 @@ export function planLauncher(
 		return { kind: "offer-move" };
 	}
 	return { kind: "none", reason: `no launcher on ${env.platform}` };
+}
+
+/**
+ * Receipts that may name this copy: the one in `dataDir`, then the one in the data root the copy
+ * sits in (<root>/desktop/app on Linux, <root>\desktop\<version> on Windows), which a PRISMALENS_HOME
+ * given only to the installer moves. A macOS app sits in ~/Applications, so it has only the first.
+ */
+export function receiptPaths(
+	platform: NodeJS.Platform,
+	execPath: string,
+	dataDir: string,
+): string[] {
+	const p = platform === "win32" ? win32 : posix;
+	const paths = [p.join(dataDir, "receipt")];
+	const desktop = p.dirname(p.dirname(execPath));
+	const inRoot =
+		p.basename(desktop) === "desktop" &&
+		(platform === "win32" ||
+			(platform === "linux" && p.basename(p.dirname(execPath)) === "app"));
+	const own = p.join(p.dirname(desktop), "receipt");
+	if (inRoot && own !== paths[0]) paths.push(own);
+	return paths;
 }
 
 /**

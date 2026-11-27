@@ -22,6 +22,7 @@ import {
 	resolveUpdateChannel,
 	appPackageInstalled,
 	desktopAppHint,
+	desktopRollbackNote,
 	upgradeArgv,
 	upgradeEnv,
 } from "./upgrade.js";
@@ -314,5 +315,33 @@ describe("desktopAppHint", () => {
 		expect(desktopAppHint("version=0.5.7\r\ndesktop=1\r\n", rerun)).toBe(null);
 		expect(desktopAppHint("version=0.5.7\ndesktop=0\n", rerun)).toBe(null);
 		expect(desktopAppHint(null, rerun)).toBe(null);
+	});
+	it("says when the app the installer recorded is older than the CLI, or gone", () => {
+		const there = () => true;
+		const gone = () => false;
+		const stale = "version=0.5.7\ndesktop=1\ndesktop_app=/h/app\ndesktop_version=0.5.6\n";
+		expect(desktopAppHint(stale, rerun, there)).toBe(
+			`The desktop app is still 0.5.6 beside PrismaLens 0.5.7. To update it, quit it and run the installer again: ${rerun}`,
+		);
+		const current = "version=0.5.7\r\ndesktop=1\r\ndesktop_app=/h/app\r\ndesktop_version=0.5.7\r\n";
+		expect(desktopAppHint(current, rerun, gone)).toBe(
+			`The desktop app isn't at /h/app any more. To put it back, run the installer again: ${rerun}`,
+		);
+		expect(desktopAppHint(current, rerun, there)).toBe(null);
+	});
+});
+
+describe("desktopRollbackNote", () => {
+	const rerun = "curl -fsSL https://prismalens.io/install.sh | sh -s -- --version 0.5.6";
+	it("says the app stayed at the version the rollback undid, and how to match it", () => {
+		const receipt = "version=0.5.6\ndesktop=1\ndesktop_app=/h/app\ndesktop_version=0.5.7\n";
+		expect(desktopRollbackNote(receipt, "0.5.6", rerun)).toBe(
+			`The desktop app is still 0.5.7, and opening it would migrate the restored database again. Keep it closed and run: ${rerun}`,
+		);
+	});
+	it("stays quiet when the app already matches, was never installed, or there is no receipt", () => {
+		expect(desktopRollbackNote("version=0.5.6\ndesktop=1\ndesktop_version=0.5.6\n", "0.5.6", rerun)).toBe(null);
+		expect(desktopRollbackNote("version=0.5.6\ndesktop=0\n", "0.5.6", rerun)).toBe(null);
+		expect(desktopRollbackNote(null, "0.5.6", rerun)).toBe(null);
 	});
 });

@@ -27,7 +27,6 @@ $receipt = Join-Path $dataRoot "receipt"
 $binDir = if ($env:PRISMALENS_INSTALL_BIN_DIR) { $env:PRISMALENS_INSTALL_BIN_DIR } else { Join-Path $dataRoot "bin" }
 $marker = "rem Added by the PrismaLens installer"
 $desktopRoot = Join-Path $dataRoot "desktop"
-$keptRoot = "$dataRoot-kept"
 # The ID every app folder this installer unpacks carries; the receipt keeps it as desktop_app_id.
 $ownId = ""
 $desktopAsset = "PrismaLens-Windows-X64-unsigned.zip"
@@ -113,7 +112,7 @@ function Fail([string]$m) { [Console]::Error.WriteLine("  ${errC}${cross}${r} $m
 # System32's curl.exe (Windows 10 and later) shows a progress bar and is far faster than
 # Invoke-WebRequest in Windows PowerShell 5.1, which draws none here.
 $curl = Join-Path $env:SystemRoot "System32\curl.exe"
-if (-not (Test-Path $curl)) { $curl = $null }
+if (-not (Test-Path -LiteralPath $curl)) { $curl = $null }
 
 # -Stall: seconds without a byte before curl gives up, so a silent mirror can't hold the install.
 function Fetch([string]$Url, [string]$OutFile, [switch]$Progress, [int]$Stall = 0) {
@@ -121,8 +120,8 @@ function Fetch([string]$Url, [string]$OutFile, [switch]$Progress, [int]$Stall = 
 		$p = $Url.Substring(7)
 		if ($p -match '^/([a-zA-Z]:/.*)') { $p = $matches[1] }
 		$p = $p.Replace('/', '\')
-		if (-not (Test-Path $p)) { return $false }
-		Copy-Item -Path $p -Destination $OutFile -Force
+		if (-not (Test-Path -LiteralPath $p)) { return $false }
+		Copy-Item -LiteralPath $p -Destination $OutFile -Force
 		return $true
 	}
 	if ($curl) {
@@ -163,7 +162,7 @@ function Fetch-Sums([string]$Ver, [string]$OutFile) { Fetch "$sumsBase/v$Ver/SHA
 
 function Read-Receipt {
 	$h = @{}
-	if (Test-Path $receipt) {
+	if (Test-Path -LiteralPath $receipt) {
 		foreach ($line in Get-Content -LiteralPath $receipt -Encoding UTF8) {
 			$i = $line.IndexOf("=")
 			if ($i -gt 0) { $h[$line.Substring(0, $i)] = $line.Substring($i + 1) }
@@ -195,7 +194,7 @@ function Fetch-Verified([string]$Name, [string]$Expected, [string]$OutFile, [str
 		if (-not (Fetch $url $OutFile -Progress -Stall $stall)) { $tried += "${h}: download failed"; continue }
 		$mb = "{0:N1} MB" -f ((Get-Item $OutFile).Length / 1MB)
 		Step "Verifying $mb against SHA256SUMS from $(Base-Host $sumsBase)"
-		$actual = (Get-FileHash -Path $OutFile -Algorithm SHA256).Hash.ToLower()
+		$actual = (Get-FileHash -LiteralPath $OutFile -Algorithm SHA256).Hash.ToLower()
 		if ($actual -eq $Expected) { return "" }
 		$tried += "${h}: Checksum mismatch"
 	}
@@ -219,6 +218,12 @@ function Get-LongPath([string]$Path) {
 
 # Whether $Path is in a copy this install unpacked: inside its desktop folder (the separator keeps
 # desktop-other\ out), in a folder that carries its ID. A folder someone else put there doesn't.
+# A folder this install unpacked: in desktop\, named as the installer names them, carrying its ID.
+function Test-OwnFolder([string]$Dir) {
+	[bool]($ownId -and (Split-Path -Parent (Get-LongPath $Dir)) -eq (Get-LongPath $desktopRoot) -and
+		(Split-Path -Leaf $Dir) -match '^(\d+\.\d+\.\d+(\.old-[0-9a-f]{8})?|\.new-[0-9a-f]{8})$' -and (Get-InstallId $Dir) -eq $ownId)
+}
+
 function Test-Ours([string]$Path) {
 	[bool]($Path -and $ownId -and (Get-LongPath $Path).StartsWith("$(Get-LongPath $desktopRoot)\", [StringComparison]::OrdinalIgnoreCase) -and
 		(Get-InstallId (Split-Path -Parent $Path)) -eq $ownId)
@@ -254,36 +259,31 @@ function Get-InstallId([string]$Dir) {
 	return ""
 }
 
-# The only way this installer deletes a folder. An app folder (a folder in desktop\) in it that
-# doesn't carry $ownId is moved to $keptRoot and named instead. False when that fails, or a file in
-# it is open: it is renamed before it's deleted, so a running copy is never half removed.
-function Remove-Owned([string]$Path) {
+# The only way this installer deletes a folder. What it put there goes; an app folder (a folder in
+# desktop\) that doesn't carry $ownId stays where it is with the folders that hold it, and is named.
+# False when something of the installer's can't go: each folder is renamed before it's deleted, so
+# a running copy is never half removed.
+function Remove-Owned([string]$Path, [switch]$Quiet) {
 	$script:ownedLeft = ""
 	if (-not (Test-Path -LiteralPath $Path)) { return $true }
 	$long = Get-LongPath $Path
-	if ("$(Get-LongPath $keptRoot)\".StartsWith("$long\", [StringComparison]::OrdinalIgnoreCase)) {
-		Warn "$keptRoot, where apps that aren't the installer's are kept, is inside $Path, so $Path was left as it is"
-		return $false
-	}
 	$root = Get-LongPath $desktopRoot
 	$apps = @()
 	if ((Split-Path -Parent $long) -eq $root) { $apps = @($long) }
 	elseif ("$root\".StartsWith("$long\", [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $root)) {
 		$apps = @(Get-ChildItem -LiteralPath $root -Directory -Force | ForEach-Object { $_.FullName })
 	}
-	foreach ($a in $apps) {
-		if ($ownId -and (Get-InstallId $a) -eq $ownId) { continue }
-		$to = Join-Path $keptRoot ((Split-Path -Leaf $a) + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
-		try {
-			New-Item -ItemType Directory -Path $keptRoot -Force | Out-Null
-			Move-Item -LiteralPath $a -Destination $to -ErrorAction Stop
-		} catch {
-			Warn "$a isn't the app this installer put there and couldn't be moved aside, so $Path is kept"
-			return $false
+	$foreign = @($apps | Where-Object { -not (Test-OwnFolder $_) })
+	if (-not $Quiet) { foreach ($a in $foreign) { Warn "$a isn't the app this installer put there; it and the folders that hold it were left as they are" } }
+	if ($foreign -contains $long) { return $true }
+	if ($foreign.Count -gt 0) {
+		$ok = $true
+		foreach ($c in @(Get-ChildItem -LiteralPath $Path -Force)) {
+			if ($foreign -contains $c.FullName) { continue }
+			if (-not (Remove-Owned $c.FullName -Quiet)) { $ok = $false }
 		}
-		Warn "$a isn't the app this installer put there; it was moved to $to"
+		return $ok
 	}
-	if (-not (Test-Path -LiteralPath $Path)) { return $true }
 	$trash = "$Path.old-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
 	# A just-quit app's helpers, or a scanner, can hold a file for a moment after its last window closes.
 	for ($try = 1; $true; $try++) {
@@ -293,11 +293,18 @@ function Remove-Owned([string]$Path) {
 		}
 	}
 	# The install ID goes last, and a partial delete is put back at $Path, so what's left is still ours.
-	# Only app folders carry an ID: the runtime's thousands of files go in one Remove-Item below.
+	# Only app folders carry an ID: the runtime's thousands of files go in one Remove-Item each.
 	$below = @($trash, (Join-Path $trash "desktop") | ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory -Force -ErrorAction SilentlyContinue } | ForEach-Object { $_.FullName })
 	$marked = @(@($trash) + $below |
 		Where-Object { Test-Path -LiteralPath (Join-Path $_ ".prismalens-install-id") -PathType Leaf })
-	$left = @($marked | ForEach-Object { Get-DeletableFiles $_ } | Where-Object { Remove-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue; Test-Path -LiteralPath $_ })
+	# First each app's contents but its ID, deepest first; then all else beside the apps; then the IDs.
+	$left = @($marked | ForEach-Object { Get-AppContents $_ } | Where-Object { -not (Remove-OneItem $_) })
+	if (-not $left) {
+		$holders = @($trash, (Join-Path $trash "desktop"))
+		$left = @($holders | ForEach-Object { Get-ChildItem -LiteralPath $_ -Force -ErrorAction SilentlyContinue } |
+			Where-Object { $_.Name -ne ".prismalens-install-id" -and ($marked + $holders) -notcontains $_.FullName } |
+			Where-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue; Test-Path -LiteralPath $_.FullName })
+	}
 	if (-not $left) { Remove-Item -LiteralPath $trash -Recurse -Force -ErrorAction SilentlyContinue }
 	if (Test-Path -LiteralPath $trash) {
 		try { Rename-Item -LiteralPath $trash -NewName (Split-Path $Path -Leaf) -ErrorAction Stop; $trash = $Path } catch {}
@@ -308,18 +315,30 @@ function Remove-Owned([string]$Path) {
 	return $true
 }
 
-# The files under $Dir but its install IDs, not looking through links: Remove-Owned deletes these first.
-function Get-DeletableFiles([string]$Dir) {
+# What's under $Dir but its install IDs, each folder after its contents; a link is listed, not followed.
+function Get-AppContents([string]$Dir) {
 	foreach ($i in @(Get-ChildItem -LiteralPath $Dir -Force -ErrorAction SilentlyContinue)) {
-		if ($i.PSIsContainer -and -not ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { Get-DeletableFiles $i.FullName }
-		elseif (-not $i.PSIsContainer -and $i.Name -ne ".prismalens-install-id") { $i.FullName }
+		if ($i.PSIsContainer -and -not ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { Get-AppContents $i.FullName; $i.FullName }
+		elseif ($i.Name -ne ".prismalens-install-id") { $i.FullName }
 	}
+}
+
+# Deletes one file, empty folder or link (never what a link points to). True when it's gone.
+function Remove-OneItem([string]$Path) {
+	$i = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+	if ($i) {
+		try {
+			if ($i.PSIsContainer -and ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { [IO.Directory]::Delete($Path) }
+			else { Remove-Item -LiteralPath $Path -Force -ErrorAction Stop }
+		} catch {}
+	}
+	-not (Test-Path -LiteralPath $Path)
 }
 
 # Removes the shortcut and the app this installer made, and nothing else.
 function Remove-Desktop {
 	if (Get-DesktopProcesses) { Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run this again. Nothing was removed." }
-	$hadApp = Test-Path $desktopRoot
+	$hadApp = Test-Path -LiteralPath $desktopRoot
 	# Judged before the app goes: a shortcut is the installer's when its target carries the ID.
 	$ownShortcut = Test-Ours (Get-ShortcutTarget $shortcut)
 	if ($hadApp -and -not (Remove-Owned $desktopRoot)) {
@@ -341,23 +360,23 @@ function Install-Desktop([string]$ZipFile, [string]$InstallId) {
 	New-Item -ItemType Directory -Path $unpacked -Force | Out-Null
 	# Marked before it's filled, so even an interrupted unpack is one this installer can delete.
 	# The app reads this ID beside its exe to tell it is the copy the receipt names.
-	try { Set-Content -Path (Join-Path $unpacked ".prismalens-install-id") -Encoding ASCII -Value $InstallId -ErrorAction Stop } catch {
+	try { Set-Content -LiteralPath (Join-Path $unpacked ".prismalens-install-id") -Encoding ASCII -Value $InstallId -ErrorAction Stop } catch {
 		Remove-Item -LiteralPath $unpacked -Force -ErrorAction SilentlyContinue
 		throw "couldn't mark the app as this installer's: $_"
 	}
 	$out = & (Join-Path $env:SystemRoot "System32\tar.exe") -xf $ZipFile -C $unpacked --strip-components 1 2>&1
 	if ($LASTEXITCODE -ne 0) { [void](Remove-Owned $unpacked); throw "couldn't unpack it: $(($out | Out-String).Trim())" }
-	if (-not (Test-Path (Join-Path $unpacked "PrismaLens.exe"))) { [void](Remove-Owned $unpacked); throw "the archive has no PrismaLens.exe" }
+	if (-not (Test-Path -LiteralPath (Join-Path $unpacked "PrismaLens.exe"))) { [void](Remove-Owned $unpacked); throw "the archive has no PrismaLens.exe" }
 	# Checked here, after the download: a folder someone else put at $dest is never replaced.
-	if ((Test-Path $dest) -and (Get-InstallId $dest) -ne $InstallId) {
+	if ((Test-Path -LiteralPath $dest) -and (Get-InstallId $dest) -ne $InstallId) {
 		[void](Remove-Owned $unpacked)
 		throw "$dest isn't the app this installer put there; it was left as it is"
 	}
 	# A same-version reinstall keeps the current copy aside until the new one is in place.
 	$backup = ""
-	if (Test-Path $dest) {
+	if (Test-Path -LiteralPath $dest) {
 		$backup = "$dest.old-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
-		try { Rename-Item -Path $dest -NewName (Split-Path $backup -Leaf) -ErrorAction Stop } catch {
+		try { Rename-Item -LiteralPath $dest -NewName (Split-Path $backup -Leaf) -ErrorAction Stop } catch {
 			[void](Remove-Owned $unpacked)
 			throw "PrismaLens $Version is running from $dest; quit it and run the installer again"
 		}
@@ -365,7 +384,7 @@ function Install-Desktop([string]$ZipFile, [string]$InstallId) {
 	try {
 		# Test seam: the one failure a test can't otherwise cause between the two renames.
 		if ($env:PRISMALENS_TEST_FAIL_DESKTOP_MOVE -eq "1") { throw "the test made the move fail" }
-		Move-Item -Path $unpacked -Destination $dest -ErrorAction Stop
+		Move-Item -LiteralPath $unpacked -Destination $dest -ErrorAction Stop
 		# Into a folder that appeared at $dest, Move-Item nests the copy: only the copy itself there counts.
 		$nested = Join-Path $dest (Split-Path -Leaf $unpacked)
 		if ((Test-Path -LiteralPath $nested) -or (Get-InstallId $dest) -ne $InstallId) {
@@ -376,7 +395,7 @@ function Install-Desktop([string]$ZipFile, [string]$InstallId) {
 		$why = "$_"
 		[void](Remove-Owned $unpacked)
 		if ($backup) {
-			try { Rename-Item -Path $backup -NewName (Split-Path $dest -Leaf) -ErrorAction Stop } catch { throw "couldn't move it into place ($why), nor put the old copy back; it is in $backup" }
+			try { Rename-Item -LiteralPath $backup -NewName (Split-Path $dest -Leaf) -ErrorAction Stop } catch { throw "couldn't move it into place ($why), nor put the old copy back; it is in $backup" }
 		}
 		throw "couldn't move it into place: $why"
 	}
@@ -396,7 +415,7 @@ function Install-Desktop([string]$ZipFile, [string]$InstallId) {
 	$link.Description = "PrismaLens desktop app"
 	$link.Save()
 	# Older versions and interrupted unpacks go once nothing runs from them; a running one is pruned by a later install.
-	Get-ChildItem $desktopRoot -Directory | Where-Object { $_.Name -ne $Version } |
+	Get-ChildItem -LiteralPath $desktopRoot -Directory | Where-Object { $_.Name -ne $Version } |
 		ForEach-Object { [void](Remove-Owned $_.FullName) }
 	return $shortcut
 }
@@ -406,8 +425,27 @@ function Set-UserPath([string]$v) { [Environment]::SetEnvironmentVariable("Path"
 
 # --- uninstall --------------------------------------------------------------
 
+# One installer at a time per data root: two at once could each delete what the other put in place.
+# The lock is a file beside the data root held open with no sharing. Windows lets go of it when the
+# process ends; under irm | iex the session outlives the run, so every way out lets go of it too.
+$lockFile = "$dataRoot.install-lock"
+function Lock-Install {
+	New-Item -ItemType Directory -Path (Split-Path $lockFile) -Force | Out-Null
+	try { $script:lock = [IO.File]::Open($lockFile, "OpenOrCreate", "ReadWrite", "None") } catch {
+		Fail "Another PrismaLens installer is running, or $lockFile can't be opened; run this again once it finishes. Nothing was changed."
+	}
+}
+function Unlock-Install {
+	if (-not $script:lock) { return }
+	$script:lock.Dispose()
+	$script:lock = $null
+	Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+}
+trap { Unlock-Install; break }
+
 if ($Uninstall) {
 	Banner "uninstaller"
+	Lock-Install
 	$rec = Read-Receipt
 	$ownId = $rec["desktop_app_id"]
 	if (Get-DesktopProcesses) { Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run this again. Nothing was removed." }
@@ -416,7 +454,7 @@ if ($Uninstall) {
 	Remove-Desktop
 	foreach ($name in "pl.cmd", "prismalens.cmd") {
 		$f = Join-Path $dir $name
-		if ((Test-Path $f) -and (Select-String -Path $f -SimpleMatch $marker -Quiet)) {
+		if ((Test-Path -LiteralPath $f) -and (Select-String -LiteralPath $f -SimpleMatch $marker -Quiet)) {
 			Remove-Item $f -Force
 			Done "Removed $f"
 		}
@@ -433,18 +471,36 @@ if ($Uninstall) {
 		} elseif ("$(Get-LongPath $ws)\".StartsWith("$(Get-LongPath $dataRoot)\", [StringComparison]::OrdinalIgnoreCase)) {
 			Warn "Your workspace is inside $dataRoot, so $dataRoot was left as it is"
 		} elseif (Remove-Owned $dataRoot) {
-			Done "Removed $dataRoot"
+			if (Test-Path -LiteralPath $dataRoot) { Warn "$dataRoot stays, holding only what this installer didn't put there" } else { Done "Removed $dataRoot" }
 		} else {
 			Warn "$dataRoot was kept: a file in it is open, or an app in it couldn't be moved aside"
 		}
 	}
 	[Console]::Error.WriteLine("`n  Your workspace is kept: $ws`n  To delete it as well, run ${bold}pl reset${r} first, or remove that folder.`n")
+	Unlock-Install
 	return
 }
 
 # --- install ----------------------------------------------------------------
 
 Banner "installer"
+Lock-Install
+
+# A run killed between its two renames left the installed copy as <version>.old-<id>: put it back
+# before any download, so the Start menu shortcut opens it even when none works.
+$early = Read-Receipt
+$ownId = $early["desktop_app_id"]
+$recVersion = $early["desktop_version"]
+if ($ownId -and $recVersion -and -not (Test-Path -LiteralPath (Join-Path $desktopRoot $recVersion))) {
+	$back = @(Get-ChildItem -LiteralPath $desktopRoot -Directory -Force -Filter "$recVersion.old-*" -ErrorAction SilentlyContinue |
+		Where-Object { Test-OwnFolder $_.FullName }) | Select-Object -First 1
+	if ($back) {
+		try {
+			Rename-Item -LiteralPath $back.FullName -NewName $recVersion -ErrorAction Stop
+			Done "Put back the desktop app an interrupted install had moved aside"
+		} catch { Warn "Couldn't put back the desktop app an interrupted install left in $($back.FullName): $_" }
+	}
+}
 
 if ($env:PROCESSOR_ARCHITECTURE -ne "AMD64" -and $env:PROCESSOR_ARCHITEW6432 -ne "AMD64") {
 	Fail "$env:PROCESSOR_ARCHITECTURE isn't supported by this installer; use npm install -g prismalens"
@@ -503,13 +559,20 @@ try {
 	if ($tried) { Fail "Couldn't install $archive from $(Hosts-Tried); nothing was installed. $tried" }
 
 	$dest = Join-Path $runtimeRoot $Version
+	# A pl.cmd or prismalens.cmd in the bin dir that this installer didn't write is someone's own: never replaced.
+	foreach ($name in "pl", "prismalens") {
+		$f = Join-Path $binDir "$name.cmd"
+		if ((Test-Path -LiteralPath $f) -and -not (Select-String -LiteralPath $f -SimpleMatch $marker -Quiet)) {
+			Fail "$f isn't a wrapper this installer wrote, so nothing was installed; it was left as it is. Set PRISMALENS_INSTALL_BIN_DIR to install pl somewhere else."
+		}
+	}
 	Step "Installing to $dest"
 	# Unpack beside $dest, not under %TEMP%: Windows PowerShell 5.1 can't reach paths of 260+
 	# chars on a default box, and build-standalone-cli.yml holds the archive to that from here (#902).
 	# System32's bsdtar, not a tar on PATH: Git's GNU tar can't read a zip.
 	$unpacked = Join-Path $runtimeRoot ".new"
 	$tar = Join-Path $env:SystemRoot "System32\tar.exe"
-	if (-not (Test-Path $tar)) { Fail "$tar is missing (Windows 10 1803 and later ship it); use npm install -g prismalens" }
+	if (-not (Test-Path -LiteralPath $tar)) { Fail "$tar is missing (Windows 10 1803 and later ship it); use npm install -g prismalens" }
 	try {
 		if (-not (Remove-Owned $unpacked)) { throw "a file in it is open" }
 		New-Item -ItemType Directory -Path $unpacked -Force | Out-Null
@@ -521,10 +584,10 @@ try {
 		if ($why -match 'too long|PathTooLong') { $why += " (a path in it is longer than Windows allows; set LongPathsEnabled or use npm install -g prismalens)" }
 		Fail "Couldn't unpack $archive into ${unpacked}: $why"
 	}
-	if (-not (Test-Path (Join-Path $unpacked "bin\pl.cmd"))) { Fail "Unexpected archive layout" }
+	if (-not (Test-Path -LiteralPath (Join-Path $unpacked "bin\pl.cmd"))) { Fail "Unexpected archive layout" }
 	try {
 		if (-not (Remove-Owned $dest)) { throw "a file in it is open" }
-		Move-Item -Path $unpacked -Destination $dest
+		Move-Item -LiteralPath $unpacked -Destination $dest
 	} catch {
 		# Windows locks a running node.exe's files; Unix lets them be replaced.
 		Fail "Couldn't replace $dest, most likely because PrismaLens $Version is running. Stop pl up and run the installer again."
@@ -549,7 +612,7 @@ try {
 	}
 
 	# Keep this version and the one it replaced, for rollback.
-	Get-ChildItem $runtimeRoot -Directory | Where-Object { $_.Name -ne $Version -and $_.Name -ne $installed } |
+	Get-ChildItem -LiteralPath $runtimeRoot -Directory | Where-Object { $_.Name -ne $Version -and $_.Name -ne $installed } |
 		ForEach-Object { [void](Remove-Owned $_.FullName) }
 
 	$pathAdded = if ($rec["path_added"]) { $rec["path_added"] } else { "0" }
@@ -633,7 +696,7 @@ try {
 	& $writeReceipt
 
 	$others = @(Get-Command pl -All -CommandType Application -ErrorAction SilentlyContinue |
-		Where-Object { -not (Select-String -Path $_.Source -SimpleMatch $marker -Quiet -ErrorAction SilentlyContinue) })
+		Where-Object { -not (Select-String -LiteralPath $_.Source -SimpleMatch $marker -Quiet -ErrorAction SilentlyContinue) })
 	if ($others.Count -gt 0) {
 		Warn "Another PrismaLens is on your PATH:"
 		foreach ($o in $others) {
@@ -654,4 +717,5 @@ try {
 	[Console]::Error.WriteLine("`n  Start it with ${bold}pl up${r}   ${middot}   Upgrade with ${bold}pl upgrade${r}   ${middot}   Docs: https://docs.prismalens.io`n")
 } finally {
 	[void](Remove-Owned $staging)
+	Unlock-Install
 }

@@ -218,9 +218,10 @@ jobs:
           $png = "$env:GITHUB_WORKSPACE\desktop-scoop.png"
           $env:PRISMALENS_DESKTOP_SMOKE = $png; $env:PRISMALENS_DESKTOP_SMOKE_LAUNCHER = "1"
           $env:PRISMALENS_WORKSPACE_DIR = "$env:RUNNER_TEMP\scoop-ws"; $env:PRISMALENS_TELEMETRY = "off"
+          Remove-Item $png -ErrorAction SilentlyContinue
           Start-Process $lnk
           for ($i = 0; $i -lt 180 -and -not ((Test-Path $png) -and (Get-Item $png).Length -gt 10000); $i++) { Start-Sleep 1 }
-          if (-not (Test-Path $png)) { Write-Error "the app opened from Scoop's shortcut rendered nothing"; exit 1 }
+          if (-not ((Test-Path $png) -and (Get-Item $png).Length -gt 10000)) { Write-Error "the app opened from Scoop's shortcut rendered no full screenshot"; exit 1 }
           Start-Sleep 10
           $own = Join-Path ([Environment]::GetFolderPath('Programs')) 'PrismaLens.lnk'
           if (Test-Path $own) { Write-Error "the app added $own beside Scoop's shortcut"; exit 1 }

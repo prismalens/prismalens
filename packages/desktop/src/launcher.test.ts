@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { posix, win32 } from "node:path";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, posix, win32 } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	APP_USER_MODEL_ID,
@@ -13,6 +16,7 @@ import {
 	installedByInstaller,
 	type LauncherEnv,
 	planLauncher,
+	receiptPaths,
 	type Shortcut,
 } from "./launcher.js";
 
@@ -102,7 +106,7 @@ describe("planLauncher on Linux", () => {
 				"Type=Application",
 				"Name=PrismaLens",
 				"Comment=Investigate alerts with the coding agent you already use",
-				`Exec="${linuxExe}"`,
+				`Exec=env "${linuxExe}"`,
 				`Icon=${linuxIcon}`,
 				"Terminal=false",
 				"Categories=Development;",
@@ -199,9 +203,9 @@ describe("planLauncher beside a package manager or a launcher it can't read", ()
 });
 
 describe("desktopEntry escaping", () => {
-	it("writes Exec with the spec's escapes, and reads the same path back", () => {
+	it("writes Exec through env with the spec's escapes, and reads the same path back", () => {
 		const odd = '/home/ada/100%QA/a b/x"y$z/prismalens';
-		expect(desktopEntry(odd, null)).toContain(String.raw`Exec="/home/ada/100%%QA/a b/x\\"y\\$z/prismalens"`);
+		expect(desktopEntry(odd, null)).toContain(String.raw`Exec=env "/home/ada/100%%QA/a b/x\\"y\\$z/prismalens"`);
 		expect(desktopEntryExec(desktopEntry(odd, null))).toBe(odd);
 	});
 });
@@ -211,6 +215,31 @@ describe("desktopEntryExec", () => {
 		expect(desktopEntryExec('[Desktop Entry]\nExec="/a b/prismalens" %U\n')).toBe("/a b/prismalens");
 		expect(desktopEntryExec("[Desktop Entry]\nExec=/opt/pl/prismalens --x\n")).toBe("/opt/pl/prismalens");
 		expect(desktopEntryExec("[Desktop Entry]\nName=x\n")).toBe(null);
+	});
+	it("reads past the env or /bin/sh that runs the program", () => {
+		expect(desktopEntryExec('[Desktop Entry]\nExec=/bin/sh "/h/a b/launch"\n')).toBe("/h/a b/launch");
+		expect(desktopEntryExec('[Desktop Entry]\nExec=env "/h/100%%/prismalens"\n')).toBe("/h/100%/prismalens");
+	});
+});
+
+describe("receiptPaths", () => {
+	it("adds the receipt of the data root an installed copy sits in, for a root given only to the installer", () => {
+		expect(receiptPaths("linux", "/srv/pl/desktop/app/prismalens", "/home/ada/.local/share/prismalens")).toEqual([
+			"/home/ada/.local/share/prismalens/receipt",
+			"/srv/pl/receipt",
+		]);
+		expect(receiptPaths("win32", "D:\\pl\\desktop\\0.5.7\\PrismaLens.exe", "C:\\Users\\ada\\AppData\\Local\\prismalens")).toEqual([
+			"C:\\Users\\ada\\AppData\\Local\\prismalens\\receipt",
+			"D:\\pl\\receipt",
+		]);
+	});
+
+	it("is the default receipt alone for a copy outside a data root, and on macOS", () => {
+		expect(receiptPaths("linux", "/home/ada/Downloads/PrismaLens/prismalens", "/d")).toEqual(["/d/receipt"]);
+		expect(receiptPaths("linux", "/d/desktop/app/prismalens", "/d")).toEqual(["/d/receipt"]);
+		expect(receiptPaths("darwin", "/Users/ada/Applications/PrismaLens.app/Contents/MacOS/PrismaLens", "/d")).toEqual([
+			"/d/receipt",
+		]);
 	});
 });
 
@@ -333,5 +362,22 @@ describe("applyLauncherPlan", () => {
 			"mkdir /x/applications",
 			"write /x/applications/prismalens.desktop: [Desktop Entry]\nName=PrismaLens\n",
 		]);
+	});
+});
+
+// CI's Linux leg installs gio; elsewhere on Linux it runs only where gio is installed.
+const gio = spawnSync("gio", ["version"]).status === 0;
+describe.skipIf(process.platform !== "linux" || (!gio && !process.env.CI))("desktopEntry under GLib (Linux only)", () => {
+	it("launches a program whose path has %, quotes, $ and a backslash", async () => {
+		expect(gio, "gio (libglib2.0-bin) is installed").toBe(true);
+		const dir = join(mkdtempSync(join(tmpdir(), "entry-")), 'a 100% "q" $x \\b');
+		mkdirSync(dir, { recursive: true });
+		const program = join(dir, "prismalens");
+		writeFileSync(program, '#!/bin/sh\n: >"$(dirname "$0")/launched"\n', { mode: 0o755 });
+		const entry = join(dir, "prismalens.desktop");
+		writeFileSync(entry, desktopEntry(program, null));
+		expect(spawnSync("gio", ["launch", entry]).status).toBe(0);
+		for (let i = 0; i < 50 && !existsSync(join(dir, "launched")); i++) await new Promise((r) => setTimeout(r, 100));
+		expect(existsSync(join(dir, "launched"))).toBe(true);
 	});
 });

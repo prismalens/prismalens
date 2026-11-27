@@ -252,6 +252,8 @@ jobs:
         if: runner.os != 'Windows' && !contains(inputs.version, '-')
         run: |
           set -eu
+          # smoke-installer.sh launches the installer's menu entry through GLib, as a desktop does.
+          if [ "$(uname -s)" = Linux ] && ! command -v gio >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq libglib2.0-bin; fi
           version=$(node -p "require('./packages/cli/package.json').version")
           olds=$(ls "$GITHUB_WORKSPACE/dist/old")
           [ -n "$olds" ] || { echo "::error::no old release archives were built"; exit 1; }
