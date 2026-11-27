@@ -206,7 +206,6 @@ function Get-ShortcutTarget([string]$Path) {
 	try { return [string](New-Object -ComObject WScript.Shell).CreateShortcut($Path).TargetPath } catch { return "" }
 }
 
-# Whether $Path is inside this installer's desktop folder; the separator keeps desktop-other\ out.
 # Get-Item expands 8.3 names (C:\Users\RUNNER~1), so both sides compare in long form.
 function Get-LongPath([string]$Path) {
 	$item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
@@ -216,8 +215,11 @@ function Get-LongPath([string]$Path) {
 	Join-Path (Get-LongPath $parent) (Split-Path -Leaf $Path)
 }
 
+# Whether $Path is in a copy this install unpacked: inside its desktop folder (the separator keeps
+# desktop-other\ out), in a folder that carries its ID. A folder someone else put there doesn't.
 function Test-Ours([string]$Path) {
-	$Path -and (Get-LongPath $Path).StartsWith("$(Get-LongPath $desktopRoot)\", [StringComparison]::OrdinalIgnoreCase)
+	[bool]($Path -and $ownId -and (Get-LongPath $Path).StartsWith("$(Get-LongPath $desktopRoot)\", [StringComparison]::OrdinalIgnoreCase) -and
+		(Get-InstallId (Split-Path -Parent $Path)) -eq $ownId)
 }
 
 # Why the desktop app is skipped on this machine, or "" to install it. The receipt's desktop=0 keeps an earlier opt-out.
@@ -285,8 +287,10 @@ function Remove-Owned([string]$Path) {
 function Remove-Desktop {
 	if (Get-DesktopProcesses) { Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run this again. Nothing was removed." }
 	$hadApp = Test-Path $desktopRoot
+	# Judged before the app goes: a shortcut is the installer's when its target carries the ID.
+	$ownShortcut = Test-Ours (Get-ShortcutTarget $shortcut)
 	if ($hadApp -and -not (Remove-Owned $desktopRoot)) { Fail "Couldn't remove the desktop app in ${desktopRoot}: a file in it is open. Nothing was removed." }
-	if (Test-Ours (Get-ShortcutTarget $shortcut)) {
+	if ($ownShortcut) {
 		Remove-Item -LiteralPath $shortcut -Force
 		Done "Removed the Start menu shortcut $shortcut"
 	}
@@ -362,9 +366,9 @@ function Set-UserPath([string]$v) { [Environment]::SetEnvironmentVariable("Path"
 
 if ($Uninstall) {
 	Banner "uninstaller"
-	if (Get-DesktopProcesses) { Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run this again. Nothing was removed." }
 	$rec = Read-Receipt
 	$ownId = $rec["desktop_app_id"]
+	if (Get-DesktopProcesses) { Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run this again. Nothing was removed." }
 	$dir = if ($rec["bin_dir"]) { $rec["bin_dir"] } else { $binDir }
 	# First, so an app Windows won't let go of leaves pl as it was.
 	Remove-Desktop
@@ -497,6 +501,20 @@ try {
 	}
 	if (($env:Path -split ';') -notcontains $binDir) { $env:Path = "$binDir;$env:Path" }
 
+	# Written before the desktop step too, so a run that stops partway still records the app's ID.
+	$writeReceipt = { @(
+		"version=$Version",
+		"channel=installer",
+		"target=$target",
+		"bin_dir=$binDir",
+		"path_added=$pathAdded",
+		"desktop=$desktop",
+		"desktop_app=$desktopApp",
+		"desktop_version=$desktopVersion",
+		"desktop_app_id=$desktopAppId",
+		"installed_at=$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"
+	) | Set-Content -Path $receipt -Encoding ASCII }
+
 	# The desktop app is the release's own zip, verified like the CLI; a failure here leaves the CLI installed.
 	# desktop= is the user's choice; the app and shortcut uninstall removes are the ones in $desktopRoot.
 	$desktop = if ($rec["desktop"]) { $rec["desktop"] } else { "" }
@@ -528,8 +546,9 @@ try {
 				if ($why) { throw "couldn't download it from $(Hosts-Tried): $why" }
 				$running = Get-DesktopProcesses | Where-Object { -not (Get-LongPath $_.Path).StartsWith("$(Get-LongPath (Join-Path $desktopRoot $Version))\", [StringComparison]::OrdinalIgnoreCase) }
 				$installId = $ownId
-				# Recorded first: a copy that fails after it's unpacked still carries this ID.
+				# Recorded first: a copy left by a failure or a crash after it's unpacked carries this ID.
 				$desktopAppId = $installId
+				& $writeReceipt
 				$launcher = Install-Desktop $appZip $installId
 				$desktop = "1"
 				$desktopApp = Join-Path $desktopRoot "$Version\PrismaLens.exe"
@@ -542,18 +561,7 @@ try {
 		}
 	}
 
-	@(
-		"version=$Version",
-		"channel=installer",
-		"target=$target",
-		"bin_dir=$binDir",
-		"path_added=$pathAdded",
-		"desktop=$desktop",
-		"desktop_app=$desktopApp",
-		"desktop_version=$desktopVersion",
-		"desktop_app_id=$desktopAppId",
-		"installed_at=$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"
-	) | Set-Content -Path $receipt -Encoding ASCII
+	& $writeReceipt
 
 	$others = @(Get-Command pl -All -CommandType Application -ErrorAction SilentlyContinue |
 		Where-Object { -not (Select-String -Path $_.Source -SimpleMatch $marker -Quiet -ErrorAction SilentlyContinue) })

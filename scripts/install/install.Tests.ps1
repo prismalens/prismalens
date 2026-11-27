@@ -334,6 +334,8 @@ Describe "install.ps1 and the desktop app" {
 		$theirs = Split-Path $app
 		Remove-Item -LiteralPath (Join-Path $theirs ".prismalens-install-id")
 		Set-Content -Path (Join-Path $theirs "marker.txt") -Value "theirs"
+		# Without a shortcut to it, so the folder's own check is what stops the install.
+		Remove-Item -LiteralPath $lnk
 		$run = Invoke-Installer $work $base $want
 
 		$run.ExitCode | Should -Be 0 -Because $run.Stderr
@@ -362,6 +364,48 @@ Describe "install.ps1 and the desktop app" {
 		$run.Stderr | Should -Match ([regex]::Escape("$theirs isn't the app this installer put there; it was moved to $($kept[0].FullName)"))
 		Get-Content (Join-Path $kept[0].FullName "marker.txt") | Should -BeExactly "theirs"
 		Test-Path $app | Should -BeTrue
+	}
+
+	It "a user's shortcut to a folder in desktop\ the installer didn't make: left through install and uninstall" {
+		$null = Invoke-Installer $work $base $want
+		$mine = Join-Path $work "data\desktop\mine\PrismaLens.exe"
+		New-Item -ItemType Directory -Path (Split-Path $mine) -Force | Out-Null
+		Copy-Item (Join-Path $system32 "whoami.exe") $mine
+		$l = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+		$l.TargetPath = $mine
+		$l.Save()
+		$run = Invoke-Installer $work $base $want
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match ([regex]::Escape("Desktop app skipped: the Start menu's PrismaLens shortcut opens $mine, which isn't this installer's; it was left as it is"))
+		Get-Target $lnk | Should -BeExactly $mine
+
+		$run = Invoke-Installer $work $base "" "-Uninstall"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		Get-Target $lnk | Should -BeExactly $mine
+		$run.Stderr | Should -Not -Match "Removed the Start menu shortcut"
+	}
+
+	It "a first install stopped after it unpacked the app: the next run deletes that copy as its own" {
+		# Ends the process where the unpacked app moves into place, as a crash or a closed window would.
+		$crash = @"
+function global:Move-Item {
+	if ("`$args" -like '*\desktop\$version*') { [Environment]::Exit(3) }
+	Microsoft.PowerShell.Management\Move-Item @args
+}
+"@
+		$run = Invoke-Installer $work $base "$want`n$crash"
+		$run.ExitCode | Should -Be 3 -Because $run.Stderr
+		@(Get-ChildItem (Join-Path $work "data\desktop") -Directory -Filter ".new-*").Count | Should -Be 1
+
+		$run = Invoke-Installer $work $base $want
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Not -Match "isn't the app this installer put there"
+		Test-Path (Join-Path $work "data-kept") | Should -BeFalse
+		@(Get-ChildItem (Join-Path $work "data\desktop") -Directory -Force | ForEach-Object Name) | Should -BeExactly @($version)
+		Get-Target $lnk | Should -BeExactly $app
 	}
 
 	It "an app download that throws still records the CLI it installed" {
