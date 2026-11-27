@@ -27,6 +27,7 @@ want_desktop="${PRISMALENS_DESKTOP:-}"
 xdg_data="${XDG_DATA_HOME:-$HOME/.local/share}"
 desktop_file="$xdg_data/applications/prismalens.desktop"
 mac_app="$HOME/Applications/PrismaLens.app"
+desktop_marker="X-PrismaLens-Installer=true"
 action=install
 
 usage() {
@@ -235,33 +236,40 @@ fetch_verified() {
 
 sum_of() { grep -E "(^|[[:space:]]|\*)$1\$" "$staging/SHA256SUMS" | cut -d' ' -f1 | head -n 1; }
 
-# Why the desktop app is skipped here, or nothing to install it. A receipt's desktop=0 keeps an earlier opt-out.
+# Why the desktop app is skipped here, or nothing to install it. The receipt's desktop=0 keeps an earlier opt-out.
 desktop_skip() {
-	case "$want_desktop" in
-	1) return 0 ;;
-	0) echo "you asked for the CLI only"; return 0 ;;
-	esac
+	[ "$want_desktop" != 0 ] || { echo "you asked for the CLI only"; return 0; }
+	if [ "$platform" = darwin ] && [ -d "$mac_app" ] && [ "$(receipt_get desktop_app)" != "$mac_app" ]; then
+		echo "$mac_app is already there and this installer didn't put it there; it was left as it is"
+		return 0
+	elif [ "$platform" = darwin ] && [ -d /Applications/PrismaLens.app ]; then
+		echo "/Applications/PrismaLens.app is already there (Homebrew's prismalens-app or a download); upgrade it the way you installed it"
+		return 0
+	elif [ "$platform" = linux ] && { [ -L "$desktop_file" ] || { [ -e "$desktop_file" ] && ! grep -q "^$desktop_marker\$" "$desktop_file"; }; }; then
+		echo "$desktop_file is yours, not the installer's; it was left as it is"
+		return 0
+	fi
+	[ "$want_desktop" != 1 ] || return 0
 	if [ "$(receipt_get desktop)" = 0 ]; then
 		echo "an earlier install left it out; set PRISMALENS_DESKTOP=1 to add it"
 	elif [ -n "${CI:-}" ]; then
 		echo "this is CI"
+	elif [ "$platform" = darwin ] && [ "$(stat -f %Su /dev/console 2>/dev/null)" != "$(id -un)" ]; then
+		echo "you aren't logged in to this Mac's desktop"
 	elif [ "$platform" = linux ] && [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
 		echo "no display (DISPLAY and WAYLAND_DISPLAY are unset)"
 	elif [ "$platform" = linux ] && ! command -v unzip >/dev/null 2>&1 && ! command -v bsdtar >/dev/null 2>&1; then
 		echo "unzip is needed to unpack it; install unzip and run the installer again"
-	elif [ "$platform" = darwin ] && [ -d /Applications/PrismaLens.app ]; then
-		echo "/Applications/PrismaLens.app is already there (Homebrew's prismalens-app or a download); upgrade it the way you installed it"
 	fi
 }
 
-# The installed app, when it's running: `desktop_running [<path>]`.
+# The installed app, when it's running: `desktop_running <app path>`.
 desktop_running() {
 	command -v pgrep >/dev/null 2>&1 || return 1
-	if [ "$(uname -s)" = Darwin ]; then
-		pgrep -f "${1:-$mac_app}/Contents/MacOS/PrismaLens" >/dev/null 2>&1
-	else
-		pgrep -f "${1:-$data_root/desktop/app}/prismalens" >/dev/null 2>&1
-	fi
+	case "$1" in
+	*.app) pgrep -f "$1/Contents/MacOS/PrismaLens" >/dev/null 2>&1 ;;
+	*) pgrep -f "$1/prismalens" >/dev/null 2>&1 ;;
+	esac
 }
 
 desktop_asset() {
@@ -271,72 +279,87 @@ desktop_asset() {
 	esac
 }
 
-# install_desktop <zip>: the app in the OS's usual per-user place, and $launcher set to how it opens.
+# Exec's value per the Desktop Entry spec: a quoted argument (\ " ` $ escaped), then the
+# string escape (\ doubled) and the field-code escape (% doubled).
+desktop_exec() {
+	printf '"%s"' "$(printf '%s' "$1" | sed -e 's/[\\"`$]/\\&/g')" | sed -e 's/\\/\\\\/g' -e 's/%/%%/g'
+}
+
+# Removes the app and launcher this installer recorded in its receipt, and nothing else.
+remove_desktop() {
+	r_app=$(receipt_get desktop_app)
+	if [ -n "$r_app" ] && [ -d "$r_app" ]; then
+		rm -rf "$r_app"
+		done_ "Removed the desktop app $r_app"
+	fi
+	if [ -f "$desktop_file" ] && [ ! -L "$desktop_file" ] && grep -q "^$desktop_marker\$" "$desktop_file"; then
+		rm -f "$desktop_file"
+		done_ "Removed the app menu entry $desktop_file"
+	fi
+}
+
+# install_desktop <zip>: the app in the OS's usual per-user place; sets $launcher to how it opens
+# and $owned to what uninstall removes. The old copy moves aside into this run's own staging
+# folder, so a failed move puts it back and a concurrent run can't delete it.
 install_desktop() {
 	if [ "$platform" = darwin ]; then
+		d_dest="$mac_app"
 		mkdir -p "$HOME/Applications"
-		d_stage="$HOME/Applications/.prismalens-new"
-		rm -rf "$d_stage"
-		ditto -x -k "$1" "$d_stage" || { why="couldn't unpack it"; return 1; }
-		d_src=$(find "$d_stage" -maxdepth 2 -name PrismaLens.app -type d | head -n 1)
-		[ -n "$d_src" ] || { rm -rf "$d_stage"; why="the archive has no PrismaLens.app"; return 1; }
-		# The old copy moves aside first, so a failed move puts it back rather than leaving none.
-		[ ! -d "$mac_app" ] || mv "$mac_app" "$d_stage/previous.app"
-		if ! mv "$d_src" "$mac_app"; then
-			[ ! -d "$d_stage/previous.app" ] || mv "$d_stage/previous.app" "$mac_app"
-			rm -rf "$d_stage"
-			why="couldn't move it into $HOME/Applications"
-			return 1
-		fi
-		rm -rf "$d_stage"
-		# Launchpad and Spotlight would find it on their own; registering makes it immediate.
-		lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-		[ -x "$lsregister" ] && "$lsregister" -f "$mac_app" >/dev/null 2>&1 || true
-		launcher="Launchpad or Spotlight: PrismaLens (${mac_app})"
-		return 0
-	fi
-	d_stage="$data_root/desktop/.new"
-	d_app="$data_root/desktop/app"
-	rm -rf "$d_stage"
-	mkdir -p "$d_stage"
-	if command -v unzip >/dev/null 2>&1; then
-		unzip -q "$1" -d "$d_stage" || { why="couldn't unpack it"; return 1; }
+		d_stage=$(mktemp -d "$HOME/Applications/.prismalens-new.XXXXXX") || { why="couldn't write to $HOME/Applications"; return 1; }
+		ditto -x -k "$1" "$d_stage/unpacked" || { rm -rf "$d_stage"; why="couldn't unpack it"; return 1; }
+		d_src=$(find "$d_stage/unpacked" -maxdepth 2 -name PrismaLens.app -type d | head -n 1)
 	else
-		bsdtar -xf "$1" -C "$d_stage" || { why="couldn't unpack it"; return 1; }
+		d_dest="$data_root/desktop/app"
+		mkdir -p "$data_root/desktop"
+		d_stage=$(mktemp -d "$data_root/desktop/.new.XXXXXX") || { why="couldn't write to $data_root/desktop"; return 1; }
+		if command -v unzip >/dev/null 2>&1; then
+			unzip -q "$1" -d "$d_stage/unpacked" || { rm -rf "$d_stage"; why="couldn't unpack it"; return 1; }
+		else
+			mkdir -p "$d_stage/unpacked"
+			bsdtar -xf "$1" -C "$d_stage/unpacked" || { rm -rf "$d_stage"; why="couldn't unpack it"; return 1; }
+		fi
+		d_src=$(find "$d_stage/unpacked" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+		[ -z "$d_src" ] || [ -x "$d_src/prismalens" ] || d_src=
 	fi
-	d_src=$(find "$d_stage" -mindepth 1 -maxdepth 1 -type d | head -n 1)
-	[ -n "$d_src" ] && [ -x "$d_src/prismalens" ] || { rm -rf "$d_stage"; why="the archive has no prismalens"; return 1; }
-	rm -rf "$d_app.old"
-	[ ! -d "$d_app" ] || mv "$d_app" "$d_app.old"
-	if ! mv "$d_src" "$d_app"; then
-		[ ! -d "$d_app.old" ] || mv "$d_app.old" "$d_app"
+	[ -n "$d_src" ] || { rm -rf "$d_stage"; why="the archive doesn't hold the app"; return 1; }
+	[ ! -e "$d_dest" ] || mv "$d_dest" "$d_stage/previous" || { rm -rf "$d_stage"; why="couldn't move the old app aside"; return 1; }
+	if ! mv "$d_src" "$d_dest"; then
+		[ ! -e "$d_stage/previous" ] || mv "$d_stage/previous" "$d_dest"
 		rm -rf "$d_stage"
-		why="couldn't move it into $d_app"
+		why="couldn't move it into place at $d_dest"
 		return 1
 	fi
-	rm -rf "$d_stage" "$d_app.old"
-	mkdir -p "$(dirname "$desktop_file")"
-	if [ -f "$desktop_file" ] && ! grep -q "^X-PrismaLens-Installer=" "$desktop_file"; then
-		warn "Replaced your own $desktop_file with the installer's."
+	rm -rf "$d_stage"
+	owned="$d_dest"
+	if [ "$platform" = darwin ]; then
+		# Launchpad and Spotlight would find it on their own; registering makes it immediate.
+		lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+		[ -x "$lsregister" ] && "$lsregister" -f "$d_dest" >/dev/null 2>&1 || true
+		launcher="Launchpad or Spotlight: PrismaLens (${d_dest})"
+		return 0
 	fi
-	{
+	mkdir -p "$(dirname "$desktop_file")"
+	if ! {
 		echo "[Desktop Entry]"
 		echo "Type=Application"
 		echo "Name=PrismaLens"
 		echo "Comment=Investigate alerts with the coding agent you already use"
-		echo "Exec=\"$d_app/prismalens\""
-		[ ! -f "$d_app/resources/icon.png" ] || echo "Icon=$d_app/resources/icon.png"
+		echo "Exec=$(desktop_exec "$d_dest/prismalens")"
+		[ ! -f "$d_dest/resources/icon.png" ] || echo "Icon=$(printf '%s' "$d_dest/resources/icon.png" | sed -e 's/\\/\\\\/g')"
 		echo "Terminal=false"
 		echo "Categories=Development;"
 		echo "StartupWMClass=PrismaLens"
-		echo "X-PrismaLens-Installer=true"
-	} >"$desktop_file"
+		echo "$desktop_marker"
+	} >"$desktop_file"; then
+		why="the app is in $d_dest, but $desktop_file couldn't be written"
+		return 1
+	fi
 	launcher="your app menu: PrismaLens (${desktop_file})"
 	# Chromium's sandbox needs user namespaces or a root-owned setuid helper; every fix Chromium documents needs root.
 	if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ] ||
 		[ "$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null)" = 0 ]; then
 		sandbox_note="This system restricts the user namespaces Chromium's sandbox needs, so the app may not open. Chromium's fix needs root, once per install or upgrade:
-      sudo chown root:root \"$d_app/chrome-sandbox\" && sudo chmod 4755 \"$d_app/chrome-sandbox\"
+      sudo chown root:root \"$d_dest/chrome-sandbox\" && sudo chmod 4755 \"$d_dest/chrome-sandbox\"
     (https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md)"
 	fi
 	return 0
@@ -346,7 +369,7 @@ install_desktop() {
 
 if [ "$action" = uninstall ]; then
 	banner uninstaller
-	if [ "$(receipt_get desktop)" = 1 ] && desktop_running; then
+	if [ -n "$(receipt_get desktop_app)" ] && desktop_running "$(receipt_get desktop_app)"; then
 		fail "The PrismaLens app is running; quit it and run the uninstaller again. Nothing was removed."
 	fi
 	installed_bin=$(receipt_get bin_dir)
@@ -355,14 +378,7 @@ if [ "$action" = uninstall ]; then
 	if [ -f "$dir/pl" ] && { [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/prismalens.service" ] || [ -f "$HOME/Library/LaunchAgents/io.prismalens.server.plist" ]; }; then
 		"$dir/pl" service uninstall >/dev/null 2>&1 && done_ "Removed the background service"
 	fi
-	if [ "$(receipt_get desktop)" = 1 ] && [ "$(uname -s)" = Darwin ] && [ -d "$mac_app" ]; then
-		rm -rf "$mac_app"
-		done_ "Removed $mac_app"
-	fi
-	if [ -f "$desktop_file" ] && grep -q "^X-PrismaLens-Installer=" "$desktop_file"; then
-		rm -f "$desktop_file"
-		done_ "Removed the app menu entry $desktop_file"
-	fi
+	remove_desktop
 	for name in pl prismalens; do
 		if [ -f "$dir/$name" ] && grep -q "$marker" "$dir/$name"; then
 			rm -f "$dir/$name"
@@ -499,10 +515,20 @@ case ":$PATH:" in
 esac
 
 # The desktop app is the release's own zip, verified like the CLI; a failure here leaves the CLI installed.
+# desktop= is the user's choice; desktop_app= is what this installer put there, and all uninstall removes.
 desktop=$(receipt_get desktop)
-[ "$want_desktop" != 0 ] || desktop=0
+owned=$(receipt_get desktop_app)
 launcher=
 sandbox_note=
+if [ "$want_desktop" = 0 ]; then
+	desktop=0
+	if [ -n "$owned" ]; then
+		desktop_running "$owned" && fail "The PrismaLens app is running; quit it and run the installer again."
+		remove_desktop
+		owned=
+	fi
+fi
+[ "$want_desktop" != 1 ] || desktop=1
 skip=$(desktop_skip)
 app_asset=$(desktop_asset)
 if [ -n "$skip" ]; then
@@ -512,7 +538,7 @@ elif [ -z "$app_asset" ] || [ -z "$(sum_of "$app_asset")" ]; then
 else
 	why=
 	was_running=false
-	! desktop_running || was_running=true
+	[ -z "$owned" ] || ! desktop_running "$owned" || was_running=true
 	if fetch_verified "$app_asset" "$(sum_of "$app_asset")" "$staging/$app_asset" "the PrismaLens ${version} desktop app"; then
 		install_desktop "$staging/$app_asset" || true
 	else
@@ -534,6 +560,7 @@ target=$target
 bin_dir=$bin_dir
 rc=$rc
 desktop=$desktop
+desktop_app=$owned
 installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
 

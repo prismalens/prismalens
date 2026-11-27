@@ -289,7 +289,7 @@ Describe "install.ps1 and the desktop app" {
 		Get-Receipt | Should -Contain "desktop=1"
 	}
 
-	It "repoints another copy's shortcut at this install and names the copy it left" {
+	It "leaves a Start menu shortcut to another working copy alone, and installs the CLI" {
 		$other = Join-Path $work "Downloads\win-unpacked\PrismaLens.exe"
 		New-Item -ItemType Directory -Path (Split-Path $other), (Join-Path $work "Programs") -Force | Out-Null
 		Copy-Item (Join-Path $system32 "whoami.exe") $other
@@ -300,8 +300,52 @@ Describe "install.ps1 and the desktop app" {
 		$run = Invoke-Installer $work $base $want
 
 		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Installed | Should -BeExactly "genuine"
+		Get-Target $lnk | Should -Be $other
+		$run.Stderr | Should -Match ([regex]::Escape("Desktop app skipped: the Start menu's PrismaLens shortcut opens $other, which isn't this installer's; it was left as it is"))
+		Test-Path (Join-Path $work "data\desktop") | Should -BeFalse
+	}
+
+	It "replaces a shortcut whose app no longer exists, and says which" {
+		$gone = Join-Path $work "Downloads\gone\PrismaLens.exe"
+		New-Item -ItemType Directory -Path (Join-Path $work "Programs") -Force | Out-Null
+		$link = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+		$link.TargetPath = $gone
+		$link.Save()
+
+		$run = Invoke-Installer $work $base $want
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
 		Get-Target $lnk | Should -BeExactly $app
-		$run.Stderr | Should -Match ([regex]::Escape("The Start menu shortcut opened $other; it now opens this install."))
+		$run.Stderr | Should -Match ([regex]::Escape("Replaced the Start menu shortcut to $gone, which no longer exists."))
+	}
+
+	It "leaves the app to Scoop when Scoop's prismalens-app is installed" {
+		$scoopApp = Join-Path $work "scoop\apps\prismalens-app\current\PrismaLens.exe"
+		New-Item -ItemType Directory -Path (Split-Path $scoopApp), (Join-Path $work "Programs\Scoop Apps") -Force | Out-Null
+		Copy-Item (Join-Path $system32 "whoami.exe") $scoopApp
+		$link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $work "Programs\Scoop Apps\PrismaLens.lnk"))
+		$link.TargetPath = $scoopApp
+		$link.Save()
+
+		$run = Invoke-Installer $work $base $want
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match "Desktop app skipped: Scoop's prismalens-app is installed; it upgrades with scoop update"
+		Test-Path $lnk | Should -BeFalse
+	}
+
+	It "-NoDesktop after an install removes the app and its shortcut, even with PRISMALENS_DESKTOP=1 set" {
+		(Invoke-Installer $work $base $want).ExitCode | Should -Be 0
+		Test-Path $lnk | Should -BeTrue
+
+		$run = Invoke-Installer $work $base $want "-NoDesktop"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match "Desktop app skipped: you asked for the CLI only"
+		Test-Path $lnk | Should -BeFalse
+		Test-Path (Join-Path $work "data\desktop") | Should -BeFalse
+		Get-Receipt | Should -Contain "desktop=0"
 	}
 
 	It "uninstall removes the shortcut and the app, and leaves another copy's shortcut" {

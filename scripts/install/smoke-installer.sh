@@ -198,7 +198,7 @@ fi
 app_base="file://$work/base-app"
 # A fresh user with a display: DISPLAY is all the installer looks at.
 run_app_installer() {
-	env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash DISPLAY=:99 \
+	env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash DISPLAY=:99 PRISMALENS_DESKTOP="${PRISMALENS_DESKTOP:-}" \
 		PRISMALENS_RELEASE_BASE_URL="$app_base" sh "$installer" --version "$new_version" --no-modify-path "$@"
 }
 rm -rf "$work/home" && mkdir -p "$work/home"
@@ -207,12 +207,14 @@ mac_app="$work/home/Applications/PrismaLens.app"
 
 out=$(run_app_installer 2>&1) || { echo "$out"; fail "install with the desktop app"; }
 grep -q "^desktop=1$" "$work/home/.local/share/prismalens/receipt" || fail "receipt has no desktop=1"
+if [ "$(uname -s)" = Darwin ]; then owned="$mac_app"; else owned="$work/home/.local/share/prismalens/desktop/app"; fi
+grep -qx "desktop_app=$owned" "$work/home/.local/share/prismalens/receipt" || fail "receipt doesn't record the app it installed"
 if [ "$(uname -s)" = Darwin ]; then
 	[ "$("$mac_app/Contents/MacOS/PrismaLens")" = "stand-in app" ] || fail "no runnable $mac_app"
 	case "$out" in *"Open the desktop app from Launchpad or Spotlight: PrismaLens ($mac_app)"*) ;; *) echo "$out"; fail "the final message doesn't say where the app is" ;; esac
-	# curl, unlike a browser, sets no quarantine flag; the installer neither adds nor strips one.
+	# The installer adds no quarantine flag of its own; smoke-installed.mjs checks a download over HTTP.
 	if xattr -p com.apple.quarantine "$mac_app" >/dev/null 2>&1; then fail "$mac_app is quarantined"; fi
-	pass "desktop app: $mac_app runs, the final message names it, no quarantine flag"
+	pass "desktop app: $mac_app runs, the final message names it, the receipt records it"
 else
 	app="$work/home/.local/share/prismalens/desktop/app"
 	grep -qx "Exec=\"$app/prismalens\"" "$entry" || { cat "$entry"; fail "the desktop entry doesn't run $app/prismalens"; }
@@ -237,9 +239,29 @@ run_installer "$app_base" --uninstall >/dev/null 2>&1 || fail "uninstall with th
 [ ! -d "$work/home/.local/share/prismalens" ] || fail "uninstall left the app's data"
 pass "uninstall: the app and its launcher gone"
 
-out=$(run_app_installer --no-desktop 2>&1) || { echo "$out"; fail "install with --no-desktop"; }
-case "$out" in *"Desktop app skipped: you asked for the CLI only"*) ;; *) echo "$out"; fail "--no-desktop wasn't honoured" ;; esac
-[ ! -e "$entry" ] && [ ! -e "$mac_app" ] || fail "--no-desktop still installed the app"
+run_app_installer >/dev/null 2>&1 || fail "install before --no-desktop"
+out=$(PRISMALENS_DESKTOP=1 run_app_installer --no-desktop 2>&1) || { echo "$out"; fail "install with --no-desktop"; }
+case "$out" in *"Desktop app skipped: you asked for the CLI only"*) ;; *) echo "$out"; fail "--no-desktop wasn't honoured over PRISMALENS_DESKTOP=1" ;; esac
+[ ! -e "$entry" ] && [ ! -e "$mac_app" ] || fail "--no-desktop left the app it had installed"
+grep -qx "desktop=0" "$work/home/.local/share/prismalens/receipt" || fail "--no-desktop wasn't saved"
 out=$(run_app_installer 2>&1) || fail "reinstall after --no-desktop"
 case "$out" in *"an earlier install left it out"*) ;; *) echo "$out"; fail "a later install dropped the opt-out" ;; esac
-pass "--no-desktop: no app, and a later install keeps it out"
+pass "--no-desktop: removes the app it had installed, beats PRISMALENS_DESKTOP=1, and a later install keeps it out"
+
+# 8. A launcher or app the installer didn't make is left as it is, through install and uninstall.
+rm -rf "$work/home" && mkdir -p "$work/home"
+if [ "$(uname -s)" = Darwin ]; then
+	mine="$mac_app/Contents/MacOS/PrismaLens"
+	mkdir -p "$(dirname "$mine")"
+	printf '#!/bin/sh\necho users own\n' >"$mine"
+else
+	mine="$entry"
+	mkdir -p "$(dirname "$mine")"
+	printf '[Desktop Entry]\nType=Application\nName=PrismaLens\nExec=/opt/mine/prismalens\n' >"$mine"
+fi
+before=$(cat "$mine")
+out=$(run_app_installer 2>&1) || { echo "$out"; fail "install beside the user's own launcher"; }
+case "$out" in *"Desktop app skipped:"*"it was left as it is"*) ;; *) echo "$out"; fail "the user's own launcher wasn't detected" ;; esac
+run_installer "$app_base" --uninstall >/dev/null 2>&1 || fail "uninstall beside the user's own launcher"
+[ "$(cat "$mine")" = "$before" ] || fail "install or uninstall changed $mine"
+pass "the user's own $mine: left byte for byte through install and uninstall"

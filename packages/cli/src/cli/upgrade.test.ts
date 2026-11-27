@@ -21,6 +21,7 @@ import {
 	STEP_TIMEOUT_MS,
 	resolveUpdateChannel,
 	appPackageInstalled,
+	desktopAppHint,
 	upgradeArgv,
 	upgradeEnv,
 } from "./upgrade.js";
@@ -299,5 +300,19 @@ describe("commandVersion", () => {
 	it("names no version for an unpinned non-npm upgrade, and the pin when there is one", () => {
 		expect(commandVersion("homebrew", null, "0.5.5")).toBe(undefined);
 		expect(commandVersion("installer", "0.5.5", "0.5.5")).toBe("0.5.5");
+	});
+});
+
+describe("desktopAppHint", () => {
+	const rerun = "curl -fsSL https://prismalens.io/install.sh | sh";
+	it("names the installer rerun when the receipt says nothing of the app", () => {
+		const hint = `The desktop app isn't installed beside this copy. To add it, run the installer again: ${rerun}`;
+		expect(desktopAppHint("version=0.5.6\r\nchannel=installer\r\n", rerun)).toBe(hint);
+		expect(desktopAppHint("version=0.5.6\nchannel=installer\n", rerun)).toBe(hint);
+	});
+	it("stays quiet once the app is installed or was declined, and without a receipt", () => {
+		expect(desktopAppHint("version=0.5.7\r\ndesktop=1\r\n", rerun)).toBe(null);
+		expect(desktopAppHint("version=0.5.7\ndesktop=0\n", rerun)).toBe(null);
+		expect(desktopAppHint(null, rerun)).toBe(null);
 	});
 });

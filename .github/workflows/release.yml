@@ -409,21 +409,25 @@ jobs:
           node scripts/install/package-manifests.mjs --version "$version" --sums "$RUNNER_TEMP/SHA256SUMS" --out "$RUNNER_TEMP/manifests"
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # publish <repo> <src> <dest> [<src> <dest>...]: one clone and one commit per repository.
           publish() {
-            repo="$1" src="$2" dest="$3" dir="$RUNNER_TEMP/clone-${1#*/}"
+            repo="$1" dir="$RUNNER_TEMP/clone-${1#*/}"
+            shift
             git clone --depth 1 "https://x-access-token:${PM_TOKEN}@github.com/${repo}.git" "$dir"
-            mkdir -p "$dir/$(dirname "$dest")"
-            cp "$src" "$dir/$dest"
-            git -C "$dir" add "$dest"
+            while [ $# -gt 0 ]; do
+              mkdir -p "$dir/$(dirname "$2")"
+              cp "$1" "$dir/$2"
+              git -C "$dir" add "$2"
+              shift 2
+            done
             if git -C "$dir" diff --cached --quiet; then return 0; fi
             git -C "$dir" commit -m "prismalens $version"
             git -C "$dir" push origin HEAD:main
           }
-          publish prismalens/homebrew-tap "$RUNNER_TEMP/manifests/Formula/prismalens.rb" Formula/prismalens.rb
-          publish prismalens/scoop-bucket "$RUNNER_TEMP/manifests/bucket/prismalens.json" bucket/prismalens.json
-          # The desktop app's own packages: a cask, and a Scoop manifest with a Start menu shortcut.
-          publish prismalens/homebrew-tap "$RUNNER_TEMP/manifests/Casks/prismalens-app.rb" Casks/prismalens-app.rb
-          publish prismalens/scoop-bucket "$RUNNER_TEMP/manifests/bucket/prismalens-app.json" bucket/prismalens-app.json
+          m="$RUNNER_TEMP/manifests"
+          # The CLI, and the desktop app's own packages: a cask, and a Scoop manifest with a Start menu shortcut.
+          publish prismalens/homebrew-tap "$m/Formula/prismalens.rb" Formula/prismalens.rb "$m/Casks/prismalens-app.rb" Casks/prismalens-app.rb
+          publish prismalens/scoop-bucket "$m/bucket/prismalens.json" bucket/prismalens.json "$m/bucket/prismalens-app.json" bucket/prismalens-app.json
 
   # The real tap and bucket, as a user meets them (#920). The standalone workflow smokes a
   # formula and manifest built beside the archives; only this installs what was pushed.

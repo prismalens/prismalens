@@ -24,6 +24,7 @@ export type LauncherEnv = {
 	xdgDataHome?: string;
 	exists: (path: string) => boolean;
 	readText: (path: string) => string | null;
+	isLink: (path: string) => boolean;
 };
 
 export type LauncherPlan =
@@ -64,14 +65,23 @@ export function desktopEntryPath(
 	);
 }
 
+/**
+ * Exec's value per the Desktop Entry spec, as the installer writes it: a quoted argument
+ * (\ " ` $ escaped), then the string escape (\ doubled) and the field-code escape (% doubled).
+ */
+export function desktopExecValue(path: string): string {
+	const quoted = `"${path.replace(/[\\"`$]/g, "\\$&")}"`;
+	return quoted.replace(/\\/g, "\\\\").replace(/%/g, "%%");
+}
+
 export function desktopEntry(execPath: string, icon: string | null): string {
 	return [
 		"[Desktop Entry]",
 		"Type=Application",
 		"Name=PrismaLens",
 		"Comment=Investigate alerts with the coding agent you already use",
-		`Exec="${execPath}"`,
-		...(icon ? [`Icon=${icon}`] : []),
+		`Exec=${desktopExecValue(execPath)}`,
+		...(icon ? [`Icon=${icon.replace(/\\/g, "\\\\")}`] : []),
 		"Terminal=false",
 		"Categories=Development;",
 		"StartupWMClass=PrismaLens",
@@ -80,13 +90,26 @@ export function desktopEntry(execPath: string, icon: string | null): string {
 	].join("\n");
 }
 
-/** The program an entry's Exec line runs, quoted or not. */
+/** The program an entry's Exec line runs: the spec's escapes undone, quoted or not. */
 export function desktopEntryExec(text: string): string | null {
-	const line = /^Exec=(.*)$/m.exec(text)?.[1]?.trim();
-	if (!line) return null;
-	return line.startsWith('"')
-		? (line.slice(1).split('"')[0] ?? null)
-		: (line.split(/\s+/)[0] ?? null);
+	const raw = /^Exec=(.*)$/m.exec(text)?.[1]?.trim();
+	if (!raw) return null;
+	const line = raw
+		.replace(/\\(.)/g, (_, c: string) =>
+			c === "s" ? " " : c === "\\" ? "\\" : `\\${c}`,
+		)
+		.replace(/%%/g, "%");
+	if (!line.startsWith('"')) return line.split(/\s+/)[0] ?? null;
+	let out = "";
+	for (let i = 1; i < line.length; i++) {
+		const c = line[i];
+		if (c === '"') return out;
+		if (c === "\\" && i + 1 < line.length) {
+			i++;
+			out += line[i];
+		} else out += c;
+	}
+	return null;
 }
 
 const samePath = (a: string, b: string, platform: NodeJS.Platform) =>
@@ -94,7 +117,8 @@ const samePath = (a: string, b: string, platform: NodeJS.Platform) =>
 
 /**
  * What to do about the launcher for this copy. An existing launcher that opens another copy which
- * still exists is left alone: the user may run a downloaded copy beside an installed one.
+ * still exists is left alone: the user may run a downloaded copy beside an installed one. A copy
+ * a package manager installed has that manager's launcher, so it adds none.
  */
 export function planLauncher(
 	env: LauncherEnv,
@@ -102,6 +126,8 @@ export function planLauncher(
 ): LauncherPlan {
 	if (env.platform === "win32") {
 		const path = shortcutPath(env.appData);
+		if (/[\\/]scoop[\\/]apps[\\/]/i.test(env.execPath))
+			return { kind: "none", reason: "Scoop's shortcut opens this copy" };
 		const options = {
 			target: env.execPath,
 			icon: env.execPath,
@@ -112,7 +138,8 @@ export function planLauncher(
 		if (!env.exists(path))
 			return { kind: "shortcut", path, operation: "create", options };
 		const current = readShortcut(path);
-		if (!current || !env.exists(current.target))
+		if (!current) return { kind: "none", reason: `${path} can't be read` };
+		if (!env.exists(current.target))
 			return { kind: "shortcut", path, operation: "replace", options };
 		if (!samePath(current.target, env.execPath, env.platform))
 			return { kind: "none", reason: `${path} opens ${current.target}` };
@@ -125,9 +152,10 @@ export function planLauncher(
 		const path = desktopEntryPath(env);
 		const icon = posix.join(env.resourcesPath, "icon.png");
 		const contents = desktopEntry(env.execPath, env.exists(icon) ? icon : null);
+		if (env.isLink(path)) return { kind: "none", reason: `${path} isn't ours` };
 		const text = env.readText(path);
 		if (text === null) return { kind: "desktop-entry", path, contents };
-		if (!text.includes(DESKTOP_ENTRY_MARKER))
+		if (!text.split("\n").includes(DESKTOP_ENTRY_MARKER))
 			return { kind: "none", reason: `${path} isn't ours` };
 		const exec = desktopEntryExec(text);
 		if (exec && env.exists(exec) && exec !== env.execPath)

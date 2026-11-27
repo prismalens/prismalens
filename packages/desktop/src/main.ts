@@ -10,7 +10,13 @@
  */
 
 import { type ChildProcess, execFile, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import path, { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deviceCookieName } from "@prismalens/auth/device-cookie";
@@ -205,7 +211,7 @@ async function openUpdate(version: string | null): Promise<void> {
 		title: TITLE,
 		message: version ? `PrismaLens ${version} is out` : "Upgrade PrismaLens",
 		detail:
-			"Run pl upgrade in a terminal. It upgrades the app and the pl command together; restart the app afterwards.",
+			"Quit PrismaLens (tray icon, then Quit), run pl upgrade in a terminal, then open the app again. pl upgrade upgrades the app and the pl command together.",
 		buttons: ["Copy pl upgrade", "Close"],
 		defaultId: 0,
 		cancelId: 1,
@@ -215,7 +221,13 @@ async function openUpdate(version: string | null): Promise<void> {
 
 /** Gives a copy run from its download the launcher the installers write; see launcher.ts. */
 async function registerLauncher(): Promise<void> {
-	if (!app.isPackaged || process.env.PRISMALENS_DESKTOP_SMOKE) return;
+	// The installed-app smoke turns it on to check the launcher this leaves (smoke-installed.mjs).
+	if (
+		!app.isPackaged ||
+		(process.env.PRISMALENS_DESKTOP_SMOKE &&
+			process.env.PRISMALENS_DESKTOP_SMOKE_LAUNCHER !== "1")
+	)
+		return;
 	const plan = planLauncher(
 		{
 			platform: process.platform,
@@ -226,6 +238,13 @@ async function registerLauncher(): Promise<void> {
 			xdgDataHome: process.env.XDG_DATA_HOME,
 			exists: existsSync,
 			readText,
+			isLink: (p) => {
+				try {
+					return lstatSync(p).isSymbolicLink();
+				} catch {
+					return false;
+				}
+			},
 		},
 		(path) => {
 			try {
@@ -257,7 +276,21 @@ async function registerLauncher(): Promise<void> {
 			checkboxLabel: "Don't ask again",
 		});
 		if (response === 0) {
-			app.moveToApplicationsFolder();
+			// Never over another PrismaLens.app: Electron's default trashes one that isn't running.
+			let conflict = false;
+			const moved = app.moveToApplicationsFolder({
+				conflictHandler: () => {
+					conflict = true;
+					return false;
+				},
+			});
+			if (!moved && conflict)
+				await dialog.showMessageBox({
+					title: TITLE,
+					message: "PrismaLens is already in your Applications folder",
+					detail:
+						"That copy was left as it is. Open it from Launchpad or Spotlight, or delete it and try again.",
+				});
 		} else if (checkboxChecked) {
 			mkdirSync(app.getPath("userData"), { recursive: true });
 			writeFileSync(asked, "");

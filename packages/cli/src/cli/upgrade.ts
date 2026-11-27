@@ -9,7 +9,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	type InstallChannel,
@@ -283,6 +283,18 @@ export function resolveUpdateChannel(
 }
 
 /**
+ * For an installer copy already at the newest release: how to add the desktop app when the
+ * installer's receipt says it isn't installed and wasn't declined (desktop=0).
+ */
+export function desktopAppHint(
+	receipt: string | null,
+	rerun: string,
+): string | null {
+	if (receipt === null || /^desktop=[01]\r?$/m.test(receipt)) return null;
+	return `The desktop app isn't installed beside this copy. To add it, run the installer again: ${rerun}`;
+}
+
+/**
  * Whether the desktop app's own package (Homebrew's prismalens-app cask, Scoop's prismalens-app)
  * sits beside this copy, found from where this copy's node runs.
  */
@@ -453,6 +465,17 @@ export default defineCommand({
 					consola.success(
 						`PrismaLens ${current} is the newest ${updateChannel} release.`,
 					);
+				const hint =
+					channel === "installer"
+						? desktopAppHint(
+								((file) =>
+									existsSync(file) ? readFileSync(file, "utf8") : null)(
+									join(config.installerDataDir(), "receipt"),
+								),
+								config.upgradeCommand("installer", process.platform),
+							)
+						: null;
+				if (hint) consola.info(hint);
 				return;
 			}
 			if (needsArchives && !(await releaseReady(latest))) {

@@ -33,6 +33,7 @@ function env(platform: NodeJS.Platform, files: Record<string, string>, over: Par
 				? Object.keys(files).some((f) => f.toLowerCase() === p.toLowerCase())
 				: p in files,
 		readText: (p) => files[p] ?? null,
+		isLink: () => false,
 		...over,
 	};
 }
@@ -147,6 +148,33 @@ describe("planLauncher on macOS", () => {
 				reason: "in Applications",
 			});
 		}
+	});
+});
+
+describe("planLauncher beside a package manager or a launcher it can't read", () => {
+	it("adds no shortcut for Scoop's copy, and leaves a shortcut it can't read", () => {
+		const scoopExe = String.raw`C:\Users\ada\scoop\apps\prismalens-app\current\PrismaLens.exe`;
+		expect(planLauncher(env("win32", {}, { execPath: scoopExe }), noShortcut)).toEqual({
+			kind: "none",
+			reason: "Scoop's shortcut opens this copy",
+		});
+		expect(planLauncher(env("win32", { [lnk]: "" }), noShortcut)).toEqual({
+			kind: "none",
+			reason: `${lnk} can't be read`,
+		});
+	});
+
+	it("leaves a symlinked desktop entry alone, even one carrying the marker", () => {
+		const linked = env("linux", { [entryPath]: desktopEntry("/gone/prismalens", null) }, { isLink: (p) => p === entryPath });
+		expect(planLauncher(linked, noShortcut)).toEqual({ kind: "none", reason: `${entryPath} isn't ours` });
+	});
+});
+
+describe("desktopEntry escaping", () => {
+	it("writes Exec with the spec's escapes, and reads the same path back", () => {
+		const odd = '/home/ada/100%QA/a b/x"y$z/prismalens';
+		expect(desktopEntry(odd, null)).toContain(String.raw`Exec="/home/ada/100%%QA/a b/x\\"y\\$z/prismalens"`);
+		expect(desktopEntryExec(desktopEntry(odd, null))).toBe(odd);
 	});
 });
 

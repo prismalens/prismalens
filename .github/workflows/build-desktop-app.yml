@@ -214,6 +214,17 @@ jobs:
           $target = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath
           if (-not (Test-Path $target) -or (Split-Path $target -Leaf) -ne 'PrismaLens.exe') { Write-Error "the shortcut opens $target"; exit 1 }
           "ok: $lnk opens $target"
+          # Opened from Scoop's shortcut, the app renders and adds no launcher of its own beside Scoop's.
+          $png = "$env:GITHUB_WORKSPACE\desktop-scoop.png"
+          $env:PRISMALENS_DESKTOP_SMOKE = $png; $env:PRISMALENS_DESKTOP_SMOKE_LAUNCHER = "1"
+          $env:PRISMALENS_WORKSPACE_DIR = "$env:RUNNER_TEMP\scoop-ws"; $env:PRISMALENS_TELEMETRY = "off"
+          Start-Process $lnk
+          for ($i = 0; $i -lt 180 -and -not ((Test-Path $png) -and (Get-Item $png).Length -gt 10000); $i++) { Start-Sleep 1 }
+          if (-not (Test-Path $png)) { Write-Error "the app opened from Scoop's shortcut rendered nothing"; exit 1 }
+          Start-Sleep 10
+          $own = Join-Path ([Environment]::GetFolderPath('Programs')) 'PrismaLens.lnk'
+          if (Test-Path $own) { Write-Error "the app added $own beside Scoop's shortcut"; exit 1 }
+          "ok: rendered from Scoop's shortcut, no second shortcut"
           scoop uninstall prismalens-app
           if (Test-Path $lnk) { Write-Error "uninstall left $lnk"; exit 1 }
 

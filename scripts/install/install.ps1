@@ -197,22 +197,38 @@ function Fetch-Verified([string]$Name, [string]$Expected, [string]$OutFile, [str
 	return ($tried -join '; ')
 }
 
-# Why the desktop app is skipped on this machine, or "" to install it. A receipt's desktop=0 keeps an earlier opt-out.
+# The target of the shortcut at $Path, or "" when there is none.
+function Get-ShortcutTarget([string]$Path) {
+	if (-not (Test-Path -LiteralPath $Path)) { return "" }
+	try { return [string](New-Object -ComObject WScript.Shell).CreateShortcut($Path).TargetPath } catch { return "" }
+}
+
+# Whether $Path is inside this installer's desktop folder; the separator keeps desktop-other\ out.
+function Test-Ours([string]$Path) {
+	$Path -and $Path.StartsWith("$desktopRoot\", [StringComparison]::OrdinalIgnoreCase)
+}
+
+# Why the desktop app is skipped on this machine, or "" to install it. The receipt's desktop=0 keeps an earlier opt-out.
 function Get-DesktopSkip($Rec) {
-	if ($env:PRISMALENS_DESKTOP -eq "1") { return "" }
 	if ($NoDesktop -or $env:PRISMALENS_DESKTOP -eq "0") { return "you asked for the CLI only" }
+	$other = Get-ShortcutTarget $shortcut
+	if ($other -and -not (Test-Ours $other) -and (Test-Path -LiteralPath $other)) {
+		return "the Start menu's PrismaLens shortcut opens $other, which isn't this installer's; it was left as it is"
+	}
+	$scoop = Get-ShortcutTarget (Join-Path $shortcutDir "Scoop Apps\PrismaLens.lnk")
+	if ($scoop -and (Test-Path -LiteralPath $scoop)) { return "Scoop's prismalens-app is installed; it upgrades with scoop update" }
+	if ($env:PRISMALENS_DESKTOP -eq "1") { return "" }
 	if ($Rec["desktop"] -eq "0") { return "an earlier install left it out; set PRISMALENS_DESKTOP=1 to add it" }
 	if ($env:CI) { return "this is CI" }
 	$kind = try { (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -ErrorAction Stop).InstallationType } catch { "" }
 	if ($kind -match 'Server Core|Nano') { return "$kind has no desktop" }
-	if (Test-Path (Join-Path $shortcutDir "Scoop Apps\PrismaLens.lnk")) { return "Scoop's prismalens-app is installed; it upgrades with scoop update" }
+	if (-not [Environment]::UserInteractive) { return "this session has no desktop (a service or a scheduled task)" }
 	return ""
 }
 
 # The installed app's processes; a running copy keeps its folder locked.
 function Get-DesktopProcesses {
-	@(Get-Process -Name PrismaLens -ErrorAction SilentlyContinue |
-		Where-Object { $_.Path -and $_.Path.StartsWith($desktopRoot, [StringComparison]::OrdinalIgnoreCase) })
+	@(Get-Process -Name PrismaLens -ErrorAction SilentlyContinue | Where-Object { Test-Ours $_.Path })
 }
 
 # Removes $Dir only when nothing in it is open: a folder with an open file can't be renamed, while
@@ -224,25 +240,28 @@ function Remove-Unused([string]$Dir) {
 	return $true
 }
 
-# The shortcut at $Path, when it is one this installer made (it points into $desktopRoot).
-function Get-OwnShortcut([string]$Path) {
-	if (-not (Test-Path $Path)) { return $null }
-	$link = (New-Object -ComObject WScript.Shell).CreateShortcut($Path)
-	if ($link.TargetPath -and $link.TargetPath.StartsWith($desktopRoot, [StringComparison]::OrdinalIgnoreCase)) { return $link }
-	return $null
+# Removes the shortcut and the app this installer made, and nothing else.
+function Remove-Desktop {
+	if (Get-DesktopProcesses) { Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run this again. Nothing was removed." }
+	if (Test-Ours (Get-ShortcutTarget $shortcut)) {
+		Remove-Item -LiteralPath $shortcut -Force
+		Done "Removed the Start menu shortcut $shortcut"
+	}
+	if (Test-Path $desktopRoot) {
+		try { Remove-Item $desktopRoot -Recurse -Force } catch { Fail "Couldn't remove the desktop app in ${desktopRoot}: $($_.Exception.Message)" }
+		Done "Removed the desktop app"
+	}
 }
 
 # Unpacks the verified app zip to desktop\<version> and points the Start menu shortcut at it. Returns the shortcut path.
 # Versioned folders, because Windows locks a running app's files; the one a running app holds is pruned next time.
 function Install-Desktop([string]$ZipFile) {
 	$dest = Join-Path $desktopRoot $Version
-	$unpacked = Join-Path $desktopRoot ".new"
-	if (Test-Path $unpacked) { Remove-Item $unpacked -Recurse -Force }
+	$unpacked = Join-Path $desktopRoot (".new-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
 	New-Item -ItemType Directory -Path $unpacked -Force | Out-Null
 	$out = & (Join-Path $env:SystemRoot "System32\tar.exe") -xf $ZipFile -C $unpacked --strip-components 1 2>&1
 	if ($LASTEXITCODE -ne 0) { Remove-Item $unpacked -Recurse -Force -ErrorAction SilentlyContinue; throw "couldn't unpack it: $(($out | Out-String).Trim())" }
-	$exe = Join-Path $unpacked "PrismaLens.exe"
-	if (-not (Test-Path $exe)) { throw "the archive has no PrismaLens.exe" }
+	if (-not (Test-Path (Join-Path $unpacked "PrismaLens.exe"))) { Remove-Item $unpacked -Recurse -Force -ErrorAction SilentlyContinue; throw "the archive has no PrismaLens.exe" }
 	if ((Test-Path $dest) -and -not (Remove-Unused $dest)) {
 		Remove-Item $unpacked -Recurse -Force -ErrorAction SilentlyContinue
 		throw "PrismaLens $Version is running from $dest; quit it and run the installer again"
@@ -250,17 +269,15 @@ function Install-Desktop([string]$ZipFile) {
 	Move-Item -Path $unpacked -Destination $dest
 	$exe = Join-Path $dest "PrismaLens.exe"
 	New-Item -ItemType Directory -Path $shortcutDir -Force | Out-Null
-	if ((Test-Path $shortcut) -and -not (Get-OwnShortcut $shortcut)) {
-		$old = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcut).TargetPath
-		if ($old -and (Test-Path $old)) { Warn "The Start menu shortcut opened $old; it now opens this install. That copy is still there; delete it if you no longer need it." }
-	}
+	$old = Get-ShortcutTarget $shortcut
+	if ($old -and -not (Test-Ours $old)) { Warn "Replaced the Start menu shortcut to $old, which no longer exists." }
 	$link = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)
 	$link.TargetPath = $exe
 	$link.WorkingDirectory = $dest
 	$link.IconLocation = "$exe,0"
 	$link.Description = "PrismaLens desktop app"
 	$link.Save()
-	# Older versions go once nothing runs from them; a running one is pruned by a later install.
+	# Older versions and interrupted unpacks go once nothing runs from them; a running one is pruned by a later install.
 	Get-ChildItem $desktopRoot -Directory | Where-Object { $_.Name -ne $Version } |
 		ForEach-Object { [void](Remove-Unused $_.FullName) }
 	return $shortcut
@@ -273,7 +290,7 @@ function Set-UserPath([string]$v) { [Environment]::SetEnvironmentVariable("Path"
 
 if ($Uninstall) {
 	Banner "uninstaller"
-	if (Get-DesktopProcesses) { Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run the uninstaller again. Nothing was removed." }
+	if (Get-DesktopProcesses) { Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run this again. Nothing was removed." }
 	$rec = Read-Receipt
 	$dir = if ($rec["bin_dir"]) { $rec["bin_dir"] } else { $binDir }
 	foreach ($name in "pl.cmd", "prismalens.cmd") {
@@ -288,14 +305,7 @@ if ($Uninstall) {
 		Set-UserPath ($parts -join ';')
 		Done "Removed $dir from your user PATH"
 	}
-	if (Get-OwnShortcut $shortcut) {
-		Remove-Item $shortcut -Force
-		Done "Removed the Start menu shortcut $shortcut"
-	}
-	if (Test-Path $desktopRoot) {
-		try { Remove-Item $desktopRoot -Recurse -Force } catch { Fail "Couldn't remove the desktop app in ${desktopRoot}: $($_.Exception.Message) If PrismaLens is running, quit it and run the uninstaller again." }
-		Done "Removed the desktop app"
-	}
+	Remove-Desktop
 	if (Test-Path $dataRoot) {
 		Remove-Item $dataRoot -Recurse -Force
 		Done "Removed $dataRoot"
@@ -409,10 +419,16 @@ try {
 	if (($env:Path -split ';') -notcontains $binDir) { $env:Path = "$binDir;$env:Path" }
 
 	# The desktop app is the release's own zip, verified like the CLI; a failure here leaves the CLI installed.
+	# desktop= is the user's choice; the app and shortcut uninstall removes are the ones in $desktopRoot.
 	$desktop = if ($rec["desktop"]) { $rec["desktop"] } else { "" }
 	$launcher = ""
+	if ($NoDesktop -or $env:PRISMALENS_DESKTOP -eq "0") {
+		$desktop = "0"
+		Remove-Desktop
+	} elseif ($env:PRISMALENS_DESKTOP -eq "1") {
+		$desktop = "1"
+	}
 	$skip = Get-DesktopSkip $rec
-	if ($NoDesktop -or $env:PRISMALENS_DESKTOP -eq "0") { $desktop = "0" }
 	if ($skip) {
 		Step "Desktop app skipped: $skip"
 	} else {
@@ -462,6 +478,7 @@ try {
 	if ($launcher) {
 		[Console]::Error.WriteLine("`n  Open the desktop app from the Start menu: ${bold}PrismaLens${r}   ${dim}($launcher)${r}")
 		[Console]::Error.WriteLine("  ${dim}The app isn't code-signed yet. If Windows SmartScreen stops it, choose More info, then Run anyway.${r}")
+		[Console]::Error.WriteLine("  ${dim}Smart App Control, where it is on, blocks unsigned apps with no override; use pl up in a browser there.${r}")
 	}
 	[Console]::Error.WriteLine("`n  Start it with ${bold}pl up${r}   ${middot}   Upgrade with ${bold}pl upgrade${r}   ${middot}   Docs: https://docs.prismalens.io`n")
 } finally {
