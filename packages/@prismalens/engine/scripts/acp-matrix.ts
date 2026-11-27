@@ -21,6 +21,7 @@ import {
 	expectationFor,
 	runRow,
 } from "./acp-scenarios.js";
+import { runSharedSetRow } from "./acp-shared-set.js";
 import { stubSearch } from "./stub-gateway.js";
 
 const harness = process.argv[2] as HarnessId;
@@ -60,14 +61,15 @@ for (const row of rows) {
 		);
 		continue;
 	}
-	if (row.run.isolation) {
+	if (row.run.isolation || row.run.sharedSet) {
 		const started = Date.now();
-		const { problem, saw } = await runIsolationRow(row, harness).catch(
-			(e: unknown) => ({
-				problem: `the runner threw: ${e instanceof Error ? e.message : String(e)}`,
-				saw: "",
-			}),
-		);
+		const { problem, saw } = await (row.run.sharedSet
+			? runSharedSetRow(row, harness, process.env)
+			: runIsolationRow(row, harness)
+		).catch((e: unknown) => ({
+			problem: `the runner threw: ${e instanceof Error ? e.message : String(e)}`,
+			saw: "",
+		}));
 		if (problem) failed++;
 		console.log(
 			`ROW ${row.row}: ${problem ? `fail (${problem})` : "pass"} [${saw}; ${Math.round((Date.now() - started) / 1000)}s]`,

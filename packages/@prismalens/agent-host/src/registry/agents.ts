@@ -51,8 +51,10 @@ export interface AgentRunEnv {
 	shipped?: boolean;
 	/** The product's MCP gateway and its per-run server name, set for a row with `gatewayDelivery` (#848). */
 	gateway?: { url: string; token: string; name: string };
-	/** The PrismaLens set's servers a `mcp-config-file` row writes beside the gateway, by name (#1180 §3.3). */
-	runFile?: Record<string, unknown>;
+	/** Shared servers for a row's run file, each value an env reference (#1180 §3.3). */
+	runFileServers?: Record<string, Record<string, unknown>>;
+	/** Set by launch when a `mcp-config-file` row's run file holds the gateway or shared servers. */
+	runFile?: true;
 	/** The ANTHROPIC_BASE_URL the child gets from the host, stored and launch layers; unset when none. */
 	anthropicBaseUrl?: string;
 }

@@ -128,6 +128,8 @@ import {
 } from "./provider-failure.js";
 import {
 	injectedSecrets,
+	keptSchemaValue,
+	RecordScrubber,
 	redactEvent,
 	redactLine,
 	requestedSecrets,
@@ -761,30 +763,12 @@ export type PrepareRunEnvOptions = Pick<
 	| "binaryPath"
 	| "launchArgs"
 	| "gateway"
+	| "shared"
 	| "policy"
 	| "hostEnv"
 	| "subagentLimits"
 	| "cleanProfile"
-	| "shared"
 >;
-
-/** The shared servers in a run file's `mcpServers` shape, by name; the set sends such a row no value. */
-function runFileServers(
-	servers: NonNullable<PrepareRunEnvOptions["shared"]>["servers"],
-): Record<string, unknown> {
-	const pairs = (xs: { name: string; value: string }[]) =>
-		Object.fromEntries(xs.map((x) => [x.name, x.value]));
-	return Object.fromEntries(
-		servers.map((s) => [
-			s.name,
-			"type" in s && s.type === "http"
-				? { type: "http", url: s.url, headers: pairs(s.headers) }
-				: "command" in s
-					? { command: s.command, args: s.args, env: pairs(s.env) }
-					: s,
-		]),
-	);
-}
 
 /** The clean profile's isolation input to `planLaunch`; none unless asked for. */
 function cleanProfileInput(
@@ -867,10 +851,8 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 				}
 			: {}),
 		...(opts.subagentLimits ? { subagents: opts.subagentLimits } : {}),
-		...(opts.shared?.servers.length
-			? { runFile: runFileServers(opts.shared.servers) }
-			: {}),
 		...cleanProfileInput(opts),
+		...(opts.shared?.runFile ? { runFile: opts.shared.runFile } : {}),
 		descriptor: { ...AGENT_REGISTRY[opts.harness], ...descriptor },
 	});
 	writeLaunchFiles(plan);
@@ -963,15 +945,96 @@ export async function* runInvestigation(
 				}
 			: {}),
 	};
+	const events = new RecordScrubber<CanonicalEvent>(secrets, eventChannel);
 	try {
-		for await (const ev of runSession(scrubbed)) yield redactEvent(ev, secrets);
+		for await (const ev of runSession(scrubbed)) {
+			const out = events.push(redactEvent(ev, secrets));
+			// Anything else may wait on the person, so it goes out with all before it.
+			yield* CARRIED_EVENTS.has(ev.kind) ? out : [...out, ...events.flush()];
+		}
+		yield* events.end();
 	} finally {
 		if (stderr) for (const [out] of chunks.end()) stderr(out ?? "");
 	}
 }
 
+/** The streamed kinds a split value can span; any other releases every event held (§3.3). */
+const CARRIED_EVENTS: ReadonlySet<CanonicalEvent["kind"]> = new Set([
+	"agent_step",
+	"thought",
+	"harness_tool_call",
+	"tool_result",
+]);
+
+/** An event's values, with the agent's words and its thoughts each read as one text; its schema values are kept. */
+function eventChannel(
+	e: CanonicalEvent,
+	path: readonly (string | number)[],
+): string | null {
+	const v = path.reduce<unknown>(
+		(o, k) => (o as Record<string | number, unknown> | null)?.[k],
+		e,
+	);
+	if (typeof v === "string" && keptSchemaValue(path, v)) return null;
+	if (path.length === 1 && path[0] === "text")
+		return e.kind === "agent_step"
+			? "message"
+			: e.kind === "thought"
+				? "thought"
+				: "";
+	return "";
+}
+
+/** One transcript line; `held` is `parsed` as the scrubber released it. */
+interface WireRecord {
+	t: number;
+	d: "in" | "out";
+	m: string;
+	parsed: unknown;
+	held: unknown;
+}
+
+function parseWire(line: string): unknown {
+	try {
+		return JSON.parse(line) as unknown;
+	} catch {
+		return line;
+	}
+}
+
+/** An inbound record's values, with message and thought chunks each read as one text. */
+function wireChannel(
+	r: WireRecord,
+	path: readonly (string | number)[],
+): string | null {
+	if (r.d === "out" || path[0] !== "held") return null;
+	const update = (
+		r.parsed as { params?: { update?: { sessionUpdate?: unknown } } } | null
+	)?.params?.update?.sessionUpdate;
+	const text = path.slice(-2).join(".") === "content.text";
+	if (text && update === "agent_message_chunk") return "message";
+	if (text && update === "agent_thought_chunk") return "thought";
+	// Tool output is one text across calls, so a value split between two of them is caught.
+	if (text && (update === "tool_call" || update === "tool_call_update"))
+		return "tool";
+	return "";
+}
+
 async function* runSession(
 	opts: RunInvestigationOptions,
+): AsyncGenerator<CanonicalEvent> {
+	const ends: (() => void)[] = [];
+	try {
+		yield* sessionRun(opts, ends);
+	} finally {
+		for (const end of ends) end();
+	}
+}
+
+async function* sessionRun(
+	opts: RunInvestigationOptions,
+	/** Run once the session is over, however it ended. */
+	ends: (() => void)[],
 ): AsyncGenerator<CanonicalEvent> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const adapter = new AcpAdapter({
@@ -1018,19 +1081,34 @@ async function* runSession(
 		...(opts.secrets ?? []),
 		...(opts.shared?.hidden ?? []),
 	]);
+	const write = (r: WireRecord): void => {
+		const m = r.held === r.parsed ? r.m : JSON.stringify(r.held);
+		try {
+			appendFileSync(transcript, `${JSON.stringify({ t: r.t, d: r.d, m })}\n`);
+		} catch {
+			// best effort (ADR 0002 §6)
+		}
+	};
+	// Inbound records are scrubbed as one stream, so a value split across lines is caught (§3.3).
+	const inbound = new RecordScrubber<WireRecord>(hidden, wireChannel);
+	ends.push(() => {
+		for (const r of inbound.end()) write(r);
+	});
 	const wire = (direction: "in" | "out", line: string): void => {
 		const m = redactLine(
 			direction === "out" ? withoutSharedDefs(line) : line,
 			hidden,
 		);
-		try {
-			appendFileSync(
-				transcript,
-				`${JSON.stringify({ t: Date.now(), d: direction, m })}\n`,
-			);
-		} catch {
-			// best effort (ADR 0002 §6)
-		}
+		// Parsed after redactLine, so the scrubber only has values split across records left.
+		const parsed = direction === "in" ? parseWire(m) : null;
+		for (const r of inbound.push({
+			t: Date.now(),
+			d: direction,
+			m,
+			parsed,
+			held: parsed,
+		}))
+			write(r);
 	};
 
 	const offer = opts.gateway
@@ -1042,7 +1120,7 @@ async function* runSession(
 	const fromFile = descriptor.gatewayDelivery === "mcp-config-file";
 	/** The shared servers the session was handed; history records these. */
 	let sharedSent: string[] | null = fromFile
-		? sharedServers.map((s) => s.name)
+		? Object.keys(opts.shared?.runFile?.servers ?? {})
 		: null;
 	const sentOf = <T extends { name: string }>(picked: T[]): T[] => {
 		if (!fromFile)
@@ -1064,6 +1142,10 @@ async function* runSession(
 	// An agent with a system-prompt slot takes the set's instructions there; any other, in its first prompt.
 	const sharedText = opts.shared?.instructions ?? null;
 	let sharedTextOwed = !!sharedText && !inSystemPrompt;
+	const sentRevision = sharedText && opts.shared ? opts.shared.revision : "";
+	// A compaction rebuilds Claude's system prompt from the set this session was given (§3.3).
+	const compactedTo = () =>
+		inSystemPrompt && opts.shared ? { sharedRevision: sentRevision } : {};
 	let loadout: Parameters<typeof adapter.agentLoadout>[0] | null = null;
 	let loadoutSent = false;
 	/** The session's `agent_loadout`, once, as soon as Claude's init has arrived; its seq is taken here. */
@@ -1301,6 +1383,8 @@ async function* runSession(
 								...(lastUsed !== undefined && lastUsed !== autoCompactFrom
 									? { after: lastUsed }
 									: {}),
+								// A sub-agent's compaction rebuilds no system prompt of this session.
+								...(status === "completed" && main ? compactedTo() : {}),
 							},
 						);
 						autoCompactFrom = undefined;
@@ -1748,12 +1832,19 @@ async function* runSession(
 		)
 			? "message"
 			: "event";
+		// A reopened session keeps what it holds: Claude its first system prompt, any other agent
+		// the instructions an earlier prompt carried, sent again only once they change (§3.3).
+		const reopened = !!session.reopen && session.reopen !== "fresh";
+		const held = opts.shared?.held ?? "";
+		if (reopened && held === sentRevision) sharedTextOwed = false;
 		yield adapter.sessionOpened(
 			opts.shared
 				? {
 						...opening,
 						sharedSet: {
-							revision: opts.shared.revision,
+							// What the session holds now: another agent takes new instructions at its
+							// first turn's receipt, which records them.
+							revision: reopened ? held : inSystemPrompt ? sentRevision : "",
 							servers: sharedSent ?? sharedServers.map((s) => s.name),
 						},
 					}
@@ -1957,9 +2048,14 @@ async function* runSession(
 				// prompt never went in. A compact carries no missed context (#1168, #1179).
 				if ("stop" in end && end.stop !== "cancelled") {
 					if (carriesShared) sharedTextOwed = false;
-					// One receipt holds at most 50 ids, so a larger turn sends several.
-					for (let i = 0; i < receipt.length; i += 50)
-						yield adapter.messagesReceived(receipt.slice(i, i + 50));
+					// One receipt holds at most 50 ids, so a larger turn sends several; the first
+					// records the instructions the turn carried.
+					const shown = carriesShared ? sentRevision : undefined;
+					for (let i = 0; i < Math.max(receipt.length, shown ? 1 : 0); i += 50)
+						yield adapter.messagesReceived(
+							receipt.slice(i, i + 50),
+							i === 0 ? shown : undefined,
+						);
 					if (!compacting && (!owed || carrying)) {
 						owed = false;
 						if (session.sessionId) await delivered(session.sessionId, sent);
@@ -2107,6 +2203,7 @@ async function* runSession(
 					? { after: lastUsed }
 					: {}),
 				...(instructions ? { instructions } : {}),
+				...(ok ? compactedTo() : {}),
 			});
 			return r;
 		};

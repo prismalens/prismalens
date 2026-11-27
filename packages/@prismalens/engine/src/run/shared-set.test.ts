@@ -93,7 +93,7 @@ describe("deliverShared (#1180 §3.3)", () => {
 		expect([without.servers, without.items[0]?.note]).toEqual([[], "Not sent: no HTTP"]);
 	});
 
-	it("says why each server is not sent: not a recipient, values entered for another definition, name taken, deepagents with values", async () => {
+	it("says why each server is not sent: not a recipient, values entered for another definition, name taken", async () => {
 		const s = await stdio();
 		const notes = async (stored: SharedMcpServerStored, agent: string, o: { ownNames?: string[]; runFile?: boolean } = {}) =>
 			(await deliverShared([stored], agent, { http: true, ownNames: o.ownNames ?? [], ...(o.runFile ? { runFile: true } : {}) })).items[0]?.note;
@@ -101,7 +101,58 @@ describe("deliverShared (#1180 §3.3)", () => {
 		expect(await notes({ ...s, valuesFor: "an-older-hash" }, "codex")).toBe("Not sent: needs values");
 		expect(await notes({ ...s, values: { TOKEN: VALUE } }, "codex")).toBe("Not sent: needs values");
 		expect(await notes(s, "codex", { ownNames: ["pl-docs"] })).toBe("Not sent: name taken");
-		expect(await notes({ ...s, recipients: ["deepagents"] }, "deepagents", { runFile: true })).toBe("Not supported for deepagents");
+	});
+
+	it("gives an agent with a run file its servers as ${PL_SV_...} references, with each value only in the env they read", async () => {
+		const s = await stdio({ recipients: ["deepagents"] });
+		const w = http({ recipients: ["deepagents"] });
+		const out = await deliverShared([s, w], "deepagents", { http: true, ownNames: [], runFile: true });
+		const command = s.def.type === "stdio" ? s.def.command : "";
+		expect([out.servers, out.items.map((i) => i.state)]).toEqual([[], ["loads", "loads"]]);
+		expect(out.runFile).toEqual({
+			servers: {
+				"pl-docs": { command, args: ["--db", "${PL_SV_DOCS_1}"], env: { TOKEN: "${PL_SV_DOCS_2}" } },
+				"pl-web": { type: "http", url: "${PL_SV_WEB_1}", headers: { Authorization: "${PL_SV_WEB_2}" } },
+			},
+			env: {
+				PL_SV_DOCS_1: "db-secret-arg",
+				PL_SV_DOCS_2: VALUE,
+				PL_SV_WEB_1: "https://mcp.example/v1?key=q-secret",
+				PL_SV_WEB_2: "Bearer h-secret",
+			},
+		});
+		const file = JSON.stringify(out.runFile?.servers);
+		expect([VALUE, "db-secret-arg", "q-secret", "h-secret"].filter((v) => file.includes(v) || file.includes(JSON.stringify(v).slice(1, -1)))).toEqual([]);
+		expect(out.hidden).toEqual(expect.arrayContaining([VALUE, "db-secret-arg", "q-secret", "Bearer h-secret"]));
+	});
+
+	it("a run file's servers expand, as deepagents expands them, to exactly what ACP sends, whatever a value or a literal holds", async () => {
+		// deepagents-code 0.2.1 `_interpolate_env`: one pass of `${VAR}`, so a value's own `${...}` stays as it is.
+		const expand = (text: string, env: Record<string, string>) =>
+			text.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, k: string) => env[k] ?? "");
+		const key = "a&b+c#d=e%f g${PL_SV_WEB_2}";
+		const w = http({
+			recipients: ["deepagents", "claude-code"],
+			def: { type: "http", url: "https://mcp.example/v1?fixed=${HOME}", query: ["key"], headers: ["Authorization"] },
+			values: { key, Authorization: "Bearer h-secret" },
+		});
+		const s = await stdio({ recipients: ["deepagents", "claude-code"] });
+		const literal = { ...s, def: { ...s.def, args: ["--root=${HOME}", { value: "DB_ARG" }] } } as SharedMcpServerStored;
+		const viaFile = await deliverShared([w, literal], "deepagents", { http: true, ownNames: [], runFile: true });
+		const viaAcp = await deliverShared([w, literal], "claude-code", { http: true, ownNames: [] });
+		const env = viaFile.runFile?.env ?? {};
+		const web = viaFile.runFile?.servers["pl-web"] as { url: string };
+		const docs = viaFile.runFile?.servers["pl-docs"] as { args: string[] };
+		const acpWeb = viaAcp.servers.find((x) => x.name === "pl-web") as { url: string };
+		const acpDocs = viaAcp.servers.find((x) => x.name === "pl-docs") as { args: string[] };
+		expect([
+			expand(web.url, env),
+			new URL(expand(web.url, env)).searchParams.get("key"),
+			docs.args.map((a) => expand(a, env)),
+			viaFile.hidden.includes("a%26b%2Bc%23d%3De%25f+g%24%7BPL_SV_WEB_2%7D"),
+		]).toEqual([acpWeb.url, key, acpDocs.args, true]);
+		expect(acpWeb.url).toBe("https://mcp.example/v1?fixed=%24%7BHOME%7D&key=a%26b%2Bc%23d%3De%25f+g%24%7BPL_SV_WEB_2%7D");
+		expect(acpDocs.args).toEqual(["--root=${HOME}", "db-secret-arg"]);
 	});
 
 	it("a deleted command, or one replaced by a same-size file with its mtime restored, is not sent and shows Changed", async () => {

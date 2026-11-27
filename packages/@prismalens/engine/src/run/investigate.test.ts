@@ -5,6 +5,7 @@ import {
 	chmodSync,
 	existsSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
@@ -21,6 +22,7 @@ import type {
 	RecordedFinding,
 	RecordedHypothesis,
 } from "@prismalens/contracts/schemas";
+import { CanonicalEventSchema, heldSharedRevision } from "@prismalens/contracts/schemas";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { prismalensLaunchPolicy } from "../launch/policy.js";
 import { conductRun } from "./conductor.js";
@@ -2914,7 +2916,7 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		profile: "own" as const,
 	};
 
-	it("sends each shared server in session/new, records the set on session_opened, and the transcript keeps only its name and type", async () => {
+	it("sends each shared server in session/new, records the set on session_opened and its instructions on the turn's receipt, and the transcript keeps only its name and type", async () => {
 		const record = join(tmp("rec"), "record.json");
 		const { events, runDir } = await collect("ok", {
 			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD: record },
@@ -2922,7 +2924,11 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		});
 		const seen = JSON.parse(readFileSync(record, "utf8")) as { mcpServers: unknown };
 		expect(seen.mcpServers).toEqual(shared.servers);
-		expect(events.find((e) => e.kind === "session_opened")).toMatchObject({ sharedSet: { revision: "rev-7", servers: ["pl-docs"] } });
+		expect([
+			events.find((e) => e.kind === "session_opened"),
+			events.flatMap((e) => (e.kind === "message_received" ? [[e.messageIds, e.sharedRevision ?? null]] : [])),
+			heldSharedRevision(events),
+		]).toMatchObject([{ sharedSet: { revision: "", servers: ["pl-docs"] } }, [[[], "rev-7"]], "rev-7"]);
 		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
 		expect([wire.includes('{\\"name\\":\\"pl-docs\\",\\"type\\":\\"stdio\\"}'), wire.includes("secret-arg-path"), wire.includes(VALUE)]).toEqual([true, false, false]);
 	});
@@ -2947,8 +2953,10 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 
 	it("writes the set's servers into a run-file agent's file beside no ACP server, and records them in session history", async () => {
 		const record = join(tmp("rec"), "record.json");
-		const web = { type: "http" as const, name: "pl-web", url: "https://mcp.example/v1", headers: [] };
-		const docs = { name: "pl-docs", command: "/bin/docs-mcp", args: ["--root", "/srv"], env: [] };
+		const servers = {
+			"pl-docs": { command: "/bin/docs-mcp", args: ["--root", "${PL_SV_DOCS_1}"], env: {} },
+			"pl-web": { type: "http", url: "https://mcp.example/v1", headers: {} },
+		};
 		const { events, runDir } = await collect("ok", {
 			harness: "deepagents",
 			descriptor: {
@@ -2959,7 +2967,7 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 				gatewayDelivery: "mcp-config-file",
 			},
 			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD: record, FAKE_MCP_HTTP: "1" },
-			shared: { ...shared, hidden: [], servers: [docs, web] },
+			shared: { ...shared, hidden: [], servers: [], runFile: { servers, env: { PL_SV_DOCS_1: "/srv" } } },
 		});
 		const file = JSON.parse(readFileSync(join(runDir, "config", GATEWAY_RUN_FILE), "utf8"));
 		const opened = events.find((e) => e.kind === "session_opened");
@@ -2967,16 +2975,7 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 			file,
 			(JSON.parse(readFileSync(record, "utf8")) as { mcpServers: unknown[] }).mcpServers,
 			opened && "sharedSet" in opened ? opened.sharedSet?.servers : null,
-		]).toEqual([
-			{
-				mcpServers: {
-					"pl-docs": { command: "/bin/docs-mcp", args: ["--root", "/srv"], env: {} },
-					"pl-web": { type: "http", url: "https://mcp.example/v1", headers: {} },
-				},
-			},
-			[],
-			["pl-docs", "pl-web"],
-		]);
+		]).toEqual([{ mcpServers: servers }, [], ["pl-docs", "pl-web"]]);
 	});
 
 	it("keeps a shared value with a quote and a backslash out of every inbound wire record, raw and JSON-escaped", async () => {
@@ -3035,5 +3034,309 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		]);
 		const opened = events.find((e) => e.kind === "session_opened");
 		expect([events.indexOf(opened as CanonicalEvent) < events.indexOf(loadouts[0] as CanonicalEvent), (opened?.seq ?? 0) < (loadouts[0]?.seq ?? 0)]).toEqual([true, true]);
+	});
+
+	const reopen = (env: Record<string, string>) => ({
+		env: { ...process.env, FAKE_ACP_MODE: "resume", FAKE_LOAD_SESSION: "1", ...env },
+		resume: { sessionId: "ses_old", text: "and now?", mode: "queue" as const, heads: [] },
+	});
+
+	it("on Claude Code, a reopened session records the revision it held until a compaction records the one it was sent", async () => {
+		const claude = { FAKE_MODES: "default=Default,acceptEdits=Accept edits" };
+		const kept = await collect("resume", { harness: "claude-code", ...reopen(claude), shared: { ...shared, held: "rev-6" } });
+		expect(kept.events.find((e) => e.kind === "session_opened")).toMatchObject({ sharedSet: { revision: "rev-6" } });
+		expect(heldSharedRevision(kept.events)).toBe("rev-6");
+		const compacted = await collect("resume", { harness: "claude-code", ...reopen({ ...claude, FAKE_COMPACT_UPDATE: "1" }), shared: { ...shared, held: "rev-6" } });
+		expect(compacted.events.filter((e) => e.kind === "compaction").map((e) => (e.kind === "compaction" ? [e.phase, e.sharedRevision ?? null] : null))).toEqual([
+			["started", null],
+			["completed", "rev-7"],
+		]);
+		expect(heldSharedRevision(compacted.events)).toBe("rev-7");
+	});
+
+	it("on Claude Code, a sub-agent's compaction records no revision, so the session keeps the one it held", async () => {
+		const sub = { _meta: { claudeCode: { parentToolUseId: "t9" } } };
+		const { events } = await collect("resume", {
+			harness: "claude-code",
+			...reopen({
+				FAKE_MODES: "default=Default,acceptEdits=Accept edits",
+				FAKE_UPDATES: JSON.stringify([
+					{ sessionUpdate: "compaction_update", status: "in_progress", ...sub },
+					{ sessionUpdate: "compaction_update", status: "completed", ...sub },
+				]),
+			}),
+			shared: { ...shared, held: "rev-6" },
+		});
+		expect([
+			events.filter((e) => e.kind === "compaction").map((e) => (e.kind === "compaction" ? [e.phase, e.sharedRevision ?? null] : null)),
+			heldSharedRevision(events),
+		]).toEqual([
+			[
+				["started", null],
+				["completed", null],
+			],
+			"rev-6",
+		]);
+	});
+
+	it("on another agent, a reopened session gets the instructions again only when it holds an older revision, in its first prompt alone", async () => {
+		const sentWith = async (held: string) => {
+			const prompts = join(tmp("rec"), "prompts.jsonl");
+			const { events } = await collect("resume", { ...reopen({ FAKE_RECORD_PROMPT: prompts }), shared: { ...shared, held } });
+			const sent = readFileSync(prompts, "utf8").trim().split("\n").map((l) => JSON.parse(l) as string);
+			return [sent.flatMap((p, i) => (p.includes("Always cite the runbook.") ? [i] : [])), heldSharedRevision(events)];
+		};
+		expect(await sentWith("rev-7")).toEqual([[], "rev-7"]);
+		expect(await sentWith("rev-6")).toEqual([[0], "rev-7"]);
+		expect(await sentWith("")).toEqual([[0], "rev-7"]);
+	});
+
+	it("on another agent, a run stopped before its first prompt records the revision the session holds, so the next run still sends the new one", async () => {
+		const stoppedAtOpen = async (extra: Partial<Parameters<typeof runInvestigation>[0]>) => {
+			const ctl = new AbortController();
+			const events: CanonicalEvent[] = [];
+			for await (const ev of runInvestigation(opts(extra.resume ? "resume" : "ok", { ...extra, signal: ctl.signal }))) {
+				events.push(ev);
+				if (ev.kind === "session_opened") ctl.abort();
+			}
+			return [
+				events.find((e) => e.kind === "session_opened")?.kind === "session_opened",
+				events.some((e) => e.kind === "message_received"),
+				heldSharedRevision(events),
+			];
+		};
+		const fresh = await stoppedAtOpen({ shared });
+		const reopened = await stoppedAtOpen({ ...reopen({}), shared: { ...shared, held: "rev-6" } });
+		expect([fresh, reopened]).toEqual([
+			[true, false, ""],
+			[true, false, "rev-6"],
+		]);
+	});
+});
+
+describe("a shared value reaches no record of a run, however it ends (#1180 §3.3 sentinels)", () => {
+	const VALUE = 'sv-"q"\\b\nline-0123456789';
+	// The raw value, as one JSON string holds it, and as a transcript line holds that string.
+	const forms = [VALUE, JSON.stringify(VALUE).slice(1, -1), JSON.stringify(JSON.stringify(VALUE)).slice(1, -1)];
+	const shared = {
+		servers: [{ name: "pl-s", command: "/bin/s", args: ["turn_usage"], env: [{ name: "T", value: VALUE }] }],
+		hidden: [VALUE, "turn_usage"],
+		revision: "rev-1",
+		instructions: null,
+		fingerprint: "fp",
+		profile: "own" as const,
+	};
+	const text = (t: string) => ({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: t } });
+	// Three message chunks, a tool update between the second and third, and two stderr chunks.
+	const sentinelEnv = {
+		FAKE_UPDATES: JSON.stringify([
+			text(`see ${VALUE.slice(0, 6)}`),
+			text(VALUE.slice(6, 13)),
+			{ sessionUpdate: "tool_call", toolCallId: "t_s", title: "Read notes", kind: "read", status: "completed" },
+			text(`${VALUE.slice(13)} done`),
+		]),
+		FAKE_STDERR_CHUNKS: JSON.stringify([`warn ${VALUE.slice(0, 9)}`, `${VALUE.slice(9)}\n`]),
+	};
+
+	const filesUnder = (dir: string): string[] =>
+		readdirSync(dir, { recursive: true, withFileTypes: true })
+			.filter((e) => e.isFile())
+			.map((e) => readFileSync(join(e.parentPath, e.name), "utf8"));
+	const leaks = (where: Record<string, string>) =>
+		Object.entries(where)
+			.filter(([, s]) => forms.some((f) => s.includes(f)))
+			.map(([k]) => k);
+	/** Message text rebuilt from the transcript's parsed inbound chunk records. */
+	const rebuilt = (runDir: string) =>
+		readFileSync(join(runDir, "transcript.jsonl"), "utf8")
+			.trim()
+			.split("\n")
+			.map((l) => JSON.parse(l) as { d: string; m: string })
+			.filter((l) => l.d === "in")
+			.map((l) => JSON.parse(l.m) as { params?: { update?: { sessionUpdate?: string; content?: { text?: string } } } })
+			.filter((m) => m.params?.update?.sessionUpdate === "agent_message_chunk")
+			.map((m) => m.params?.update?.content?.text ?? "")
+			.join("");
+
+	async function sentinelRun(
+		mode: string,
+		extra: Record<string, string>,
+		stop?: (o: ReturnType<typeof opts>) => Promise<void> | void,
+		/** After a kill, pull the run to its end, as a product that outlives its agent does. */
+		drain = false,
+	) {
+		const stderr: string[] = [];
+		const events: CanonicalEvent[] = [];
+		const ctl = new AbortController();
+		const sent = join(tmp("sent"), "sent");
+		const o = opts(mode, {
+			env: { ...process.env, FAKE_ACP_MODE: mode, ...sentinelEnv, FAKE_UPDATES_SENT: sent, ...extra },
+			shared,
+			signal: ctl.signal,
+			onHarnessStderr: (c) => stderr.push(c),
+		});
+		const run = runInvestigation(o);
+		const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+		let over = false;
+		const allSent = stop
+			? (async () => {
+					while (!over && !existsSync(sent)) await sleep(20);
+					await sleep(100);
+					return "sent" as const;
+				})()
+			: null;
+		let pending = run.next();
+		let stopped = !allSent;
+		try {
+			for (;;) {
+				const r = stopped || !allSent ? await pending : await Promise.race([pending, allSent]);
+				if (r === "sent") {
+					// Stopped once the turn sent every sentinel update; a killed run is pulled again only to drain it.
+					stopped = true;
+					await stop?.(o);
+					if (extra.FAKE_PID_FILE && !drain) {
+						await sleep(200);
+						break;
+					}
+					if (!extra.FAKE_PID_FILE) ctl.abort();
+					continue;
+				}
+				if (r.done) break;
+				events.push(r.value);
+				pending = run.next();
+			}
+		} finally {
+			over = true;
+		}
+		return { events, stderr: stderr.join(""), runDir: o.runDir };
+	}
+
+	const check = (r: Awaited<ReturnType<typeof sentinelRun>>) => {
+		const errors = r.events.flatMap((e) => (e.kind === "error" ? [e.message] : []));
+		return {
+			leaks: leaks({
+				transcript: readFileSync(join(r.runDir, "transcript.jsonl"), "utf8"),
+				hostLog: r.stderr,
+				events: JSON.stringify(r.events),
+				errors: errors.join("\n"),
+				runFiles: filesUnder(r.runDir).join("\n"),
+			}),
+			unparsed: r.events.filter((e) => !CanonicalEventSchema.safeParse(e).success).map((e) => e.kind),
+		};
+	};
+
+	const errorsOf = (r: Awaited<ReturnType<typeof sentinelRun>>) =>
+		r.events.flatMap((e) => (e.kind === "error" ? [e.message] : []));
+	const toolCallsOf = (r: Awaited<ReturnType<typeof sentinelRun>>) =>
+		r.events.flatMap((e) => (e.kind === "tool_result" ? [e.result.toolCallId] : []));
+	const stitched = "see [redacted][redacted][redacted] done";
+
+	it("a run that succeeds with a tool call", async () => {
+		const r = await sentinelRun("ok", {});
+		expect([check(r), rebuilt(r.runDir).startsWith(`${stitched}Checking the tree.`), toolCallsOf(r)]).toEqual([
+			{ leaks: [], unparsed: [] },
+			true,
+			["t_s", "t1", "t2"],
+		]);
+		expect(r.stderr).toContain("warn [redacted]");
+	});
+
+	it("a run that fails at session/new", async () => {
+		const r = await sentinelRun("ok", { FAKE_NEW_ERROR: `refused ${VALUE}` });
+		expect([check(r), errorsOf(r)]).toEqual([{ leaks: [], unparsed: [] }, ["refused [redacted]"]]);
+	});
+
+	it("a cancelled run", async () => {
+		const r = await sentinelRun("silent", {}, () => {});
+		expect([check(r), rebuilt(r.runDir), errorsOf(r)]).toEqual([
+			{ leaks: [], unparsed: [] },
+			stitched,
+			["investigation cancelled"],
+		]);
+	});
+
+	it("masks a secret split across the output of two tool calls in the transcript", async () => {
+		const secret = "abcdefgh-0123456789";
+		const out = (id: string, t: string) => ({
+			sessionUpdate: "tool_call_update",
+			toolCallId: id,
+			status: "completed",
+			content: [{ type: "content", content: { type: "text", text: t } }],
+		});
+		const { runDir } = await collect("ok", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_UPDATES: JSON.stringify([out("t_a", "first abcdefgh-01"), out("t_b", "23456789 second")]),
+			},
+			secrets: [secret],
+		});
+		const transcript = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(["abcdefgh", "23456789", "first [redacted]", "[redacted] second"].map((f) => transcript.includes(f))).toEqual([
+			false,
+			false,
+			true,
+			true,
+		]);
+	});
+
+	it("keeps an event's own schema values when a requested secret equals one, so every event still parses", async () => {
+		const { events } = await collect("ok", { secrets: ["new"] });
+		expect([
+			events.find((e) => e.kind === "session_opened")?.kind === "session_opened" &&
+				(events.find((e) => e.kind === "session_opened") as { how: string }).how,
+			events.filter((e) => !CanonicalEventSchema.safeParse(e).success).map((e) => e.kind),
+		]).toEqual(["new", []]);
+	});
+
+	it("masks a secret split by a permission ask in the events and the transcript, where the ask goes out at once", async () => {
+		const secret = "abcdefgh-0123456789";
+		const { events, runDir } = await collect("ok", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_BEFORE_ASK: JSON.stringify([text("say abcdefgh-01")]),
+				FAKE_AFTER_ASK: JSON.stringify([text("23456789 end")]),
+			},
+			permission: autoApprovePolicy,
+			secrets: [secret],
+		});
+		const said = events.flatMap((e) => (e.kind === "agent_step" ? [e.text] : []));
+		const ask = events.findIndex((e) => e.kind === "permission_ask");
+		const first = events.findIndex((e) => e.kind === "agent_step" && e.text.startsWith("say "));
+		expect([
+			said.filter((t) => t.startsWith("say ") || t.endsWith(" end")),
+			first < ask,
+			rebuilt(runDir).includes("say [redacted][redacted] end"),
+			[JSON.stringify(events), readFileSync(join(runDir, "transcript.jsonl"), "utf8")].map((s) =>
+				["abcdefgh", "23456789"].filter((f) => s.includes(f)),
+			),
+		]).toEqual([["say [redacted]", "[redacted] end"], true, true, [[], []]]);
+	});
+
+	it("a run killed mid-turn, as a crash leaves it for the next boot: the chunks still held are never written", async () => {
+		const pidFile = join(tmp("pid"), "pid");
+		const r = await sentinelRun("silent", { FAKE_PID_FILE: pidFile }, () => {
+			process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL");
+		});
+		expect([check(r), rebuilt(r.runDir)]).toEqual([{ leaks: [], unparsed: [] }, ""]);
+	});
+
+	it("a run whose agent is killed mid-turn, pulled to its end: the transcript's chunks rebuild to the redacted text", async () => {
+		const pidFile = join(tmp("pid"), "pid");
+		const r = await sentinelRun(
+			"silent",
+			{ FAKE_PID_FILE: pidFile },
+			() => {
+				process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL");
+			},
+			true,
+		);
+		const text = rebuilt(r.runDir);
+		expect([check(r), text, forms.filter((f) => text.includes(f))]).toEqual([
+			{ leaks: [], unparsed: [] },
+			stitched,
+			[],
+		]);
 	});
 });

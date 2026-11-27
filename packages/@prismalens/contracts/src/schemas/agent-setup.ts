@@ -163,9 +163,7 @@ export const SharedMcpServerViewSchema = /* @__PURE__ */ lazySchema(() =>
 		/** The source agent, for `Changed in <agent>`. */
 		fromAgent: z.string().nullable(),
 		/** The agent config entry it was copied from, so Copy again opens on that entry. */
-		fromSource: z
-			.object({ agent: z.string(), path: z.string(), key: z.string() })
-			.nullable(),
+		fromSource: SharedSourceSchema.nullable(),
 	}),
 );
 export type SharedMcpServerView = z.infer<typeof SharedMcpServerViewSchema>;
@@ -195,7 +193,7 @@ export const ApproveSharedServerInputSchema = /* @__PURE__ */ lazySchema(() =>
 			.object({
 				agent: z.string().min(1).max(64),
 				path: z.string().max(1024),
-				key: z.string().max(200),
+				key: z.string().min(1).max(200),
 				/** The preview's `revision`. */
 				revision: z.string().max(128),
 			})

@@ -50,6 +50,8 @@
 // =straggler one id-less message after the answer); FAKE_REPLAY_COMPLETE=1 advertises replayComplete
 // and ends the load replay with the marker, then one state update before the answer; FAKE_LATE_REPLAY=1 sends the whole history again after the load answer,
 // with ids; FAKE_AGENT_NAME names the agent in initialize.
+// FAKE_TERM_DELAY_MS=<n> exits n ms after a SIGTERM, as an agent still releasing a lock does;
+// FAKE_IGNORE_TERM=1 ignores SIGTERM, so only a SIGKILL ends it.
 import {
 	appendFileSync,
 	existsSync,
@@ -67,6 +69,10 @@ const mode =
 		: "") ||
 	process.env.FAKE_ACP_MODE ||
 	"ok";
+const termDelay = Number(process.env.FAKE_TERM_DELAY_MS ?? 0);
+if (process.env.FAKE_IGNORE_TERM) process.on("SIGTERM", () => {});
+else if (termDelay > 0)
+	process.on("SIGTERM", () => setTimeout(() => process.exit(0), termDelay));
 const authLabel = process.env.FAKE_AUTH_LABEL ?? "fake";
 const authEmail = process.env.FAKE_AUTH_EMAIL;
 const cwd = process.cwd();
@@ -89,6 +95,15 @@ if (mode === "unauthenticated") {
 	process.stderr.write("Error: not logged in\n");
 	process.exit(1);
 }
+// FAKE_PID_FILE: where the fake writes its pid, so a test can kill it as a crash would.
+if (process.env.FAKE_PID_FILE)
+	writeFileSync(process.env.FAKE_PID_FILE, String(process.pid));
+// FAKE_STDERR_CHUNKS (a JSON array): stderr in separate chunks at start, in any mode (#1180 §3.3).
+if (process.env.FAKE_STDERR_CHUNKS)
+	for (const part of JSON.parse(process.env.FAKE_STDERR_CHUNKS)) {
+		process.stderr.write(part);
+		await new Promise((r) => setTimeout(r, 50));
+	}
 if (mode === "exit-stderr") {
 	// FAKE_STDERR_PARTS (a JSON array) writes in separate chunks, 50 ms apart.
 	const parts = process.env.FAKE_STDERR_PARTS
@@ -256,6 +271,25 @@ async function turn(sessionId, promptText) {
 	turns += 1;
 	cancelLatched = false;
 	if (mode === "crash") process.exit(3);
+	// FAKE_COMPACT_UPDATE: the agent compacts on its own before answering (#1180 §3.3).
+	if (process.env.FAKE_COMPACT_UPDATE) {
+		notify(sessionId, {
+			sessionUpdate: "compaction_update",
+			status: "in_progress",
+		});
+		notify(sessionId, {
+			sessionUpdate: "compaction_update",
+			status: "completed",
+		});
+	}
+	// FAKE_UPDATES (a JSON array): session updates sent first in every turn.
+	// FAKE_UPDATES_SENT: a file written once they are out.
+	for (const u of JSON.parse(process.env.FAKE_UPDATES ?? "[]")) {
+		notify(sessionId, u);
+		await new Promise((r) => setTimeout(r, 10));
+	}
+	if (process.env.FAKE_UPDATES_SENT)
+		writeFileSync(process.env.FAKE_UPDATES_SENT, "sent");
 	if (mode === "resume" || mode === "continue") {
 		// FAKE_RESUME_CURL: the reopened session queries a host address first (#673 w26).
 		if (process.env.FAKE_RESUME_CURL) {
@@ -452,6 +486,9 @@ async function turn(sessionId, promptText) {
 			status: "pending",
 			rawInput: { command: "pwd" },
 		});
+		// FAKE_BEFORE_ASK / FAKE_AFTER_ASK (JSON arrays): session updates sent around the first ask.
+		for (const u of JSON.parse(process.env.FAKE_BEFORE_ASK ?? "[]"))
+			notify(sessionId, u);
 		const a = await ask({
 			sessionId,
 			toolCall: {
@@ -466,6 +503,8 @@ async function turn(sessionId, promptText) {
 				{ optionId: "reject", name: "Reject", kind: "reject_once" },
 			],
 		});
+		for (const u of JSON.parse(process.env.FAKE_AFTER_ASK ?? "[]"))
+			notify(sessionId, u);
 		notify(sessionId, {
 			sessionUpdate: "tool_call_update",
 			toolCallId: "t1",
@@ -714,6 +753,12 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 									{ label: authLabel, email: authEmail ?? null, active: true },
 								],
 							},
+		});
+	} else if (msg.method === "session/new" && process.env.FAKE_NEW_ERROR) {
+		send({
+			jsonrpc: "2.0",
+			id: msg.id,
+			error: { code: -32603, message: process.env.FAKE_NEW_ERROR },
 		});
 	} else if (msg.method === "session/new" && mode === "auth-required") {
 		send({

@@ -90,6 +90,7 @@ export class HarnessProbeService {
 					modes: result.modes ?? null,
 					efforts: result.efforts ?? null,
 					images: result.images === true,
+					...(result.mcpHttp !== undefined ? { mcpHttp: result.mcpHttp } : {}),
 					sandbox: result.sandbox ?? null,
 					protocol: result.protocol ?? null,
 					account: result.account ?? null,

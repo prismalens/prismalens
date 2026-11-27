@@ -14,9 +14,39 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type ReplaceTarget,
+	SharedSetSettings,
 	SharedSetView,
 	ShareServerForm,
 } from "./SharedSetSettings";
+
+const live = vi.hoisted(() => ({
+	set: undefined as unknown,
+	sources: [] as unknown[],
+	sourcesLoading: false,
+	preview: vi.fn(),
+}));
+
+vi.mock("@/lib/api/hooks", () => ({
+	useHarnesses: () => ({ data: { harnesses: [] } }),
+	useHarnessSettings: () => ({ data: { canEditRuntime: true } }),
+}));
+
+vi.mock("@/lib/api/hooks/use-agent-setup-orpc", () => {
+	const change = () => ({ mutate: vi.fn(), isPending: false, reset: vi.fn() });
+	return {
+		useSharedSet: () => ({ data: live.set, isError: false }),
+		useSharedSources: () => ({
+			data: live.sourcesLoading ? undefined : live.sources,
+			isLoading: live.sourcesLoading,
+		}),
+		usePreviewSharedServer: () => ({ ...change(), mutate: live.preview }),
+		useApproveSharedServer: change,
+		useRemoveSharedServer: change,
+		useRevealSharedServerRow: change,
+		useSetSharedMembership: change,
+		useUpdateSharedSet: change,
+	};
+});
 
 vi.mock("@/components/ui/select", async () => {
 	const R = await import("react");
@@ -429,11 +459,16 @@ describe("SharedSetView", () => {
 				?.querySelector<HTMLElement>('[data-testid="shared-server-copy-again"]')
 				?.click(),
 		);
-		// The entry it was copied from, and the shared server it replaces with its recipients.
-		expect(onCopyAgain).toHaveBeenCalledWith(
-			{ agent: "codex", path: "~/.codex/config.toml", key: "knowledge" },
-			{ name: "tickets", recipients: ["claude-code", "codex"] },
-		);
+		// The entry it was copied from, whatever name it was shared under.
+		expect(onCopyAgain.mock.calls[0]?.[0]?.fromSource).toEqual({
+			agent: "codex",
+			path: "~/.codex/config.toml",
+			key: "knowledge",
+		});
+		expect([
+			onCopyAgain.mock.calls[0]?.[0]?.name,
+			onCopyAgain.mock.calls[0]?.[0]?.recipients,
+		]).toEqual(["tickets", ["claude-code", "codex"]]);
 	});
 
 	it("keeps the typed instructions when saving fails, and shows why", async () => {
@@ -502,5 +537,76 @@ describe("SharedSetView", () => {
 		).toBe("false");
 		await click("shared-set-agent-gemini-switch");
 		expect(onMember).toHaveBeenCalledWith("gemini", true);
+	});
+});
+
+describe("SharedSetSettings Copy again", () => {
+	const older = {
+		agent: "codex",
+		path: "~/.codex/config.toml",
+		key: "tickets",
+		transport: "http",
+	};
+	const copied = { ...older, path: "~/work/.codex/config.toml" };
+	const copyAgain = async (
+		from: SharedSource | null,
+		sources: SharedSource[] = [older, copied],
+	) => {
+		live.preview.mockClear();
+		live.sources = sources;
+		live.set = {
+			decided: "shared",
+			instructions: "",
+			instructionsFor: [],
+			revision: "r1",
+			servers: [
+				server({
+					name: "tickets",
+					changedInSource: true,
+					fromAgent: "codex",
+					fromSource: from,
+				}),
+			],
+		} satisfies SharedSet;
+		await act(async () => root.render(<SharedSetSettings />));
+		await click("shared-server-copy-again");
+	};
+
+	it("opens the source whose path and key the server was copied from, among sources of one agent sharing its name or its path", async () => {
+		const samePath = { ...copied, key: "wiki" };
+		await copyAgain({ agent: "codex", path: copied.path, key: copied.key }, [
+			samePath,
+			older,
+			copied,
+		]);
+		expect(live.preview.mock.calls).toEqual([[copied]]);
+	});
+
+	it("keeps Copy again off while the sources load, then opens the copied one", async () => {
+		live.sourcesLoading = true;
+		try {
+			await copyAgain({ agent: "codex", path: copied.path, key: copied.key });
+			const off = [
+				(byId("shared-server-copy-again") as HTMLButtonElement).disabled,
+				live.preview.mock.calls.length,
+			];
+			live.sourcesLoading = false;
+			await act(async () => root.render(<SharedSetSettings />));
+			await click("shared-server-copy-again");
+			expect([off, live.preview.mock.calls]).toEqual([[true, 0], [[copied]]]);
+		} finally {
+			live.sourcesLoading = false;
+		}
+	});
+
+	it("opens no source when the copied entry is gone", async () => {
+		await copyAgain({ agent: "codex", path: "~/gone.toml", key: "tickets" });
+		expect(live.preview.mock.calls).toEqual([]);
+	});
+
+	it("opens the agent's source of the same name when the server records no entry, not its first source", async () => {
+		const first = { ...older, path: "~/a/.codex/config.toml", key: "wiki" };
+		await copyAgain(null, [first, older]);
+		expect(live.preview.mock.calls).toEqual([[older]]);
 	});
 });

@@ -26,7 +26,7 @@ vi.mock("./investigate.js", () => ({
 }));
 
 const { conductRun } = await import("./conductor.js");
-const { injectedSecrets, redactEvent, redactLine, requestedSecrets, scrub, StreamScrubber } = await import(
+const { injectedSecrets, RecordScrubber, redactEvent, redactLine, requestedSecrets, scrub, StreamScrubber } = await import(
 	"./redact.js"
 );
 
@@ -113,6 +113,47 @@ describe("shared values never reach a stream, even split across pieces (#1180 §
 		expect(s.push(["abc"])).toEqual([]);
 		expect(s.push(["defghijklmnop"])).toEqual([["abc"]]);
 		expect(s.end()).toEqual([["defghijklmnop"]]);
+	});
+
+	it("masks a tail that begins a secret when a flush or the end releases it, and the rest when it comes after a flush", () => {
+		const secret = "abcdefgh-0123456789";
+		const msg = (text: string) => ({ text, channel: "message" });
+		const split = new StreamScrubber([secret]);
+		const flushed = [split.push([msg("say abcdefgh-01")]), split.flush(), split.push([msg("23456789 end")]), split.end()];
+		const other = new StreamScrubber([secret]);
+		const unfinished = [other.push([msg("say abcdefgh-01")]), other.flush(), other.push([msg("2 is not it")]), other.end()];
+		const ended = (text: string) => {
+			const e = new StreamScrubber([secret]);
+			return [...e.push([text]), ...e.end()].flat();
+		};
+		expect([flushed, unfinished, ended("killed at abcd"), ended("a word ending abc"), ended("plain text")]).toEqual([
+			[[], [["say [redacted]"]], [], [["[redacted] end"]]],
+			[[], [["say [redacted]"]], [], [["2 is not it"]]],
+			["killed at [redacted]"],
+			["a word ending abc"],
+			["plain text"],
+		]);
+	});
+
+	it("releases a quiet channel's unit once the others run on, with its tail masked and the rest caught when that channel resumes", () => {
+		const secret = "abcdefgh-0123456789";
+		const thought = (text: string) => ({ text, channel: "thought" });
+		const msg = (text: string) => ({ text, channel: "message" });
+		const s = new StreamScrubber([secret]);
+		const out = [
+			s.push([thought("plan abcdefgh")]),
+			s.push([msg("the answer goes on")]),
+			s.push([msg(" and on past the secret's length")]),
+			s.push([thought("-0123456789 more")]),
+			s.end(),
+		];
+		expect(out).toEqual([
+			[],
+			[["plan [redacted]"]],
+			[["the answer goes on"]],
+			[],
+			[[" and on past the secret's length"], ["[redacted] more"]],
+		]);
 	});
 
 	it("replaces the JSON-escaped form inside a string that carries encoded JSON", () => {
@@ -227,5 +268,30 @@ describe("shared values never reach a stream, even split across pieces (#1180 §
 			outcome: "answered",
 			answer: { kind: "input", values: { kind: "[redacted]", other: "[redacted]" } },
 		});
+	});
+});
+
+describe("RecordScrubber (#1180 §3.3)", () => {
+	const VALUE = 'sv-"quoted"\back\nline-9f';
+	const msg = (text: string) => ({ kind: "agent_step", text, toolCalls: [] as unknown[] });
+	const tool = { kind: "tool_result", toolCallId: "t1", output: "ok" };
+	const channel = (r: { kind: string }, path: readonly (string | number)[]) =>
+		path.join(".") === "text" && r.kind === "agent_step" ? "message" : "";
+
+	it("replaces a value split across two records' string values with a record between, and keeps every shape", () => {
+		const s = new RecordScrubber<Record<string, unknown>>([VALUE], channel);
+		const out = [msg(`see ${VALUE.slice(0, 6)}`), tool, msg(`${VALUE.slice(6)} end`)].flatMap((r) => s.push(r));
+		expect([...out, ...s.end()]).toEqual([msg("see [redacted]"), tool, msg("[redacted] end")]);
+	});
+
+	it("gives back the same record when nothing in it changed, and never touches a kind", () => {
+		const s = new RecordScrubber<Record<string, unknown>>(["agent_step"], channel);
+		const plain = { kind: "agent_step", text: "nothing here", toolCalls: [] };
+		expect([...s.push(plain), ...s.end()][0]).toBe(plain);
+	});
+
+	it("leaves a value whose channel is null as it is", () => {
+		const s = new RecordScrubber<{ kind: string; m: string; held: string }>([VALUE], (_, p) => (p[0] === "held" ? "" : null));
+		expect([...s.push({ kind: "x", m: VALUE, held: VALUE }), ...s.end()]).toEqual([{ kind: "x", m: VALUE, held: "[redacted]" }]);
 	});
 });

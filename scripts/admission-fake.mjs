@@ -358,6 +358,8 @@ async function main() {
 	}
 	const home = mkdtempSync(join(tmpdir(), "pl-admission-fake-"));
 	const workdir = mkdtempSync(join(homedir(), ".pl-matrix-"));
+	// The scripted model (here) logs what system prompts held; a row run in the matrix reads it.
+	process.env.PL_MATRIX_PROMPT_LOG ??= join(home, "prompts.jsonl");
 	/** @type {Awaited<ReturnType<typeof startScriptedModel>>[]} */
 	const models = [];
 	const startModel = async () => {

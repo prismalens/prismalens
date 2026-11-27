@@ -1,0 +1,71 @@
+{
+	"row": "shared-set-reaches-agent",
+	"kind": "happy",
+	"title": "A shared stdio server reaches the agent as pl-mk and the model calls it, on session/new and after session/load",
+	"run": {
+		"sharedSet": true
+	},
+	"expect": "shared-set",
+	"fixtures": [
+		{
+			"match": {
+				"userMessage": "[row:shared-set-reaches-agent] Call the shared marker again",
+				"resultLacks": "mk marker called"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:shared_marker",
+						"arguments": {}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"userMessage": "[row:shared-set-reaches-agent] Call the shared marker again",
+				"afterTool": "$gw:shared_marker"
+			},
+			"response": {
+				"content": "Called it again."
+			}
+		},
+		{
+			"match": {
+				"userMessage": "[row:shared-set-reaches-agent]",
+				"toolResults": 0
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:pl_incident_get",
+						"arguments": {}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"userMessage": "[row:shared-set-reaches-agent]",
+				"afterTool": "$gw:pl_incident_get"
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "$gw:shared_marker",
+						"arguments": {}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"userMessage": "[row:shared-set-reaches-agent]",
+				"afterTool": "$gw:shared_marker"
+			},
+			"response": {
+				"content": "$report"
+			}
+		}
+	]
+}

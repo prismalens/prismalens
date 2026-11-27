@@ -350,6 +350,19 @@ const DEFAULT_PROMPT_TIMEOUT_MS = 900_000;
 const PIPE_GONE = new Set(["EPIPE", "ERR_STREAM_DESTROYED"]);
 /** How long an EPIPE waits for the child's own `close` to explain itself. */
 const PIPE_DEATH_GRACE_MS = 50;
+/** How long `close()` waits for the agent to exit after SIGTERM, and again after SIGKILL. */
+export const CLOSE_EXIT_MS = 3_000;
+
+/** True when `p` settles within `ms`; false once `ms` passes first. */
+function settlesWithin(p: Promise<void>, ms: number): Promise<boolean> {
+	return new Promise((done) => {
+		const timer = setTimeout(() => done(false), ms);
+		void p.then(() => {
+			clearTimeout(timer);
+			done(true);
+		});
+	});
+}
 
 function nodeErrorCode(err: Error): string {
 	return (err as NodeJS.ErrnoException).code ?? "";
@@ -623,6 +636,8 @@ export class AcpSession {
 	private readonly launcher: HarnessLauncher;
 	private readonly ownsLauncher: boolean;
 	private child: HarnessChild | null = null;
+	/** Settles once a child the OS started (it has a pid) has exited. */
+	private gone: Promise<void> | null = null;
 	private currentSessionId: string | null = null;
 	private loading = false;
 	private loadRequestId = -1;
@@ -714,6 +729,8 @@ export class AcpSession {
 			...(config.limits ? { limits: config.limits } : {}),
 		});
 		this.child = child;
+		if (child.pid !== undefined)
+			this.gone = new Promise((done) => child.on("close", () => done()));
 		config.onSpawn?.(child.pid);
 		// setEncoding keeps a multibyte character split across two chunks intact.
 		child.stderr.setEncoding("utf8");
@@ -1279,7 +1296,18 @@ export class AcpSession {
 		for (const p of this.pending.values())
 			p.reject(new Error("ACP session closing"));
 		this.pending.clear();
-		if (this.child && !this.child.killed) this.child.kill();
+		const child = this.child;
+		if (child && !child.killed) child.kill();
+		// An agent can hold its session until it exits (deepagents locks the thread), so a
+		// session/load straight after this would fail against the old process (#1180).
+		if (
+			child &&
+			this.gone &&
+			!(await settlesWithin(this.gone, CLOSE_EXIT_MS))
+		) {
+			child.kill("SIGKILL");
+			await settlesWithin(this.gone, CLOSE_EXIT_MS);
+		}
 		if (this.ownsLauncher) await this.launcher.destroy();
 	}
 

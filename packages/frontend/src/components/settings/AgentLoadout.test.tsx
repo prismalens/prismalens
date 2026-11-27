@@ -18,6 +18,7 @@ const loadoutCalls: { input: unknown; enabled: boolean }[] = [];
 const membershipSpy = vi.fn();
 let mockLoadout: Loadout | undefined;
 let mockSet: SharedSet | undefined;
+let mockSearch: { repositoryId?: string } = {};
 
 vi.mock("@/lib/api/hooks/use-agent-setup-orpc", () => ({
 	useAgentLoadout: (input: unknown, enabled: boolean) => {
@@ -49,6 +50,8 @@ vi.mock("@/lib/api/hooks/use-repositories-orpc", () => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({
+	useSearch: ({ select }: { select: (s: typeof mockSearch) => unknown }) =>
+		select(mockSearch),
 	Link: ({
 		children,
 		to,
@@ -184,6 +187,7 @@ beforeEach(() => {
 	document.body.appendChild(container);
 	root = createRoot(container);
 	loadoutCalls.length = 0;
+	mockSearch = {};
 	membershipSpy.mockClear();
 	mockLoadout = loadout();
 	mockSet = {
@@ -355,6 +359,28 @@ describe("AgentLoadout", () => {
 			enabled: true,
 		});
 		expect(byId("agent-loadout-view")).not.toBeNull();
+	});
+
+	it("starts on the project the settings link names, over a more recent one", async () => {
+		mockSearch = { repositoryId: "r-1" };
+		await render(<AgentLoadout agent={agent} />);
+		await open();
+		expect(byId("stub-option-r-1")?.getAttribute("aria-pressed")).toBe("true");
+		expect(loadoutCalls.at(-1)).toEqual({
+			input: { id: "claude-code", repositoryId: "r-1" },
+			enabled: true,
+		});
+	});
+
+	it("falls back to the most recently changed project when the link names an unknown one", async () => {
+		mockSearch = { repositoryId: "r-gone" };
+		await render(<AgentLoadout agent={agent} />);
+		await open();
+		expect(byId("stub-option-r-2")?.getAttribute("aria-pressed")).toBe("true");
+		expect(loadoutCalls.at(-1)).toEqual({
+			input: { id: "claude-code", repositoryId: "r-2" },
+			enabled: true,
+		});
 	});
 
 	it("reads the agent's global loadout when Global is picked", async () => {

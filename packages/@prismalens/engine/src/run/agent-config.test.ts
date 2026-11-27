@@ -116,6 +116,26 @@ describe("readOnDisk (#1180 §3.1)", () => {
 		expect(JSON.stringify(items)).not.toContain(SECRET);
 	});
 
+	it("Codex: hooks from config.toml and from hooks.json, user and project alike", () => {
+		const hook = { hooks: [{ type: "command", command: "x" }] };
+		const fs = memoryFs({
+			[h(".codex", "config.toml")]: `[[hooks.Stop]]
+hooks = [{ type = "command", command = "x" }]
+`,
+			[h(".codex", "hooks.json")]: JSON.stringify({ hooks: { SessionStart: [hook] } }),
+			[r(".codex", "config.toml")]: `[[hooks.PreToolUse]]
+hooks = [{ type = "command", command = "x" }]
+`,
+			[r(".codex", "hooks.json")]: JSON.stringify({ hooks: { UserPromptSubmit: [hook] } }),
+		});
+		expect(rows(readOnDisk("codex", env, repo, fs).filter((i) => i.kind === "hook"))).toEqual([
+			["hook", "Stop", "global", "found", h(".codex", "config.toml")],
+			["hook", "PreToolUse", "repo", "in-project", r(".codex", "config.toml")],
+			["hook", "SessionStart", "global", "found", h(".codex", "hooks.json")],
+			["hook", "UserPromptSubmit", "repo", "in-project", r(".codex", "hooks.json")],
+		]);
+	});
+
 	it("OpenCode: Claude's files via claude-code only where no AGENTS.md, plugins as a list", () => {
 		const fs = memoryFs({
 			[h(".claude", "CLAUDE.md")]: "read: no opencode AGENTS.md",
