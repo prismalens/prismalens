@@ -114,7 +114,20 @@ export const codex = defineAgent({
 					key: "mcp_servers",
 				},
 			],
+			// Codex 0.171.0 reads hooks from both files.
 			hooks: [
+				{
+					path: "{$CODEX_HOME|~/.codex}/config.toml",
+					scope: "global",
+					format: "toml",
+					key: "hooks",
+				},
+				{
+					path: "<repo>/.codex/config.toml",
+					scope: "repo",
+					format: "toml",
+					key: "hooks",
+				},
 				{
 					path: "{$CODEX_HOME|~/.codex}/hooks.json",
 					scope: "global",

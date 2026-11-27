@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -92,12 +92,13 @@ describe("readCodexLoadout (#1180 §3.1)", () => {
 		const args = JSON.parse(readFileSync(argsFile, "utf8")) as string[];
 		const value = (args[2] ?? "").replace(/^mcp_servers=/, "");
 		expect([
-			resolve(readFileSync(cwdFile, "utf8")),
+			// macOS reports the folder a child starts in by its real path (/var is /private/var).
+			realpathSync(readFileSync(cwdFile, "utf8")),
 			args.slice(0, 2),
 			args.length,
 			parseToml(`t = ${value}`).t,
 		]).toEqual([
-			resolve(sub),
+			realpathSync(sub),
 			["app-server", "-c"],
 			3,
 			Object.fromEntries(names.map((n) => [n, { enabled: false }])),

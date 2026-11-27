@@ -7,7 +7,7 @@
  * path or a value once approved.
  */
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { Injectable } from "@nestjs/common";
 import {
@@ -641,8 +641,16 @@ export class AgentSetupService {
 					};
 					break;
 				}
+		// Codex names a file by its real path, the disk read by the path the env spells (macOS /var).
+		const real = (p: string | null) => {
+			try {
+				return p ? realpathSync(p) : "";
+			} catch {
+				return p ?? "";
+			}
+		};
 		const key = (i: LoadedItem) =>
-			`${i.kind}\0${i.name}\0${i.scope}\0${i.path ?? ""}`;
+			`${i.kind}\0${i.name}\0${i.scope}\0${real(i.path)}`;
 		reported = [...reported, ...agentSaid];
 		const byKey = new Map(reported.map((i) => [key(i), i]));
 		// Claude's init names servers and skills without a path: matched by kind, name and scope,

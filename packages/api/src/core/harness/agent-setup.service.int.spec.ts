@@ -2,9 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 /** What loads and the PrismaLens set (#1180 §3.1, §3.3) over a temp SQLite database and scratch agent homes. */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { rmSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { GATEWAY_RUN_FILE } from "@prismalens/agent-host";
 import { mcpSourceHash, prepareRunEnv, readMcpSource } from "@prismalens/engine";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -448,6 +448,28 @@ describe("What loads merges only a matching session's report (#1180 §3.1)", () 
 		]);
 		const clean = await service.loadout({ id: "claude-code", repositoryId, profile: "clean" });
 		expect([clean.report, clean.staleReport, clean.items.some((i) => i.name === "lint@m")]).toEqual([null, null, false]);
+	});
+
+	it("merges what Codex says of a file into its disk row when the two name it by different paths to one file", async () => {
+		// Codex 0.171.0 names a file by its real path; the disk read keeps the path the env spells.
+		const file = join(home, ".codex", "hooks.json");
+		const via = join(env.root, "home-via");
+		mkdirSync(dirname(file), { recursive: true });
+		writeFileSync(file, JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: "x" }] }] } }));
+		symlinkSync(home, via, "junction");
+		codexSaid.items = [
+			{ kind: "hook", name: "SessionStart", scope: "global", path: join(via, ".codex", "hooks.json"), disk: true, reported: "2026-11-27T00:00:00.000Z", state: "untrusted" },
+		];
+		try {
+			const view = await service.loadout({ id: "codex", repositoryId });
+			expect(view.items.filter((i) => i.kind === "hook").map((i) => [i.name, i.state, i.disk, i.path])).toEqual([
+				["SessionStart", "untrusted", true, file],
+			]);
+		} finally {
+			codexSaid.items = null;
+			rmSync(via, { recursive: true, force: true });
+			rmSync(file, { force: true });
+		}
 	});
 
 	it("a clean-profile view leaves out what Codex said its own config loads; the own view keeps it", async () => {

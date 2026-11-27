@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
+// @vitest-environment happy-dom
 
 import { describe, expect, it } from "vitest";
+import { routerAt } from "@/test/router";
 import { Route, legacySettingsTarget, validateSettingsSearch } from "./route";
 
 // The router merges `{ ...raw, ...validated }`; the merge is what Settings reads.
@@ -31,10 +33,15 @@ describe("Settings tab search (w8-2)", () => {
 		expect(merged({ tab: "sources", source: "" }).source).toBeUndefined();
 	});
 
-	it("passes a project through to the agent page, which keeps only a listed one (#1180)", () => {
-		expect(merged({ tab: "agent", repositoryId: "r-1" }).repositoryId).toBe(
-			"r-1",
-		);
+	it("passes a project through the router to the agent page's search, from a URL and from a navigation (#1180)", async () => {
+		const router = await routerAt("/settings?tab=agent&agent=codex&repositoryId=r-2");
+		const page = () => router.state.matches.at(-1);
+		const loaded = [router.state.status, page()?.routeId, page()?.search];
+		await router.navigate({ to: "/settings", search: { tab: "agent", agent: "codex", repositoryId: "r-3" } });
+		expect([loaded, page()?.search]).toEqual([
+			["idle", "/_authenticated/settings/", { tab: "agent", agent: "codex", repositoryId: "r-2" }],
+			{ tab: "agent", agent: "codex", repositoryId: "r-3" },
+		]);
 	});
 
 	it("sends a tab from before #848 to its new page", () => {
