@@ -57,6 +57,11 @@ export default defineChecks([
 			if (count === 0) {
 				fails.push("no idle unsettled threads with status Done found");
 			}
+			// Settle's code loads after the page's first content (c8b45fa46), so it can trail the rows.
+			if (count > 0)
+				await expect(activeSection.getByTestId("thread-settle").first())
+					.toBeAttached({ timeout: 30_000 })
+					.catch(() => undefined);
 
 			const evaluated = await doneRows.evaluateAll((els) =>
 				els.map((el) => {
