@@ -9,6 +9,7 @@ import {
 	desktopEntry,
 	desktopEntryExec,
 	applyLauncherPlan,
+	launcherIo,
 	installedByInstaller,
 	type LauncherEnv,
 	planLauncher,
@@ -272,6 +273,21 @@ describe("installedByInstaller", () => {
 			}),
 		).toBe(false);
 		expect(installedByInstaller({ platform: "linux", execPath: `${linuxApp}/prismalens`, receipt: null, installId: marked })).toBe(false);
+	});
+});
+
+describe("launcherIo", () => {
+	it("shows a plan's notice in Electron's message box, titled, through applyLauncherPlan", async () => {
+		const shown: { title: string; message: string }[] = [];
+		const io = launcherIo(
+			{
+				dialog: { showMessageBox: async (options) => void shown.push(options) },
+				shell: { writeShortcutLink: () => true },
+			},
+			"PrismaLens",
+		);
+		await applyLauncherPlan({ kind: "none", reason: "a line break", notice: "Move the app." }, io);
+		expect(shown).toEqual([{ title: "PrismaLens", message: "Move the app." }]);
 	});
 });
 

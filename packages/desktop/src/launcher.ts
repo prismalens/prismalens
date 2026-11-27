@@ -7,6 +7,7 @@
  * The installers write the same launcher; this keeps it pointing at a copy that exists.
  */
 
+import { mkdirSync, writeFileSync } from "node:fs";
 import { posix, win32 } from "node:path";
 
 export const APP_USER_MODEL_ID = "io.prismalens.desktop";
@@ -226,6 +227,36 @@ export type LauncherIo = {
 	) => void;
 	writeFile: (path: string, contents: string) => void;
 };
+
+/** The LauncherIo the app runs with: notices in Electron's message box, files through Node. */
+export function launcherIo(
+	electron: {
+		dialog: {
+			showMessageBox: (options: {
+				title: string;
+				message: string;
+			}) => Promise<unknown>;
+		};
+		shell: {
+			writeShortcutLink: (
+				...args: Parameters<LauncherIo["writeShortcut"]>
+			) => boolean;
+		};
+	},
+	title: string,
+): LauncherIo {
+	return {
+		notify: async (message) => {
+			await electron.dialog.showMessageBox({ title, message });
+		},
+		warn: (message) => console.warn(message),
+		mkdir: (dir) => mkdirSync(dir, { recursive: true }),
+		writeShortcut: (path, operation, options) => {
+			electron.shell.writeShortcutLink(path, operation, options);
+		},
+		writeFile: (path, contents) => writeFileSync(path, contents),
+	};
+}
 
 /** Carries out a plan: tells the user a notice, writes a shortcut or entry. The macOS move is main.ts's. */
 export async function applyLauncherPlan(

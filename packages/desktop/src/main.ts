@@ -72,6 +72,7 @@ import {
 	APP_USER_MODEL_ID,
 	applyLauncherPlan,
 	installedByInstaller,
+	launcherIo,
 	planLauncher,
 } from "./launcher.js";
 import { readLoginShellPath } from "./login-shell-path.js";
@@ -295,17 +296,7 @@ async function registerLauncher(): Promise<void> {
 			}
 		},
 	);
-	await applyLauncherPlan(plan, {
-		notify: async (message) => {
-			await dialog.showMessageBox({ title: TITLE, message });
-		},
-		warn: (message) => console.warn(message),
-		mkdir: (dir) => mkdirSync(dir, { recursive: true }),
-		writeShortcut: (p, operation, options) => {
-			shell.writeShortcutLink(p, operation, options);
-		},
-		writeFile: (p, contents) => writeFileSync(p, contents),
-	});
+	await applyLauncherPlan(plan, launcherIo({ dialog, shell }, TITLE));
 	if (plan.kind === "offer-move") {
 		const asked = join(
 			app.getPath("userData"),
