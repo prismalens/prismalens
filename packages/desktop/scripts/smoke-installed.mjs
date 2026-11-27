@@ -22,6 +22,7 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
@@ -194,10 +195,14 @@ let open;
 let entryBefore = "";
 if (win) {
 	const app = join(scratch, "data", "desktop", version, "PrismaLens.exe");
+	// realpath gives both the long form: a runner's TEMP is an 8.3 path (RUNNER~1).
+	const target = powershell(
+		`(New-Object -ComObject WScript.Shell).CreateShortcut('${launcher}').TargetPath`,
+	);
 	check(
-		powershell(
-			`(New-Object -ComObject WScript.Shell).CreateShortcut('${launcher}').TargetPath`,
-		) === app,
+		existsSync(target) &&
+			realpathSync.native(target).toLowerCase() ===
+				realpathSync.native(app).toLowerCase(),
 		`the shortcut opens ${version}: ${app}`,
 	);
 	check(

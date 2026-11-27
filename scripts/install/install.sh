@@ -303,7 +303,8 @@ desktop_exec() {
 # Removes the app and launcher this installer recorded in its receipt, and nothing else.
 remove_desktop() {
 	r_app=$(receipt_get desktop_app)
-	if [ "$platform" = darwin ] && cask_app; then
+	# uname, not $platform: uninstall runs before the platform is worked out.
+	if [ "$(uname -s)" = Darwin ] && cask_app; then
 		r_app=
 	fi
 	if [ -n "$r_app" ] && [ -d "$r_app" ]; then
