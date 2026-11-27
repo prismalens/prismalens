@@ -470,10 +470,10 @@ function global:Move-Item {
 		}
 	}
 
-	It "uninstall that deletes only part of the app keeps what's left as the installer's, with pl and the shortcut, and a rerun removes it" {
+	It "uninstall stopped by a <Kind> it can't delete keeps what's left as the installer's, with pl and the shortcut, and a rerun removes it" -ForEach @(@{ Kind = "file" }, @{ Kind = "folder" }) {
 		$null = Invoke-Installer $work $base $want
-		$stuck = Join-Path (Split-Path $app) "stuck.txt"
-		Set-Content -Path $stuck -Value "stuck"
+		$stuck = Join-Path (Split-Path $app) "stuck-$Kind"
+		if ($Kind -eq "file") { Set-Content -Path $stuck -Value "stuck" } else { New-Item -ItemType Directory -Path $stuck | Out-Null }
 		$me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 		& (Join-Path $system32 "icacls.exe") $stuck /deny "${me}:(D)" | Out-Null
 		try {
@@ -484,7 +484,7 @@ function global:Move-Item {
 			Test-Path (Join-Path $work "bin\pl.cmd") | Should -BeTrue
 			Test-Path $lnk | Should -BeTrue
 		} finally {
-			Get-ChildItem (Join-Path $work "data") -Recurse -Force -Filter "stuck.txt" | ForEach-Object { & (Join-Path $system32 "icacls.exe") $_.FullName /remove:d $me | Out-Null }
+			Get-ChildItem (Join-Path $work "data") -Recurse -Force -Filter "stuck-*" | ForEach-Object { & (Join-Path $system32 "icacls.exe") $_.FullName /remove:d $me | Out-Null }
 		}
 		$run = Invoke-Installer $work $base "" "-Uninstall"
 

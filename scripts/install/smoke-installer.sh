@@ -401,16 +401,20 @@ pass "a replaced app: uninstall leaves it where it is and says so"
 if [ "$(id -u)" = 0 ]; then
 	echo "skip - --no-desktop after a partial delete: root deletes past the file permission that stops it"
 else
-	rm -rf "$work/home" && mkdir -p "$work/home"
-	run_app_installer >/dev/null 2>&1 || fail "install before the partial delete"
-	mkdir -p "$app/stuck" && printf 'x' >"$app/stuck/file" && chmod 555 "$app/stuck"
-	out=$(run_app_installer --no-desktop 2>&1) && { chmod 755 "$app/stuck"; echo "$out"; fail "--no-desktop that deleted only part of the app succeeded"; }
-	chmod 755 "$app/stuck"
-	case "$out" in *"Couldn't remove the desktop app $app; it is still the installer's, so running this again retries."*) ;; *) echo "$out"; fail "the partial delete wasn't reported" ;; esac
-	grep -qx "desktop_app=$app" "$data/receipt" || fail "a partial delete dropped the app from the receipt"
-	out=$(run_app_installer --no-desktop 2>&1) || { echo "$out"; fail "the --no-desktop rerun after a partial delete"; }
-	[ ! -e "$app" ] && grep -qx "desktop_app=" "$data/receipt" || { echo "$out"; fail "the rerun didn't remove what the partial delete left"; }
-	pass "--no-desktop after a partial delete: the receipt keeps the app, and a rerun removes it"
+	# What stops the delete: a file, or an empty folder, in a folder it can't change.
+	for stuck in file folder; do
+		rm -rf "$work/home" && mkdir -p "$work/home"
+		run_app_installer >/dev/null 2>&1 || fail "install before the partial delete ($stuck)"
+		if [ "$stuck" = file ]; then mkdir -p "$app/stuck" && printf 'x' >"$app/stuck/file"; else mkdir -p "$app/stuck/empty"; fi
+		chmod 555 "$app/stuck"
+		out=$(run_app_installer --no-desktop 2>&1) && { chmod 755 "$app/stuck"; echo "$out"; fail "--no-desktop that deleted only part of the app succeeded ($stuck)"; }
+		chmod 755 "$app/stuck"
+		case "$out" in *"Couldn't remove the desktop app $app; it is still the installer's, so running this again retries."*) ;; *) echo "$out"; fail "the partial delete wasn't reported ($stuck)" ;; esac
+		grep -qx "desktop_app=$app" "$data/receipt" || fail "a partial delete dropped the app from the receipt ($stuck)"
+		out=$(run_app_installer --no-desktop 2>&1) || { echo "$out"; fail "the --no-desktop rerun after a partial delete ($stuck)"; }
+		[ ! -e "$app" ] && grep -qx "desktop_app=" "$data/receipt" || { echo "$out"; fail "the rerun didn't remove what the partial delete left ($stuck)"; }
+	done
+	pass "--no-desktop after a partial delete, stopped by a file or a folder: the receipt keeps the app, and a rerun removes it"
 fi
 
 # A copy of the installer's app elsewhere in its data folder, ID and all: uninstall leaves it.

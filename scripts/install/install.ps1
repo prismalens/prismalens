@@ -293,11 +293,18 @@ function Remove-Owned([string]$Path, [switch]$Quiet) {
 		}
 	}
 	# The install ID goes last, and a partial delete is put back at $Path, so what's left is still ours.
-	# Only app folders carry an ID: the runtime's thousands of files go in one Remove-Item below.
+	# Only app folders carry an ID: the runtime's thousands of files go in one Remove-Item each.
 	$below = @($trash, (Join-Path $trash "desktop") | ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory -Force -ErrorAction SilentlyContinue } | ForEach-Object { $_.FullName })
 	$marked = @(@($trash) + $below |
 		Where-Object { Test-Path -LiteralPath (Join-Path $_ ".prismalens-install-id") -PathType Leaf })
-	$left = @($marked | ForEach-Object { Get-DeletableFiles $_ } | Where-Object { Remove-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue; Test-Path -LiteralPath $_ })
+	# First each app's contents but its ID, deepest first; then all else beside the apps; then the IDs.
+	$left = @($marked | ForEach-Object { Get-AppContents $_ } | Where-Object { -not (Remove-OneItem $_) })
+	if (-not $left) {
+		$holders = @($trash, (Join-Path $trash "desktop"))
+		$left = @($holders | ForEach-Object { Get-ChildItem -LiteralPath $_ -Force -ErrorAction SilentlyContinue } |
+			Where-Object { $_.Name -ne ".prismalens-install-id" -and ($marked + $holders) -notcontains $_.FullName } |
+			Where-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue; Test-Path -LiteralPath $_.FullName })
+	}
 	if (-not $left) { Remove-Item -LiteralPath $trash -Recurse -Force -ErrorAction SilentlyContinue }
 	if (Test-Path -LiteralPath $trash) {
 		try { Rename-Item -LiteralPath $trash -NewName (Split-Path $Path -Leaf) -ErrorAction Stop; $trash = $Path } catch {}
@@ -308,12 +315,24 @@ function Remove-Owned([string]$Path, [switch]$Quiet) {
 	return $true
 }
 
-# The files under $Dir but its install IDs, not looking through links: Remove-Owned deletes these first.
-function Get-DeletableFiles([string]$Dir) {
+# What's under $Dir but its install IDs, each folder after its contents; a link is listed, not followed.
+function Get-AppContents([string]$Dir) {
 	foreach ($i in @(Get-ChildItem -LiteralPath $Dir -Force -ErrorAction SilentlyContinue)) {
-		if ($i.PSIsContainer -and -not ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { Get-DeletableFiles $i.FullName }
-		elseif (-not $i.PSIsContainer -and $i.Name -ne ".prismalens-install-id") { $i.FullName }
+		if ($i.PSIsContainer -and -not ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { Get-AppContents $i.FullName; $i.FullName }
+		elseif ($i.Name -ne ".prismalens-install-id") { $i.FullName }
 	}
+}
+
+# Deletes one file, empty folder or link (never what a link points to). True when it's gone.
+function Remove-OneItem([string]$Path) {
+	$i = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+	if ($i) {
+		try {
+			if ($i.PSIsContainer -and ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { [IO.Directory]::Delete($Path) }
+			else { Remove-Item -LiteralPath $Path -Force -ErrorAction Stop }
+		} catch {}
+	}
+	-not (Test-Path -LiteralPath $Path)
 }
 
 # Removes the shortcut and the app this installer made, and nothing else.

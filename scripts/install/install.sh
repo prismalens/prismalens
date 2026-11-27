@@ -310,6 +310,9 @@ app_mine() {
 # purge <path>: deletes it, the install ID last, so a delete that stops partway leaves an app still marked as ours.
 purge() {
 	find "$1" ! -type d ! -name .prismalens-install-id ! -path '*/Contents/MacOS/PrismaLens' -exec rm -f {} + || return 1
+	# Then the folders left empty; the ID goes only once every folder still there can be changed.
+	find "$1" -mindepth 1 -depth -type d -exec rmdir {} + 2>/dev/null || true
+	[ -w "$(dirname -- "$1")" ] && [ -z "$(find "$1" -type d ! -exec test -w {} \; -print)" ] || return 1
 	rm -rf "$1"
 }
 
