@@ -5,7 +5,7 @@ e2e/journeys/alerts-frame.spec.ts	T3	1
 e2e/journeys/alerts-investigations.spec.ts	T1	1
 e2e/journeys/alerts-investigations.spec.ts	T3	4
 e2e/journeys/composer-keys.spec.ts	T1	1
-e2e/journeys/design-matrix.spec.ts	T2	20
+e2e/journeys/design-matrix.spec.ts	T2	19
 e2e/journeys/design-shots.spec.ts	T2	13
 e2e/journeys/desktop-band.spec.ts	T2	6
 e2e/journeys/diff-panes.spec.ts	T2	3

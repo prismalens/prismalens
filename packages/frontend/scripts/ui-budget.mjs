@@ -32,6 +32,8 @@ function highest(runs) {
 const budget = {
 	$comment:
 		"Per-state ceilings from the design matrix (pnpm ui:shots). A run fails when any number rises; raise one only with a reason in the PR. design/GUIDELINES.md lists each field.",
+	// The OS these counts were measured on; check-ui-budget.mjs holds only runs there.
+	platform: process.platform,
 	rules: previous.rules ?? {
 		emptyCopyWords: 5,
 		oneStatePerRow: true,

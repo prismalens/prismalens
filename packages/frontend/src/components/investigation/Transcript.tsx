@@ -2214,7 +2214,7 @@ function SentChip({
 			<Icon className="size-3.5 shrink-0 text-text-3" aria-hidden />
 			<span className="truncate">{view.label(attrs)}</span>
 			{cited && turn && (
-				<span className="shrink-0 text-text-3">turn {turn}</span>
+				<span className="shrink-0 text-text-2">turn {turn}</span>
 			)}
 		</>
 	);

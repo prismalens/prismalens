@@ -9,6 +9,7 @@ import {
 import { useMemo, useState } from "react";
 import { CODE_STYLE, POOL } from "@/components/run/EvidenceFileView";
 import { Empty, Loading, Problem } from "@/components/shared/State";
+import { DIFF_THEMES } from "@/components/thread/diff/diff-themes";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { changeNote, splitPatch } from "@/lib/run-panel";
 import { cn } from "@/lib/utils";
@@ -189,6 +190,7 @@ function RepoDiff({ repo }: { repo: WorktreeRepoChanges }) {
 								diffStyle: "unified",
 								overflow: "wrap",
 								themeType: theme === "dark" ? "dark" : "light",
+								theme: DIFF_THEMES,
 								disableFileHeader: true,
 							}}
 						/>

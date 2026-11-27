@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { resolveTheme } from "@pierre/diffs";
 import { expect, type Page, test } from "@playwright/test";
 import type { CanonicalEvent } from "@prismalens/contracts";
+import { DIFF_THEMES } from "../../src/components/thread/diff/diff-themes";
 import { sidewaysFaults } from "../steps/product";
 import {
 	hideQueryDevtools,
@@ -141,7 +143,11 @@ const CITING = {
 	nextSteps: [],
 };
 
-async function setupPage(page: Page, report: object | null = null) {
+async function setupPage(
+	page: Page,
+	report: object | null = null,
+	content = buildContent(2000),
+) {
 	await hideQueryDevtools(page);
 
 	await serveInvestigationAs(page, INVESTIGATION_ID, {
@@ -165,7 +171,6 @@ async function setupPage(page: Page, report: object | null = null) {
 		...(ended ? [ended] : []),
 	]);
 
-	const content = buildContent(2000);
 	await page.route(
 		(url) => url.pathname === `/api/investigations/${INVESTIGATION_ID}/blob`,
 		async (route) => {
@@ -197,6 +202,112 @@ async function openPhoneDetails(page: Page) {
 	await page.getByTestId("menu-details").click();
 	await expect(page.getByTestId("run-details")).toBeVisible();
 }
+
+/** Every colour a theme can give a token, as computed CSS `rgb(r, g, b)`. */
+async function palette(name: string): Promise<Set<string>> {
+	const theme = await resolveTheme(name);
+	const hex = [theme.fg, ...theme.settings.map((r) => r.settings?.foreground)];
+	return new Set(
+		hex
+			.filter((h): h is string => typeof h === "string")
+			.map((h) => {
+				const n = Number.parseInt(h.slice(1, 7), 16);
+				return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
+			}),
+	);
+}
+
+// The file view highlights in the shared worker pool, which draws with the pool's theme, not the
+// view's: this reads the colours the pool painted, not the configuration (#1238).
+/** A small TypeScript file, under the 256 KiB plain-text cut, so the pool's worker highlights it; line 20 holds keywords, a string and a number. */
+const TS_FIXTURE = Array.from({ length: 40 }, (_, i) =>
+	i === 19
+		? 'export const limit = Number.parseInt(process.env.LIMIT ?? "50", 10);'
+		: `const value${i + 1} = compute("step", ${i + 1});`,
+).join("\n");
+
+/** Opens the cited TypeScript file in `mode`; the worker must highlight it, in the theme's palette, with colours pierre's lacks. */
+async function expectPooledPalette(
+	page: Page,
+	baseURL: string | undefined,
+	mode: "light" | "dark",
+) {
+	await page.context().addCookies([
+		{
+			name: "prismalens-theme",
+			value: mode,
+			url: `${new URL(baseURL ?? "http://localhost").origin}/`,
+		},
+	]);
+	await page.setViewportSize({ width: 1280, height: 800 });
+	// Records what the page asks its workers to render, so the test knows the worker drew the file.
+	await page.addInitScript(() => {
+		const sent: string[] = [];
+		(window as unknown as { workerRequests: string[] }).workerRequests = sent;
+		const post = Worker.prototype.postMessage as (
+			this: Worker,
+			...args: unknown[]
+		) => void;
+		Worker.prototype.postMessage = function (this: Worker, ...args: unknown[]) {
+			const msg = args[0] as { type?: string } | null;
+			if (typeof msg?.type === "string") sent.push(msg.type);
+			post.apply(this, args);
+		} as Worker["postMessage"];
+	});
+	await setupPage(page, null, TS_FIXTURE);
+	await page.goto(
+		`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
+	);
+	await page.getByTestId("tools-expand").first().click();
+	const step1 = page.locator('[data-testid="step"][data-step="1"]');
+	await expect(step1).toBeVisible({ timeout: 15_000 });
+	const body = step1.getByTestId("step-body");
+	if (!(await body.isVisible())) await step1.getByTestId("step-toggle").click();
+	await page.locator("#open-step-1").click();
+	const line = page.locator('[data-line="20"]');
+	await expect(line).toBeInViewport({ timeout: 5000 });
+	const ours = await palette(DIFF_THEMES[mode]);
+	const pierre = await palette(`pierre-${mode}`);
+	// Highlighting lands after the plain first paint, so poll until the worker's tokens arrive.
+	await expect
+		.poll(async () => {
+			const painted = await line.evaluate((el) =>
+				[...el.querySelectorAll("span")]
+					.filter((s) => s.children.length === 0 && s.textContent?.trim())
+					.map((s) => getComputedStyle(s).color),
+			);
+			const sent = await page.evaluate(
+				() =>
+					(window as unknown as { workerRequests: string[] }).workerRequests,
+			);
+			return {
+				workerRendered: sent.includes("file"),
+				highlighted: new Set(painted).size >= 3,
+				foreign: painted.filter((c) => !ours.has(c)),
+				ours: painted.some((c) => !pierre.has(c)),
+			};
+		})
+		.toEqual({
+			workerRendered: true,
+			highlighted: true,
+			foreign: [],
+			ours: true,
+		});
+}
+
+test("the pooled file view paints its tokens in prismalens-light (#1238)", async ({
+	page,
+	baseURL,
+}) => {
+	await expectPooledPalette(page, baseURL, "light");
+});
+
+test("the pooled file view paints its tokens in prismalens-dark (#1238)", async ({
+	page,
+	baseURL,
+}) => {
+	await expectPooledPalette(page, baseURL, "dark");
+});
 
 test.describe("Evidence file view resize (#874)", () => {
 	test("Desktop (1280x800): cited line in view after details panel width change", async ({

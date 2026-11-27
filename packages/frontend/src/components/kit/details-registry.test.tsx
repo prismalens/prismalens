@@ -122,7 +122,7 @@ describe("detailsRows for thread", () => {
 		const branchRow = detailsRows(thread).find((r) => r.id === "branch");
 
 		expect(renderToStaticMarkup(<>{branchRow?.label}</>)).toContain(
-			">Run copy of master at 9469cc2</button>",
+			'<span class="truncate">Run copy of master at 9469cc2</span></button>',
 		);
 	});
 
@@ -136,7 +136,7 @@ describe("detailsRows for thread", () => {
 		const branchRow = detailsRows(thread).find((r) => r.id === "branch");
 
 		expect(renderToStaticMarkup(<>{branchRow?.label}</>)).toContain(
-			">Detached at 9469cc2</button>",
+			'<span class="truncate">Detached at 9469cc2</span></button>',
 		);
 	});
 

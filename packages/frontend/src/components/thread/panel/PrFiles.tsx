@@ -8,6 +8,7 @@ import { TOOL_LINE, ToolLineChevron } from "@/components/kit/ToolLine";
 import { CODE_STYLE, POOL } from "@/components/run/EvidenceFileView";
 import { Hint } from "@/components/shared/Hint";
 import { Empty, Loading, Problem } from "@/components/shared/State";
+import { DIFF_THEMES } from "@/components/thread/diff/diff-themes";
 import { usePrFiles } from "@/lib/api/hooks/use-fix-thread";
 import { useTheme } from "@/lib/providers/theme-provider";
 import { cn } from "@/lib/utils";
@@ -92,6 +93,7 @@ function FileRow({ f, initialOpen }: { f: PrFile; initialOpen?: boolean }) {
 								diffStyle: "unified",
 								overflow: "wrap",
 								themeType: theme === "dark" ? "dark" : "light",
+								theme: DIFF_THEMES,
 								disableFileHeader: true,
 							}}
 						/>

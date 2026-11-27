@@ -241,8 +241,9 @@ export function FixPreviewBody({ preview }: { preview: FixPreview }) {
 			{preview.text && (
 				<section aria-label="Message" className="flex flex-col gap-1">
 					<p className="m-0 text-meta text-text-3">Message</p>
+					{/* No scroll of its own: the dialog scrolls, so the message never needs focus to read (#1238). */}
 					<pre
-						className="m-0 max-h-48 overflow-y-auto rounded-control bg-surface-2 p-2 font-mono text-mono break-words whitespace-pre-wrap text-text-1"
+						className="m-0 rounded-control bg-surface-2 p-2 font-mono text-mono break-words whitespace-pre-wrap text-text-1"
 						data-testid="fix-text"
 					>
 						{preview.text}
@@ -254,7 +255,7 @@ export function FixPreviewBody({ preview }: { preview: FixPreview }) {
 					<summary className="cursor-pointer text-meta text-text-2 hover:text-text-1">
 						What the host reported
 					</summary>
-					<pre className="m-0 mt-1 max-h-64 overflow-y-auto rounded-control bg-surface-2 p-2 font-mono text-mono break-words whitespace-pre-wrap text-text-2">
+					<pre className="m-0 mt-1 rounded-control bg-surface-2 p-2 font-mono text-mono break-words whitespace-pre-wrap text-text-2">
 						{preview.evidence}
 					</pre>
 				</details>

@@ -21,6 +21,7 @@ import { Block } from "@/components/kit/Block";
 import { CODE_STYLE, POOL } from "@/components/run/EvidenceFileView";
 import { Hint } from "@/components/shared/Hint";
 import { Empty, Loading } from "@/components/shared/State";
+import { DIFF_THEMES } from "@/components/thread/diff/diff-themes";
 import { fileExcerptBlock } from "@/components/thread/diff/file.blocks";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -236,6 +237,7 @@ export function FileView({
 									options={{
 										overflow: "wrap",
 										themeType: theme === "dark" ? "dark" : "light",
+										theme: DIFF_THEMES,
 										disableFileHeader: true,
 										preferredHighlighter: "shiki-js",
 									}}

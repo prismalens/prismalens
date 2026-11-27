@@ -233,14 +233,17 @@ function threadRows(d: ThreadDetails): DetailsRow[] {
 					}
 					meta="No branch yet. Commits here can't be pushed until one is made."
 				>
+					{/* Truncates inside, not on the button: the button's overflow cut its phone tap area (#1238). */}
 					<button
 						type="button"
-						className="min-w-0 cursor-default truncate text-left"
+						className="inline-flex min-w-0 max-w-full cursor-default text-left"
 						data-testid="details-detached"
 					>
-						{d.from
-							? `Run copy of ${d.from} at ${d.detached}`
-							: `Detached at ${d.detached}`}
+						<span className="truncate">
+							{d.from
+								? `Run copy of ${d.from} at ${d.detached}`
+								: `Detached at ${d.detached}`}
+						</span>
 					</button>
 				</Hint>
 			),

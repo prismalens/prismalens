@@ -381,7 +381,7 @@ function Rewind() {
 					</DialogStill>
 				</Stage>
 				<Stage id="rewind-fold" caption="The fold row">
-					<ul className="m-0 list-none p-0">
+					<div>
 						<Fold
 							incidentId={null}
 							event={{
@@ -401,7 +401,7 @@ function Rewind() {
 								by: { kind: "you" },
 							}}
 						/>
-					</ul>
+					</div>
 				</Stage>
 				<Stage id="rewind-interrupted" caption="An interrupted rewind">
 					<Interrupted

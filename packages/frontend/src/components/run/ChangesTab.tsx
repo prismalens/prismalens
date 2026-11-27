@@ -6,6 +6,7 @@ import { comparisonLabel, type RunWorkspace } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loading, Problem } from "@/components/shared/State";
+import { DIFF_THEMES } from "@/components/thread/diff/diff-themes";
 import {
 	Select,
 	SelectContent,
@@ -230,6 +231,7 @@ export function ChangesTab({
 										diffStyle: effective,
 										overflow: "wrap",
 										themeType: theme === "dark" ? "dark" : "light",
+										theme: DIFF_THEMES,
 										disableFileHeader: true,
 									}}
 								/>

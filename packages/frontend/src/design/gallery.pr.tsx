@@ -679,17 +679,17 @@ export const prGallery: GallerySection[] = [
 		title: "Git state: the header chip and the row mark, per state",
 		render: () => (
 			<div className="flex flex-col gap-3">
-				<div className="flex gap-2">
+				<div className="flex flex-wrap gap-2">
 					{GIT_STATES.map((g) => (
 						<GitStateChip key={g.state} ctx={gitCtx(g)} />
 					))}
 				</div>
-				<div className="flex gap-2">
+				<div className="flex flex-wrap gap-2">
 					{GIT_STATES.map((g) => (
 						<GitStateChip key={g.state} ctx={gitCtx(g)} phone />
 					))}
 				</div>
-				<div className="flex gap-3">
+				<div className="flex flex-wrap gap-3">
 					{GIT_STATES.map((g) => (
 						<GitStateMark key={g.state} git={g} />
 					))}
