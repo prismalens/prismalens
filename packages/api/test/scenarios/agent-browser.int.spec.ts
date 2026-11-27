@@ -43,10 +43,10 @@ async function said(id: string): Promise<string> {
 
 beforeAll(async () => {
 	// A cold engine under the full suite can miss the app's 20 s start (#1238): start it once
-	// here with room, and fail with the reason when this runner has none.
+	// here, 45 s a try for up to three tries, and fail with the reasons when this runner has none.
 	const probeDir = mkdtempSync(join(tmpdir(), "pl-engine-probe-"));
 	const failures: LaunchFailure[] = [];
-	const probe = await launchEngine(probeDir, failures, 90_000);
+	const probe = await launchEngine(probeDir, failures, 45_000);
 	await probe?.context.close();
 	rmSync(probeDir, { recursive: true, force: true });
 	if (!probe)
@@ -75,7 +75,7 @@ beforeAll(async () => {
 		body: { subject: { kind: "none" }, text: `fake-session:browser Read ${base}/form` },
 	});
 	thread = started.investigationId;
-}, 120_000);
+}, 255_000); // three 45 s tries, then the 120 s boot and first message
 
 afterAll(async () => {
 	await pl.dispose();

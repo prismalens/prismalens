@@ -37,11 +37,7 @@ export async function launchEngine(
 	try {
 		pw = await import("playwright-core");
 	} catch (e) {
-		failures.push({
-			name: "playwright-core",
-			message: firstLine(e),
-			timedOut: false,
-		});
+		failures.push(launchFailure("playwright-core", e));
 		return null;
 	}
 	mkdirSync(profileDir, { recursive: true, mode: 0o700 });
@@ -73,19 +69,16 @@ export async function launchEngine(
 			});
 			return { context, name: t.name };
 		} catch (e) {
-			const message = firstLine(e);
-			failures.push({
-				name: t.name,
-				message,
-				timedOut: /Timeout \d+ms exceeded/.test(message),
-			});
+			failures.push(launchFailure(t.name, e));
 		}
 	}
 	return null;
 }
 
-function firstLine(e: unknown): string {
-	return String(e instanceof Error ? e.message : e)
+/** One try's reason: its first error line, and whether Playwright's launch timeout hit. */
+export function launchFailure(name: string, e: unknown): LaunchFailure {
+	const message = String(e instanceof Error ? e.message : e)
 		.split("\n")[0]
 		.slice(0, 300);
+	return { name, message, timedOut: /Timeout \d+ms exceeded/.test(message) };
 }
