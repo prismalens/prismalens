@@ -4,13 +4,20 @@
 // Tests the agent SDK checks in scripts/lib/node-modules-tree.mjs (#1269).
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
 	agentSdkProblems,
 	nativeCopies,
+	prune,
 	sdkLoadError,
 } from "./node-modules-tree.mjs";
 
@@ -115,5 +122,32 @@ test("sdkLoadError reports a probe killed on its timeout instead of passing it",
 		);
 	} finally {
 		rmSync(app, { recursive: true, force: true });
+	}
+});
+
+test("prune drops a dependency's test files and keeps its code", () => {
+	const root = mkdtempSync(join(tmpdir(), "node-modules-tree-test-"));
+	const lib = join(root, "pino-pretty", "lib");
+	writePackage(join(root, "pino-pretty"), { name: "pino-pretty" });
+	writePackage(
+		lib,
+		{ name: "lib" },
+		{
+			"colors.js": "",
+			"colors.test.js": "",
+			"colors.spec.mjs": "",
+			"tsconfig.spec.json": "",
+			"latest.js": "",
+		},
+	);
+	try {
+		assert.equal(prune(root), 3);
+		assert.equal(existsSync(join(lib, "colors.test.js")), false);
+		assert.equal(existsSync(join(lib, "colors.spec.mjs")), false);
+		assert.equal(existsSync(join(lib, "tsconfig.spec.json")), false);
+		assert.equal(existsSync(join(lib, "colors.js")), true);
+		assert.equal(existsSync(join(lib, "latest.js")), true);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
 	}
 });

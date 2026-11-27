@@ -239,7 +239,8 @@ export function agentSdkProblems(appDir) {
 
 /**
  * Drop what no running server reads: source maps, debug symbols (.pdb), type
- * declarations and TypeScript sources, Markdown, each package's own tests, docs and examples,
+ * declarations and TypeScript sources, Markdown, test files (`*.test.js`, `*.spec.js`),
+ * each package's own tests, docs and examples,
  * and native prebuilds for other platforms. Licence files stay, with
  * THIRD_PARTY_LICENSES/ and the file a `SEE LICENSE IN` field names.
  */
@@ -249,7 +250,8 @@ export function prune(nodeModules) {
 	if (process.platform === "linux") own.push(`linuxmusl-${process.arch}`);
 	const foreign = (name) =>
 		!own.some((t) => name === t || name.startsWith(`${t}.`));
-	const FILES = /\.(map|ts|mts|cts|md|markdown|pdb)$/i;
+	const FILES =
+		/\.(map|ts|mts|cts|md|markdown|pdb)$|\.(test|spec)\.([cm]?js|json)$/i;
 	const DIRS = new Set([
 		"test",
 		"tests",
