@@ -6,6 +6,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { liveChanges } from "../../core/live/live-changes.js";
 import { ThreadsService } from "./threads.service.js";
 
+// The commit count runs git; this suite only checks which rows carry it.
+const commits = vi.hoisted(() => ({ calls: [] as unknown[] }));
+vi.mock("../investigations/branch-commits.js", () => ({
+	workspaceCommits: async (ws: { cwd: string } | null) => {
+		commits.calls.push(ws);
+		return ws?.cwd === "/work/fix" ? 3 : null;
+	},
+}));
+
 const NOW = new Date("2026-11-10T12:00:00Z");
 let n = 0;
 const uuid = () =>
@@ -590,5 +599,20 @@ describe("ThreadsService feed, visit, settle (#1020)", () => {
 		});
 		const feed = await service().feed(query(), NOW);
 		expect(feed.units[0]?.threads[0]?.latestText).toBe("Reading retry.ts");
+	});
+
+	it("a live row carries its branch's commit count, a settled one none, and an incident unit its alert count", async () => {
+		const workspace = JSON.stringify({ layout: "single", cwd: "/work/fix", repos: [] });
+		const inc = incident({ alertCount: 4 });
+		const live = run({ status: "running", workspace, incidentId: inc.id, incident: inc });
+		const settled = run({ workspace, settledAt: new Date("2026-11-10T11:30:00Z") });
+		prisma.investigation.findMany.mockResolvedValue([live, settled]);
+		commits.calls = [];
+		const feed = await service().feed(query(), NOW);
+		const rows = feed.units.flatMap((u) => u.threads);
+		expect(rows.find((t) => t.id === live.id)?.commits).toBe(3);
+		expect(rows.find((t) => t.id === settled.id)?.commits).toBeNull();
+		expect(commits.calls).toHaveLength(1);
+		expect(feed.units.find((u) => u.incident)?.incident?.alertCount).toBe(4);
 	});
 });

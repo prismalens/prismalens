@@ -39,6 +39,7 @@ import {
 	AgentPlanSchema,
 	NO_CHECKS,
 	PR_CHECK_LOGS_MAX,
+	PR_STACK_MAX,
 	PrChecksSchema,
 	PrDetailSchema,
 	PrHostSchema,
@@ -392,17 +393,24 @@ export class PullRequestsService implements OnModuleInit {
 		const counts = new Map<string, number>();
 		for (const r of rows)
 			counts.set(r.investigationId, (counts.get(r.investigationId) ?? 0) + 1);
-		for (const r of rows)
-			if (!out.has(r.investigationId)) {
-				const v = pullRequestView(r);
-				out.set(r.investigationId, {
-					number: v.number,
-					tone: v.tone,
-					count: counts.get(r.investigationId) ?? 1,
-					title: v.title,
-					checks: v.checks,
-				});
+		for (const r of rows) {
+			const v = pullRequestView(r);
+			const kept = out.get(r.investigationId);
+			const item = { number: v.number, tone: v.tone, title: v.title };
+			if (kept) {
+				if (kept.stack && kept.stack.length < PR_STACK_MAX)
+					kept.stack.push(item);
+				continue;
 			}
+			out.set(r.investigationId, {
+				number: v.number,
+				tone: v.tone,
+				count: counts.get(r.investigationId) ?? 1,
+				title: v.title,
+				checks: v.checks,
+				stack: [item],
+			});
+		}
 		return out;
 	}
 

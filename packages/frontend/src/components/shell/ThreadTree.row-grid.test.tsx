@@ -119,7 +119,7 @@ const detail = (id: string) => {
 };
 
 describe("a row is four columns: status icon, title, time, agent (#1101 cat 2)", () => {
-	it("says its status by the icon alone, and keeps the time and agent cells on every row", async () => {
+	it("says its status by the icon alone, and fills the time and agent cells on every row, the default agent included", async () => {
 		await render([
 			thread({
 				id: "done",
@@ -151,10 +151,12 @@ describe("a row is four columns: status icon, title, time, agent (#1101 cat 2)",
 			);
 		expect(cells("done")).toEqual(["status", "title", "row-age", "row-agent"]);
 		expect(cells("other")).toEqual(["status", "title", "row-age", "row-agent"]);
-		// Your default agent leaves its cell empty; another agent fills it.
+		// Every row names its session's agent, your default included (#1020).
 		expect(
-			wrapOf("done").querySelector('[data-testid="row-agent"]')?.children,
-		).toHaveLength(0);
+			wrapOf("done")
+				.querySelector('[data-testid="row-agent"] [data-testid="mark-agent"]')
+				?.getAttribute("aria-label"),
+		).toBe("Claude Code");
 		expect(
 			wrapOf("other")
 				.querySelector('[data-testid="row-agent"] [data-testid="mark-agent"]')

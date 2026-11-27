@@ -33,6 +33,7 @@ import {
 	GitBranch,
 	GitBranchMinus,
 	GitBranchPlus,
+	GitCommitHorizontal,
 	GitCompareArrows,
 	GitFork,
 	GitMerge,
@@ -158,8 +159,8 @@ export const MARKS = {
 		icon: Bot,
 		label: "Agent",
 		tones: { any: "muted" },
-		// Rows name only an agent other than the default; chips, pickers, Settings and the header always do.
-		rows: "unlessDefault",
+		// A row names the agent of its session too, the default included (#1020).
+		rows: "always",
 	}),
 	/** A branch is an icon and a name, never coloured. */
 	branch: defineMark({
@@ -167,6 +168,32 @@ export const MARKS = {
 		fact: "branch",
 		icon: GitBranch,
 		label: "Branch",
+		tones: { any: "muted" },
+	}),
+	/** Where a thread runs: a service (code with its alerts) or a project (code alone). */
+	place: defineMark({
+		id: "place",
+		fact: "project",
+		icon: FolderGit2,
+		icons: { service: HardDrive, project: FolderGit2 },
+		label: "Place",
+		words: { service: "Service", project: "Project" },
+		tones: { service: "muted", project: "muted" },
+	}),
+	/** Commits a thread's branch holds over its base, never coloured. */
+	commits: defineMark({
+		id: "commits",
+		fact: "branch",
+		icon: GitCommitHorizontal,
+		label: "Commits",
+		tones: { any: "muted" },
+	}),
+	/** Alerts grouped into a thread's incident; its severity and firing say how bad. */
+	alerts: defineMark({
+		id: "alerts",
+		fact: "alert",
+		icon: Bell,
+		label: "Alerts",
 		tones: { any: "muted" },
 	}),
 	/** A PR or MR by its state, checks folded in; the host's terms name it. */
