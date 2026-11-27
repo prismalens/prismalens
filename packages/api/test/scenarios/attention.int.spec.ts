@@ -110,16 +110,26 @@ describe("attention: read state, presence and the away view (#1101 categories 3 
 	}, 30_000);
 
 	it("the unread count counts threads with an unread event, as the list draws one row per thread (#1193)", async () => {
-		const prisma = await pl.prisma();
-		const { id } = await prisma.investigation.create({ data: { kind: "chat", status: "completed", title: "two unread events" } });
-		const event = (kind: string, ordinal: number) => ({ investigationId: id, kind, ordinal, generation: 0, notify: false });
-		await prisma.attentionEvent.createMany({ data: [event("failed", 1), event("finished", 2)] });
+		const { investigationId: id } = await pl.api<{ investigationId: string }>("/threads", {
+			method: "POST",
+			body: { subject: { kind: "none" }, text: ASK, place: "alerts" },
+		});
+		await finished(id);
+		await pl.api(`/investigations/${id}/messages`, {
+			method: "POST",
+			body: { text: "fake-session:echo And the backoff?" },
+		});
+		await finished(id);
 
-		const page = await unread();
+		const page = await eventually(
+			unread,
+			(e) => e.events.filter((x) => x.threadId === id).length === 2,
+			"both finishes to be recorded",
+		);
 
-		expect(page.events.filter((e) => e.threadId === id).length).toBe(2);
+		expect(page.events.filter((e) => e.threadId === id).map((e) => e.kind)).toEqual(["finished", "finished"]);
 		expect(page.unread).toBe(new Set(page.events.map((e) => e.threadId)).size);
-	});
+	}, 30_000);
 
 	it("a visible tab after a long gap opens a long away view since the last visit", async () => {
 		const prisma = await pl.prisma();

@@ -161,7 +161,8 @@ describe("ThreadStatusService (#1101)", () => {
 		const failing = await createThread("pr with failing checks", "completed");
 		const merged = await createThread("merged pr with failing checks", "completed");
 		const checks = JSON.stringify({ state: "failing", total: 3, failed: 1, pending: 0 });
-		const pr = (investigationId: string, number: number, state: string) =>
+		const passing = JSON.stringify({ state: "passing", total: 3, failed: 0, pending: 0 });
+		const pr = (investigationId: string, number: number, state: string, createdAt: Date, prChecks = checks) =>
 			prisma.pullRequest.create({
 				data: {
 					investigationId,
@@ -172,11 +173,17 @@ describe("ThreadStatusService (#1101)", () => {
 					source: "branch",
 					state,
 					headSha: "head123",
-					checks,
+					checks: prChecks,
+					createdAt,
 				},
 			});
-		await pr(failing, 77, "open");
-		await pr(merged, 78, "merged");
+		// Each thread's older PR reads the other way, so picking the oldest gives the wrong status.
+		const older = new Date(Date.now() - 60_000);
+		const newer = new Date(Date.now() - 1_000);
+		await pr(failing, 76, "merged", older, passing);
+		await pr(failing, 77, "open", newer);
+		await pr(merged, 79, "open", older);
+		await pr(merged, 78, "merged", newer);
 		const now = new Date();
 		const row = (id: string) => ({ id, status: "completed", awaitingApprovalAt: null, autoPause: null, lastActivityAt: now });
 
