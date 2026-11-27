@@ -289,9 +289,35 @@ export function resolveUpdateChannel(
 export function desktopAppHint(
 	receipt: string | null,
 	rerun: string,
+	exists: (path: string) => boolean = existsSync,
 ): string | null {
-	if (receipt === null || /^desktop=[01]\r?$/m.test(receipt)) return null;
-	return `The desktop app isn't installed beside this copy. To add it, run the installer again: ${rerun}`;
+	if (receipt === null || /^desktop=0\r?$/m.test(receipt)) return null;
+	if (!/^desktop=1\r?$/m.test(receipt))
+		return `The desktop app isn't installed beside this copy. To add it, run the installer again: ${rerun}`;
+	const app = receiptField(receipt, "desktop_app");
+	const appVersion = receiptField(receipt, "desktop_version");
+	const cli = receiptField(receipt, "version");
+	if (app && !exists(app))
+		return `The desktop app isn't at ${app} any more. To put it back, run the installer again: ${rerun}`;
+	if (appVersion && cli && appVersion !== cli)
+		return `The desktop app is still ${appVersion} beside PrismaLens ${cli}. To update it, quit it and run the installer again: ${rerun}`;
+	return null;
+}
+
+/** After a rollback: the installer's app stays at the version the trial installed. */
+export function desktopRollbackNote(
+	receipt: string | null,
+	from: string,
+	rerun: string,
+): string | null {
+	if (receipt === null || !/^desktop=1\r?$/m.test(receipt)) return null;
+	const appVersion = receiptField(receipt, "desktop_version");
+	if (!appVersion || appVersion === from) return null;
+	return `The desktop app is still ${appVersion}, and opening it would migrate the restored database again. Keep it closed and run: ${rerun}`;
+}
+
+function receiptField(receipt: string, key: string): string {
+	return new RegExp(`^${key}=(.*?)\\r?$`, "m").exec(receipt)?.[1] ?? "";
 }
 
 /**
@@ -559,6 +585,16 @@ export default defineCommand({
 					? `${trial.to} didn't come up (${outcome.reason}). The database is restored and ${trial.from} runs again.`
 					: `${trial.to} didn't come up. The database is restored to before the upgrade, but ${outcome.reason}.`,
 			);
+			const receipt = join(config.installerDataDir(), "receipt");
+			const note =
+				trial.channel === "installer"
+					? desktopRollbackNote(
+							existsSync(receipt) ? readFileSync(receipt, "utf8") : null,
+							trial.from,
+							config.upgradeCommand("installer", process.platform, trial.from),
+						)
+					: null;
+			if (note) consola.warn(note);
 			return false;
 		};
 		if (viaService) {

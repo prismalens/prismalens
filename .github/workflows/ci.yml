@@ -165,6 +165,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # launcher.test.ts launches the desktop entry the app writes through GLib, as a desktop does.
+      - name: Install gio
+        run: command -v gio || { sudo apt-get update -qq && sudo apt-get install -y -qq libglib2.0-bin; }
+
       - name: Restore the build from the build job
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

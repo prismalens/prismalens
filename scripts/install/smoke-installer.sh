@@ -193,7 +193,7 @@ if [ "$(uname -s)" = Darwin ]; then
 	(cd "$work/fake-app" && ditto -c -k --keepParent mac-arm64 "$app_base_dir/$app_zip")
 else
 	mkdir -p "$work/fake-app/linux-unpacked/resources"
-	printf '#!/bin/sh\necho stand-in app\n' >"$work/fake-app/linux-unpacked/prismalens"
+	printf '#!/bin/sh\necho stand-in app\n: >"${0%%/*}/launched"\n' >"$work/fake-app/linux-unpacked/prismalens"
 	chmod 755 "$work/fake-app/linux-unpacked/prismalens"
 	printf 'png' >"$work/fake-app/linux-unpacked/resources/icon.png"
 	(cd "$work/fake-app" && zip -qry "$app_base_dir/$app_zip" linux-unpacked)
@@ -227,12 +227,14 @@ if [ "$(uname -s)" = Darwin ]; then
 	pass "desktop app: $mac_app runs, the final message names it, the receipt records it"
 else
 	app="$work/home/.local/share/prismalens/desktop/app"
-	grep -qx "Exec=\"$app/prismalens\"" "$entry" || { cat "$entry"; fail "the desktop entry doesn't run $app/prismalens"; }
+	launch="$work/home/.local/share/prismalens/desktop/launch"
+	grep -qx "Exec=/bin/sh \"$launch\"" "$entry" || { cat "$entry"; fail "the desktop entry doesn't run $launch"; }
+	[ "$("$launch")" = "stand-in app" ] || fail "$launch doesn't open the app"
 	grep -qx "Icon=$app/resources/icon.png" "$entry" || { cat "$entry"; fail "the desktop entry has no icon"; }
 	grep -qx "Type=Application" "$entry" || fail "the desktop entry has no Type"
 	[ "$("$app/prismalens")" = "stand-in app" ] || fail "the entry's Exec target doesn't run"
 	case "$out" in *"Open the desktop app from your app menu: PrismaLens ($entry)"*) ;; *) echo "$out"; fail "the final message doesn't say where the entry is" ;; esac
-	pass "desktop app: $entry runs $app/prismalens with its icon, and the final message names it"
+	pass "desktop app: $entry opens $app/prismalens through $launch, with its icon, and the final message names it"
 
 	rm -rf "$work/home" && mkdir -p "$work/home"
 	out=$(env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash PRISMALENS_RELEASE_BASE_URL="$app_base" \
@@ -542,4 +544,50 @@ break"
 	case "$out" in *"has a line break, which a menu entry can't hold"*) ;; *) echo "$out"; fail "the line break wasn't caught" ;; esac
 	[ ! -e "$nl_home/.local/share/applications/prismalens.desktop" ] || fail "an entry was written for a path with a line break"
 	pass "line break in the path: the app is skipped, the CLI installed"
+fi
+
+# 10. Linux: the app's version through upgrades, the launcher under AppArmor, and GLib (#1279).
+if [ "$(uname -s)" != Darwin ]; then
+	data="$work/home/.local/share/prismalens"
+	app="$data/desktop/app"
+	launch="$data/desktop/launch"
+
+	# A running app isn't replaced under itself, and the receipt keeps the version it has.
+	rm -rf "$work/home" && mkdir -p "$work/home"
+	run_app_installer >/dev/null 2>&1 || fail "install before the running-app upgrade"
+	grep -qx "desktop_version=$new_version" "$data/receipt" || fail "the receipt doesn't record the app's version"
+	sed -i.bak "s/^desktop_version=.*/desktop_version=0.0.1/" "$data/receipt"
+	cp "$(command -v sleep)" "$app/prismalens"
+	"$app/prismalens" 30 &
+	running=$!
+	out=$(run_app_installer 2>&1) || { kill "$running"; echo "$out"; fail "install while the app runs"; }
+	kill "$running"
+	case "$out" in *"The PrismaLens app is running, so it stays at 0.0.1; quit it and run the installer again to update it."*) ;; *) echo "$out"; fail "a running app wasn't left alone" ;; esac
+	grep -qx "desktop_version=0.0.1" "$data/receipt" || fail "the receipt claims an app version that wasn't installed"
+	pass "running app: left at its version, which the receipt keeps"
+
+	# Under Ubuntu's restriction the launcher says why the app can't open until the profile exists.
+	rm -rf "$work/home" "$work/apparmor.d" && mkdir -p "$work/home" "$work/stub"
+	USERNS="$work/userns-on" run_app_installer >/dev/null 2>&1 || fail "install under the userns restriction"
+	step_line="sudo install -m 644 '$data/desktop/apparmor-profile' '$work/apparmor.d/prismalens' && sudo apparmor_parser -r '$work/apparmor.d/prismalens'"
+	printf '#!/bin/sh\nprintf "%%s|" "$@" >"%s/notified"\n' "$work" >"$work/stub/notify-send"
+	chmod 755 "$work/stub/notify-send"
+	if PATH="$work/stub:$clean_path" "$launch" 2>"$work/launch.err"; then fail "the launcher opened the app with no profile"; fi
+	grep -qF "Run this once in a terminal, then open PrismaLens again: $step_line" "$work/launch.err" || { cat "$work/launch.err"; fail "the launcher didn't say why"; }
+	grep -qF "PrismaLens can't open yet|" "$work/notified" || fail "the launcher showed no notification"
+	mkdir -p "$work/apparmor.d" && cp "$data/desktop/apparmor-profile" "$work/apparmor.d/prismalens"
+	[ "$("$launch")" = "stand-in app" ] || fail "the launcher doesn't open the app once the profile is there"
+	pass "userns restriction: the launcher says why until the profile is there, then opens the app"
+
+	# An install path with the characters Exec escapes: GLib reads the entry and launches the app.
+	command -v gio >/dev/null 2>&1 || fail "gio (libglib2.0-bin) is needed to launch the entry the way a desktop does"
+	odd="$work/odd 100% \"q\" \$x \\b"
+	rm -rf "$odd" && mkdir -p "$odd"
+	out=$(APP_HOME="$odd" run_app_installer 2>&1) || { echo "$out"; fail "install under $odd"; }
+	odd_app="$odd/.local/share/prismalens/desktop/app"
+	gio launch "$odd/.local/share/applications/prismalens.desktop" ||
+		{ cat "$odd/.local/share/applications/prismalens.desktop"; fail "gio couldn't launch the entry under $odd"; }
+	for _ in 1 2 3 4 5 6 7 8 9 10; do [ -e "$odd_app/launched" ] && break; sleep 1; done
+	[ -e "$odd_app/launched" ] || { cat "$odd/.local/share/applications/prismalens.desktop"; fail "gio launched the entry, but the app under $odd didn't run"; }
+	pass "Exec escaping: gio launches the app from a path with %, \", \$ and \\"
 fi

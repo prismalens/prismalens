@@ -38,6 +38,7 @@ xdg_data="${XDG_DATA_HOME:-$HOME/.local/share}"
 desktop_file="$xdg_data/applications/prismalens.desktop"
 mac_app="$HOME/Applications/PrismaLens.app"
 desktop_marker="X-PrismaLens-Installer=true"
+desktop_launch="$data_root/desktop/launch"
 # Test seams: where the kernel's user-namespace restriction and the app's AppArmor profile are read.
 userns_sysctl="${PRISMALENS_USERNS_SYSCTL:-/proc/sys/kernel/apparmor_restrict_unprivileged_userns}"
 apparmor_profile="${PRISMALENS_APPARMOR_PROFILE:-/etc/apparmor.d/prismalens}"
@@ -256,9 +257,9 @@ sum_of() { grep -E "(^|[[:space:]]|\*)$1\$" "$staging/SHA256SUMS" | cut -d' ' -f
 # Only the [Desktop Entry] group counts: an action's Exec isn't what the menu opens.
 entry_ours() {
 	[ -f "$desktop_file" ] && [ ! -L "$desktop_file" ] &&
-		E_WANT="Exec=$(desktop_exec "$data_root/desktop/app/prismalens")" E_MARK="$desktop_marker" awk '
+		E_LAUNCH="Exec=/bin/sh $(desktop_exec "$desktop_launch")" E_APP="Exec=$(desktop_exec "$data_root/desktop/app/prismalens")" \n			E_MARK="$desktop_marker" awk '
 			/^\[/ { main = ($0 == "[Desktop Entry]"); next }
-			main && $0 == ENVIRON["E_WANT"] { exec_ok = 1 }
+			main && ($0 == ENVIRON["E_LAUNCH"] || $0 == ENVIRON["E_APP"]) { exec_ok = 1 }
 			main && $0 == ENVIRON["E_MARK"] { marked = 1 }
 			END { exit !(exec_ok && marked) }' "$desktop_file"
 }
@@ -455,7 +456,7 @@ remove_desktop() {
 		rm -f "$desktop_file" || { warn "Couldn't remove the app menu entry $desktop_file; running this again retries."; return 1; }
 		done_ "Removed the app menu entry $desktop_file"
 	fi
-	rm -f "$data_root/desktop/apparmor-profile"
+	rm -f "$desktop_launch" "$data_root/desktop/apparmor-profile"
 	[ ! -e "$apparmor_profile" ] || warn "$apparmor_profile stays; it needs root to remove: sudo apparmor_parser -R $(sh_quote "$apparmor_profile") && sudo rm $(sh_quote "$apparmor_profile")"
 	return 0
 }
@@ -530,17 +531,19 @@ install_desktop() {
 		launcher="Launchpad or Spotlight: PrismaLens (${d_dest})"
 		return 0
 	fi
+	write_launch "$d_dest/prismalens" || { why="the app is in $d_dest, but $desktop_launch couldn't be written"; return 1; }
 	mkdir -p "$(dirname "$desktop_file")"
 	# Checked again here: another copy can register its entry while the zip downloads.
 	if { [ -e "$desktop_file" ] || [ -L "$desktop_file" ]; } && ! entry_ours; then
 		why="the app is in $d_dest, but $desktop_file now opens another copy of PrismaLens; it was left as it is"
 		return 1
 	fi
-	# printf, not echo: some shells' echo rewrites the backslashes Exec escapes with.
+	# printf, not echo: some shells' echo rewrites the backslashes Exec escapes with. /bin/sh is
+	# argv[0] because GLib looks argv[0] up before it turns %% back into %, so a % path hid the entry.
 	if ! {
 		printf '%s\n' "[Desktop Entry]" "Type=Application" "Name=PrismaLens" \
 			"Comment=Investigate alerts with the coding agent you already use" \
-			"Exec=$(desktop_exec "$d_dest/prismalens")"
+			"Exec=/bin/sh $(desktop_exec "$desktop_launch")"
 		[ ! -f "$d_dest/resources/icon.png" ] || printf 'Icon=%s\n' "$(printf '%s' "$d_dest/resources/icon.png" | sed -e 's/\\/\\\\/g')"
 		printf '%s\n' "Terminal=false" "Categories=Development;" "StartupWMClass=PrismaLens" "$desktop_marker"
 	} >"$desktop_file"; then
@@ -556,7 +559,7 @@ install_desktop() {
 		>"$data_root/desktop/apparmor-profile" || true
 	if [ "$(cat "$userns_sysctl" 2>/dev/null)" = 1 ] && [ ! -e "$apparmor_profile" ]; then
 		sandbox_note="Ubuntu restricts the user namespaces the app's sandbox needs, so it opens once AppArmor allows it. Ubuntu's documented fix is a profile for the app; adding it needs root, once:
-      sudo install -m 644 $(sh_quote "$data_root/desktop/apparmor-profile") $(sh_quote "$apparmor_profile") && sudo apparmor_parser -r $(sh_quote "$apparmor_profile")
+      $(apparmor_command)
     (https://discourse.ubuntu.com/t/noble-numbat-release-notes/39890, Security Improvements)"
 	elif [ "$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null)" = 0 ]; then
 		sandbox_note="This system turns off the user namespaces the app's sandbox needs, so the app may not open; pl up opens PrismaLens in your browser instead."
@@ -576,9 +579,36 @@ rc=$rc
 desktop=$desktop
 desktop_app=$1
 desktop_app_id=$2
+desktop_version=$desktop_version
 installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
 	mv -f "$receipt.new" "$receipt"
+}
+
+# The one root step that lets the app's sandbox run under Ubuntu's user-namespace restriction.
+apparmor_command() {
+	printf 'sudo install -m 644 %s %s && sudo apparmor_parser -r %s' \
+		"$(sh_quote "$data_root/desktop/apparmor-profile")" "$(sh_quote "$apparmor_profile")" "$(sh_quote "$apparmor_profile")"
+}
+
+# write_launch <app binary>: what the menu entry runs. A menu entry can't say why an app didn't
+# open, so where AppArmor would stop the sandbox, the launcher says it and how to allow it.
+write_launch() {
+	l_msg="Ubuntu's AppArmor stops the PrismaLens sandbox until the app has a profile. Run this once in a terminal, then open PrismaLens again: $(apparmor_command)"
+	{
+		printf '%s\n' "#!/bin/sh" "# Written by the PrismaLens installer; the app menu entry runs it."
+		printf 'if [ "$(cat %s 2>/dev/null)" = 1 ] && [ ! -e %s ]; then\n' "$(sh_quote "$userns_sysctl")" "$(sh_quote "$apparmor_profile")"
+		printf '\tmsg=%s\n' "$(sh_quote "$l_msg")"
+		cat <<'LAUNCH'
+	printf '%s\n' "$msg" >&2
+	notify-send -a PrismaLens "PrismaLens can't open yet" "$msg" 2>/dev/null ||
+		zenity --error --text="$msg" 2>/dev/null || kdialog --error "$msg" 2>/dev/null || true
+	exit 1
+fi
+LAUNCH
+		printf 'exec %s "$@"\n' "$(sh_quote "$1")"
+	} >"$desktop_launch" || return 1
+	chmod 755 "$desktop_launch"
 }
 
 # --- uninstall --------------------------------------------------------------
@@ -752,12 +782,14 @@ esac
 desktop=$(receipt_get desktop)
 owned=$(receipt_get desktop_app)
 owned_id=$(receipt_get desktop_app_id)
+desktop_version=$(receipt_get desktop_version)
 launcher=
 sandbox_note=
 if [ "$want_desktop" = 0 ]; then
 	desktop=0
 	owned=
 	owned_id=
+	desktop_version=
 fi
 [ "$want_desktop" != 1 ] || desktop=1
 skip=$(desktop_skip)
@@ -766,10 +798,11 @@ if [ -n "$skip" ]; then
 	step "Desktop app skipped: $skip"
 elif [ -z "$app_asset" ] || [ -z "$(sum_of "$app_asset")" ]; then
 	warn "PrismaLens ${version} has no desktop app for ${target}, so only the CLI was installed."
+elif [ -n "$owned" ] && desktop_running "$owned"; then
+	# Replacing a running app's files under it breaks the helpers it starts later.
+	warn "The PrismaLens app is running, so it stays at ${desktop_version:-the version it has}; quit it and run the installer again to update it."
 else
 	why=
-	was_running=false
-	[ -z "$owned" ] || ! desktop_running "$owned" || was_running=true
 	if fetch_verified "$app_asset" "$(sum_of "$app_asset")" "$staging/$app_asset" "the PrismaLens ${version} desktop app"; then
 		# One ID for every copy this install unpacks, recorded with the app's path before it's
 		# unpacked, so a copy a killed run leaves is still the installer's.
@@ -781,8 +814,8 @@ else
 	fi
 	if [ -n "$launcher" ]; then
 		desktop=1
+		desktop_version=$version
 		done_ "Desktop app installed"
-		! "$was_running" || warn "The PrismaLens app is still running the version it started with; quit it and open it again for ${version}."
 	else
 		warn "The desktop app wasn't installed: ${why}. The CLI is; run the installer again for the app."
 	fi
