@@ -354,12 +354,15 @@ if [ "$(uname -s)" = Darwin ]; then
 	app_runs() { [ "$("$mac_app/Contents/MacOS/PrismaLens")" = "stand-in app" ]; }
 else
 	data="$work/home/.local/share/prismalens" app="$work/home/.local/share/prismalens/desktop/app" stage="$work/home/.local/share/prismalens/desktop/.new.killed"
-	app_runs() { [ "$("$app/prismalens")" = "stand-in app" ]; }
+	# Through the menu entry, as the app menu opens it: its Exec line, run as written.
+	app_runs() { [ "$(sh -c "$(sed -n 's/^Exec=//p' "$entry" | head -n 1)")" = "stand-in app" ]; }
 fi
 
 # An install killed between its two renames, rerun with no downloads: the old app comes back.
 rm -rf "$work/home" && mkdir -p "$work/home"
 run_app_installer >/dev/null 2>&1 || fail "install before the interrupted upgrade"
+run_app_installer >/dev/null 2>&1 || fail "reinstall over the installed app"
+app_runs || fail "the app doesn't open from its launcher after a reinstall"
 mkdir -p "$stage" && mv "$app" "$stage/previous"
 mkdir -p "$work/no-downloads"
 out=$(APP_BASE="file://$work/no-downloads" run_app_installer 2>&1) && fail "an install with no downloads succeeded"
