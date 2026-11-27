@@ -21,6 +21,8 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/build-desktop-app.yml"
+      - "scripts/install/install.sh"
+      - "scripts/install/install.ps1"
   push:
     branches: [main]
     paths:
@@ -36,6 +38,8 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/build-desktop-app.yml"
+      - "scripts/install/install.sh"
+      - "scripts/install/install.ps1"
   workflow_call:
     inputs:
       release-tag:
@@ -138,6 +142,91 @@ jobs:
           size=$(wc -c < "$GITHUB_WORKSPACE/$name")
           if [ "$size" -lt 50000000 ]; then echo "::error::$name is $size bytes; $dir is not the app"; exit 1; fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      # What a user of the official installer gets: the app and its launcher in the OS's usual place,
+      # opened through that launcher to the first screen, then uninstalled.
+      - name: Install it with the official installer and open it from its launcher (xvfb on Linux)
+        run: |
+          zip="$GITHUB_WORKSPACE/${{ steps.zip.outputs.name }}"
+          png="$GITHUB_WORKSPACE/desktop-installed-${RUNNER_OS}.png"
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum node packages/desktop/scripts/smoke-installed.mjs "$zip" "$png"
+          else
+            node packages/desktop/scripts/smoke-installed.mjs "$zip" "$png"
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: desktop-installed-${{ runner.os }}
+          path: desktop-installed-*.png
+          retention-days: 7
+
+      # The app's own package-manager entries, from this build's zip on a local server.
+      - name: Smoke the prismalens-app cask (macOS)
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          set -eu
+          version=$(node -p "require('./packages/desktop/package.json').version")
+          dir="$RUNNER_TEMP/app-base"
+          mkdir -p "$dir"
+          cp "$GITHUB_WORKSPACE/${{ steps.zip.outputs.name }}" "$dir/"
+          (cd "$dir" && shasum -a 256 ./*.zip | sed 's# \./# #' > SHA256SUMS)
+          python3 -m http.server 8766 --bind 127.0.0.1 --directory "$dir" >/dev/null 2>&1 &
+          server=$!
+          node scripts/install/package-manifests.mjs --version "$version" --sums "$dir/SHA256SUMS" \
+            --out "$RUNNER_TEMP/app-manifests" --base-url "http://127.0.0.1:8766" --allow-missing
+          brew tap-new --no-git local/prismalens-app-test
+          tap="$(brew --repository local/prismalens-app-test)"
+          mkdir -p "$tap/Casks"
+          cp "$RUNNER_TEMP/app-manifests/Casks/prismalens-app.rb" "$tap/Casks/"
+          brew install --cask local/prismalens-app-test/prismalens-app
+          kill "$server"
+          [ -x /Applications/PrismaLens.app/Contents/MacOS/PrismaLens ] || { echo "::error::no /Applications/PrismaLens.app"; exit 1; }
+          echo "quarantine on the cask's app: $(xattr -p com.apple.quarantine /Applications/PrismaLens.app 2>/dev/null || echo none)"
+          brew uninstall --cask prismalens-app
+          [ ! -e /Applications/PrismaLens.app ] || { echo "::error::uninstall left /Applications/PrismaLens.app"; exit 1; }
+          brew untap local/prismalens-app-test
+
+      - name: Smoke the prismalens-app Scoop manifest (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (Get-Content packages\desktop\package.json -Raw | ConvertFrom-Json).version
+          $dir = "$env:RUNNER_TEMP\app-base"
+          New-Item -ItemType Directory $dir -Force | Out-Null
+          $zip = Copy-Item "$env:GITHUB_WORKSPACE\${{ steps.zip.outputs.name }}" $dir -PassThru
+          "$((Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower())  $($zip.Name)" | Out-File "$dir\SHA256SUMS" -Encoding ascii
+          $server = Start-Process python -ArgumentList "-m", "http.server", "8766", "--bind", "127.0.0.1", "--directory", $dir -PassThru -WindowStyle Hidden
+          node scripts/install/package-manifests.mjs --version $version --sums "$dir\SHA256SUMS" `
+            --out "$env:RUNNER_TEMP\app-manifests" --base-url "http://127.0.0.1:8766" --allow-missing
+          Invoke-RestMethod https://raw.githubusercontent.com/ScoopInstaller/Install/1e2f334083d609986d8c8bc9e31ae8e87c39fab4/install.ps1 -OutFile "$env:RUNNER_TEMP\install-scoop.ps1"
+          & "$env:RUNNER_TEMP\install-scoop.ps1" -RunAsAdmin
+          $env:Path = "$env:USERPROFILE\scoop\shims;$env:Path"
+          scoop install "$env:RUNNER_TEMP\app-manifests\bucket\prismalens-app.json"
+          if ($LASTEXITCODE -ne 0) { Write-Error "scoop install failed"; exit 1 }
+          Stop-Process -Id $server.Id -Force
+          $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'Scoop Apps\PrismaLens.lnk'
+          if (-not (Test-Path $lnk)) { Write-Error "no Start menu shortcut at $lnk"; exit 1 }
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath
+          if (-not (Test-Path $target) -or (Split-Path $target -Leaf) -ne 'PrismaLens.exe') { Write-Error "the shortcut opens $target"; exit 1 }
+          "ok: $lnk opens $target"
+          # Opened from Scoop's shortcut, the app renders and adds no launcher of its own beside Scoop's.
+          $png = "$env:GITHUB_WORKSPACE\desktop-scoop.png"
+          $env:PRISMALENS_DESKTOP_SMOKE = $png; $env:PRISMALENS_DESKTOP_SMOKE_LAUNCHER = "1"
+          $env:PRISMALENS_WORKSPACE_DIR = "$env:RUNNER_TEMP\scoop-ws"; $env:PRISMALENS_TELEMETRY = "off"
+          Start-Process $lnk
+          for ($i = 0; $i -lt 180 -and -not ((Test-Path $png) -and (Get-Item $png).Length -gt 10000); $i++) { Start-Sleep 1 }
+          if (-not (Test-Path $png)) { Write-Error "the app opened from Scoop's shortcut rendered nothing"; exit 1 }
+          Start-Sleep 10
+          $own = Join-Path ([Environment]::GetFolderPath('Programs')) 'PrismaLens.lnk'
+          if (Test-Path $own) { Write-Error "the app added $own beside Scoop's shortcut"; exit 1 }
+          "ok: rendered from Scoop's shortcut, no second shortcut"
+          scoop uninstall prismalens-app
+          if (Test-Path $lnk) { Write-Error "uninstall left $lnk"; exit 1 }
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

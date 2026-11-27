@@ -9,6 +9,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	type InstallChannel,
@@ -281,12 +282,46 @@ export function resolveUpdateChannel(
 	return saveNote ? { channel: saved, note: saveNote } : { channel: saved };
 }
 
-/** argv to run for `channel`, or null when the user has to act (desktop). */
+/**
+ * For an installer copy already at the newest release: how to add the desktop app when the
+ * installer's receipt says it isn't installed and wasn't declined (desktop=0).
+ */
+export function desktopAppHint(
+	receipt: string | null,
+	rerun: string,
+): string | null {
+	if (receipt === null || /^desktop=[01]\r?$/m.test(receipt)) return null;
+	return `The desktop app isn't installed beside this copy. To add it, run the installer again: ${rerun}`;
+}
+
+/**
+ * Whether the desktop app's own package (Homebrew's prismalens-app cask, Scoop's prismalens-app)
+ * sits beside this copy, found from where this copy's node runs.
+ */
+export function appPackageInstalled(
+	channel: InstallChannel,
+	execPath: string = process.execPath,
+	exists: (path: string) => boolean = existsSync,
+): boolean {
+	if (channel === "homebrew") {
+		const prefix = /^(.*)\/Cellar\/prismalens\//.exec(execPath)?.[1];
+		return !!prefix && exists(`${prefix}/Caskroom/prismalens-app`);
+	}
+	if (channel === "scoop") {
+		const apps = /^(.*[\\/]apps)[\\/]prismalens[\\/]/i.exec(execPath)?.[1];
+		return !!apps && exists(join(apps, "prismalens-app"));
+	}
+	return false;
+}
+
+/** argv to run for `channel`, or null when the user has to act (desktop); `withApp` upgrades the app's package too. */
 export function upgradeArgv(
 	channel: InstallChannel,
 	version: string,
 	platform: NodeJS.Platform = process.platform,
+	withApp = false,
 ): string[] | null {
+	const app = withApp ? ["prismalens-app"] : [];
 	switch (channel) {
 		case "npm":
 			return platform === "win32"
@@ -308,11 +343,11 @@ export function upgradeArgv(
 						`curl -fsSL https://prismalens.io/install.sh | sh -s -- --version ${version}`,
 					];
 		case "homebrew":
-			return ["brew", "upgrade", "prismalens"];
+			return ["brew", "upgrade", "prismalens", ...app];
 		case "scoop":
 			return platform === "win32"
-				? ["cmd", "/c", "scoop", "update", "prismalens"]
-				: ["scoop", "update", "prismalens"];
+				? ["cmd", "/c", "scoop", "update", "prismalens", ...app]
+				: ["scoop", "update", "prismalens", ...app];
 		default:
 			return null;
 	}
@@ -430,6 +465,17 @@ export default defineCommand({
 					consola.success(
 						`PrismaLens ${current} is the newest ${updateChannel} release.`,
 					);
+				const hint =
+					channel === "installer"
+						? desktopAppHint(
+								((file) =>
+									existsSync(file) ? readFileSync(file, "utf8") : null)(
+									join(config.installerDataDir(), "receipt"),
+								),
+								config.upgradeCommand("installer", process.platform),
+							)
+						: null;
+				if (hint) consola.info(hint);
 				return;
 			}
 			if (needsArchives && !(await releaseReady(latest))) {
@@ -455,7 +501,14 @@ export default defineCommand({
 		}
 
 		const plan = info ? launcherSteps(info, target, workspace) : null;
-		const argv = plan ? plan.steps[0] : upgradeArgv(channel, target);
+		const argv = plan
+			? plan.steps[0]
+			: upgradeArgv(
+					channel,
+					target,
+					process.platform,
+					appPackageInstalled(channel),
+				);
 		if (!argv) {
 			consola.info(`The desktop app upgrades by download: ${command}`);
 			return;

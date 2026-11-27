@@ -10,13 +10,23 @@
  */
 
 import { type ChildProcess, execFile, spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	accessSync,
+	existsSync,
+	constants as fsConstants,
+	lstatSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	writeFileSync,
+} from "node:fs";
 import path, { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deviceCookieName } from "@prismalens/auth/device-cookie";
 import {
 	ensureInstanceFile,
 	installedService,
+	installerDataDir,
 	readWorkspaceLockState,
 	serviceManagerKind,
 	serviceOwnsWorkspace,
@@ -24,6 +34,7 @@ import {
 import {
 	app,
 	BrowserWindow,
+	clipboard,
 	dialog,
 	ipcMain,
 	Menu,
@@ -57,6 +68,13 @@ import {
 	themeFromCookie,
 	titleBarOverlay,
 } from "./chrome.js";
+import {
+	APP_USER_MODEL_ID,
+	applyLauncherPlan,
+	installedByInstaller,
+	launcherIo,
+	planLauncher,
+} from "./launcher.js";
 import { readLoginShellPath } from "./login-shell-path.js";
 import { appMenuTemplate } from "./menu.js";
 import {
@@ -170,6 +188,152 @@ let update: string | null = null;
 let theme: Theme = "dark";
 /** Rebuilds the tray menu; set once the tray exists. */
 let refreshTray: () => void = () => {};
+
+const readText = (path: string): string | null => {
+	try {
+		return readFileSync(path, "utf8");
+	} catch {
+		return null;
+	}
+};
+
+/** An update for the installer's copy comes through `pl upgrade`, which reruns the installer; any other copy downloads it. */
+async function openUpdate(version: string | null): Promise<void> {
+	const installed = installedByInstaller({
+		platform: process.platform,
+		execPath: process.execPath,
+		receipt: readText(join(installerDataDir(), "receipt")),
+		// The installers mark their app: an xattr on the macOS bundle's executable, a file beside the exe elsewhere.
+		installId: (appPath) => {
+			if (process.platform === "darwin") {
+				const r = spawnSync(
+					"xattr",
+					[
+						"-p",
+						"io.prismalens.install-id",
+						join(appPath, "Contents", "MacOS", "PrismaLens"),
+					],
+					{ encoding: "utf8" },
+				);
+				return r.status === 0 ? r.stdout.trim() : null;
+			}
+			const dir =
+				process.platform === "win32" ? path.dirname(appPath) : appPath;
+			return readText(join(dir, ".prismalens-install-id"))?.trim() ?? null;
+		},
+		realpath: (p) => {
+			try {
+				return realpathSync.native(p);
+			} catch {
+				return p;
+			}
+		},
+	});
+	if (!installed) {
+		await shell.openExternal(
+			version ? releaseUrl(version) : latestReleaseUrl(),
+		);
+		return;
+	}
+	const { response } = await dialog.showMessageBox({
+		title: TITLE,
+		message: version ? `PrismaLens ${version} is out` : "Upgrade PrismaLens",
+		detail:
+			"Quit PrismaLens (tray icon, then Quit), run pl upgrade in a terminal, then open the app again. pl upgrade upgrades the app and the pl command together.",
+		buttons: ["Copy pl upgrade", "Close"],
+		defaultId: 0,
+		cancelId: 1,
+	});
+	if (response === 0) clipboard.writeText("pl upgrade");
+}
+
+/**
+ * Electron moves into /Applications only, asks for an administrator over a folder the user
+ * can't write, and replaces what is there; offer it only when neither happens.
+ */
+function canMoveToApplications(): boolean {
+	if (existsSync("/Applications/PrismaLens.app")) return false;
+	try {
+		accessSync("/Applications", fsConstants.W_OK);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Gives a copy run from its download the launcher the installers write; see launcher.ts. */
+async function registerLauncher(): Promise<void> {
+	// The installed-app smoke turns it on to check the launcher this leaves (smoke-installed.mjs).
+	if (
+		!app.isPackaged ||
+		(process.env.PRISMALENS_DESKTOP_SMOKE &&
+			process.env.PRISMALENS_DESKTOP_SMOKE_LAUNCHER !== "1")
+	)
+		return;
+	const plan = planLauncher(
+		{
+			platform: process.platform,
+			execPath: process.execPath,
+			resourcesPath: process.resourcesPath,
+			home: app.getPath("home"),
+			appData: app.getPath("appData"),
+			xdgDataHome: process.env.XDG_DATA_HOME,
+			exists: existsSync,
+			readText,
+			isLink: (p) => {
+				try {
+					return lstatSync(p).isSymbolicLink();
+				} catch {
+					return false;
+				}
+			},
+		},
+		(path) => {
+			try {
+				return shell.readShortcutLink(path);
+			} catch {
+				return null;
+			}
+		},
+	);
+	await applyLauncherPlan(plan, launcherIo({ dialog, shell }, TITLE));
+	if (plan.kind === "offer-move") {
+		const asked = join(
+			app.getPath("userData"),
+			"move-to-applications-declined",
+		);
+		if (existsSync(asked) || !canMoveToApplications()) return;
+		const { response, checkboxChecked } = await dialog.showMessageBox({
+			type: "question",
+			buttons: ["Move to Applications", "Not Now"],
+			defaultId: 0,
+			cancelId: 1,
+			message: "Move PrismaLens to your Applications folder?",
+			detail: "It then opens from Launchpad and Spotlight.",
+			checkboxLabel: "Don't ask again",
+		});
+		if (response === 0) {
+			// Never over another PrismaLens.app: Electron's default trashes one that isn't running.
+			let conflict = false;
+			const moved = app.moveToApplicationsFolder({
+				conflictHandler: () => {
+					conflict = true;
+					return false;
+				},
+			});
+			if (!moved && conflict)
+				await dialog.showMessageBox({
+					title: TITLE,
+					message: "PrismaLens is already in your Applications folder",
+					detail:
+						"That copy was left as it is. Open it from Launchpad or Spotlight, or delete it and try again.",
+				});
+		} else if (checkboxChecked) {
+			mkdirSync(app.getPath("userData"), { recursive: true });
+			writeFileSync(asked, "");
+		}
+	}
+}
 
 function wslSettingsPath(): string {
 	return join(app.getPath("userData"), "wsl.json");
@@ -678,7 +842,7 @@ async function showStop(input: {
 	}
 	if (d.kind === "newer-database") {
 		const found = update ?? (await newerRelease());
-		await shell.openExternal(found ? releaseUrl(found) : latestReleaseUrl());
+		await openUpdate(found);
 		app.quit();
 		return;
 	}
@@ -1001,8 +1165,7 @@ function buildTray(): void {
 					? [
 							{
 								label: `Download PrismaLens ${update}…`,
-								click: () =>
-									void shell.openExternal(releaseUrl(update as string)),
+								click: () => void openUpdate(update as string),
 							},
 						]
 					: []),
@@ -1109,7 +1272,7 @@ async function checkForUpdatesNow(): Promise<void> {
 	const current = backendVersion(backendMainPath);
 	const found = current ? await availableUpdate(current) : null;
 	if (found) {
-		void shell.openExternal(releaseUrl(found));
+		void openUpdate(found);
 		return;
 	}
 	await dialog.showMessageBox({
@@ -1136,7 +1299,7 @@ function startUpdateChecks(): void {
 				title: `PrismaLens ${found} is available`,
 				body: `You have ${current}. Click to download the new version.`,
 			});
-			n.on("click", () => void shell.openExternal(releaseUrl(found)));
+			n.on("click", () => void openUpdate(found));
 			holdUntilClicked(notifications, n);
 			n.show();
 		}
@@ -1217,7 +1380,11 @@ if (!app.requestSingleInstanceLock()) {
 		.then(async () => {
 			// Taskbar grouping and notifications key on this; it matches the build's appId.
 			if (process.platform === "win32")
-				app.setAppUserModelId("io.prismalens.desktop");
+				app.setAppUserModelId(APP_USER_MODEL_ID);
+			// Before the backend starts: a move to Applications relaunches the app.
+			await registerLauncher().catch((error) =>
+				console.warn("couldn't register the app's launcher", error),
+			);
 			Menu.setApplicationMenu(
 				((template) => (template ? Menu.buildFromTemplate(template) : null))(
 					appMenuTemplate(process.platform, TITLE, {

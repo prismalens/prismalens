@@ -10,6 +10,7 @@
 	"description": "The Electron launcher: spawns the same backend `pl up` runs, opens a window on it, and adds presence.",
 	"type": "module",
 	"main": "dist/main.js",
+	"desktopName": "prismalens.desktop",
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
 		"dev": "concurrently -k -n tsc,electron -c blue,green \"tsc -p tsconfig.json --watch --preserveWatchOutput\" \"PRISMALENS_DESKTOP_DEV_URL=${PRISMALENS_DESKTOP_DEV_URL:-http://localhost:${PRISMALENS_FRONTEND_PORT:-3000}} electronmon .\"",
@@ -74,7 +75,13 @@
 		},
 		"linux": {
 			"target": "dir",
-			"executableName": "prismalens"
+			"executableName": "prismalens",
+			"extraResources": [
+				{
+					"from": "build/icon.png",
+					"to": "icon.png"
+				}
+			]
 		},
 		"win": {
 			"target": "dir",

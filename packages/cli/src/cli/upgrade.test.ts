@@ -20,6 +20,8 @@ import {
 	runSteps,
 	STEP_TIMEOUT_MS,
 	resolveUpdateChannel,
+	appPackageInstalled,
+	desktopAppHint,
 	upgradeArgv,
 	upgradeEnv,
 } from "./upgrade.js";
@@ -132,6 +134,37 @@ describe("upgradeArgv", () => {
 	});
 	it("leaves the desktop app to its download", () => {
 		expect(upgradeArgv("electron", "0.5.1", "darwin")).toBe(null);
+	});
+	it("upgrades the app's own Homebrew or Scoop package with the CLI when it is installed", () => {
+		expect(upgradeArgv("homebrew", "0.5.1", "darwin", true)).toEqual(["brew", "upgrade", "prismalens", "prismalens-app"]);
+		expect(upgradeArgv("scoop", "0.5.1", "win32", true)).toEqual([
+			"cmd",
+			"/c",
+			"scoop",
+			"update",
+			"prismalens",
+			"prismalens-app",
+		]);
+	});
+});
+
+describe("appPackageInstalled", () => {
+	const brewNode = "/opt/homebrew/Cellar/prismalens/0.5.1/libexec/node/bin/node";
+	const scoopNode = "C:\\Users\\ada\\scoop\\apps\\prismalens\\current\\node\\node.exe";
+
+	it("finds the cask in the Caskroom beside Homebrew's Cellar", () => {
+		const seen: string[] = [];
+		const found = appPackageInstalled("homebrew", brewNode, (p) => (seen.push(p), true));
+		expect(found).toBe(true);
+		expect(seen).toEqual(["/opt/homebrew/Caskroom/prismalens-app"]);
+		expect(appPackageInstalled("homebrew", brewNode, () => false)).toBe(false);
+	});
+
+	it("finds Scoop's app beside the CLI's, and nothing for other channels", () => {
+		const seen: string[] = [];
+		expect(appPackageInstalled("scoop", scoopNode, (p) => (seen.push(p), true))).toBe(true);
+		expect(seen.map((p) => p.replaceAll("\\", "/"))).toEqual(["C:/Users/ada/scoop/apps/prismalens-app"]);
+		expect(appPackageInstalled("installer", "/home/ada/.local/share/prismalens/runtime/0.5.1/node/bin/node", () => true)).toBe(false);
 	});
 });
 
@@ -267,5 +300,19 @@ describe("commandVersion", () => {
 	it("names no version for an unpinned non-npm upgrade, and the pin when there is one", () => {
 		expect(commandVersion("homebrew", null, "0.5.5")).toBe(undefined);
 		expect(commandVersion("installer", "0.5.5", "0.5.5")).toBe("0.5.5");
+	});
+});
+
+describe("desktopAppHint", () => {
+	const rerun = "curl -fsSL https://prismalens.io/install.sh | sh";
+	it("names the installer rerun when the receipt says nothing of the app", () => {
+		const hint = `The desktop app isn't installed beside this copy. To add it, run the installer again: ${rerun}`;
+		expect(desktopAppHint("version=0.5.6\r\nchannel=installer\r\n", rerun)).toBe(hint);
+		expect(desktopAppHint("version=0.5.6\nchannel=installer\n", rerun)).toBe(hint);
+	});
+	it("stays quiet once the app is installed or was declined, and without a receipt", () => {
+		expect(desktopAppHint("version=0.5.7\r\ndesktop=1\r\n", rerun)).toBe(null);
+		expect(desktopAppHint("version=0.5.7\ndesktop=0\n", rerun)).toBe(null);
+		expect(desktopAppHint(null, rerun)).toBe(null);
 	});
 });
