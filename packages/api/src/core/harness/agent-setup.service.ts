@@ -7,7 +7,7 @@
  * path or a value once approved.
  */
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import { Injectable } from "@nestjs/common";
 import {
@@ -40,6 +40,7 @@ import {
 	layoutOf,
 	mcpSourceHash,
 	type RunShared,
+	readAgentLoadout,
 	readMcpSource,
 	readOnDisk,
 	refuseValueFiles,
@@ -52,6 +53,7 @@ import { CredentialsService } from "../../modules/integrations/crypto/credential
 import * as clock from "../clock.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { HarnessService } from "./harness.service.js";
+import { HarnessModelsService } from "./harness-models.service.js";
 
 export const SHARED_SERVERS_KEY = "AGENT_SHARED_SERVERS";
 export const SHARED_SET_KEY = "AGENT_SHARED_SET";
@@ -109,7 +111,14 @@ export class AgentSetupService {
 		private readonly prisma: PrismaService,
 		private readonly harness: HarnessService,
 		private readonly credentials: CredentialsService,
+		private readonly models: HarnessModelsService,
 	) {}
+
+	/** Whether the agent's last check said it takes HTTP MCP servers; unknown sends them. */
+	/** Whether `id`'s last check saw its session take HTTP servers; unchecked is not a yes. */
+	private takesHttp(id: HarnessId): boolean | "unknown" {
+		return this.models.checked(id)?.mcpHttp ?? "unknown";
+	}
 
 	// ------------------------------------------------------------ storage
 
@@ -205,7 +214,8 @@ export class AgentSetupService {
 			recipients: s.recipients,
 			changedInSource: changed,
 			fromAgent: s.from?.agent ?? null,
-			fromSource: s.from
+			// A record from before approval required a key has none to point at.
+			fromSource: s.from?.key
 				? { agent: s.from.agent, path: s.from.path, key: s.from.key }
 				: null,
 		};
@@ -489,6 +499,7 @@ export class AgentSetupService {
 		return {
 			servers: shared.servers,
 			hidden: shared.hidden,
+			...(shared.runFile ? { runFile: shared.runFile } : {}),
 			revision: row.revision,
 			instructions: member && row.instructions.trim() ? row.instructions : null,
 			fingerprint: configFingerprint(id, env, cwd, {
@@ -515,7 +526,7 @@ export class AgentSetupService {
 		// A run file holds HTTP servers too; an ACP session says whether it takes them only once open.
 		const runFile = HARNESS_REGISTRY[id].gatewayDelivery === "mcp-config-file";
 		return deliverShared(stored, id, {
-			http: runFile ? true : "unknown",
+			http: runFile ? true : this.takesHttp(id),
 			ownNames,
 			cwd,
 			...(runFile ? { runFile: true } : {}),
@@ -544,12 +555,19 @@ export class AgentSetupService {
 			throw new AgentSetupError("BAD_REQUEST", "Unknown agent");
 		const id = input.id;
 		const profile: LoadoutProfile = input.profile ?? "own";
-		const [env, root, [row, stored]] = await Promise.all([
+		const [env, root, [row, stored], runtime] = await Promise.all([
 			this.envOf(id),
 			this.repoRoot(input.repositoryId),
 			this.rows(),
+			this.harness.runtimeFor(id),
 		]);
 		const disk = readOnDisk(id, env, root);
+		// An agent that answers before any run (Codex's app-server) is asked as the section opens;
+		// it reads the agent's own config, so a clean-profile view takes none of it.
+		const agentSaid =
+			profile === "own"
+				? ((await readAgentLoadout(id, runtime, root).catch(() => null)) ?? [])
+				: [];
 		const shared = await this.deliver(id, env, root, stored);
 		const member = row.instructionsFor.includes(id);
 		const ours: LoadedItem[] = [...shared.items];
@@ -623,8 +641,17 @@ export class AgentSetupService {
 					};
 					break;
 				}
+		// Codex names a file by its real path, the disk read by the path the env spells (macOS /var).
+		const real = (p: string | null) => {
+			try {
+				return p ? realpathSync(p) : "";
+			} catch {
+				return p ?? "";
+			}
+		};
 		const key = (i: LoadedItem) =>
-			`${i.kind}\0${i.name}\0${i.scope}\0${i.path ?? ""}`;
+			`${i.kind}\0${i.name}\0${i.scope}\0${real(i.path)}`;
+		reported = [...reported, ...agentSaid];
 		const byKey = new Map(reported.map((i) => [key(i), i]));
 		// Claude's init names servers and skills without a path: matched by kind, name and scope,
 		// and only to a row no other row shares that with.

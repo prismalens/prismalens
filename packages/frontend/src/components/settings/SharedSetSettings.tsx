@@ -144,7 +144,7 @@ function Recipients({
 }) {
 	const id = useId();
 	return (
-		<fieldset className="flex flex-col gap-2" data-testid="share-recipients">
+		<fieldset className="flex flex-col gap-3" data-testid="share-recipients">
 			<legend className="mb-1 text-body font-medium text-text-2">Agents</legend>
 			{agents.map((a) => (
 				<label
@@ -153,6 +153,7 @@ function Recipients({
 					className="flex items-center gap-2 text-body text-text-1"
 				>
 					<Checkbox
+						className="size-6"
 						id={`${id}-${a.id}`}
 						checked={picked.includes(a.id)}
 						onCheckedChange={(on) =>
@@ -796,12 +797,14 @@ function ServerRow({
 	server,
 	labelOf,
 	canEdit,
+	copyWaits,
 	onCopyAgain,
 	onRemove,
 }: {
 	server: SharedMcpServerView;
 	labelOf: (id: string) => string;
 	canEdit: boolean;
+	copyWaits?: boolean;
 	onCopyAgain: () => void;
 	onRemove: () => void;
 }) {
@@ -843,6 +846,7 @@ function ServerRow({
 									variant="secondary"
 									size="sm"
 									onClick={onCopyAgain}
+									disabled={copyWaits}
 									data-testid="shared-server-copy-again"
 								>
 									Copy again
@@ -876,6 +880,7 @@ export function SharedSetView({
 	onSaveInstructions,
 	saveError,
 	onShare,
+	copyWaits,
 	onCopyAgain,
 	onRemove,
 	onMember,
@@ -889,8 +894,10 @@ export function SharedSetView({
 	onSaveInstructions: (text: string) => Promise<unknown>;
 	saveError?: unknown;
 	onShare: () => void;
-	/** The entry the server was copied from (null when none is known), and the server it replaces. */
-	onCopyAgain: (source: SharedSource | null, replace: ReplaceTarget) => void;
+	/** Copy again waits for the sources, so it can open the one the server came from. */
+	copyWaits?: boolean;
+	/** The entry the server was copied from, or null when none is known. */
+	onCopyAgain: (server: SharedMcpServerView) => void;
 	onRemove: (name: string) => void;
 	onMember: (id: string, member: boolean) => void;
 }) {
@@ -979,12 +986,8 @@ export function SharedSetView({
 							server={server}
 							labelOf={labelOf}
 							canEdit={canEdit}
-							onCopyAgain={() =>
-								onCopyAgain(server.fromSource, {
-									name: server.name,
-									recipients: server.recipients,
-								})
-							}
+							copyWaits={copyWaits}
+							onCopyAgain={() => onCopyAgain(server)}
 							onRemove={() => onRemove(server.name)}
 						/>
 					))}
@@ -1013,6 +1016,23 @@ export function SharedSetView({
 	);
 }
 
+/**
+ * The source `Copy again` opens: the entry the server was copied from, by path and key; for a
+ * server that records none, its agent's entry of the same name.
+ */
+export function copySource(
+	sources: readonly SharedSource[],
+	{ fromSource: from, fromAgent, name }: SharedMcpServerView,
+): SharedSource | undefined {
+	if (from)
+		return sources.find(
+			(s) =>
+				s.agent === from.agent && s.path === from.path && s.key === from.key,
+		);
+	const own = sources.filter((s) => s.agent === fromAgent);
+	return own.find((s) => serverName(s.key) === name) ?? own[0];
+}
+
 /** Settings → Agents → PrismaLens set. */
 export function SharedSetSettings() {
 	const set = useSharedSet();
@@ -1021,6 +1041,9 @@ export function SharedSetSettings() {
 	const update = useUpdateSharedSet();
 	const remove = useRemoveSharedServer();
 	const membership = useSetSharedMembership();
+	const sources = useSharedSources(
+		set.data?.servers.some((v) => v.changedInSource) ?? false,
+	);
 	const [sharing, setSharing] = useState<{
 		initial?: SharedSource;
 		replace?: ReplaceTarget;
@@ -1036,9 +1059,13 @@ export function SharedSetSettings() {
 			/>
 		);
 	if (!set.data) return <Loading rows={3} />;
-	// The entry it was copied from, or none: the person picks a source again.
-	const copyAgain = (source: SharedSource | null, replace: ReplaceTarget) =>
-		setSharing(source ? { initial: source, replace } : { replace });
+	// Copy again replaces the server under its shared name and recipients; with no known entry the
+	// person picks a source again.
+	const copyAgain = (server: SharedMcpServerView) => {
+		const initial = copySource(sources.data ?? [], server);
+		const replace = { name: server.name, recipients: server.recipients };
+		setSharing(initial ? { initial, replace } : { replace });
+	};
 	return (
 		<>
 			<SharedSetView
@@ -1052,6 +1079,7 @@ export function SharedSetSettings() {
 				}
 				saveError={update.error}
 				onShare={() => setSharing({})}
+				copyWaits={sources.isLoading}
 				onCopyAgain={copyAgain}
 				onRemove={setRemoving}
 				onMember={(id, member) => membership.mutate({ id, member })}

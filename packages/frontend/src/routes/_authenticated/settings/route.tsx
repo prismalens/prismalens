@@ -29,6 +29,7 @@ export const LEGACY_SETTINGS_TABS: Readonly<
 /**
  * The router spreads this over the raw search, so an unknown tab is overwritten, not omitted (w8-2).
  * `agent` opens one agent's page under Agent (#907); `source` one connection on Sources (#848).
+ * `repositoryId` rides the raw search unvalidated: the agent page uses it only for a listed project (#1180).
  */
 export const validateSettingsSearch = (
 	search: Record<string, unknown>,
@@ -36,6 +37,7 @@ export const validateSettingsSearch = (
 	tab?: SettingsTab;
 	agent?: HarnessId;
 	source?: string;
+	repositoryId?: string;
 	legacy?: string;
 	legacyAgent?: string;
 	q?: string;

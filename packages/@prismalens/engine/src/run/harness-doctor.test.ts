@@ -86,9 +86,17 @@ describe("probeHarness", () => {
 			modes: null,
 			efforts: null,
 			images: false,
+			mcpHttp: false,
 			sandbox: { "agent-default": { state: "none", reason: "OpenCode has no sandbox" } },
 		});
 		expect(result.detail).not.toMatch(/ready/i);
+	});
+
+	it("records whether the agent takes HTTP MCP servers, from its initialize answer (#1180 §3.3)", async () => {
+		const result = await probeHarness("opencode", {
+			descriptor: { ...descriptor("ok"), acpEnv: () => ({ FAKE_ACP_MODE: "ok", FAKE_MCP_HTTP: "1" }) },
+		});
+		expect(result.mcpHttp).toBe(true);
 	});
 
 	describe("sign-in pushed on _auth/status_update (#831)", () => {

@@ -39,6 +39,7 @@ import {
 	mergeIsolation,
 	resolveIsolation,
 } from "./registry/isolation.js";
+import { GATEWAY_RUN_FILE } from "./registry/row.js";
 
 export interface SubagentLimits {
 	depth?: number;
@@ -211,8 +212,14 @@ export interface PlanLaunchInput {
 	userConfig?: JsonObject;
 	/** The product's MCP gateway; reaches the run only on a row with `gatewayDelivery` (#848). */
 	gateway?: AgentRunEnv["gateway"];
-	/** Shared servers by name; reach the run only on a row that reads them from its run file. */
-	runFile?: AgentRunEnv["runFile"];
+	/**
+	 * Shared servers for a row whose servers go in its run file, and the env their
+	 * `${PL_SV_...}` references read; the file never holds a value (#1180 §3.3).
+	 */
+	runFile?: {
+		servers: Record<string, Record<string, unknown>>;
+		env: Record<string, string>;
+	};
 	/** Sub-agent limits the user set; each reaches only a row with a key for it (#1024 spec B). */
 	subagents?: SubagentLimits;
 	/** Swap the row's facts, as tests and a `local` command do. */
@@ -482,6 +489,11 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 	const row = input.descriptor ?? AGENT_REGISTRY[input.agent];
 	const host = input.hostEnv;
 	const stored = input.stored ?? {};
+	const runFile =
+		row.gatewayDelivery === "mcp-config-file" &&
+		Object.keys(input.runFile?.servers ?? {}).length
+			? input.runFile
+			: undefined;
 	const runEnv: AgentRunEnv = {
 		configDir: join(input.runDir, "config"),
 		dataDir: join(input.runDir, "home"),
@@ -491,12 +503,10 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 			: {}),
 		...(input.launch.shipped ? { shipped: true } : {}),
 		...(input.gateway && row.gatewayDelivery ? { gateway: input.gateway } : {}),
-		...(input.runFile &&
-		Object.keys(input.runFile).length &&
-		row.gatewayDelivery === "mcp-config-file"
-			? { runFile: input.runFile }
-			: {}),
+		...(runFile ? { runFileServers: runFile.servers } : {}),
 	};
+	if (row.gatewayDelivery === "mcp-config-file" && (runEnv.gateway || runFile))
+		runEnv.runFile = true;
 
 	const own =
 		policy.floor?.mode === "inherit-minus-own-secrets"
@@ -520,6 +530,7 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 	if (endpointUrl && !refused("ANTHROPIC_BASE_URL"))
 		runEnv.anthropicBaseUrl = endpointUrl;
 	overlay(env, row.acpEnv(runEnv));
+	if (runFile) overlay(env, runFile.env);
 	// After the user's own values, so a JSON env such as CODEX_CONFIG keeps what they set in it.
 	const limits = subagentLimitLayers(row, input.subagents, env);
 	for (const layer of [limits.env, input.overrides ?? {}]) overlay(env, layer);
@@ -592,6 +603,16 @@ export function planLaunch(input: PlanLaunchInput): LaunchPlan {
 			},
 		),
 	);
+	// The run file holds each shared server as env references; dcode expands them (#1180 §3.3).
+	if (runFile) {
+		const own = planned[GATEWAY_RUN_FILE];
+		const servers = own
+			? (JSON.parse(own) as { mcpServers: JsonObject }).mcpServers
+			: {};
+		planned[GATEWAY_RUN_FILE] = JSON.stringify({
+			mcpServers: { ...runFile.servers, ...servers },
+		});
+	}
 	if (row.configEnv && planned[row.configEnv.file] !== undefined) {
 		const { file, key } = row.configEnv;
 		const run = JSON.parse(planned[file] as string) as JsonObject;

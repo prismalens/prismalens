@@ -562,8 +562,13 @@ export class AcpAdapter {
 	}
 
 	/** The agent's turn on these messages ended: their delivery is real (#1179). */
-	messagesReceived(ids: string[]): CanonicalEvent {
-		return { kind: "message_received", ...this.base(), messageIds: ids };
+	messagesReceived(ids: string[], sharedRevision?: string): CanonicalEvent {
+		return {
+			kind: "message_received",
+			...this.base(),
+			messageIds: ids,
+			...(sharedRevision !== undefined ? { sharedRevision } : {}),
+		};
 	}
 
 	/** A message now waits for the agent's next pause (#820). */
@@ -728,6 +733,7 @@ export class AcpAdapter {
 			after?: number;
 			instructions?: string;
 			summary?: string;
+			sharedRevision?: string;
 		} = {},
 	): CanonicalEvent {
 		return {
@@ -739,6 +745,9 @@ export class AcpAdapter {
 			...(counts.after !== undefined ? { after: counts.after } : {}),
 			...(counts.instructions ? { instructions: counts.instructions } : {}),
 			...(counts.summary !== undefined ? { summary: counts.summary } : {}),
+			...(counts.sharedRevision !== undefined
+				? { sharedRevision: counts.sharedRevision }
+				: {}),
 		};
 	}
 

@@ -248,16 +248,24 @@ export function codexCheckConfig(mcp: readonly string[]): JsonObject {
 	};
 }
 
+/**
+ * One `-c mcp_servers={...}` turning each server off, keyed by its literal name: Codex 0.171.0
+ * splits a dotted `-c` key on every dot, even quoted, so `docs.v2` needs an inline table.
+ */
+export function codexMcpOffArgs(mcp: readonly string[]): string[] {
+	if (!mcp.length) return [];
+	const off = mcp.map((n) => `${JSON.stringify(n)}={enabled=false}`);
+	return ["-c", `mcp_servers={${off.join(",")}}`];
+}
+
 /** `codexCheckConfig` as `-c key=value` pairs for a Codex CLI started directly. */
 export function codexConfigArgs(mcp: readonly string[]): string[] {
-	const key = (n: string) =>
-		/^[A-Za-z0-9_-]+$/.test(n) ? n : JSON.stringify(n);
 	return [
 		"-c",
 		"features.hooks=false",
 		"-c",
 		"features.plugins=false",
-		...mcp.flatMap((n) => ["-c", `mcp_servers.${key(n)}.enabled=false`]),
+		...codexMcpOffArgs(mcp),
 	];
 }
 

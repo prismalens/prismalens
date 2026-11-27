@@ -11,7 +11,7 @@ import {
 	type LoadedItem,
 	type AgentLoadout as Loadout,
 } from "@prismalens/contracts";
-import { Link } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { Mark } from "@/components/kit/Mark";
@@ -132,7 +132,7 @@ export function AgentLoadoutView({
 					<Link
 						to="/threads/$id"
 						params={{ id: loadout.report.threadId }}
-						className="text-accent hover:underline"
+						className="inline-flex min-h-6 items-center text-accent hover:underline"
 					>
 						Open thread
 					</Link>
@@ -143,7 +143,7 @@ export function AgentLoadoutView({
 						<Link
 							to="/threads/$id"
 							params={{ id: loadout.staleReport.threadId }}
-							className="text-accent hover:underline"
+							className="inline-flex min-h-6 items-center text-accent hover:underline"
 						>
 							{STALE_REPORT}
 						</Link>
@@ -223,8 +223,14 @@ function LoadoutBody({ agent }: { agent: HarnessStatus }) {
 	const recent = [...list].sort((a, b) =>
 		b.updatedAt.localeCompare(a.updatedAt),
 	)[0];
+	const from = useSearch({
+		strict: false,
+		select: (s: { repositoryId?: string }) => s.repositoryId,
+	});
+	const cameFrom = list.find((r) => r.id === from);
 	const [picked, setPicked] = useState<string | null>(null);
-	const project = picked ?? (repos.isLoading ? null : (recent?.id ?? GLOBAL));
+	const project =
+		picked ?? (repos.isLoading ? null : (cameFrom?.id ?? recent?.id ?? GLOBAL));
 	const loadout = useAgentLoadout(
 		{
 			id: agent.id,

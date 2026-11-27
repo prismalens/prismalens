@@ -78,6 +78,8 @@ export const codex = defineAgent({
 		limitsBeforeRun: "codex-app-server",
 		settingsFile: "~/.codex/config.toml",
 		// Codex docs agents-md, config-advanced, hooks, build-skills; project config only when trusted (#1180).
+		// config/read, skills/list, hooks/list and plugin/installed in 0.171.0's app-server schema (#1180).
+		loadoutReport: "codex-app-server",
 		configLayout: {
 			instructions: [
 				{ path: "{$CODEX_HOME|~/.codex}/AGENTS.override.md", scope: "global" },
@@ -112,6 +114,7 @@ export const codex = defineAgent({
 					key: "mcp_servers",
 				},
 			],
+			// Codex 0.171.0 reads hooks from both files.
 			hooks: [
 				{
 					path: "{$CODEX_HOME|~/.codex}/config.toml",
@@ -123,6 +126,18 @@ export const codex = defineAgent({
 					path: "<repo>/.codex/config.toml",
 					scope: "repo",
 					format: "toml",
+					key: "hooks",
+				},
+				{
+					path: "{$CODEX_HOME|~/.codex}/hooks.json",
+					scope: "global",
+					format: "json",
+					key: "hooks",
+				},
+				{
+					path: "<repo>/.codex/hooks.json",
+					scope: "repo",
+					format: "json",
 					key: "hooks",
 				},
 			],

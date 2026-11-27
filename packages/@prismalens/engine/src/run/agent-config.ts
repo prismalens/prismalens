@@ -237,7 +237,7 @@ function keyed(
 		}
 		if (!isRecord(value)) continue;
 		for (const [name, def] of Object.entries(value)) {
-			const off = kind === "plugin" ? def === false : isOff(def);
+			const off = def === false || isOff(def);
 			const transport = kind === "mcp" ? transportOf(def) : undefined;
 			out.push(
 				item(

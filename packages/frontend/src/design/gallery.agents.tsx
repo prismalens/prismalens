@@ -103,7 +103,11 @@ const set: SharedSet = {
 			recipients: [A, B],
 			changedInSource: false,
 			fromAgent: B,
-			fromSource: null,
+			fromSource: {
+				agent: B,
+				path: "~/.config/agent/config.json",
+				key: "docs",
+			},
 		},
 		{
 			name: "tickets",

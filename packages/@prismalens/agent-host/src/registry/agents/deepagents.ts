@@ -12,23 +12,20 @@ export const deepagents = {
 	binary: "dcode",
 	gatewayDelivery: "mcp-config-file",
 	acpArgs: (env) =>
-		env.gateway || env.runFile
+		env.runFile
 			? ["--acp", "--mcp-config", inConfigDir(env, GATEWAY_RUN_FILE)]
 			: ["--acp"],
 	acpEnv: () => ({}),
 	configFiles: (env): Record<string, string> =>
-		env.gateway || env.runFile
+		env.gateway
 			? {
 					[GATEWAY_RUN_FILE]: JSON.stringify({
 						mcpServers: {
-							...env.runFile,
-							...(env.gateway && {
-								[env.gateway.name]: {
-									type: "http",
-									url: env.gateway.url,
-									headers: { Authorization: `Bearer ${env.gateway.token}` },
-								},
-							}),
+							[env.gateway.name]: {
+								type: "http",
+								url: env.gateway.url,
+								headers: { Authorization: `Bearer ${env.gateway.token}` },
+							},
 						},
 					}),
 				}

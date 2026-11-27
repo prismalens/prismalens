@@ -1738,6 +1738,8 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			instructions: z.string().optional(),
 			/** `summary` only: the summary the fresh session was seeded with (#1166). */
 			summary: z.string().optional(),
+			/** The instructions revision the compacted session's system prompt now holds (#1180 §3.3). */
+			sharedRevision: z.string().optional(),
 		}),
 		z.object({
 			/** The agent's account ran out of usage (#1024). */
@@ -1810,7 +1812,10 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			/** The agent's turn on these messages ended; their delivery is real (#1179). */
 			kind: z.literal("message_received"),
 			...StreamBaseShape,
-			messageIds: z.array(z.string().uuid()).min(1).max(50),
+			/** Empty only on a receipt that records `sharedRevision` alone. */
+			messageIds: z.array(z.string().uuid()).max(50),
+			/** The set's instructions revision this turn delivered (#1180 §3.3). */
+			sharedRevision: z.string().optional(),
 		}),
 		z.object({
 			/** A PR subscription began, changed or ended (#1179). */
