@@ -530,6 +530,7 @@ export function ThreadList() {
 					onMoreActive={more}
 					onMoreNeeds={more}
 					activeTotal={activeTotal}
+					pages={feed.data?.pages.length}
 					moving={held.moving}
 					needsAll={needsAllFor === filterKey}
 					onShowAllNeeds={() => setNeedsAllFor(filterKey)}
@@ -571,7 +572,8 @@ const RenameField = lazyPart(
 	{ now: true },
 );
 
-const FilterMenu = lazyPart(
+/** The sidebar's Filter: a stand-in trigger until the popover's code lands. */
+export const FilterMenu = lazyPart(
 	() =>
 		import("./ThreadFilters").then((m) => (props: FilterProps) => (
 			<m.ThreadFilterButton {...props} takeOpen={takeFilterOpen} />

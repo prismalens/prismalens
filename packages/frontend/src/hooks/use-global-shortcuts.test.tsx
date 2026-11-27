@@ -154,7 +154,7 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		expect(onNew).not.toHaveBeenCalled();
 	});
 
-	it("leaves a letter pressed on a focused list row to the row, never typed into the message box (#1193 bar 1.8)", () => {
+	it("keeps a letter pressed on the page but not one pressed on a focused list row (#1193 bar 1.8)", () => {
 		new Function(EARLY_KEYS_SCRIPT)();
 		const row = document.createElement("a");
 		row.setAttribute("data-list-row", "");
@@ -164,6 +164,18 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		row.remove();
 		// Each test's script adds its own window listener, so a key repeats once per earlier run.
 		expect([...new Set(win.__plEarlyKeys?.map((k) => k.k))]).toEqual(["q"]);
+	});
+
+	it("keeps a letter pressed on a focused control inside a surface", () => {
+		new Function(EARLY_KEYS_SCRIPT)();
+		const surface = document.createElement("div");
+		surface.setAttribute("data-surface", "files");
+		const button = document.createElement("button");
+		surface.appendChild(button);
+		document.body.appendChild(surface);
+		press(button, "c");
+		surface.remove();
+		expect([...new Set(takeEarlyKeys().map((k) => k.k))]).toEqual(["c"]);
 	});
 
 	it("keys pressed after mounting are handled once, not replayed", async () => {

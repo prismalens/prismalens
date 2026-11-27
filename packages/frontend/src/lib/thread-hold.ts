@@ -68,20 +68,22 @@ export function heldModel(
 			moving.set(id, now ?? "gone");
 			return held.nodes.get(id) as ListNode;
 		});
-		// A row that stayed in its section but changed place among those that stayed.
-		const stayed = ids.filter((id) => where.get(id) === s);
-		const liveStayed = live[s]
-			.map((n) => n.id)
-			.filter((id) => ids.includes(id));
-		pending += stayed.filter((id, i) => liveStayed[i] !== id).length;
-		if (!tail) continue;
-		// A later page's rows can sort among held ones; they join below them, and only a row
-		// above every held one waits, as a new arrival (#1193 bar 17.5).
 		const liveIds = live[s].map((n) => n.id);
-		const at = ids.map((id) => liveIds.indexOf(id)).filter((i) => i >= 0);
-		const first = at.length ? Math.min(...at) : -1;
-		for (const n of live[s].slice(first + 1))
-			if (!held.nodes.has(n.id)) out[s].push(n);
+		if (tail) {
+			// A later page's rows can sort among held ones; they join below them, and only a row
+			// above every held one waits, as a new arrival (#1193 bar 17.5).
+			const at = ids.map((id) => liveIds.indexOf(id)).filter((i) => i >= 0);
+			const first = at.length ? Math.min(...at) : -1;
+			for (const n of live[s].slice(first + 1))
+				if (!held.nodes.has(n.id)) out[s].push(n);
+		}
+		// A shown row of this section that sits elsewhere in the live order moves on release.
+		const shownHere = out[s]
+			.map((n) => n.id)
+			.filter((id) => where.get(id) === s);
+		const kept = new Set(shownHere);
+		const liveOrder = liveIds.filter((id) => kept.has(id));
+		pending += shownHere.filter((id, i) => liveOrder[i] !== id).length;
 	}
 	const shown = new Set(SECTIONS.flatMap((s) => out[s].map((n) => n.id)));
 	for (const id of where.keys())

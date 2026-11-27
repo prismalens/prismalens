@@ -251,6 +251,8 @@ export interface TreeProps {
 	onMoreSettled?: () => void;
 	/** Threads past what loaded: the server's count, and a fetch for the next page. */
 	activeTotal?: number;
+	/** Feed pages loaded: a page that brings no Threads row still asks for the next. */
+	pages?: number;
 	onMoreActive?: () => void;
 	/** Every row open and the settled group shown: the design gallery's frames. */
 	expandAll?: boolean;
@@ -281,6 +283,7 @@ export function ThreadTreeView({
 	onSettle,
 	onMoreSettled,
 	activeTotal,
+	pages,
 	onMoreActive,
 	expandAll = false,
 	filter,
@@ -341,16 +344,18 @@ export function ThreadTreeView({
 	// A Show more pressed while a page loads is dropped by the feed: each page that lands short asks again.
 	const moreActive = useRef(onMoreActive);
 	moreActive.current = onMoreActive;
-	// The loaded count while short of the rows asked for, else -1: each page that lands short asks once more.
+	// The loaded count while short of the rows asked for, else -1.
 	const shortAt =
 		!expandAll &&
 		!filter &&
-		active.length < Math.min(rowsShown, activeTotal ?? 0)
+		active.length < Math.min(rowsShown, activeTotal ?? rowsShown)
 			? active.length
 			: -1;
+	// Each page that lands short asks again, one with no Threads row too.
+	const shortKey = shortAt >= 0 ? `${shortAt}/${pages ?? 0}` : "";
 	useEffect(() => {
-		if (shortAt >= 0) moreActive.current?.();
-	}, [shortAt]);
+		if (shortKey) moreActive.current?.();
+	}, [shortKey]);
 	// Rows a page or a Show more adds mount from a deferred pass React builds in slices, never
 	// inside the task that brought the data (#1101 cat 1.8: no task over 100 ms while scrolling).
 	const activeDrawn = useDeferredValue(Math.min(rowsShown, active.length));

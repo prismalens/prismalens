@@ -4,7 +4,7 @@
 
 import type { ThreadRow, ThreadUnit } from "@prismalens/contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, createElement, type ReactNode } from "react";
+import { act, createElement, type ReactNode, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { threadList } from "@/lib/thread-list";
@@ -58,13 +58,25 @@ const thread = (over: Partial<ThreadRow>): ThreadRow =>
 		...over,
 	}) as ThreadRow;
 
-const unit = (i: number): ThreadUnit => ({
-	section: "active",
+const unit = (
+	i: number,
+	section: "active" | "settled" = "active",
+): ThreadUnit => ({
+	section,
 	incident: null,
-	threads: [thread({ id: `t${i}`, title: `Thread ${i}` })],
+	threads: [
+		thread({
+			id: `${section}-${i}`,
+			title: `Thread ${i}`,
+			section,
+			...(section === "settled"
+				? { settledAt: "2026-11-12T09:00:00.000Z" }
+				: {}),
+		}),
+	],
 });
-const loaded = (n: number) =>
-	threadList(Array.from({ length: n }, (_, i) => unit(i)));
+const page = (n: number, from: number, section?: "active" | "settled") =>
+	Array.from({ length: n }, (_, i) => unit(from + i, section));
 
 let container: HTMLDivElement;
 let root: Root;
@@ -80,47 +92,83 @@ afterEach(async () => {
 	container.remove();
 });
 
-const draw = (n: number, onMoreActive: () => void) =>
+/** The feed as ThreadList runs it: a request while a page loads is dropped, and none past the last.
+ * A requested page lands only when the test calls `land`. */
+const feed = { asked: false, land: () => {} };
+function Feed({
+	pages,
+	total,
+}: {
+	pages: ThreadUnit[][];
+	total: number | undefined;
+}) {
+	const [n, setN] = useState(1);
+	const fetching = useRef(false);
+	feed.land = () => {
+		if (!fetching.current) return;
+		fetching.current = false;
+		feed.asked = false;
+		setN((k) => k + 1);
+	};
+	const more = () => {
+		if (fetching.current || n >= pages.length) return;
+		fetching.current = true;
+		feed.asked = true;
+	};
+	return createElement(ThreadTreeView, {
+		model: threadList(pages.slice(0, n).flat()),
+		asks: new Map(),
+		now: NOW,
+		currentId: null,
+		activeTotal: total,
+		pages: n,
+		onMoreActive: more,
+	});
+}
+
+const draw = (pages: ThreadUnit[][], total: number | undefined) =>
 	act(async () =>
 		root.render(
 			createElement(
 				QueryClientProvider,
 				{ client: new QueryClient() },
-				createElement(ThreadTreeView, {
-					model: loaded(n),
-					asks: new Map(),
-					now: NOW,
-					currentId: null,
-					activeTotal: 104,
-					onMoreActive,
-				}),
+				createElement(Feed, { pages, total }),
 			),
 		),
 	);
 const rows = () =>
-	container.querySelectorAll('[data-testid="thread-row"]').length;
+	container.querySelectorAll(
+		'[data-testid="thread-section-threads"] [data-testid="thread-row"]',
+	).length;
 const more = () =>
 	container.querySelector<HTMLButtonElement>(
 		'[data-testid="threads-show-more"]',
 	);
+/** Presses Show more until it leaves while the first page it asked for loads, then lands each page asked for. */
+const showAll = async () => {
+	for (let i = 0; i < 10 && more(); i++) await act(async () => more()?.click());
+	for (let i = 0; i < 10 && feed.asked; i++) await act(async () => feed.land());
+};
 
 describe("Show more on the thread list (#1193 bar 17.5, 17.8)", () => {
-	it("asks for the next page when one arrives short of the rows asked for, until they are drawn", async () => {
-		// The list ignores a page asked for while one is loading, as the feed does.
-		const onMoreActive = vi.fn();
-		await draw(40, onMoreActive);
-		while (more()) await act(async () => more()?.click());
-		const clicked = onMoreActive.mock.calls.length;
+	it("draws every active row asked for though Show more is pressed while pages load", async () => {
+		await draw([page(40, 0), page(40, 40), page(24, 80)], 104);
+		await showAll();
+		expect([rows(), more()]).toEqual([104, null]);
+	});
 
-		await draw(80, onMoreActive);
-		const afterPage = onMoreActive.mock.calls.length - clicked;
-		await draw(104, onMoreActive);
+	it("asks for the page after one that brings no active row", async () => {
+		await draw(
+			[page(40, 0), page(40, 0, "settled"), page(40, 40), page(24, 80)],
+			104,
+		);
+		await showAll();
+		expect([rows(), more()]).toEqual([104, null]);
+	});
 
-		expect([
-			clicked,
-			afterPage,
-			onMoreActive.mock.calls.length - clicked,
-			rows(),
-		]).toEqual([4, 1, 1, 104]);
+	it("keeps loading toward the rows asked for when the list has no total", async () => {
+		await draw([page(35, 0), page(35, 0, "settled"), page(35, 35)], undefined);
+		await showAll();
+		expect(rows()).toBe(40);
 	});
 });
