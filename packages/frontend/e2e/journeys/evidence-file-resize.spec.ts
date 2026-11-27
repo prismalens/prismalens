@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { resolveTheme } from "@pierre/diffs";
 import { expect, type Page, test } from "@playwright/test";
 import type { CanonicalEvent } from "@prismalens/contracts";
+import { DIFF_THEMES } from "../../src/components/thread/diff/diff-themes";
 import { sidewaysFaults } from "../steps/product";
 import {
 	hideQueryDevtools,
@@ -197,6 +199,81 @@ async function openPhoneDetails(page: Page) {
 	await page.getByTestId("menu-details").click();
 	await expect(page.getByTestId("run-details")).toBeVisible();
 }
+
+/** Every colour a theme can give a token, as computed CSS `rgb(r, g, b)`. */
+async function palette(name: string): Promise<Set<string>> {
+	const theme = await resolveTheme(name);
+	const hex = [theme.fg, ...theme.settings.map((r) => r.settings?.foreground)];
+	return new Set(
+		hex
+			.filter((h): h is string => typeof h === "string")
+			.map((h) => {
+				const n = Number.parseInt(h.slice(1, 7), 16);
+				return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
+			}),
+	);
+}
+
+// The file view highlights in the shared worker pool, which draws with the pool's theme, not the
+// view's: this reads the colours the pool painted, not the configuration (#1238).
+/** Opens the cited file in `mode` and waits until every token on a line wears the theme's palette. */
+async function expectPooledPalette(
+	page: Page,
+	baseURL: string | undefined,
+	mode: "light" | "dark",
+) {
+	await page.context().addCookies([
+		{
+			name: "prismalens-theme",
+			value: mode,
+			url: `${new URL(baseURL ?? "http://localhost").origin}/`,
+		},
+	]);
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await setupPage(page);
+	await page.goto(
+		`/incidents/${INCIDENT_ID}/conversation?investigation=${INVESTIGATION_ID}`,
+	);
+	await page.getByTestId("tools-expand").first().click();
+	const step1 = page.locator('[data-testid="step"][data-step="1"]');
+	await expect(step1).toBeVisible({ timeout: 15_000 });
+	const body = step1.getByTestId("step-body");
+	if (!(await body.isVisible())) await step1.getByTestId("step-toggle").click();
+	await page.locator("#open-step-1").click();
+	const line = page.locator('[data-line="20"]');
+	await expect(line).toBeInViewport({ timeout: 5000 });
+	const ours = await palette(DIFF_THEMES[mode]);
+	const pierre = await palette(`pierre-${mode}`);
+	// Highlighting lands after the plain first paint, so poll until every token wears our palette.
+	await expect
+		.poll(async () => {
+			const painted = await line.evaluate((el) =>
+				[...el.querySelectorAll("span")]
+					.filter((s) => s.children.length === 0 && s.textContent?.trim())
+					.map((s) => getComputedStyle(s).color),
+			);
+			return {
+				tokens: painted.length > 0,
+				foreign: painted.filter((c) => !ours.has(c)),
+				ours: painted.some((c) => !pierre.has(c)),
+			};
+		})
+		.toEqual({ tokens: true, foreign: [], ours: true });
+}
+
+test("the pooled file view paints its tokens in prismalens-light (#1238)", async ({
+	page,
+	baseURL,
+}) => {
+	await expectPooledPalette(page, baseURL, "light");
+});
+
+test("the pooled file view paints its tokens in prismalens-dark (#1238)", async ({
+	page,
+	baseURL,
+}) => {
+	await expectPooledPalette(page, baseURL, "dark");
+});
 
 test.describe("Evidence file view resize (#874)", () => {
 	test("Desktop (1280x800): cited line in view after details panel width change", async ({
