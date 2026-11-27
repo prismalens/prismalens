@@ -479,6 +479,8 @@ export const PrReviewReplySchema = /* @__PURE__ */ lazySchema(() =>
 export type PrReviewReply = z.infer<typeof PrReviewReplySchema>;
 
 /** The feed row's glyph: number and tone only (#1024 decision 9). */
+/** PRs a row lists when its badge is rested on; `count` still says how many there are. */
+export const PR_STACK_MAX = 6;
 export const ThreadRowPrSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		number: z.number().int().positive(),
@@ -488,6 +490,17 @@ export const ThreadRowPrSchema = /* @__PURE__ */ lazySchema(() =>
 		/** For the palette's PR results and preview (#1101 category 19). */
 		title: z.string().nullable().optional(),
 		checks: PrChecksSchema.optional(),
+		/** The thread's PRs newest first, at most PR_STACK_MAX, for the row's PR list (#1020). */
+		stack: z
+			.array(
+				z.object({
+					number: z.number().int().positive(),
+					tone: PrToneSchema,
+					title: z.string().nullable(),
+				}),
+			)
+			.max(PR_STACK_MAX)
+			.optional(),
 	}),
 );
 export type ThreadRowPr = z.infer<typeof ThreadRowPrSchema>;

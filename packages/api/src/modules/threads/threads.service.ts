@@ -63,6 +63,7 @@ import { consumeAfterSend, DraftsService } from "../composer/drafts.service.js";
 import { incidentSearch, stepText } from "../incidents/incidents.service.js";
 import { IntegrationsService } from "../integrations/integrations.service.js";
 import { AttachmentsService } from "../investigations/attachments.service.js";
+import { workspaceCommits } from "../investigations/branch-commits.js";
 import { workspaceGitState } from "../investigations/git-state.js";
 import { InvestigationsService } from "../investigations/investigations.service.js";
 import { threadSubject } from "../investigations/run-scope.js";
@@ -94,6 +95,7 @@ const FEED_INCLUDE = {
 			severity: true,
 			status: true,
 			closedAt: true,
+			alertCount: true,
 			service: { select: { name: true, displayName: true } },
 		},
 	},
@@ -570,24 +572,23 @@ export class ThreadsService {
 		const prs = await this.pullRequests.rowGlyphs(pageIds);
 		const limits = await this.limits(pageIds);
 		// Settled rows are read as they were; only live ones pay for a git look.
-		const gits = new Map(
-			await Promise.all(
-				page
-					.flatMap((u) => u.threads)
-					.filter((t) => t.section !== "settled" && !t.row.archivedAt)
-					.map(
-						async (t) =>
-							[
-								t.id,
-								await workspaceGitState(
-									RunWorkspaceSchema.safeParse(
-										safeParseJsonObject(t.row.workspace),
-									).data ?? null,
-								),
-							] as const,
-					),
-			),
+		const looked = await Promise.all(
+			page
+				.flatMap((u) => u.threads)
+				.filter((t) => t.section !== "settled" && !t.row.archivedAt)
+				.map(async (t) => {
+					const ws =
+						RunWorkspaceSchema.safeParse(safeParseJsonObject(t.row.workspace))
+							.data ?? null;
+					const [git, commits] = await Promise.all([
+						workspaceGitState(ws),
+						workspaceCommits(ws),
+					]);
+					return { id: t.id, git, commits };
+				}),
 		);
+		const gits = new Map(looked.map((l) => [l.id, l.git]));
+		const commitCounts = new Map(looked.map((l) => [l.id, l.commits]));
 		const starters = await this.starters(
 			page.flatMap((u) => u.threads.map((t) => t.row)),
 		);
@@ -606,6 +607,7 @@ export class ThreadsService {
 								status:
 									IncidentStatusSchema.safeParse(incident.status).data ??
 									"triggered",
+								alertCount: incident.alertCount,
 							}
 						: null,
 					threads: u.threads.map(
@@ -632,6 +634,7 @@ export class ThreadsService {
 							...(prs.has(t.id) ? { pr: prs.get(t.id) } : {}),
 							branch: branchOf(t.row.workspace),
 							git: gits.get(t.id) ?? null,
+							commits: commitCounts.get(t.id) ?? null,
 							limit: limits.get(t.id) ?? null,
 							paused: pausedOf(t.row.autoPause),
 							...(t.state ? { state: t.state } : {}),

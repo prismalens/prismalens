@@ -101,10 +101,8 @@ const wrapOf = (id: string) => {
 	if (!wrap) throw new Error(`no row ${id}`);
 	return wrap;
 };
-const firstLine = (id: string) =>
-	wrapOf(id).querySelector('[data-testid="thread-row"] > span') as HTMLElement;
-const lineTwo = (id: string) =>
-	wrapOf(id).querySelector('[data-testid="row-meta"]');
+const lead = (id: string) =>
+	wrapOf(id).querySelector('[data-testid="row-meta"] > span');
 const testIds = (el: Element | null) =>
 	Array.from(el?.querySelectorAll("[data-testid]") ?? []).map((e) =>
 		e.getAttribute("data-testid"),
@@ -118,12 +116,13 @@ const detail = (id: string) => {
 	};
 };
 
-describe("a row is four columns: status icon, title, time, agent (#1101 cat 2)", () => {
-	it("says its status by the icon alone, and keeps the time and agent cells on every row", async () => {
+describe("a row has fixed lines: place and status corner, title, meta (#1020)", () => {
+	it("draws place and corner, then title, then meta on every row, the corner holding the status icon and the time", async () => {
 		await render([
 			thread({
 				id: "done",
 				title: "Done one",
+				serviceName: "checkout-api",
 				harness: "claude-code",
 			} as Partial<ThreadRow>),
 			thread({
@@ -135,35 +134,52 @@ describe("a row is four columns: status icon, title, time, agent (#1101 cat 2)",
 				state: { status: "working" },
 			} as Partial<ThreadRow>),
 		]);
-		expect(
-			container.querySelectorAll('[data-testid="row-status"]'),
-		).toHaveLength(0);
+		const lines = (id: string) =>
+			Array.from(
+				wrapOf(id).querySelector('[data-testid="thread-row"]')?.children ?? [],
+			).map((c) => c.getAttribute("data-testid"));
+		expect(lines("done")).toEqual(["row-context", "row-title", "row-meta"]);
+		expect(lines("other")).toEqual(["row-context", "row-title", "row-meta"]);
+		const corner = (id: string) =>
+			Array.from(
+				wrapOf(id).querySelector('[data-testid="row-corner"]')?.children ?? [],
+			).map((c) => c.getAttribute("data-fact"));
+		expect(corner("done")).toEqual(["status", "activity"]);
 		expect(
 			wrapOf("done")
 				.querySelector('[role="img"][data-fact="status"]')
 				?.getAttribute("aria-label"),
 		).toBe("Done");
-		const cells = (id: string) =>
-			Array.from(firstLine(id).children).flatMap((c) =>
-				c.getAttribute("data-testid") === "row-slot"
-					? Array.from(c.children).map((x) => x.getAttribute("data-testid"))
-					: [c.getAttribute("data-fact") ?? c.getAttribute("data-testid")],
-			);
-		expect(cells("done")).toEqual(["status", "title", "row-age", "row-agent"]);
-		expect(cells("other")).toEqual(["status", "title", "row-age", "row-agent"]);
-		// Your default agent leaves its cell empty; another agent fills it.
 		expect(
-			wrapOf("done").querySelector('[data-testid="row-agent"]')?.children,
-		).toHaveLength(0);
-		expect(
-			wrapOf("other")
-				.querySelector('[data-testid="row-agent"] [data-testid="mark-agent"]')
+			wrapOf("done")
+				.querySelector('[data-testid="row-place"]')
 				?.getAttribute("aria-label"),
-		).toBe("Codex");
-		// A run of 1h 11m reads its largest unit in the time column.
+		).toBe("Service checkout-api");
+		expect(
+			wrapOf("other").querySelector('[data-testid="row-place"]'),
+		).toBeNull();
+		// A run of 1h 11m reads its largest unit in the time slot.
 		expect(
 			wrapOf("other").querySelector('[data-testid="row-age"]')?.textContent,
 		).toBe("1h");
+	});
+
+	it("ends the meta line with the session's agent on every row, the default agent included, drawn in the same render as the title so no row grows when badges arrive", async () => {
+		await render([
+			thread({
+				id: "default",
+				harness: "claude-code",
+				pr: { number: 9, tone: "open", count: 1 },
+			} as Partial<ThreadRow>),
+			thread({ id: "codex", harness: "codex" } as Partial<ThreadRow>),
+		]);
+		const badges = (id: string) =>
+			Array.from(
+				wrapOf(id).querySelectorAll('[data-testid^="row-badge-"]'),
+			).map((b) => b.getAttribute("aria-label"));
+		// No wait: a badge that drew in a later render would grow its row under the reader (#1247 D25).
+		expect(badges("default")).toEqual(["Pull request #9, open", "Claude Code"]);
+		expect(badges("codex")).toEqual(["Codex"]);
 	});
 });
 
@@ -247,7 +263,7 @@ describe("a row's reason is an icon and a token, its sentence in its name (#1101
 		});
 	});
 
-	it("draws no line 2 where the icon says it all: a stopped run, a failure with no words", async () => {
+	it("keeps the meta line with an empty lead where the icon says it all: a stopped run, a failure with no words", async () => {
 		await render([
 			thread({
 				id: "stopped",
@@ -260,53 +276,50 @@ describe("a row's reason is an icon and a token, its sentence in its name (#1101
 				state: { status: "failed" },
 			} as Partial<ThreadRow>),
 		]);
-		expect(lineTwo("stopped")).toBeNull();
-		expect(lineTwo("failed")).toBeNull();
+		// A missing lead reads undefined, so each must exist and be empty.
+		expect(lead("stopped")?.textContent).toBe("");
+		expect(lead("failed")?.textContent).toBe("");
 	});
 });
 
-describe("line 2 holds one fact (#1101 density)", () => {
+describe("the meta line leads with the starter, then the reason and the branch (#1020)", () => {
 	const pr = { number: 9, tone: "open", count: 1 };
-	const git = { state: "conflict", branch: "feat/x" };
-	it("shows a reason before the PR, the PR before the agent's line, and never the branch or git state", async () => {
+	const git = { state: "conflict", op: null, files: [], count: 0 };
+	it("puts a reason's mark before the branch, a reason in words in the branch's place, and the PR among the badges", async () => {
 		await render([
 			thread({
 				id: "reason",
 				pr,
-				git,
 				branch: "feat/x",
-				latestText: "Pushed the fix.",
 				state: {
 					status: "waiting",
 					waitingOn: { kind: "pr", number: 9, until: "review" },
 				},
 			} as Partial<ThreadRow>),
 			thread({
-				id: "pr",
-				pr,
-				git,
+				id: "words",
 				branch: "feat/x",
-				latestText: "Pushed the fix.",
+				status: "failed",
+				error: "The agent stopped",
+				state: { status: "failed" },
 			} as Partial<ThreadRow>),
-			thread({
-				id: "line",
-				branch: "feat/x",
-				latestText: "Pushed the fix.",
-			} as Partial<ThreadRow>),
+			thread({ id: "pr", pr, git, branch: "feat/x" } as Partial<ThreadRow>),
 		]);
-		expect(testIds(lineTwo("reason"))).toEqual(["row-detail"]);
+		expect(testIds(lead("reason"))).toEqual(["row-detail", "row-branch"]);
 		expect(detail("reason")).toMatchObject({ mark: "review", text: "#9" });
-		expect(testIds(lineTwo("pr"))).toEqual(["mark-pr"]);
-		expect(testIds(lineTwo("line"))).toEqual(["row-detail"]);
-		expect(detail("line").text).toBe("Pushed the fix.");
+		expect(testIds(lead("words"))).toEqual(["row-detail"]);
+		expect(testIds(lead("pr"))).toEqual(["row-branch"]);
 		expect(
-			container.querySelectorAll(
-				'[data-testid="mark-branch"], [data-testid="mark-git-state"]',
-			),
-		).toHaveLength(0);
+			wrapOf("pr")
+				.querySelector('[data-testid="row-branch"]')
+				?.getAttribute("aria-label"),
+		).toBe("Branch feat/x, in a conflict");
+		expect(
+			wrapOf("pr").querySelector('[data-testid="row-badge-pr"]')?.textContent,
+		).toBe("#9");
 	});
 
-	it("leads line 2 with the starter, before another fact and on a row with nothing else to say", async () => {
+	it("leads with the starter, before a branch and on a row with nothing else to say, never on the first line", async () => {
 		const startedBy = {
 			id: "root",
 			title: "Starter",
@@ -316,15 +329,20 @@ describe("line 2 holds one fact (#1101 density)", () => {
 		await render([
 			thread({ id: "started", startedBy } as Partial<ThreadRow>),
 			thread({
-				id: "said",
+				id: "branched",
 				startedBy,
-				latestText: "Pushed the fix.",
+				branch: "feat/x",
 			} as Partial<ThreadRow>),
 		]);
-		expect(testIds(lineTwo("said"))).toEqual(["mark-started-by", "row-detail"]);
-		expect(testIds(lineTwo("started"))).toEqual(["mark-started-by"]);
+		expect(testIds(lead("branched"))).toEqual([
+			"mark-started-by",
+			"row-branch",
+		]);
+		expect(testIds(lead("started"))).toEqual(["mark-started-by"]);
 		expect(
-			firstLine("started").querySelector('[data-testid="mark-started-by"]'),
+			wrapOf("started").querySelector(
+				'[data-testid="row-context"] [data-testid="mark-started-by"]',
+			),
 		).toBeNull();
 	});
 });

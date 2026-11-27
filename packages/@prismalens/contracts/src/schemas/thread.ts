@@ -132,6 +132,8 @@ export const ThreadIncidentChipSchema = /* @__PURE__ */ lazySchema(() =>
 		title: z.string(),
 		severity: SeveritySchema,
 		status: IncidentStatusSchema,
+		/** Alerts grouped into the incident, for the row's alert badge (#1020). */
+		alertCount: z.number().int().nonnegative().optional(),
 	}),
 );
 
@@ -178,6 +180,8 @@ export const ThreadRowSchema = /* @__PURE__ */ lazySchema(() =>
 		git: GitStateSchema.nullable().optional(),
 		/** The branch its workspace works on, for the row's meta line (#1105); null with none. */
 		branch: z.string().max(300).nullable().optional(),
+		/** Commits its branch holds over its base, read for live rows only; null when unknown (#1020). */
+		commits: z.number().int().nonnegative().nullable().optional(),
 		/**
 		 * The thread waits on its provider (#1024 surface F, #1101): Limited with its reset
 		 * or next try, or Blocked (`stopState(mode)`) with no timer; null otherwise.

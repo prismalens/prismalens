@@ -5,7 +5,11 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type CanonicalEvent, PullRequestSchema } from "@prismalens/contracts";
+import {
+	type CanonicalEvent,
+	PR_STACK_MAX,
+	PullRequestSchema,
+} from "@prismalens/contracts";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { remoteHeadOf } from "../investigations/remote-heads.js";
 import { OffOriginError } from "../integrations/source-request.js";
@@ -349,8 +353,34 @@ describe("PullRequestsService (#1024 decision 2)", () => {
 			count: 1,
 			title: null,
 			checks: { state: "none", total: 0, failed: 0, pending: 0 },
+			stack: [{ number: 14927, tone: "unknown", title: null }],
 		});
 		expect((await svc.rowGlyphs([])).size).toBe(0);
+	});
+
+	it("lists a thread's PRs newest first as the row's stack, keeping the newest PR_STACK_MAX while the count stays whole", async () => {
+		const { svc, db } = setup();
+		const total = PR_STACK_MAX + 2;
+		for (let i = 1; i <= total; i++)
+			await db.pullRequest.create({
+				data: {
+					investigationId: RUN,
+					repositoryId: "repo-cli",
+					host: "github",
+					repo: "cli/cli",
+					url: `https://github.com/cli/cli/pull/${100 + i}`,
+					number: 100 + i,
+					source: "agent",
+					headSha: SHA,
+					createdAt: new Date(Date.UTC(2026, 10, 1, 0, i)),
+				},
+			});
+		const glyph = (await svc.rowGlyphs([RUN])).get(RUN);
+		expect(glyph?.number).toBe(100 + total);
+		expect(glyph?.count).toBe(total);
+		expect(glyph?.stack?.map((p) => p.number)).toEqual(
+			Array.from({ length: PR_STACK_MAX }, (_, i) => 100 + total - i),
+		);
 	});
 
 	it("returns a kept checkLog without calling the host, refuses unknown runId, maps commit status, and stores read logs in detail.checkLogs", async () => {

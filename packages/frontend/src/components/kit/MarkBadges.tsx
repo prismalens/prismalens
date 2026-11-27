@@ -8,7 +8,7 @@ import { AgentMark as AgentGlyph } from "@/components/agent/AgentMark";
 import { useAgentChoice } from "@/components/agent/agent-choice";
 import { Hint } from "@/components/shared/Hint";
 import { cn } from "@/lib/utils";
-import { MARKS, markLook } from "./marks";
+import { inRows, MARKS, markLook } from "./marks";
 
 /**
  * The closed set of metadata marks (pattern sheet §0.7, #1101): agent, branch, change
@@ -155,8 +155,7 @@ function AgentBadgeView({
 	inRow = false,
 	defaultAgent,
 }: Parameters<typeof AgentBadge>[0] & { defaultAgent: string | undefined }) {
-	if (inRow && MARKS.agent.rows === "unlessDefault" && agent === defaultAgent)
-		return null;
+	if (inRow && !inRows(MARKS.agent, agent === defaultAgent)) return null;
 	return (
 		<Mark
 			label={model ? `${label} · ${model}` : label}

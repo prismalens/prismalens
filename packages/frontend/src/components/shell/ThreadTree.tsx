@@ -2,7 +2,6 @@
 // Copyright 2026 Sumit Patel
 
 import {
-	agentName,
 	isWorkflowLive,
 	type ThreadRow,
 	type ThreadStatus,
@@ -32,13 +31,7 @@ import {
 } from "react";
 import { causeOf } from "@/components/home/needs-cause";
 import { fact } from "@/components/kit/fact";
-import {
-	AgentBadge,
-	Mark,
-	PrMark,
-	StartedByMark,
-	startedByLabel,
-} from "@/components/kit/MarkBadges";
+import { Mark, StartedByMark } from "@/components/kit/MarkBadges";
 import { markLook } from "@/components/kit/marks";
 import { relTime } from "@/components/kit/rel-time";
 import {
@@ -53,17 +46,22 @@ import {
 import { startedByUser } from "@/components/run/trigger-types";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
+import { Problem } from "@/components/shared/State";
 import {
-	RowAsk,
 	type RowAskEntry,
 	useAnswerNote,
 	useRowAsk,
 } from "@/components/shell/RowAsk";
-import { listenKeys } from "@/hooks/use-global-shortcuts";
+import { RowBadges } from "@/components/shell/RowBadges";
+import {
+	RowBranch,
+	RowLines,
+	RowPlace,
+	useRest,
+} from "@/components/shell/RowLines";
+import { Button } from "@/components/ui/button";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { askSubject, whyAsked } from "@/lib/ask-lines";
-import { formatDateTimeUtc } from "@/lib/format-time";
-import { plainExcerpt } from "@/lib/inbound-rows";
 import { lazyPart, useAfterFirstContent } from "@/lib/lazy";
 import type { Destination } from "@/lib/thread-hold";
 import {
@@ -130,9 +128,29 @@ const RenameField = lazyPart(
 const RowPeek = lazyPart(() => import("./RowPeek").then((m) => m.Peek), null, {
 	now: true,
 });
+// An ask's card body loads with the card, never with the list (entry-budget.json).
+const RowAsk = lazyPart(
+	() => import("./RowAskCard").then((m) => m.RowAsk),
+	null,
+	{
+		now: true,
+		failed: (retry, p) => (
+			<Problem
+				text="The ask did not load."
+				onRetry={retry}
+				back={
+					<Button variant="text" size="sm" onClick={p.openHref}>
+						Open to answer
+					</Button>
+				}
+			/>
+		),
+	},
+);
 const preloadCard = () => {
 	void RowCard.preload(true);
 	void RowPeek.preload(true);
+	void RowAsk.preload(true);
 };
 
 /**
@@ -644,15 +662,12 @@ function ListRowView({
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
 		if (e.key === " ") {
 			e.preventDefault();
+			closeRest();
 			if (asking) setAskOpen((o) => !o);
 			else setPeek((p) => !p);
 		} else if (e.key === "Escape" && (peek || askOpen)) {
 			e.preventDefault();
-			setPeek(false);
-			setAskOpen(false);
-		} else if (e.key === "Escape" && moreShown) {
-			e.preventDefault();
-			setMoreHidden(true);
+			closeCard();
 		} else if (entry && (e.key === "y" || e.key === "Y")) {
 			e.preventDefault();
 			ask.approve();
@@ -668,10 +683,7 @@ function ListRowView({
 		!!entry || (inNeeds && (mark === "approval" || mark === "question"));
 	const fixId = inNeeds ? rowFixId(node) : null;
 	const cardOpen = asking ? askOpen : peek;
-	// Details on demand in the row's reserved gap: hover, focus or a tap shows them, Escape hides (#1101 cat 8.2).
-	// Its text is drawn only while shown, so nothing else changes; screen readers get it always.
-	const [moreAt, setMoreAt] = useState({ hover: false, focus: false });
-	const [moreHidden, setMoreHidden] = useState(false);
+	// An ask row's wait and why it asked: in the rest card, and always to screen readers (#1020).
 	const more =
 		inNeeds && entry
 			? [
@@ -682,15 +694,23 @@ function ListRowView({
 					.filter(Boolean)
 					.join(" · ")
 			: null;
-	const moreShown = !!more && (moreAt.hover || moreAt.focus) && !moreHidden;
-	// Escape closes a reveal the pointer opened, wherever focus is.
-	useEffect(() => {
-		if (!moreShown) return;
-		const onKey = (e: globalThis.KeyboardEvent) => {
-			if (e.key === "Escape") setMoreHidden(true);
-		};
-		return listenKeys(onKey);
-	}, [moreShown]);
+	// Resting on the row opens its card; resting on its PR badge, only the PR list (#1020).
+	const rest = useRest(450);
+	const prRest = useRest(150);
+	const closeRest = () => {
+		rest.leave();
+		prRest.leave();
+	};
+	// An explicit card's open and close both end the rest; only a new pointer rest reopens it.
+	const closeCard = () => {
+		closeRest();
+		setPeek(false);
+		setAskOpen(false);
+	};
+	const toggleAsk = () => {
+		closeRest();
+		setAskOpen((o) => !o);
+	};
 	const rowBox = useRef<HTMLDivElement>(null);
 	if (renaming)
 		return (
@@ -715,16 +735,17 @@ function ListRowView({
 			: mark === "limited" && t.limit?.resetsAt
 				? Date.parse(t.limit.resetsAt)
 				: node.at || null;
-	const agentLabel = t.harness ? agentName(t.harness) : null;
-	// The time and agent columns: the status says itself by its icon, so no word sits here.
-	const right = (
-		<span
-			className={cn(
-				// Keyboard focus, not a click, swaps the columns for actions.
-				"contents group-hover/row:invisible group-has-[:focus-visible]/row:invisible group-has-[[data-row-actions]:focus-within]/row:invisible group-has-[[data-row-actions]_[data-state=open]]/row:invisible",
-			)}
-			data-testid="row-slot"
-		>
+	// Status and time sit in the top corner; the status says itself by its icon (#1020).
+	const corner = (
+		<>
+			<span
+				role="img"
+				aria-label={statusWord(mark)}
+				className="flex shrink-0"
+				{...fact("status")}
+			>
+				<StatusMark status={mark} />
+			</span>
 			<time
 				dateTime={slotAt ? new Date(slotAt).toISOString() : undefined}
 				className={cn(
@@ -736,33 +757,15 @@ function ListRowView({
 			>
 				{slotTime}
 			</time>
-			{/* Reserved on every row, so the agent always sits at the right edge; empty means your default. */}
-			<span className="flex justify-center" data-testid="row-agent">
-				{t.harness && agentLabel && (
-					<AgentBadge
-						agent={t.harness}
-						label={agentLabel}
-						model={t.model}
-						inRow
-					/>
-				)}
-			</span>
-		</span>
+		</>
 	);
-	// Line 2 holds one fact: a needs-you row's cause, else its reason, its PR, or the agent's line.
 	const cause = inNeeds && detail;
 	const reason = inNeeds
 		? null
 		: rowReason(t, node.info, now, (iso) => relTime(iso, now));
-	const agentLine =
-		t.status === "failed" || t.status === "cancelled" ? null : rowLine(t);
-	const said = !!(cause || reason || t.pr || agentLine);
-	// A starter always leads line 2, so a row with one always draws it (#1101 cat 10).
-	const metaLine = (said || by) && (
-		<span
-			className="flex min-w-0 items-center gap-1.5 pl-5"
-			data-testid="row-meta"
-		>
+	// The meta line leads with the starter, then where a held row goes, or its reason and branch.
+	const lead = (
+		<>
 			{/* A click on the mark opens the starter; the row's link opens the row (#1101 cat 10). */}
 			{by && (
 				<span className="flex w-3.5 shrink-0" data-starter={by.id}>
@@ -772,39 +775,22 @@ function ListRowView({
 			{/* A held row says where it goes once the reader leaves the list (#1247 D25). */}
 			{moving ? (
 				<span
-					className="min-w-0 flex-1 truncate text-meta text-accent"
+					className="min-w-0 flex-1 truncate text-accent"
 					data-testid="row-moving"
 				>
 					{MOVES[moving]}
 				</span>
-			) : cause ? (
-				<span
-					className="min-w-0 flex-1 truncate text-meta text-text-3"
-					data-testid="row-cause"
-					{...fact("cause")}
-				>
-					{detail}
-				</span>
-			) : reason?.mark ? (
-				<ReasonMark reason={reason} />
-			) : reason ? (
-				<span
-					className="min-w-0 flex-1 truncate text-meta text-text-3"
-					data-testid="row-detail"
-				>
+			) : reason && !reason.mark ? (
+				<span className="min-w-0 flex-1 truncate" data-testid="row-detail">
 					{reason.words}
 				</span>
-			) : t.pr ? (
-				<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
-			) : agentLine ? (
-				<span
-					className="min-w-0 flex-1 truncate text-meta text-text-3"
-					data-testid="row-detail"
-				>
-					{agentLine}
-				</span>
-			) : null}
-		</span>
+			) : (
+				<>
+					{reason?.mark && <ReasonMark reason={reason} />}
+					<RowBranch t={t} />
+				</>
+			)}
+		</>
 	);
 	return (
 		<ThreadContextMenu
@@ -821,26 +807,14 @@ function ListRowView({
 				data-moving={moving}
 				onKeyDown={onKey}
 				// The card's code loads as the row is reached, so Space opens it at once (#1101 cat 1).
-				onPointerEnter={preloadCard}
+				// Rows passing under a still pointer only arm a timer, so a scrolling list never redraws (#1101 bar 1.8).
+				onPointerEnter={(e) => {
+					preloadCard();
+					if (e.pointerType === "mouse" && rowBox.current)
+						rest.enter(rowBox.current);
+				}}
 				onFocus={preloadCard}
-				// Only a row with details redraws on hover: rows passing under a still pointer as the list scrolls stay put (#1101 bar 1.8).
-				onPointerOver={() =>
-					more && !moreAt.hover && setMoreAt((m) => ({ ...m, hover: true }))
-				}
-				onPointerLeave={() => {
-					if (!moreAt.hover && !moreHidden) return;
-					setMoreHidden(false);
-					setMoreAt((m) => ({ ...m, hover: false }));
-				}}
-				onFocusCapture={(e) =>
-					more &&
-					(e.target as HTMLElement).matches?.(":focus-visible") &&
-					setMoreAt((m) => ({ ...m, focus: true }))
-				}
-				onBlur={() => {
-					setMoreHidden(false);
-					setMoreAt((m) => ({ ...m, focus: false }));
-				}}
+				onPointerLeave={closeRest}
 			>
 				<div className="flex items-stretch" ref={rowBox}>
 					<Link
@@ -858,7 +832,7 @@ function ListRowView({
 								!(e.metaKey || e.ctrlKey || e.shiftKey || e.button)
 							) {
 								e.preventDefault();
-								setAskOpen((o) => !o);
+								toggleAsk();
 							}
 						}}
 						aria-current={on ? "page" : undefined}
@@ -878,32 +852,15 @@ function ListRowView({
 						data-started-by={by?.via}
 						data-quiet={quiet || undefined}
 					>
-						<span className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_2.25rem_1rem] items-center gap-x-1.5">
-							<Hint label={statusWord(mark)}>
-								<span
-									role="img"
-									aria-label={statusWord(mark)}
-									className="flex shrink-0"
-									{...fact("status")}
-								>
-									<StatusMark status={mark} />
-								</span>
-							</Hint>
-							<Hint
-								// An open peek or ask card says it all; the hint would sit over it.
-								when={!cardOpen}
-								label={by ? `${title} · ${startedByLabel(by)}` : title}
-								meta={
-									[detail, slotAt ? formatDateTimeUtc(slotAt) : null]
-										.filter(Boolean)
-										.join(" · ") || undefined
-								}
-								side="right"
-							>
+						<RowLines
+							place={<RowPlace t={t} />}
+							corner={corner}
+							title={
 								<span
 									dir="auto"
 									className={cn(
-										"min-w-0 flex-1 truncate text-body",
+										// The hover actions sit at the title line's end; the title ends before them.
+										"min-w-0 truncate text-body group-hover/row:pr-[4.5rem] group-has-[:focus-visible]/row:pr-[4.5rem]",
 										// Unread is the bold title; the status icon is the row's only coloured mark (#1101).
 										unread
 											? "font-semibold text-text-1"
@@ -916,33 +873,44 @@ function ListRowView({
 								>
 									{title}
 								</span>
-							</Hint>
-							{right}
-						</span>
-						{metaLine}
+							}
+							cause={
+								cause ? (
+									<span
+										className="min-w-0 truncate text-meta text-text-3"
+										data-testid="row-cause"
+										{...fact("cause")}
+									>
+										{detail}
+									</span>
+								) : null
+							}
+							lead={lead}
+							badges={
+								<RowBadges
+									t={t}
+									alerts={node.unit.incident?.alertCount}
+									onPrEnter={(el) => {
+										rest.leave();
+										prRest.enter(el);
+									}}
+									onPrLeave={() => {
+										prRest.leave();
+										if (rowBox.current) rest.enter(rowBox.current);
+									}}
+								/>
+							}
+						/>
 					</Link>
 				</div>
-				{/* Reserved from the row's own mark: asks that load later fill it without moving the list. */}
-				{(more || (inNeeds && asking)) && (
-					<p
-						aria-hidden
-						className="-mt-1 h-4 truncate pr-2 pl-[30px] text-meta text-text-3"
-						data-testid="row-ask-more"
-						data-open={moreShown || undefined}
-					>
-						{moreShown ? more : null}
-					</p>
-				)}
+
 				{cardOpen && (
 					<RowCard
 						anchor={rowBox}
 						side={roomy ? "right" : "bottom"}
 						label={asking ? "Waiting ask" : title}
 						testId={asking ? "row-ask-card" : "row-peek"}
-						onClose={() => {
-							setPeek(false);
-							setAskOpen(false);
-						}}
+						onClose={closeCard}
 					>
 						{entry ? (
 							<RowAsk
@@ -958,13 +926,31 @@ function ListRowView({
 								Loading the ask
 							</p>
 						) : (
-							<RowPeek node={node} now={now} title={title} />
+							<RowPeek node={node} now={now} title={title} more={more} />
 						)}
+					</RowCard>
+				)}
+				{!cardOpen && (rest.at || prRest.at) && (
+					<RowCard
+						anchor={prRest.at ? { current: prRest.at } : rowBox}
+						side={prRest.at || !roomy ? "bottom" : "right"}
+						label={title}
+						testId={prRest.at ? "row-pr-list" : "row-rest-card"}
+						passive
+						onClose={closeRest}
+					>
+						<RowPeek
+							node={node}
+							now={now}
+							title={title}
+							more={more}
+							{...(prRest.at ? { only: "prs" as const } : {})}
+						/>
 					</RowCard>
 				)}
 				<div
 					className={cn(
-						"absolute top-1 right-1 hidden items-center group-hover/row:flex group-has-[:focus-visible]/row:flex focus-within:flex has-[[data-state=open]]:flex",
+						"absolute top-[1.375rem] right-1 hidden items-center group-hover/row:flex group-has-[:focus-visible]/row:flex focus-within:flex has-[[data-state=open]]:flex",
 					)}
 					data-row-actions
 				>
@@ -974,7 +960,7 @@ function ListRowView({
 								type="button"
 								aria-label="Answer"
 								aria-expanded={askOpen}
-								onClick={() => setAskOpen((o) => !o)}
+								onClick={toggleAsk}
 								className="flex size-6 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
 								data-testid="row-answer"
 							>
@@ -1148,7 +1134,7 @@ const RowFix = lazyPart(
 function ReasonMark({ reason }: { reason: ReasonToken }) {
 	const look = markLook("reason", reason.mark);
 	return (
-		<span className="flex min-w-0 flex-1 text-text-3" data-reason={reason.mark}>
+		<span className="flex shrink-0 text-text-3" data-reason={reason.mark}>
 			<Mark label={reason.words} testId="row-detail">
 				<look.icon
 					aria-hidden
