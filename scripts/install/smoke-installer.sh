@@ -359,6 +359,19 @@ if [ "$(uname -s)" != Darwin ]; then
 	case "$out" in *"The desktop app wasn't installed: the app is in $app, but $entry now opens another copy of PrismaLens; it was left as it is"*) ;; *) echo "$out"; fail "the entry that appeared during the download wasn't seen" ;; esac
 	[ "$(cat "$entry")" = "$(printf '[Desktop Entry]\nExec=/opt/other/prismalens')" ] || { cat "$entry"; fail "the entry that appeared during the download was overwritten"; }
 	pass "a menu entry that appears during the download: left byte for byte"
+
+	# A first install killed after the app is in place, before the receipt: the next run keeps that
+	# app, which carries no receipt's ID, and says so. The shim runs as the menu entry is written.
+	rm -rf "$work/home" && mkdir -p "$work/home" "$work/shim-kill"
+	printf '#!/bin/sh\ncase "$*" in *.local/share/applications*) kill -9 "$PPID" ;; esac\nexec %s "$@"\n' \
+		"$(command -v mkdir)" >"$work/shim-kill/mkdir"
+	chmod 755 "$work/shim-kill/mkdir"
+	SHIM="$work/shim-kill" run_app_installer >/dev/null 2>&1 && fail "the killed first install finished"
+	[ -x "$app/prismalens" ] && [ ! -e "$data/receipt" ] || fail "the killed first install didn't stop between the app and the receipt"
+	out=$(run_app_installer 2>&1) || { echo "$out"; fail "install after a killed first install"; }
+	case "$out" in *"Desktop app skipped: $app isn't the app this installer put there; it was left as it is"*) ;; *) echo "$out"; fail "the app a killed first install left wasn't kept" ;; esac
+	[ "$("$app/prismalens")" = "stand-in app" ] || fail "the app a killed first install left was changed"
+	pass "a first install killed after the unpack: the next run keeps its app and says so"
 fi
 
 # Another app arrives after the ownership check, just before the old app is moved aside: it is put
