@@ -60,7 +60,7 @@ export function useListHold(
 	const slideFrom = useRef<Map<string, number> | null>(null);
 	const latest = useRef(live);
 	// Until then, rows a Show more or an opened Settled brings join the held list below;
-	// `asked` keeps that open until they land, however slow the page (#1193 bar 17.5).
+	// `asked` keeps that open until the hold ends, however slow or many the pages (#1193 bar 17.5).
 	const moreUntil = useRef(0);
 	const asked = useRef(false);
 	const [, redraw] = useReducer((n: number) => n + 1, 0);
@@ -124,11 +124,7 @@ export function useListHold(
 			held.current = base;
 			for (const id of own) moved.delete(id);
 		}
-		if (held.current && tail) {
-			const before = held.current.nodes.size;
-			held.current = layoutOf(result.model);
-			if (held.current.nodes.size > before) asked.current = false;
-		}
+		if (held.current && tail) held.current = layoutOf(result.model);
 		if (!held.current) {
 			shown.current = layoutOf(live);
 			asked.current = false;
