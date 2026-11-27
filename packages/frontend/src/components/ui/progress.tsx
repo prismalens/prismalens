@@ -1,29 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as ProgressPrimitive from "@radix-ui/react-progress";
+import {
+	Progress as SdkProgress,
+	ProgressIndicator as SdkProgressIndicator,
+	ProgressTrack as SdkProgressTrack,
+} from "@ui-sdk/react/progress";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
 const Progress = React.forwardRef<
-	React.ElementRef<typeof ProgressPrimitive.Root>,
-	React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>
+	HTMLDivElement,
+	React.ComponentProps<typeof SdkProgress>
 >(({ className, value, ...props }, ref) => (
-	<ProgressPrimitive.Root
+	<SdkProgress
 		ref={ref}
+		value={value}
 		className={cn(
 			"relative h-2 w-full overflow-hidden rounded-full bg-accent/20",
 			className,
 		)}
 		{...props}
 	>
-		<ProgressPrimitive.Indicator
-			className="h-full w-full flex-1 bg-accent transition-all motion-reduce:transition-none"
-			style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
-		/>
-	</ProgressPrimitive.Root>
+		<SdkProgressTrack className="h-full w-full">
+			<SdkProgressIndicator
+				className="h-full w-full flex-1 bg-accent transition-all motion-reduce:transition-none"
+				style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+			/>
+		</SdkProgressTrack>
+	</SdkProgress>
 ));
-Progress.displayName = ProgressPrimitive.Root.displayName;
+Progress.displayName = "Progress";
 
 export { Progress };

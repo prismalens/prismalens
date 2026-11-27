@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as DialogPrimitive from "@radix-ui/react-dialog";
+import {
+	Dialog as SdkDialog,
+	DialogBackdrop as SdkDialogBackdrop,
+	DialogClose as SdkDialogClose,
+	DialogContent as SdkDialogContent,
+	DialogDescription as SdkDialogDescription,
+	DialogTitle as SdkDialogTitle,
+	DialogTrigger as SdkDialogTrigger,
+} from "@ui-sdk/react/dialog";
 import { X } from "lucide-react";
 import * as React from "react";
 
@@ -17,53 +25,90 @@ export const DIALOG_WIDTH = {
 export const DIALOG_PANEL =
 	"floating fixed top-[50%] left-[50%] z-50 grid max-h-[80dvh] translate-x-[-50%] translate-y-[-50%] content-start gap-4 overflow-y-auto rounded-dialog p-5 outline-none";
 
-const Dialog = DialogPrimitive.Root;
+const Dialog = SdkDialog;
 
-const DialogTrigger = DialogPrimitive.Trigger;
+function DialogTrigger({
+	asChild = false,
+	children,
+	render,
+	...props
+}: React.ComponentProps<typeof SdkDialogTrigger> & { asChild?: boolean }) {
+	const resolvedRender =
+		render ??
+		(asChild && React.isValidElement(children) ? children : undefined);
+	const resolvedChildren =
+		asChild && React.isValidElement(children) ? undefined : children;
+	return (
+		<SdkDialogTrigger render={resolvedRender} {...props}>
+			{resolvedChildren}
+		</SdkDialogTrigger>
+	);
+}
 
-const DialogPortal = DialogPrimitive.Portal;
+const DialogPortal = ({ children }: { children?: React.ReactNode }) => (
+	<>{children}</>
+);
 
-const DialogClose = DialogPrimitive.Close;
+function DialogClose({
+	asChild = false,
+	children,
+	render,
+	...props
+}: React.ComponentProps<typeof SdkDialogClose> & { asChild?: boolean }) {
+	const resolvedRender =
+		render ??
+		(asChild && React.isValidElement(children) ? children : undefined);
+	const resolvedChildren =
+		asChild && React.isValidElement(children) ? undefined : children;
+	return (
+		<SdkDialogClose render={resolvedRender} {...props}>
+			{resolvedChildren}
+		</SdkDialogClose>
+	);
+}
 
 const DialogOverlay = React.forwardRef<
-	React.ElementRef<typeof DialogPrimitive.Overlay>,
-	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
+	HTMLDivElement,
+	React.ComponentProps<typeof SdkDialogBackdrop>
 >(({ className, ...props }, ref) => (
-	<DialogPrimitive.Overlay
+	<SdkDialogBackdrop
 		ref={ref}
 		data-float="scrim"
 		className={cn("fixed inset-0 z-50 bg-scrim", className)}
 		{...props}
 	/>
 ));
-DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
+DialogOverlay.displayName = "DialogOverlay";
 
 const DialogContent = React.forwardRef<
-	React.ElementRef<typeof DialogPrimitive.Content>,
-	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+	HTMLDivElement,
+	Omit<React.ComponentProps<typeof SdkDialogContent>, "children"> & {
 		size?: keyof typeof DIALOG_WIDTH;
+		children?: React.ReactNode;
 	}
 >(({ className, children, size = "md", ...props }, ref) => {
 	const lockRef = useHeightLock(ref);
 	return (
-		<DialogPortal>
+		<>
 			<DialogOverlay />
-			<DialogPrimitive.Content
+			<SdkDialogContent
 				ref={lockRef}
 				data-float="dialog"
 				className={cn(DIALOG_PANEL, DIALOG_WIDTH[size], className)}
 				{...props}
 			>
 				{children}
-				<DialogPrimitive.Close className="absolute top-3 right-3 inline-flex size-7 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 disabled:pointer-events-none">
-					<X className="size-4" />
-					<span className="sr-only">Close</span>
-				</DialogPrimitive.Close>
-			</DialogPrimitive.Content>
-		</DialogPortal>
+				<SdkDialogClose
+					aria-label="Close"
+					className="absolute top-3 right-3 inline-flex size-7 items-center justify-center rounded-control text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1 disabled:pointer-events-none"
+				>
+					<X className="size-4" aria-hidden="true" />
+				</SdkDialogClose>
+			</SdkDialogContent>
+		</>
 	);
 });
-DialogContent.displayName = DialogPrimitive.Content.displayName;
+DialogContent.displayName = "DialogContent";
 
 const DialogHeader = ({
 	className,
@@ -88,28 +133,38 @@ const DialogFooter = ({
 DialogFooter.displayName = "DialogFooter";
 
 const DialogTitle = React.forwardRef<
-	React.ElementRef<typeof DialogPrimitive.Title>,
-	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
+	HTMLHeadingElement,
+	React.ComponentProps<typeof SdkDialogTitle>
 >(({ className, ...props }, ref) => (
-	<DialogPrimitive.Title
+	<SdkDialogTitle
 		ref={ref}
 		className={cn("text-title", className)}
 		{...props}
 	/>
 ));
-DialogTitle.displayName = DialogPrimitive.Title.displayName;
+DialogTitle.displayName = "DialogTitle";
 
 const DialogDescription = React.forwardRef<
-	React.ElementRef<typeof DialogPrimitive.Description>,
-	React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(({ className, ...props }, ref) => (
-	<DialogPrimitive.Description
-		ref={ref}
-		className={cn("text-body text-text-2", className)}
-		{...props}
-	/>
-));
-DialogDescription.displayName = DialogPrimitive.Description.displayName;
+	HTMLParagraphElement,
+	React.ComponentProps<typeof SdkDialogDescription> & { asChild?: boolean }
+>(({ className, asChild = false, children, render, ...props }, ref) => {
+	const resolvedRender =
+		render ??
+		(asChild && React.isValidElement(children) ? children : undefined);
+	const resolvedChildren =
+		asChild && React.isValidElement(children) ? undefined : children;
+	return (
+		<SdkDialogDescription
+			ref={ref}
+			className={cn("text-body text-text-2", className)}
+			render={resolvedRender}
+			{...props}
+		>
+			{resolvedChildren}
+		</SdkDialogDescription>
+	);
+});
+DialogDescription.displayName = "DialogDescription";
 
 export {
 	Dialog,

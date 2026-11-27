@@ -1,52 +1,78 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
+import {
+	AlertDialog as SdkAlertDialog,
+	AlertDialogBackdrop as SdkAlertDialogBackdrop,
+	AlertDialogClose as SdkAlertDialogClose,
+	AlertDialogContent as SdkAlertDialogContent,
+	AlertDialogDescription as SdkAlertDialogDescription,
+	AlertDialogTitle as SdkAlertDialogTitle,
+	AlertDialogTrigger as SdkAlertDialogTrigger,
+} from "@ui-sdk/react/alert-dialog";
 import * as React from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { DIALOG_PANEL, DIALOG_WIDTH } from "@/components/ui/dialog";
 import { useHeightLock } from "@/hooks/use-height-lock";
 import { cn } from "@/lib/utils";
 
-const AlertDialog = AlertDialogPrimitive.Root;
+const AlertDialog = SdkAlertDialog;
 
-const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
+function AlertDialogTrigger({
+	asChild = false,
+	children,
+	render,
+	...props
+}: React.ComponentProps<typeof SdkAlertDialogTrigger> & { asChild?: boolean }) {
+	const resolvedRender =
+		render ??
+		(asChild && React.isValidElement(children) ? children : undefined);
+	const resolvedChildren =
+		asChild && React.isValidElement(children) ? undefined : children;
+	return (
+		<SdkAlertDialogTrigger render={resolvedRender} {...props}>
+			{resolvedChildren}
+		</SdkAlertDialogTrigger>
+	);
+}
 
-const AlertDialogPortal = AlertDialogPrimitive.Portal;
+const AlertDialogPortal = ({ children }: { children?: React.ReactNode }) => (
+	<>{children}</>
+);
 
 const AlertDialogOverlay = React.forwardRef<
-	React.ElementRef<typeof AlertDialogPrimitive.Overlay>,
-	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Overlay>
+	HTMLDivElement,
+	React.ComponentProps<typeof SdkAlertDialogBackdrop>
 >(({ className, ...props }, ref) => (
-	<AlertDialogPrimitive.Overlay
+	<SdkAlertDialogBackdrop
 		data-float="scrim"
 		className={cn("fixed inset-0 z-50 bg-scrim", className)}
 		{...props}
 		ref={ref}
 	/>
 ));
-AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
+AlertDialogOverlay.displayName = "AlertDialogOverlay";
 
 const AlertDialogContent = React.forwardRef<
-	React.ElementRef<typeof AlertDialogPrimitive.Content>,
-	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content> & {
+	HTMLDivElement,
+	React.ComponentProps<typeof SdkAlertDialogContent> & {
 		size?: keyof typeof DIALOG_WIDTH;
 	}
 >(({ className, size = "sm", ...props }, ref) => {
 	const lockRef = useHeightLock(ref);
 	return (
-		<AlertDialogPortal>
+		<>
 			<AlertDialogOverlay />
-			<AlertDialogPrimitive.Content
+			<SdkAlertDialogContent
 				ref={lockRef}
 				data-float="dialog"
 				className={cn(DIALOG_PANEL, DIALOG_WIDTH[size], className)}
 				{...props}
 			/>
-		</AlertDialogPortal>
+		</>
 	);
 });
-AlertDialogContent.displayName = AlertDialogPrimitive.Content.displayName;
+AlertDialogContent.displayName = "AlertDialogContent";
 
 const AlertDialogHeader = ({
 	className,
@@ -68,53 +94,77 @@ const AlertDialogFooter = ({
 AlertDialogFooter.displayName = "AlertDialogFooter";
 
 const AlertDialogTitle = React.forwardRef<
-	React.ElementRef<typeof AlertDialogPrimitive.Title>,
-	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Title>
+	HTMLHeadingElement,
+	React.ComponentProps<typeof SdkAlertDialogTitle>
 >(({ className, ...props }, ref) => (
-	<AlertDialogPrimitive.Title
+	<SdkAlertDialogTitle
 		ref={ref}
 		className={cn("text-title", className)}
 		{...props}
 	/>
 ));
-AlertDialogTitle.displayName = AlertDialogPrimitive.Title.displayName;
+AlertDialogTitle.displayName = "AlertDialogTitle";
 
 const AlertDialogDescription = React.forwardRef<
-	React.ElementRef<typeof AlertDialogPrimitive.Description>,
-	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Description>
->(({ className, ...props }, ref) => (
-	<AlertDialogPrimitive.Description
-		ref={ref}
-		className={cn("text-body text-text-2", className)}
-		{...props}
-	/>
-));
-AlertDialogDescription.displayName =
-	AlertDialogPrimitive.Description.displayName;
+	HTMLParagraphElement,
+	React.ComponentProps<typeof SdkAlertDialogDescription> & { asChild?: boolean }
+>(({ className, asChild = false, children, render, ...props }, ref) => {
+	const resolvedRender =
+		render ??
+		(asChild && React.isValidElement(children) ? children : undefined);
+	const resolvedChildren =
+		asChild && React.isValidElement(children) ? undefined : children;
+	return (
+		<SdkAlertDialogDescription
+			ref={ref}
+			className={cn("text-body text-text-2", className)}
+			render={resolvedRender}
+			{...props}
+		>
+			{resolvedChildren}
+		</SdkAlertDialogDescription>
+	);
+});
+AlertDialogDescription.displayName = "AlertDialogDescription";
 
 const AlertDialogAction = React.forwardRef<
-	React.ElementRef<typeof AlertDialogPrimitive.Action>,
-	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action>
->(({ className, ...props }, ref) => (
-	<AlertDialogPrimitive.Action
+	HTMLButtonElement,
+	Omit<React.ComponentProps<typeof SdkAlertDialogClose>, "onClick"> & {
+		onClick?: React.MouseEventHandler<HTMLButtonElement>;
+	}
+>(({ className, onClick, ...props }, ref) => (
+	<SdkAlertDialogClose
 		ref={ref}
+		value="confirm"
 		className={cn(buttonVariants(), className)}
+		onClick={
+			onClick as unknown as React.ComponentProps<
+				typeof SdkAlertDialogClose
+			>["onClick"]
+		}
 		{...props}
 	/>
 ));
-AlertDialogAction.displayName = AlertDialogPrimitive.Action.displayName;
+AlertDialogAction.displayName = "AlertDialogAction";
 
 const AlertDialogCancel = React.forwardRef<
-	React.ElementRef<typeof AlertDialogPrimitive.Cancel>,
-	React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Cancel>
->(({ className, ...props }, ref) => (
-	<AlertDialogPrimitive.Cancel
+	HTMLButtonElement,
+	Omit<React.ComponentProps<typeof SdkAlertDialogClose>, "onClick"> & {
+		onClick?: React.MouseEventHandler<HTMLButtonElement>;
+	}
+>(({ className, onClick, ...props }, ref) => (
+	<SdkAlertDialogClose
 		ref={ref}
 		className={cn(buttonVariants({ variant: "secondary" }), className)}
+		onClick={
+			onClick as unknown as React.ComponentProps<
+				typeof SdkAlertDialogClose
+			>["onClick"]
+		}
 		{...props}
 	/>
 ));
-AlertDialogCancel.displayName = AlertDialogPrimitive.Cancel.displayName;
+AlertDialogCancel.displayName = "AlertDialogCancel";
 
 export {
 	AlertDialog,

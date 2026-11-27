@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { Avatar as AvatarPrimitive } from "radix-ui";
+import {
+	Avatar as SdkAvatar,
+	AvatarFallback as SdkAvatarFallback,
+	AvatarImage as SdkAvatarImage,
+} from "@ui-sdk/react/avatar";
 import type * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -10,12 +14,11 @@ function Avatar({
 	className,
 	size = "default",
 	...props
-}: React.ComponentProps<typeof AvatarPrimitive.Root> & {
+}: React.ComponentProps<typeof SdkAvatar> & {
 	size?: "default" | "sm" | "lg";
 }) {
 	return (
-		<AvatarPrimitive.Root
-			data-slot="avatar"
+		<SdkAvatar
 			data-size={size}
 			className={cn(
 				"group/avatar relative flex size-8 shrink-0 overflow-hidden rounded-full select-none data-[size=lg]:size-10 data-[size=sm]:size-6",
@@ -29,10 +32,9 @@ function Avatar({
 function AvatarImage({
 	className,
 	...props
-}: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+}: React.ComponentProps<typeof SdkAvatarImage>) {
 	return (
-		<AvatarPrimitive.Image
-			data-slot="avatar-image"
+		<SdkAvatarImage
 			className={cn("aspect-square size-full", className)}
 			{...props}
 		/>
@@ -42,10 +44,9 @@ function AvatarImage({
 function AvatarFallback({
 	className,
 	...props
-}: React.ComponentProps<typeof AvatarPrimitive.Fallback>) {
+}: React.ComponentProps<typeof SdkAvatarFallback>) {
 	return (
-		<AvatarPrimitive.Fallback
-			data-slot="avatar-fallback"
+		<SdkAvatarFallback
 			className={cn(
 				"flex size-full items-center justify-center rounded-full bg-surface-3 text-sm text-text-2 group-data-[size=sm]/avatar:text-xs",
 				className,

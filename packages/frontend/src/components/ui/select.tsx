@@ -1,153 +1,156 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as SelectPrimitive from "@radix-ui/react-select";
-import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import {
+	Select as SdkSelect,
+	SelectContent as SdkSelectContent,
+	SelectGroup as SdkSelectGroup,
+	SelectGroupLabel as SdkSelectGroupLabel,
+	SelectItem as SdkSelectItem,
+	SelectItemIndicator as SdkSelectItemIndicator,
+	SelectItemText as SdkSelectItemText,
+	SelectSeparator as SdkSelectSeparator,
+	SelectTrigger as SdkSelectTrigger,
+	SelectValue as SdkSelectValue,
+} from "@ui-sdk/react/select";
+import { Check, ChevronDown } from "lucide-react";
 import * as React from "react";
 
 import { titleRowHeight } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 
-const Select = SelectPrimitive.Root;
+function Select({
+	onValueChange,
+	...props
+}: Omit<
+	React.ComponentProps<typeof SdkSelect<string, false>>,
+	"onValueChange" | "multiple" | "value" | "defaultValue"
+> & {
+	value?: string;
+	defaultValue?: string;
+	onValueChange?: (value: string) => void;
+}) {
+	return (
+		<SdkSelect<string, false>
+			onValueChange={
+				onValueChange
+					? (v) => {
+							if (v !== null) onValueChange(v);
+						}
+					: undefined
+			}
+			{...props}
+		/>
+	);
+}
 
-const SelectGroup = SelectPrimitive.Group;
+const SelectGroup = SdkSelectGroup;
 
-const SelectValue = SelectPrimitive.Value;
+const SelectValue = SdkSelectValue;
 
 const SelectTrigger = React.forwardRef<
-	React.ElementRef<typeof SelectPrimitive.Trigger>,
-	React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
+	HTMLButtonElement,
+	Omit<React.ComponentProps<typeof SdkSelectTrigger>, "children"> & {
+		children?: React.ReactNode;
+	}
 >(({ className, children, ...props }, ref) => (
-	<SelectPrimitive.Trigger
+	<SdkSelectTrigger
 		ref={ref}
 		className={cn(
-			"inline-flex h-7 w-fit max-w-full items-center justify-between gap-1.5 whitespace-nowrap rounded-control bg-surface-3 pr-2 pl-2.5 text-body font-medium text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-4 [[data-pool]_&]:bg-well-in-pool [[data-pool]_&]:shadow-raised [[data-pool]_&]:hover:bg-surface-4 disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-3 [&>span]:line-clamp-1",
+			"inline-flex h-7 w-fit max-w-full items-center justify-between gap-1.5 whitespace-nowrap rounded-control bg-surface-3 pr-2 pl-2.5 text-body font-medium text-text-1 transition-colors duration-(--dur-instant) hover:bg-surface-4 [[data-pool]_&]:bg-well-in-pool [[data-pool]_&]:shadow-raised [[data-pool]_&]:hover:bg-surface-4 disabled:cursor-not-allowed disabled:opacity-50 data-disabled:cursor-not-allowed data-disabled:opacity-50 data-placeholder:text-text-3 [&>span]:line-clamp-1",
 			className,
 		)}
 		{...props}
 	>
 		{children}
-		<SelectPrimitive.Icon asChild>
-			<ChevronDown className="size-3.5 text-text-3" />
-		</SelectPrimitive.Icon>
-	</SelectPrimitive.Trigger>
+		<ChevronDown className="size-3.5 shrink-0 text-text-3" aria-hidden="true" />
+	</SdkSelectTrigger>
 ));
-SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
+SelectTrigger.displayName = "SelectTrigger";
 
-const SelectScrollUpButton = React.forwardRef<
-	React.ElementRef<typeof SelectPrimitive.ScrollUpButton>,
-	React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollUpButton>
->(({ className, ...props }, ref) => (
-	<SelectPrimitive.ScrollUpButton
-		ref={ref}
-		className={cn(
-			"flex cursor-default items-center justify-center py-1",
-			className,
-		)}
-		{...props}
-	>
-		<ChevronUp className="h-4 w-4" />
-	</SelectPrimitive.ScrollUpButton>
-));
-SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName;
+const SelectScrollUpButton = (_props: React.HTMLAttributes<HTMLDivElement>) =>
+	null;
+SelectScrollUpButton.displayName = "SelectScrollUpButton";
 
-const SelectScrollDownButton = React.forwardRef<
-	React.ElementRef<typeof SelectPrimitive.ScrollDownButton>,
-	React.ComponentPropsWithoutRef<typeof SelectPrimitive.ScrollDownButton>
->(({ className, ...props }, ref) => (
-	<SelectPrimitive.ScrollDownButton
-		ref={ref}
-		className={cn(
-			"flex cursor-default items-center justify-center py-1",
-			className,
-		)}
-		{...props}
-	>
-		<ChevronDown className="h-4 w-4" />
-	</SelectPrimitive.ScrollDownButton>
-));
-SelectScrollDownButton.displayName =
-	SelectPrimitive.ScrollDownButton.displayName;
+const SelectScrollDownButton = (_props: React.HTMLAttributes<HTMLDivElement>) =>
+	null;
+SelectScrollDownButton.displayName = "SelectScrollDownButton";
 
 const SelectContent = React.forwardRef<
-	React.ElementRef<typeof SelectPrimitive.Content>,
-	React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
+	HTMLDivElement,
+	React.ComponentProps<typeof SdkSelectContent> & {
+		position?: "popper" | "item-aligned";
+	}
 >(({ className, children, position = "popper", ...props }, ref) => (
-	<SelectPrimitive.Portal>
-		<SelectPrimitive.Content
-			ref={ref}
-			data-float="pop"
-			className={cn(
-				"relative z-50 max-h-(--radix-select-content-available-height) min-w-[8rem] overflow-x-hidden overflow-y-auto rounded-pool floating text-text-1",
-				position === "popper" &&
-					"data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
-				className,
-			)}
-			collisionPadding={{ top: titleRowHeight() }}
-			position={position}
-			{...props}
-		>
-			<SelectScrollUpButton />
-			<SelectPrimitive.Viewport
-				className={cn(
-					"p-1",
-					position === "popper" &&
-						"h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]",
-				)}
-			>
-				{children}
-			</SelectPrimitive.Viewport>
-			<SelectScrollDownButton />
-		</SelectPrimitive.Content>
-	</SelectPrimitive.Portal>
+	<SdkSelectContent
+		ref={ref}
+		data-float="pop"
+		className={cn(
+			"relative z-50 max-h-(--available-height) min-w-[max(8rem,var(--anchor-width))] overflow-x-hidden overflow-y-auto rounded-pool floating p-1 text-text-1",
+			position === "popper" &&
+				"data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+			className,
+		)}
+		collisionPadding={titleRowHeight()}
+		alignItemWithTrigger={position === "item-aligned"}
+		{...props}
+	>
+		{children}
+	</SdkSelectContent>
 ));
-SelectContent.displayName = SelectPrimitive.Content.displayName;
+SelectContent.displayName = "SelectContent";
 
 const SelectLabel = React.forwardRef<
-	React.ElementRef<typeof SelectPrimitive.Label>,
-	React.ComponentPropsWithoutRef<typeof SelectPrimitive.Label>
+	HTMLDivElement,
+	React.ComponentProps<typeof SdkSelectGroupLabel>
 >(({ className, ...props }, ref) => (
-	<SelectPrimitive.Label
+	<SdkSelectGroupLabel
 		ref={ref}
 		className={cn("px-2 py-1.5 text-meta text-text-3", className)}
 		{...props}
 	/>
 ));
-SelectLabel.displayName = SelectPrimitive.Label.displayName;
+SelectLabel.displayName = "SelectLabel";
 
 const SelectItem = React.forwardRef<
-	React.ElementRef<typeof SelectPrimitive.Item>,
-	React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
+	HTMLDivElement,
+	Omit<React.ComponentProps<typeof SdkSelectItem>, "children"> & {
+		children?: React.ReactNode;
+	}
 >(({ className, children, ...props }, ref) => (
-	<SelectPrimitive.Item
+	<SdkSelectItem
 		ref={ref}
 		className={cn(
-			"relative flex h-8 w-full cursor-default select-none items-center rounded-control pr-8 pl-2 text-body outline-none focus:bg-surface-3 focus:text-text-1 data-[state=checked]:bg-surface-3 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+			"relative flex h-8 w-full cursor-default select-none items-center rounded-control pr-8 pl-2 text-body outline-none data-highlighted:bg-surface-3 data-highlighted:text-text-1 data-selected:bg-surface-3 data-disabled:pointer-events-none data-disabled:opacity-50",
 			className,
 		)}
 		{...props}
 	>
 		<span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
-			<SelectPrimitive.ItemIndicator>
-				<Check className="size-3.5 text-accent" strokeWidth={2.5} />
-			</SelectPrimitive.ItemIndicator>
+			<SdkSelectItemIndicator>
+				<Check
+					className="size-3.5 text-accent"
+					strokeWidth={2.5}
+					aria-hidden="true"
+				/>
+			</SdkSelectItemIndicator>
 		</span>
-		<SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-	</SelectPrimitive.Item>
+		<SdkSelectItemText>{children}</SdkSelectItemText>
+	</SdkSelectItem>
 ));
-SelectItem.displayName = SelectPrimitive.Item.displayName;
+SelectItem.displayName = "SelectItem";
 
 const SelectSeparator = React.forwardRef<
-	React.ElementRef<typeof SelectPrimitive.Separator>,
-	React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
+	HTMLDivElement,
+	React.ComponentProps<typeof SdkSelectSeparator>
 >(({ className, ...props }, ref) => (
-	<SelectPrimitive.Separator
+	<SdkSelectSeparator
 		ref={ref}
 		className={cn("-mx-1 my-1 h-px bg-hairline", className)}
 		{...props}
 	/>
 ));
-SelectSeparator.displayName = SelectPrimitive.Separator.displayName;
+SelectSeparator.displayName = "SelectSeparator";
 
 export {
 	Select,

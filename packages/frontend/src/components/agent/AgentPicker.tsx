@@ -48,7 +48,7 @@ import {
 import { failureLine, notSignedIn } from "@/lib/failure-words";
 import { cn } from "@/lib/utils";
 import { AgentMark, StarredMark } from "./AgentMark";
-import { focusChosen, roveKeys } from "./rove";
+import { roveKeys } from "./rove";
 
 /** What the current setting resolves to, for the picker and for Settings. */
 export function useAgentChoice() {
@@ -400,11 +400,7 @@ export function ModelChip({
 				className="grid h-[400px] w-[min(380px,calc(100vw-32px))] grid-cols-[44px_minmax(0,1fr)] overflow-hidden rounded-surface p-0"
 				data-testid="agent-picker-list"
 				aria-label="Agent and model"
-				onOpenAutoFocus={(e) => {
-					// The search takes the keys, so Enter picks the highlighted row.
-					e.preventDefault();
-					search.current?.focus();
-				}}
+				initialFocus={() => search.current}
 			>
 				<div
 					ref={rail}
@@ -768,7 +764,7 @@ export function EffortChip({
 				className="w-60 rounded-surface p-1"
 				data-testid="effort-menu"
 				onKeyDown={roveKeys}
-				onOpenAutoFocus={focusChosen}
+				initialFocus="[data-chosen]"
 			>
 				<p className="px-2.5 pt-2 pb-1 text-meta text-text-3">Effort</p>
 				{levels.map((l) => (
@@ -872,7 +868,7 @@ export function AccessChip({
 				className="w-[min(460px,calc(100vw-32px))] rounded-surface p-1"
 				data-testid="access-menu"
 				onKeyDown={roveKeys}
-				onOpenAutoFocus={focusChosen}
+				initialFocus="[data-chosen]"
 			>
 				<div role="listbox" aria-label="Permission level">
 					{rows.map((l) => {

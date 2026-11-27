@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { Link } from "@tanstack/react-router";
+import { Tabs, TabsList, TabsPanel, TabsTab } from "@ui-sdk/react/tabs";
 import { X } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -124,32 +124,34 @@ export function RunDetailsPanel({
 				</Button>
 				<h2 className="min-w-0 flex-1 truncate text-heading">{title}</h2>
 			</div>
-			<TabsPrimitive.Root
+			<Tabs
 				value={tab}
-				onValueChange={(v) => onTab(v as DetailsTab)}
+				onValueChange={(v) => {
+					if (v !== null) onTab(v as DetailsTab);
+				}}
 				className="flex min-h-0 flex-1 flex-col"
 			>
 				<div className="relative flex h-9 shrink-0 items-center px-3 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-hairline">
-					<TabsPrimitive.List
+					<TabsList
 						aria-label={title}
 						className="flex min-w-0 gap-0.5 self-end"
 					>
 						{tabs.map((t) => (
-							<TabsPrimitive.Trigger
+							<TabsTab
 								key={t.id}
 								value={t.id}
 								aria-label={t.aria}
-								className="relative inline-flex h-[26px] items-center rounded-t-control px-2 text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 data-[state=active]:bg-surface-2 data-[state=active]:text-text-1 data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:bottom-0 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-accent"
+								className="relative inline-flex h-[26px] items-center rounded-t-control px-2 text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 data-selected:bg-surface-2 data-selected:text-text-1 data-selected:after:absolute data-selected:after:inset-x-0 data-selected:after:bottom-0 data-selected:after:h-0.5 data-selected:after:bg-accent"
 								data-testid={`run-details-tab-${t.id}`}
 							>
 								{t.label}
 								{t.aside}
-							</TabsPrimitive.Trigger>
+							</TabsTab>
 						))}
-					</TabsPrimitive.List>
+					</TabsList>
 				</div>
 				{(["summary", "evidence", "context"] as const).map((id) => (
-					<TabsPrimitive.Content
+					<TabsPanel
 						key={id}
 						value={id}
 						className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-5"
@@ -166,9 +168,9 @@ export function RunDetailsPanel({
 							incidentId={incidentId}
 							onJump={onJump}
 						/>
-					</TabsPrimitive.Content>
+					</TabsPanel>
 				))}
-				<TabsPrimitive.Content
+				<TabsPanel
 					value="steps"
 					className="flex min-h-0 flex-1 flex-col"
 					data-testid="run-details-steps"
@@ -237,8 +239,8 @@ export function RunDetailsPanel({
 							</li>
 						))}
 					</ol>
-				</TabsPrimitive.Content>
-			</TabsPrimitive.Root>
+				</TabsPanel>
+			</Tabs>
 		</aside>
 	);
 }

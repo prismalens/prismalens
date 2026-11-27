@@ -1,34 +1,67 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import {
+	Tooltip as SdkTooltip,
+	TooltipContent as SdkTooltipContent,
+	TooltipTrigger as SdkTooltipTrigger,
+} from "@ui-sdk/react/tooltip";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const TooltipProvider = TooltipPrimitive.Provider;
+function TooltipProvider({
+	children,
+}: {
+	children: React.ReactNode;
+	delayDuration?: number;
+	skipDelayDuration?: number;
+}) {
+	return <>{children}</>;
+}
 
-const Tooltip = TooltipPrimitive.Root;
+function Tooltip({
+	disableHoverableContent: _disableHoverableContent,
+	...props
+}: React.ComponentProps<typeof SdkTooltip> & {
+	disableHoverableContent?: boolean;
+}) {
+	return <SdkTooltip {...props} />;
+}
 
-const TooltipTrigger = TooltipPrimitive.Trigger;
+function TooltipTrigger({
+	asChild = false,
+	children,
+	render,
+	...props
+}: React.ComponentProps<typeof SdkTooltipTrigger> & { asChild?: boolean }) {
+	const resolvedRender =
+		render ??
+		(asChild && React.isValidElement(children) ? children : undefined);
+	const resolvedChildren =
+		asChild && React.isValidElement(children) ? undefined : children;
+	return (
+		<SdkTooltipTrigger render={resolvedRender} {...props}>
+			{resolvedChildren}
+		</SdkTooltipTrigger>
+	);
+}
 
 const TooltipContent = React.forwardRef<
-	React.ElementRef<typeof TooltipPrimitive.Content>,
-	React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
+	HTMLDivElement,
+	React.ComponentProps<typeof SdkTooltipContent>
 >(({ className, sideOffset = 6, ...props }, ref) => (
-	<TooltipPrimitive.Portal>
-		<TooltipPrimitive.Content
-			ref={ref}
-			sideOffset={sideOffset}
-			data-float="tip"
-			className={cn(
-				"pointer-events-none z-50 max-w-[280px] rounded-control bg-surface-4 px-2 py-1 text-meta text-text-1 shadow-float [@media(hover:none)]:hidden",
-				className,
-			)}
-			{...props}
-		/>
-	</TooltipPrimitive.Portal>
+	<SdkTooltipContent
+		ref={ref}
+		sideOffset={sideOffset}
+		data-float="tip"
+		className={cn(
+			"pointer-events-none z-50 max-w-[280px] rounded-control bg-surface-4 px-2 py-1 text-meta text-text-1 shadow-float [@media(hover:none)]:hidden",
+			className,
+		)}
+		{...props}
+	/>
 ));
-TooltipContent.displayName = TooltipPrimitive.Content.displayName;
+TooltipContent.displayName = "TooltipContent";
 
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger };

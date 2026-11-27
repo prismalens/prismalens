@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Slot } from "radix-ui";
-import type * as React from "react";
+import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -19,7 +19,7 @@ const TEXT = "text-text-2 hover:bg-surface-3 hover:text-text-1";
 const DANGER = "text-danger hover:bg-surface-3";
 
 const buttonVariants = cva(
-	"inline-flex shrink-0 items-center justify-center gap-1.5 rounded-control text-body font-medium whitespace-nowrap transition-[background-color,color,transform] duration-(--dur-instant) ease-(--ease-standard) active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+	"inline-flex shrink-0 items-center justify-center gap-1.5 rounded-control text-body font-medium whitespace-nowrap transition-[background-color,color,transform] duration-(--dur-instant) ease-(--ease-standard) active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
 	{
 		variants: {
 			variant: {
@@ -58,26 +58,45 @@ const buttonVariants = cva(
 	},
 );
 
+type ButtonProps = Omit<
+	React.ComponentProps<typeof SdkButton>,
+	"onClick" | "children"
+> &
+	VariantProps<typeof buttonVariants> & {
+		asChild?: boolean;
+		children?: React.ReactNode;
+		onClick?: React.MouseEventHandler<HTMLButtonElement>;
+	};
+
 function Button({
 	className,
 	variant = "default",
 	size = "default",
 	asChild = false,
+	children,
+	onClick,
+	render,
 	...props
-}: React.ComponentProps<"button"> &
-	VariantProps<typeof buttonVariants> & {
-		asChild?: boolean;
-	}) {
-	const Comp = asChild ? Slot.Root : "button";
+}: ButtonProps) {
+	const resolvedRender =
+		render ??
+		(asChild && React.isValidElement(children) ? children : undefined);
+	const resolvedChildren =
+		asChild && React.isValidElement(children) ? undefined : children;
 
 	return (
-		<Comp
-			data-slot="button"
+		<SdkButton
 			data-variant={variant}
 			data-size={size}
 			className={cn(buttonVariants({ variant, size, className }))}
+			render={resolvedRender}
+			onClick={
+				onClick as unknown as React.ComponentProps<typeof SdkButton>["onClick"]
+			}
 			{...props}
-		/>
+		>
+			{resolvedChildren}
+		</SdkButton>
 	);
 }
 

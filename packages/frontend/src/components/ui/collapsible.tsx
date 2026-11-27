@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
+import {
+	Collapsible as SdkCollapsible,
+	CollapsiblePanel as SdkCollapsiblePanel,
+	CollapsibleTrigger as SdkCollapsibleTrigger,
+} from "@ui-sdk/react/collapsible";
 
-const Collapsible = CollapsiblePrimitive.Root;
+const Collapsible = SdkCollapsible;
 
-const CollapsibleTrigger = CollapsiblePrimitive.CollapsibleTrigger;
+const CollapsibleTrigger = SdkCollapsibleTrigger;
 
-const CollapsibleContent = CollapsiblePrimitive.CollapsibleContent;
+const CollapsibleContent = SdkCollapsiblePanel;
 
 export { Collapsible, CollapsibleContent, CollapsibleTrigger };

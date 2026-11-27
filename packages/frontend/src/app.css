@@ -1,3 +1,5 @@
+@layer ui-sdk;
+
 @import 'tailwindcss';
 @import '@fontsource-variable/ibm-plex-sans';
 @import '@fontsource/ibm-plex-mono/400.css';
@@ -25,10 +27,12 @@
    floats above the title row opts out. */
 [role="dialog"],
 [role="alertdialog"],
+[data-float],
 [data-radix-popper-content-wrapper] {
   -webkit-app-region: no-drag;
 }
 /* A hint is read, never clicked: it must not catch the pointer meant for what it covers. */
+[data-float="tip"],
 [data-radix-popper-content-wrapper]:has(> [data-float="tip"]) {
   pointer-events: none;
 }

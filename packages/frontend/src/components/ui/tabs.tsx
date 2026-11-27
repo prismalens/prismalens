@@ -1,23 +1,48 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import * as TabsPrimitive from "@radix-ui/react-tabs";
+import {
+	Tabs as SdkTabs,
+	TabsList as SdkTabsList,
+	TabsPanel as SdkTabsPanel,
+	TabsTab as SdkTabsTab,
+} from "@ui-sdk/react/tabs";
 import * as React from "react";
 
 import { useSlidingMark } from "@/hooks/use-sliding-mark";
 import { cn } from "@/lib/utils";
 
-const Tabs = TabsPrimitive.Root;
+function Tabs({
+	onValueChange,
+	...props
+}: Omit<React.ComponentProps<typeof SdkTabs<string>>, "onValueChange"> & {
+	onValueChange?: (value: string) => void;
+}) {
+	return (
+		<SdkTabs<string>
+			onValueChange={
+				onValueChange
+					? (v) => {
+							if (v !== null) onValueChange(v);
+						}
+					: undefined
+			}
+			{...props}
+		/>
+	);
+}
 
 const TabsList = React.forwardRef<
-	React.ElementRef<typeof TabsPrimitive.List>,
-	React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
+	HTMLDivElement,
+	Omit<React.ComponentProps<typeof SdkTabsList>, "children"> & {
+		children?: React.ReactNode;
+	}
 >(({ className, children, ...props }, ref) => {
 	const { ref: rowRef, box } = useSlidingMark<HTMLDivElement>(
-		'[role="tab"][data-state="active"]',
+		'[role="tab"][data-selected]',
 	);
 	return (
-		<TabsPrimitive.List
+		<SdkTabsList
 			ref={(node) => {
 				rowRef.current = node;
 				if (typeof ref === "function") ref(node);
@@ -38,36 +63,32 @@ const TabsList = React.forwardRef<
 					style={{ left: box.x, width: box.w }}
 				/>
 			)}
-		</TabsPrimitive.List>
+		</SdkTabsList>
 	);
 });
-TabsList.displayName = TabsPrimitive.List.displayName;
+TabsList.displayName = "TabsList";
 
 const TabsTrigger = React.forwardRef<
-	React.ElementRef<typeof TabsPrimitive.Trigger>,
-	React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+	HTMLButtonElement,
+	React.ComponentProps<typeof SdkTabsTab>
 >(({ className, ...props }, ref) => (
-	<TabsPrimitive.Trigger
+	<SdkTabsTab
 		ref={ref}
 		className={cn(
-			"relative inline-flex h-9 items-center justify-center whitespace-nowrap text-body transition-colors duration-(--dur-fast) hover:text-text-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:font-medium data-[state=active]:text-text-1",
+			"relative inline-flex h-9 items-center justify-center whitespace-nowrap text-body transition-colors duration-(--dur-fast) hover:text-text-1 disabled:pointer-events-none disabled:opacity-50 data-disabled:pointer-events-none data-disabled:opacity-50 data-selected:font-medium data-selected:text-text-1",
 			className,
 		)}
 		{...props}
 	/>
 ));
-TabsTrigger.displayName = TabsPrimitive.Trigger.displayName;
+TabsTrigger.displayName = "TabsTrigger";
 
 const TabsContent = React.forwardRef<
-	React.ElementRef<typeof TabsPrimitive.Content>,
-	React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
+	HTMLDivElement,
+	React.ComponentProps<typeof SdkTabsPanel>
 >(({ className, ...props }, ref) => (
-	<TabsPrimitive.Content
-		ref={ref}
-		className={cn("mt-4", className)}
-		{...props}
-	/>
+	<SdkTabsPanel ref={ref} className={cn("mt-4", className)} {...props} />
 ));
-TabsContent.displayName = TabsPrimitive.Content.displayName;
+TabsContent.displayName = "TabsContent";
 
 export { Tabs, TabsContent, TabsList, TabsTrigger };

@@ -3,34 +3,40 @@
 
 "use client";
 
-import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
+import {
+	ScrollArea as SdkScrollArea,
+	ScrollAreaCorner as SdkScrollAreaCorner,
+	ScrollAreaScrollbar as SdkScrollAreaScrollbar,
+	ScrollAreaThumb as SdkScrollAreaThumb,
+	ScrollAreaViewport as SdkScrollAreaViewport,
+} from "@ui-sdk/react/scroll-area";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
 const ScrollArea = React.forwardRef<
-	React.ElementRef<typeof ScrollAreaPrimitive.Root>,
-	React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root>
+	HTMLDivElement,
+	React.ComponentProps<typeof SdkScrollArea>
 >(({ className, children, ...props }, ref) => (
-	<ScrollAreaPrimitive.Root
+	<SdkScrollArea
 		ref={ref}
 		className={cn("relative overflow-hidden", className)}
 		{...props}
 	>
-		<ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
+		<SdkScrollAreaViewport className="h-full w-full rounded-[inherit]">
 			{children}
-		</ScrollAreaPrimitive.Viewport>
+		</SdkScrollAreaViewport>
 		<ScrollBar />
-		<ScrollAreaPrimitive.Corner />
-	</ScrollAreaPrimitive.Root>
+		<SdkScrollAreaCorner />
+	</SdkScrollArea>
 ));
-ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName;
+ScrollArea.displayName = "ScrollArea";
 
 const ScrollBar = React.forwardRef<
-	React.ElementRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>,
-	React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>
+	HTMLDivElement,
+	React.ComponentProps<typeof SdkScrollAreaScrollbar>
 >(({ className, orientation = "vertical", ...props }, ref) => (
-	<ScrollAreaPrimitive.ScrollAreaScrollbar
+	<SdkScrollAreaScrollbar
 		ref={ref}
 		orientation={orientation}
 		className={cn(
@@ -41,9 +47,9 @@ const ScrollBar = React.forwardRef<
 		)}
 		{...props}
 	>
-		<ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full bg-surface-4 hover:bg-text-3" />
-	</ScrollAreaPrimitive.ScrollAreaScrollbar>
+		<SdkScrollAreaThumb className="relative flex-1 rounded-full bg-surface-4 hover:bg-text-3" />
+	</SdkScrollAreaScrollbar>
 ));
-ScrollBar.displayName = ScrollAreaPrimitive.ScrollAreaScrollbar.displayName;
+ScrollBar.displayName = "ScrollBar";
 
 export { ScrollArea, ScrollBar };
