@@ -54,7 +54,7 @@ describe("diff themes", () => {
 
 	// The pool resolves its theme names on the main thread and posts the result to its workers,
 	// so the palette resolved here is the one a pooled viewer draws with.
-	it("the shared worker pool resolves DIFF_THEMES' AA palette", async () => {
+	it("the shared worker pool's configured themes resolve to the AA palette", async () => {
 		vi.doMock("@pierre/diffs/worker/worker.js?worker", () => ({
 			default: class {},
 		}));
