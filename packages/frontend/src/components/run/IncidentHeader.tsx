@@ -220,7 +220,7 @@ export function IncidentHeader({
 	return (
 		<Surface id="incident.header" ctx={ctx}>
 			<header
-				className="flex h-(--header-h) min-w-0 shrink-0 items-center gap-3 bg-surface-1 pr-3 pl-2 whitespace-nowrap"
+				className="@container flex h-(--header-h) min-w-0 shrink-0 items-center gap-3 bg-surface-1 pr-3 pl-2 whitespace-nowrap"
 				data-testid="incident-header"
 				data-title-row
 			>
@@ -286,9 +286,10 @@ export function IncidentHeader({
 					</span>
 				) : (
 					firing && (
+						// By the header's width, not the window's: the open panel narrows it, and says what's firing (#1238).
 						<span
 							className={cn(
-								"flex shrink-0 items-center gap-1.5 max-lg:hidden",
+								"flex shrink-0 items-center gap-1.5 @max-2xl:hidden",
 								firing.firing ? "text-danger" : "text-text-3",
 							)}
 							data-testid="header-firing"
