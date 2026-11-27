@@ -22,6 +22,7 @@ import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	addLicences,
+	agentSdkProblems,
 	hollowPackages,
 	missingLicences,
 	prune,
@@ -506,6 +507,8 @@ async function main() {
 			{ skipAbsent: oldRelease },
 		);
 		const pruned = prune(appModules);
+		const sdk = agentSdkProblems(appDir);
+		if (sdk.length > 0) throw new Error(sdk.join("\n"));
 		const missing = missingLicences(appDir);
 		if (missing.length > 0 && !oldRelease) {
 			throw new Error(

@@ -63,8 +63,8 @@ export default defineChecks([
 					const wrap = el.closest('[data-testid="thread-row-wrap"]') ?? el;
 					const status =
 						wrap
-							.querySelector('[data-testid="row-status"]')
-							?.textContent?.trim() ?? "";
+							.querySelector('[role="img"][data-fact="status"]')
+							?.getAttribute("aria-label") ?? "";
 					const quiet = el.getAttribute("data-quiet") === "true";
 					const titleEl = wrap.querySelector('[data-testid="row-title"]');
 					const isUnread = titleEl?.classList.contains("font-semibold");
@@ -79,7 +79,7 @@ export default defineChecks([
 			for (const r of evaluated) {
 				if (r.status !== "Done") {
 					fails.push(
-						`thread "${r.title}" status word is "${r.status}", expected "Done"`,
+						`thread "${r.title}" status icon reads "${r.status}", expected "Done"`,
 					);
 				}
 				if (!r.isUnread && !r.quiet) {
@@ -168,9 +168,13 @@ export default defineChecks([
 				els.map((el) => {
 					const wrap = el.closest('[data-testid="thread-row-wrap"]') ?? el;
 					const detail =
-						wrap
+						// A reason drawn as a mark carries its sentence as its name.
+						(wrap
 							.querySelector('[data-testid="row-detail"]')
-							?.textContent?.trim() ||
+							?.getAttribute("aria-label") ??
+							wrap
+								.querySelector('[data-testid="row-detail"]')
+								?.textContent?.trim()) ||
 						wrap
 							.querySelector('[data-testid="row-cause"]')
 							?.textContent?.trim() ||
@@ -326,7 +330,11 @@ export default defineChecks([
 				const detail =
 					wrap
 						.querySelector('[data-testid="row-detail"]')
-						?.textContent?.trim() ?? "";
+						?.getAttribute("aria-label") ??
+					wrap
+						.querySelector('[data-testid="row-detail"]')
+						?.textContent?.trim() ??
+					"";
 				const cause =
 					wrap
 						.querySelector('[data-testid="row-cause"]')

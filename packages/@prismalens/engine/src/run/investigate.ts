@@ -14,8 +14,10 @@ import { pathToFileURL } from "node:url";
 import { PROTOCOL_VERSION } from "@agentclientprotocol/sdk/unstable";
 import {
 	AGENT_REGISTRY,
+	AgentHostError,
 	authenticateMethod,
 	type LaunchPolicy,
+	type PlanLaunchInput,
 	planLaunch,
 	writeLaunchFiles,
 } from "@prismalens/agent-host";
@@ -28,6 +30,7 @@ import {
 	type HarnessRunEnv,
 	levelOfAgentMode,
 	type ModelSource,
+	mergeConfigPatch,
 	modeFidelity,
 	NO_MODE_KEY,
 	resolveAccess,
@@ -125,8 +128,12 @@ import {
 } from "./provider-failure.js";
 import {
 	injectedSecrets,
+	keptSchemaValue,
+	RecordScrubber,
 	redactEvent,
+	redactLine,
 	requestedSecrets,
+	StreamScrubber,
 	scrub,
 } from "./redact.js";
 import {
@@ -138,6 +145,13 @@ import {
 import { withCwdRelativeSources } from "./report-paths.js";
 import { userServerByOurName } from "./reserved-name.js";
 import { checkSandbox } from "./sandbox-check.js";
+import {
+	CLAUDE_INIT_META,
+	CLAUDE_SDK_MESSAGE,
+	initItems,
+	initOf,
+} from "./sdk-init.js";
+import type { RunShared } from "./shared-set.js";
 
 const authenticateOf = (
 	row: Parameters<typeof authenticateMethod>[0],
@@ -385,6 +399,11 @@ export interface RunInvestigationOptions {
 		concurrency?: number;
 		onStop?: "stop" | "finish";
 	};
+	/**
+	 * Settings → Agent → Clean profile (#1180 §3.4): the row's `cleanProfile` switches, each found
+	 * MCP server off by name; a clean profile that cannot hold refuses the run.
+	 */
+	cleanProfile?: { version?: string | null; mcp?: readonly string[] };
 	/** Stops one sub-agent the agent granted cancel for; the handler answers false otherwise (#1025). */
 	subagents?: {
 		onCancel(handler: (sessionId: string) => boolean): () => void;
@@ -394,6 +413,8 @@ export interface RunInvestigationOptions {
 	 * from every event, the transcript and stderr whatever their length or name.
 	 */
 	secrets?: readonly string[];
+	/** The PrismaLens set this run's session gets, resolved by the product (#1180 §3.3). */
+	shared?: RunShared;
 	signal?: AbortSignal;
 }
 
@@ -742,10 +763,29 @@ export type PrepareRunEnvOptions = Pick<
 	| "binaryPath"
 	| "launchArgs"
 	| "gateway"
+	| "shared"
 	| "policy"
 	| "hostEnv"
 	| "subagentLimits"
+	| "cleanProfile"
 >;
+
+/** The clean profile's isolation input to `planLaunch`; none unless asked for. */
+function cleanProfileInput(
+	opts: PrepareRunEnvOptions,
+): Pick<PlanLaunchInput, "isolation" | "agentVersion"> {
+	if (!opts.cleanProfile) return {};
+	const use = AGENT_REGISTRY[opts.harness]?.cleanProfile;
+	if (!use)
+		throw new AgentHostError(
+			"isolation-unavailable",
+			`${AGENT_REGISTRY[opts.harness]?.label ?? opts.harness} has no clean profile`,
+		);
+	return {
+		isolation: [{ use, mcp: opts.cleanProfile.mcp ?? [] }],
+		agentVersion: opts.cleanProfile.version ?? null,
+	};
+}
 
 /** Materialise the per-run config and data dirs, and the child's env, from the agent-host launch plan (#916). */
 export function prepareRunEnv(opts: PrepareRunEnvOptions): {
@@ -753,6 +793,8 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 	args: string[];
 	runEnv: HarnessRunEnv;
 	launch: HarnessLaunch;
+	/** The clean profile's session `_meta`, merged over the row's; absent without one. */
+	sessionMeta?: Record<string, unknown>;
 } {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const companionPath = descriptor.companionBinary
@@ -809,10 +851,20 @@ export function prepareRunEnv(opts: PrepareRunEnvOptions): {
 				}
 			: {}),
 		...(opts.subagentLimits ? { subagents: opts.subagentLimits } : {}),
+		...cleanProfileInput(opts),
+		...(opts.shared?.runFile ? { runFile: opts.shared.runFile } : {}),
 		descriptor: { ...AGENT_REGISTRY[opts.harness], ...descriptor },
 	});
 	writeLaunchFiles(plan);
-	return { env: plan.env, args: plan.args, runEnv: plan.runEnv, launch };
+	return {
+		env: plan.env,
+		args: plan.args,
+		runEnv: plan.runEnv,
+		launch,
+		...(opts.cleanProfile && plan.sessionMeta
+			? { sessionMeta: plan.sessionMeta }
+			: {}),
+	};
 }
 
 /** A return waits this long for work the reopened agent starts on its own, before it sends anything. */
@@ -827,25 +879,162 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** How long a run waits after `session/new` for the agent's first gateway request. */
 const GATEWAY_CONFIRM_MS = 5_000;
 
+/**
+ * The session `_meta`: the row's own, each system-prompt text appended, and, when the run
+ * records what loads, Claude's request for its init message (#1180 §3.1).
+ */
+function sessionMetaOf(
+	row: Record<string, unknown> | undefined,
+	append: readonly string[],
+	askInit: boolean,
+): Record<string, unknown> | undefined {
+	let meta = (row ?? {}) as Parameters<typeof mergeConfigPatch>[0];
+	if (append.length)
+		meta = { ...meta, systemPrompt: { append: append.join("\n\n") } };
+	if (askInit) meta = mergeConfigPatch(meta, CLAUDE_INIT_META);
+	return Object.keys(meta).length ? meta : row;
+}
+
+/** A session-opening request with each `pl-*` server reduced to its name and type (§3.3 sinks). */
+function withoutSharedDefs(line: string): string {
+	if (!line.includes('"pl-')) return line;
+	try {
+		const msg = JSON.parse(line) as { params?: { mcpServers?: unknown } };
+		const servers = msg.params?.mcpServers;
+		if (!Array.isArray(servers)) return line;
+		msg.params = {
+			...msg.params,
+			mcpServers: servers.map((s) =>
+				s &&
+				typeof s === "object" &&
+				String((s as { name?: unknown }).name).startsWith("pl-")
+					? {
+							name: (s as { name: string }).name,
+							type: (s as { type?: string }).type ?? "stdio",
+						}
+					: s,
+			),
+		};
+		return JSON.stringify(msg);
+	} catch {
+		return line;
+	}
+}
+
 export async function* runInvestigation(
 	opts: RunInvestigationOptions,
 ): AsyncGenerator<CanonicalEvent> {
-	const secrets = requestedSecrets(opts.secrets);
+	const secrets = requestedSecrets([
+		...(opts.secrets ?? []),
+		...(opts.shared?.hidden ?? []),
+	]);
 	if (!secrets.length) {
 		yield* runSession(opts);
 		return;
 	}
-	// A requested secret never reaches an event, even when the agent echoes it (#1024 spec B).
+	// A requested or shared secret never reaches an event or the host log, even split across chunks.
 	const stderr = opts.onHarnessStderr;
+	const chunks = new StreamScrubber(secrets);
 	const scrubbed: RunInvestigationOptions = {
 		...opts,
-		...(stderr ? { onHarnessStderr: (c) => stderr(scrub(c, secrets)) } : {}),
+		...(stderr
+			? {
+					onHarnessStderr: (c) => {
+						for (const [out] of chunks.push([c])) stderr(out ?? "");
+					},
+				}
+			: {}),
 	};
-	for await (const ev of runSession(scrubbed)) yield redactEvent(ev, secrets);
+	const events = new RecordScrubber<CanonicalEvent>(secrets, eventChannel);
+	try {
+		for await (const ev of runSession(scrubbed)) {
+			const out = events.push(redactEvent(ev, secrets));
+			// Anything else may wait on the person, so it goes out with all before it.
+			yield* CARRIED_EVENTS.has(ev.kind) ? out : [...out, ...events.flush()];
+		}
+		yield* events.end();
+	} finally {
+		if (stderr) for (const [out] of chunks.end()) stderr(out ?? "");
+	}
+}
+
+/** The streamed kinds a split value can span; any other releases every event held (§3.3). */
+const CARRIED_EVENTS: ReadonlySet<CanonicalEvent["kind"]> = new Set([
+	"agent_step",
+	"thought",
+	"harness_tool_call",
+	"tool_result",
+]);
+
+/** An event's values, with the agent's words and its thoughts each read as one text; its schema values are kept. */
+function eventChannel(
+	e: CanonicalEvent,
+	path: readonly (string | number)[],
+): string | null {
+	const v = path.reduce<unknown>(
+		(o, k) => (o as Record<string | number, unknown> | null)?.[k],
+		e,
+	);
+	if (typeof v === "string" && keptSchemaValue(path, v)) return null;
+	if (path.length === 1 && path[0] === "text")
+		return e.kind === "agent_step"
+			? "message"
+			: e.kind === "thought"
+				? "thought"
+				: "";
+	return "";
+}
+
+/** One transcript line; `held` is `parsed` as the scrubber released it. */
+interface WireRecord {
+	t: number;
+	d: "in" | "out";
+	m: string;
+	parsed: unknown;
+	held: unknown;
+}
+
+function parseWire(line: string): unknown {
+	try {
+		return JSON.parse(line) as unknown;
+	} catch {
+		return line;
+	}
+}
+
+/** An inbound record's values, with message and thought chunks each read as one text. */
+function wireChannel(
+	r: WireRecord,
+	path: readonly (string | number)[],
+): string | null {
+	if (r.d === "out" || path[0] !== "held") return null;
+	const update = (
+		r.parsed as { params?: { update?: { sessionUpdate?: unknown } } } | null
+	)?.params?.update?.sessionUpdate;
+	const text = path.slice(-2).join(".") === "content.text";
+	if (text && update === "agent_message_chunk") return "message";
+	if (text && update === "agent_thought_chunk") return "thought";
+	// Tool output is one text across calls, so a value split between two of them is caught.
+	if (text && (update === "tool_call" || update === "tool_call_update"))
+		return "tool";
+	return "";
 }
 
 async function* runSession(
 	opts: RunInvestigationOptions,
+): AsyncGenerator<CanonicalEvent> {
+	const ends: (() => void)[] = [];
+	try {
+		yield* sessionRun(opts, ends);
+	} finally {
+		for (const end of ends) end();
+	}
+}
+
+async function* sessionRun(
+	opts: RunInvestigationOptions,
+	/** Run once the session is over, however it ended. */
+	ends: (() => void)[],
 ): AsyncGenerator<CanonicalEvent> {
 	const descriptor = opts.descriptor ?? HARNESS_REGISTRY[opts.harness];
 	const adapter = new AcpAdapter({
@@ -871,7 +1060,12 @@ async function* runSession(
 		access.mechanism,
 		opts.runtimeNote,
 	);
-	const { env, args, launch } = prepareRunEnv({
+	const {
+		env,
+		args,
+		launch,
+		sessionMeta: cleanMeta,
+	} = prepareRunEnv({
 		...opts,
 		...(keepMode ? { accessLevel: undefined } : { accessLevel: level }),
 	});
@@ -882,26 +1076,84 @@ async function* runSession(
 	const transcript = join(opts.runDir, "transcript.jsonl");
 	// session/new carries the gateway bearer; the transcript never stores it (#848).
 	// Nor the GitHub token values the agent's env holds (#1020).
-	const hidden = [
+	const hidden = requestedSecrets([
 		...injectedSecrets(env, [opts.gateway?.token]),
-		...requestedSecrets(opts.secrets),
-	];
-	const wire = (direction: "in" | "out", line: string): void => {
-		let m = line;
-		for (const s of hidden) m = m.replaceAll(s, "[redacted]");
+		...(opts.secrets ?? []),
+		...(opts.shared?.hidden ?? []),
+	]);
+	const write = (r: WireRecord): void => {
+		const m = r.held === r.parsed ? r.m : JSON.stringify(r.held);
 		try {
-			appendFileSync(
-				transcript,
-				`${JSON.stringify({ t: Date.now(), d: direction, m })}\n`,
-			);
+			appendFileSync(transcript, `${JSON.stringify({ t: r.t, d: r.d, m })}\n`);
 		} catch {
 			// best effort (ADR 0002 §6)
 		}
+	};
+	// Inbound records are scrubbed as one stream, so a value split across lines is caught (§3.3).
+	const inbound = new RecordScrubber<WireRecord>(hidden, wireChannel);
+	ends.push(() => {
+		for (const r of inbound.end()) write(r);
+	});
+	const wire = (direction: "in" | "out", line: string): void => {
+		const m = redactLine(
+			direction === "out" ? withoutSharedDefs(line) : line,
+			hidden,
+		);
+		// Parsed after redactLine, so the scrubber only has values split across records left.
+		const parsed = direction === "in" ? parseWire(m) : null;
+		for (const r of inbound.push({
+			t: Date.now(),
+			d: direction,
+			m,
+			parsed,
+			held: parsed,
+		}))
+			write(r);
 	};
 
 	const offer = opts.gateway
 		? gatewayOffer(opts.gateway, descriptor.gatewayDelivery)
 		: null;
+	const sharedServers = opts.shared?.servers ?? [];
+	const sharedNames = new Set(sharedServers.map((s) => s.name));
+	// A run-file row reads every shared server from its file (`prepareRunEnv`), never from ACP.
+	const fromFile = descriptor.gatewayDelivery === "mcp-config-file";
+	/** The shared servers the session was handed; history records these. */
+	let sharedSent: string[] | null = fromFile
+		? Object.keys(opts.shared?.runFile?.servers ?? {})
+		: null;
+	const sentOf = <T extends { name: string }>(picked: T[]): T[] => {
+		if (!fromFile)
+			sharedSent = picked.map((s) => s.name).filter((n) => sharedNames.has(n));
+		return picked;
+	};
+	const mcpServers = offer
+		? (caps: Parameters<typeof offer.pick>[0]) =>
+				sentOf(offer.pick(caps, sharedServers))
+		: sharedServers.length && !fromFile
+			? (caps: Parameters<ReturnType<typeof gatewayOffer>["pick"]>[0]) =>
+					sentOf(
+						sharedServers.filter((s) => caps?.http === true || !("type" in s)),
+					)
+			: null;
+	const row = HARNESS_REGISTRY[opts.harness];
+	const inSystemPrompt = row?.facts?.systemPromptVia?.value === "claude-meta";
+	const reportsInit = row?.loadoutReport === "claude-sdk-init";
+	// An agent with a system-prompt slot takes the set's instructions there; any other, in its first prompt.
+	const sharedText = opts.shared?.instructions ?? null;
+	let sharedTextOwed = !!sharedText && !inSystemPrompt;
+	const sentRevision = sharedText && opts.shared ? opts.shared.revision : "";
+	// A compaction rebuilds Claude's system prompt from the set this session was given (§3.3).
+	const compactedTo = () =>
+		inSystemPrompt && opts.shared ? { sharedRevision: sentRevision } : {};
+	let loadout: Parameters<typeof adapter.agentLoadout>[0] | null = null;
+	let loadoutSent = false;
+	/** The session's `agent_loadout`, once, as soon as Claude's init has arrived; its seq is taken here. */
+	const loadoutDue = (): CanonicalEvent | null => {
+		if (!loadout || loadoutSent) return null;
+		loadoutSent = true;
+		return adapter.agentLoadout(loadout);
+	};
 	// The brief rides the session, new and load alike, so the first prompt carries only the turn (#817).
 	const brief =
 		descriptor.facts?.systemPromptVia?.value === "claude-meta" &&
@@ -981,9 +1233,20 @@ async function* runSession(
 				opts.limits?.wallClockMs,
 				Date.now() - spawnedAt,
 			),
-		sessionMeta: brief
-			? { ...descriptor.sessionMeta?.(), systemPrompt: { append: brief } }
-			: descriptor.sessionMeta?.(),
+		sessionMeta: sessionMetaOf(
+			cleanMeta
+				? mergeConfigPatch(
+						(descriptor.sessionMeta?.() ?? {}) as Parameters<
+							typeof mergeConfigPatch
+						>[0],
+						cleanMeta as Parameters<typeof mergeConfigPatch>[1],
+					)
+				: descriptor.sessionMeta?.(),
+			[brief, inSystemPrompt ? sharedText : null].filter(
+				(t): t is string => !!t,
+			),
+			reportsInit && !!opts.shared,
+		),
 		...authenticateOf(descriptor, env),
 		initTimeoutMs: opts.initTimeoutMs,
 		promptTimeoutMs: opts.promptTimeoutMs,
@@ -1002,7 +1265,22 @@ async function* runSession(
 			: opts.resume?.fork
 				? { resume: { fork: opts.resume.fork, fresh: !!opts.resume.fresh } }
 				: {}),
-		...(offer ? { mcpServers: offer.pick } : {}),
+		...(mcpServers ? { mcpServers } : {}),
+		...(reportsInit && opts.shared
+			? {
+					onExtNotification: (method: string, params: unknown) => {
+						const init =
+							method === CLAUDE_SDK_MESSAGE && !loadout ? initOf(params) : null;
+						if (init && opts.shared)
+							loadout = {
+								profile: opts.shared.profile,
+								cwd: opts.cwd,
+								fingerprint: opts.shared.fingerprint,
+								items: initItems(init),
+							};
+					},
+				}
+			: {}),
 		onDrift: (drift) => {
 			wire("in", JSON.stringify({ drift }));
 			opts.onHarnessDrift?.(
@@ -1049,6 +1327,8 @@ async function* runSession(
 	): AsyncGenerator<CanonicalEvent, TurnEnd> {
 		for await (const item of items) {
 			if (opts.signal?.aborted) session.cancel(opts.signal.reason);
+			const due = loadoutDue();
+			if (due) yield due;
 			if (item.kind === "update") {
 				const u = item.update;
 				// A sub-agent's words and state are its own: never the report's text, the run's usage or mode (#1025).
@@ -1103,6 +1383,8 @@ async function* runSession(
 								...(lastUsed !== undefined && lastUsed !== autoCompactFrom
 									? { after: lastUsed }
 									: {}),
+								// A sub-agent's compaction rebuilds no system prompt of this session.
+								...(status === "completed" && main ? compactedTo() : {}),
 							},
 						);
 						autoCompactFrom = undefined;
@@ -1550,7 +1832,27 @@ async function* runSession(
 		)
 			? "message"
 			: "event";
-		yield adapter.sessionOpened(opening, carrier);
+		// A reopened session keeps what it holds: Claude its first system prompt, any other agent
+		// the instructions an earlier prompt carried, sent again only once they change (§3.3).
+		const reopened = !!session.reopen && session.reopen !== "fresh";
+		const held = opts.shared?.held ?? "";
+		if (reopened && held === sentRevision) sharedTextOwed = false;
+		yield adapter.sessionOpened(
+			opts.shared
+				? {
+						...opening,
+						sharedSet: {
+							// What the session holds now: another agent takes new instructions at its
+							// first turn's receipt, which records them.
+							revision: reopened ? held : inSystemPrompt ? sentRevision : "",
+							servers: sharedSent ?? sharedServers.map((s) => s.name),
+						},
+					}
+				: opening,
+			carrier,
+		);
+		const loadoutAtOpen = loadoutDue();
+		if (loadoutAtOpen) yield loadoutAtOpen;
 		// A return must not run work the agent started before PrismaLens set its level (#1168).
 		// Watched until its first prompt goes out: the turn's awaited setup is no blind spot.
 		let watching = !!back?.returning && session.reopen !== "fresh";
@@ -1700,6 +2002,7 @@ async function* runSession(
 		};
 		const turn = async function* (
 			parts: PromptPart[],
+			command = false,
 		): AsyncGenerator<CanonicalEvent, TurnEnd> {
 			const receipt = carried;
 			carried = [];
@@ -1709,6 +2012,12 @@ async function* runSession(
 			yield* recordQueued();
 			if (turns++ > 0 && opts.effort && !(await sendEffort()))
 				opts.onPolicyWarning?.(`${label} did not keep ${opts.effort} effort`);
+			// The set's instructions open the first prompt after the session opens (§3.3, `first-message`);
+			// a command keeps its turn to itself.
+			// Owed until a turn is received: a `cancelled` stop may mean the prompt never went in.
+			const carriesShared = sharedTextOwed && !!sharedText && !command;
+			if (carriesShared && sharedText)
+				parts = [{ type: "text", text: sharedText }, ...parts];
 			// One turn for the hooks however many tries it takes: a retry takes no second snapshot.
 			const turnId = adapter.peekSeq();
 			await turnHook("start", turnId);
@@ -1738,9 +2047,15 @@ async function* runSession(
 				// A stop other than cancelled is the receipt; claude-agent-acp's `cancelled` may mean the
 				// prompt never went in. A compact carries no missed context (#1168, #1179).
 				if ("stop" in end && end.stop !== "cancelled") {
-					// One receipt holds at most 50 ids, so a larger turn sends several.
-					for (let i = 0; i < receipt.length; i += 50)
-						yield adapter.messagesReceived(receipt.slice(i, i + 50));
+					if (carriesShared) sharedTextOwed = false;
+					// One receipt holds at most 50 ids, so a larger turn sends several; the first
+					// records the instructions the turn carried.
+					const shown = carriesShared ? sentRevision : undefined;
+					for (let i = 0; i < Math.max(receipt.length, shown ? 1 : 0); i += 50)
+						yield adapter.messagesReceived(
+							receipt.slice(i, i + 50),
+							i === 0 ? shown : undefined,
+						);
 					if (!compacting && (!owed || carrying)) {
 						owed = false;
 						if (session.sessionId) await delivered(session.sessionId, sent);
@@ -1827,7 +2142,13 @@ async function* runSession(
 				...(context?.addendum ? [context.addendum] : []),
 				...after,
 			];
-			if (frame.wrap || before.length || extra.length || attachments?.length) {
+			if (
+				frame.wrap ||
+				before.length ||
+				extra.length ||
+				attachments?.length ||
+				sharedTextOwed
+			) {
 				const lead = yield* turn(
 					promptParts(
 						wrap([...before, COMMAND_LEAD, ...extra].join("\n\n")),
@@ -1840,7 +2161,7 @@ async function* runSession(
 			}
 			const record = frame.beforeCommand?.();
 			if (record) yield record;
-			return yield* turn([{ type: "text", text: command }]);
+			return yield* turn([{ type: "text", text: command }], true);
 		};
 
 		/** The agent's own compact command as a turn, between two boundary events (#1024). */
@@ -1859,12 +2180,15 @@ async function* runSession(
 			compacting = true;
 			let r: TurnEnd;
 			try {
-				r = yield* turn([
-					{
-						type: "text",
-						text: `/${c.command}${instructions ? ` ${instructions}` : ""}`,
-					},
-				]);
+				r = yield* turn(
+					[
+						{
+							type: "text",
+							text: `/${c.command}${instructions ? ` ${instructions}` : ""}`,
+						},
+					],
+					true,
+				);
 			} finally {
 				compacting = false;
 			}
@@ -1879,6 +2203,7 @@ async function* runSession(
 					? { after: lastUsed }
 					: {}),
 				...(instructions ? { instructions } : {}),
+				...(ok ? compactedTo() : {}),
 			});
 			return r;
 		};

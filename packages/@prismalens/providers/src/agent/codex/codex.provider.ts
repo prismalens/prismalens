@@ -77,6 +77,80 @@ export const codex = defineAgent({
 		usageReports: ["cache"],
 		limitsBeforeRun: "codex-app-server",
 		settingsFile: "~/.codex/config.toml",
+		// Codex docs agents-md, config-advanced, hooks, build-skills; project config only when trusted (#1180).
+		// config/read, skills/list, hooks/list and plugin/installed in 0.171.0's app-server schema (#1180).
+		loadoutReport: "codex-app-server",
+		configLayout: {
+			instructions: [
+				{ path: "{$CODEX_HOME|~/.codex}/AGENTS.override.md", scope: "global" },
+				{
+					path: "{$CODEX_HOME|~/.codex}/AGENTS.md",
+					scope: "global",
+					onlyIfMissing: "{$CODEX_HOME|~/.codex}/AGENTS.override.md",
+				},
+				{ path: "<ancestors>/AGENTS.override.md", scope: "repo" },
+				{
+					path: "<ancestors>/AGENTS.md",
+					scope: "repo",
+					onlyIfMissing: "<ancestors>/AGENTS.override.md",
+				},
+			],
+			skills: [
+				{ path: "{$CODEX_HOME|~/.codex}/skills", scope: "global" },
+				{ path: "~/.agents/skills", scope: "global" },
+				{ path: "<ancestors>/.agents/skills", scope: "repo" },
+			],
+			mcp: [
+				{
+					path: "{$CODEX_HOME|~/.codex}/config.toml",
+					scope: "global",
+					format: "toml",
+					key: "mcp_servers",
+				},
+				{
+					path: "<repo>/.codex/config.toml",
+					scope: "repo",
+					format: "toml",
+					key: "mcp_servers",
+				},
+			],
+			// Codex 0.171.0 reads hooks from both files.
+			hooks: [
+				{
+					path: "{$CODEX_HOME|~/.codex}/config.toml",
+					scope: "global",
+					format: "toml",
+					key: "hooks",
+				},
+				{
+					path: "<repo>/.codex/config.toml",
+					scope: "repo",
+					format: "toml",
+					key: "hooks",
+				},
+				{
+					path: "{$CODEX_HOME|~/.codex}/hooks.json",
+					scope: "global",
+					format: "json",
+					key: "hooks",
+				},
+				{
+					path: "<repo>/.codex/hooks.json",
+					scope: "repo",
+					format: "json",
+					key: "hooks",
+				},
+			],
+			plugins: [
+				{
+					path: "{$CODEX_HOME|~/.codex}/config.toml",
+					scope: "global",
+					format: "toml",
+					key: "plugins",
+				},
+			],
+			trust: { path: "{$CODEX_HOME|~/.codex}/config.toml", gate: "agent" },
+		},
 		ownSettingsNote: (c) =>
 			c?.modes && !offers(c, "workspace-write")
 				? "This codex-acp runs Ask always and Auto-accept edits in the same mode, Ask for approval; edits inside the copy need no ask."

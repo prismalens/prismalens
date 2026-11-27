@@ -38,7 +38,6 @@ import { relTime } from "@/components/kit/rel-time";
 import { startedByUser } from "@/components/run/trigger-types";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
-import { RenameField } from "@/components/shell/RenameField";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import {
 	FilterTrigger,
@@ -565,6 +564,13 @@ const takeFilterOpen = () => {
 	filterOpenOnLoad = false;
 	return open;
 };
+// The field loads when a rename starts.
+const RenameField = lazyPart(
+	() => import("./RenameField").then((m) => m.RenameField),
+	null,
+	{ now: true },
+);
+
 const FilterMenu = lazyPart(
 	() =>
 		import("./ThreadFilters").then((m) => (props: FilterProps) => (

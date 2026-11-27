@@ -4,7 +4,7 @@
 
 // Qualifies one agent against the scripted model (aimock, scripts/fakes/scripted-model.mjs):
 // the admission (R1-R11) and the behaviour matrix, so a PR's verdict never depends on a live model (#884, #914).
-//   node scripts/admission-fake.mjs <agent> <cloneDir> [--repeat N] [--only admission|matrix] [--rows a,b] [--journal]
+//   node scripts/admission-fake.mjs <agent> <cloneDir> [--repeat N] [--only admission|matrix] [--rows a,b] [--require] [--journal]
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -301,6 +301,8 @@ export function parseArgs(argv) {
 		admission: only !== "matrix",
 		matrix: only !== "admission",
 		rows: flag("--rows"),
+		// A named row that is missing or n/a for this agent fails, rather than being skipped.
+		require: argv.includes("--require"),
 		journal: argv.includes("--journal"),
 	};
 }
@@ -350,12 +352,14 @@ async function main() {
 	const args = parseArgs(process.argv.slice(2));
 	if (!args) {
 		console.error(
-			`usage: admission-fake.mjs <${AGENTS.join("|")}> <cloneDir> [--repeat N] [--only admission|matrix] [--rows a,b] [--journal]`,
+			`usage: admission-fake.mjs <${AGENTS.join("|")}> <cloneDir> [--repeat N] [--only admission|matrix] [--rows a,b] [--require] [--journal]`,
 		);
 		process.exit(2);
 	}
 	const home = mkdtempSync(join(tmpdir(), "pl-admission-fake-"));
 	const workdir = mkdtempSync(join(homedir(), ".pl-matrix-"));
+	// The scripted model (here) logs what system prompts held; a row run in the matrix reads it.
+	process.env.PL_MATRIX_PROMPT_LOG ??= join(home, "prompts.jsonl");
 	/** @type {Awaited<ReturnType<typeof startScriptedModel>>[]} */
 	const models = [];
 	const startModel = async () => {
@@ -428,7 +432,11 @@ async function main() {
 				Object.assign(overrides, signedOut);
 				const out = await engineScript(
 					"acp-matrix.ts",
-					[args.harness, ...(args.rows ? ["--only", args.rows] : [])],
+					[
+						args.harness,
+						...(args.rows ? ["--only", args.rows] : []),
+						...(args.require ? ["--require"] : []),
+					],
 					{
 						...agentEnv(args.harness, model, runHome),
 						PL_MATRIX_SIGNED_OUT: JSON.stringify(overrides),

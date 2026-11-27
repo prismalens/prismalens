@@ -8,24 +8,28 @@ import {
 	type Facts,
 } from "@/components/kit/actions";
 
+type AgentFacts =
+	| "canUpdate"
+	| "canSignOut"
+	| "canChangeAccount"
+	| "canUpdateAll"
+	| "checking"
+	| "nothingToCheck";
+
 /**
  * An agent in Settings → Agents (#1180): its own CLI's lines, each staged in a fresh
- * terminal, and the list's Update all. A fact is on only while its line exists.
+ * terminal, and the list's Update all and Check all. A fact is on only while its line exists.
  */
 export interface AgentCtx {
 	update: () => void;
 	signOut: () => void;
 	changeAccount: () => void;
 	updateAll: () => void;
-	facts: Facts<
-		"canUpdate" | "canSignOut" | "canChangeAccount" | "canUpdateAll"
-	>;
+	checkAll: () => void;
+	facts: Facts<AgentFacts>;
 }
 
-export const agentObject = defineObject<
-	AgentCtx,
-	"canUpdate" | "canSignOut" | "canChangeAccount" | "canUpdateAll"
->("agent");
+export const agentObject = defineObject<AgentCtx, AgentFacts>("agent");
 
 export const agentUpdate = defineAction({
 	id: "agent.update",
@@ -57,4 +61,13 @@ export const agentUpdateAll = defineAction({
 	icon: RefreshCw,
 	when: (f) => !!f.is?.canUpdateAll,
 	run: (c) => c.updateAll(),
+});
+
+/** Checks every installed agent that is on whose check runs isolated (#1180 §1.4). */
+export const agentCheckAll = defineAction({
+	id: "agent.checkAll",
+	label: "Check all",
+	icon: RefreshCw,
+	disabled: (f) => !!f.is?.checking || !!f.is?.nothingToCheck,
+	run: (c) => c.checkAll(),
 });

@@ -247,6 +247,17 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 			),
 		}),
 		/**
+		 * The Clean profile switch (#1180 §3.4): `offered` when this agent has one that holds on this
+		 * machine; `reason` says why not. Absent on an agent with none.
+		 */
+		cleanProfile: z
+			.object({
+				offered: z.boolean(),
+				on: z.boolean(),
+				reason: z.string().optional(),
+			})
+			.optional(),
+		/**
 		 * What the last readiness check read from the harness itself (R4.2 d4,
 		 * R4.3 d2); null until one has run, which the picker says as "pending a check".
 		 * Every outcome is kept; only `answers-acp` lets a run start (#673 w9).
@@ -271,6 +282,8 @@ export const HarnessStatusSchema = /* @__PURE__ */ lazySchema(() =>
 				/** The effort levels the agent offered, by name; null when it offered none. */
 				efforts: z.array(EffortLevelSchema).nullable().default(null),
 				images: z.boolean(),
+				/** ACP `mcpCapabilities.http`: it takes HTTP MCP servers (#1180 §3.3); absent on a check before. */
+				mcpHttp: z.boolean().optional(),
 				sandbox: SandboxChecksSchema.nullable().default(null),
 				/** The agent speaks a protocol version this host does not (#1101 protocol.drift). */
 				protocol: AgentProtocolDriftSchema.nullable().optional(),
@@ -397,6 +410,15 @@ export function smallestModel(
  * stored per harness (#639): an id is in one harness's own format, so a model
  * set for one never reaches another.
  */
+/** Settings → Agents → Check every, in minutes; 0 is off (#1180 §1.4). */
+export const RefreshMinutesSchema = z.union([
+	z.literal(0),
+	z.literal(5),
+	z.literal(15),
+	z.literal(30),
+	z.literal(60),
+]);
+
 export const HarnessSettingsSchema = /* @__PURE__ */ lazySchema(() =>
 	z.object({
 		harness: HarnessSettingSchema,
@@ -430,6 +452,10 @@ export const HarnessSettingsSchema = /* @__PURE__ */ lazySchema(() =>
 		off: z.array(z.enum(HARNESS_IDS)).optional(),
 		/** Agents put through Add agent that did not pass; listed anyway (#1171). */
 		added: z.array(z.enum(HARNESS_IDS)).optional(),
+		/** Agents whose runs skip the user's hooks and plugins, keeping the sign-in (#1180 §3.4). */
+		cleanProfile: z.array(z.enum(HARNESS_IDS)).optional(),
+		/** Minutes between background checks; 0 is off, absent is 15 (#1180 §1.4). */
+		refreshMinutes: RefreshMinutesSchema.optional(),
 		/** Only pass named variables: the agent gets an allowlist, not the user's environment (#817). */
 		strictEnv: z.boolean().optional(),
 		/** Alert and schedule runs keep the user's GitHub token (#1020, R41); absent is off. */
@@ -512,6 +538,12 @@ export const UpdateHarnessSettingsSchema = /* @__PURE__ */ lazySchema(() =>
 			/** Each merges per agent; `false` takes it out. */
 			off: z.partialRecord(z.enum(HARNESS_IDS), z.boolean()).optional(),
 			added: z.partialRecord(z.enum(HARNESS_IDS), z.boolean()).optional(),
+			/** Each merges per agent; `false` takes it out. Host only. */
+			cleanProfile: z
+				.partialRecord(z.enum(HARNESS_IDS), z.boolean())
+				.optional(),
+			/** Host only. */
+			refreshMinutes: RefreshMinutesSchema.optional(),
 			/** `null` removes the local agent. Host only. */
 			localAgent: LocalAgentSchema.nullable().optional(),
 			/** Only pass named variables (#817). Host only. */
@@ -587,6 +619,7 @@ export const HarnessProbeResultSchema = /* @__PURE__ */ lazySchema(() =>
 		modes: z.array(AgentModeOptionSchema).nullable().optional(),
 		efforts: z.array(EffortLevelSchema).nullable().optional(),
 		images: z.boolean().optional(),
+		mcpHttp: z.boolean().optional(),
 		sandbox: SandboxChecksSchema.nullable().optional(),
 		protocol: AgentProtocolDriftSchema.nullable().optional(),
 		account: AgentAccountSchema.nullable().optional(),

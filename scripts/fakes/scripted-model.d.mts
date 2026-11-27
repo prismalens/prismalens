@@ -29,6 +29,10 @@ export interface RowRun {
 	/** Opens a session and reads `session/new`; no prompt is sent. */
 	sessionOnly?: boolean;
 	promptTimeoutMs?: number;
+	/** Seeds marker hooks, plugins and MCP servers, fires them once with no isolation, then runs every check path under `probe`, or a session and turn under `clean` (#1180). */
+	isolation?: "probe" | "clean";
+	/** Gives the run a shared stdio marker server, then takes the session up again with `session/load` (#1180 §3.3). */
+	sharedSet?: boolean;
 }
 
 export type Expectation =
@@ -46,7 +50,11 @@ export type Expectation =
 	| "modes"
 	| "parallel"
 	/** PrismaLens's own tools were called as `gateway` says, and the run reported (#848). */
-	| "gateway";
+	| "gateway"
+	/** No seeded marker fired under isolation, after the same markers fired without it (#1180). */
+	| "no-user-code"
+	/** The shared server's tool was called beside PrismaLens's, on the first session and after a load (#1180). */
+	| "shared-set";
 
 /** What a `gateway` row expects PrismaLens's tools to have recorded, in order. */
 export interface GatewayExpectation {
@@ -90,6 +98,8 @@ export interface Row {
 	/** The source-read fact this row observes: `expect` where an agent declares `value`, `else` where it does not. */
 	fact?: { name: string; value: unknown; else: Expectation };
 	gateway?: GatewayExpectation;
+	/** Per agent, the markers its own profile must fire, the row's positive control (#1180). */
+	markers?: Record<string, string[]>;
 	fixtures: FixtureFileEntry[];
 }
 

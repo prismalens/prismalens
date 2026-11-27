@@ -6,8 +6,66 @@
 // Tests resolvePublishTag in scripts/pack-cli.mjs.
 
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { resolveBuildSha, resolvePublishTag } from "./pack-cli.mjs";
+import {
+	nativeCopyOffenders,
+	resolveBuildSha,
+	resolvePublishTag,
+} from "./pack-cli.mjs";
+
+/** A workspace package `owner` whose node_modules holds `dep` with this manifest. */
+function workspaceWith(owner, dep, depManifest) {
+	const root = mkdtempSync(join(tmpdir(), "pack-cli-test-"));
+	const dir = join(root, "engine");
+	const depDir = join(dir, "node_modules", ...dep.split("/"));
+	mkdirSync(depDir, { recursive: true });
+	writeFileSync(join(depDir, "package.json"), JSON.stringify(depManifest));
+	return { root, workspace: new Map([[owner, { dir, manifest: {} }]]) };
+}
+
+test("a registry dependency whose optional deps are agent native copies is reported (#1269)", () => {
+	const sdk = "@anthropic-ai/claude-agent-sdk";
+	const { root, workspace } = workspaceWith("@prismalens/engine", sdk, {
+		name: sdk,
+		optionalDependencies: {
+			"@anthropic-ai/claude-agent-sdk-linux-x64": "0.3.328",
+			"@anthropic-ai/claude-agent-sdk-win32-x64": "0.3.328",
+			"some-other-optional": "1.0.0",
+		},
+	});
+	try {
+		const union = new Map([
+			[sdk, { range: "0.3.328", requiredBy: ["@prismalens/engine"] }],
+		]);
+		assert.deepEqual(nativeCopyOffenders(union, workspace), [
+			"@anthropic-ai/claude-agent-sdk (from @prismalens/engine) would install " +
+				"@anthropic-ai/claude-agent-sdk-linux-x64, @anthropic-ai/claude-agent-sdk-win32-x64",
+		]);
+		// Hoisted from the nested copy, the SDK leaves the union and nothing is reported.
+		union.delete(sdk);
+		assert.deepEqual(nativeCopyOffenders(union, workspace), []);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("a registry dependency with ordinary optional deps is not reported", () => {
+	const { root, workspace } = workspaceWith("@prismalens/engine", "chokidar", {
+		name: "chokidar",
+		optionalDependencies: { fsevents: "2.3.3" },
+	});
+	try {
+		const union = new Map([
+			["chokidar", { range: "^4.0.0", requiredBy: ["@prismalens/engine"] }],
+		]);
+		assert.deepEqual(nativeCopyOffenders(union, workspace), []);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
 
 test("returns 'latest' for a plain release version without prerelease tag", () => {
 	const tag = resolvePublishTag({

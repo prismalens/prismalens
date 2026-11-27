@@ -26,7 +26,11 @@ import type {
 	RunUsage,
 	TurnInputPart,
 } from "@prismalens/contracts/schemas";
-import type { GatewayEntry, ResolvedConnector } from "@prismalens/engine";
+import type {
+	GatewayEntry,
+	ResolvedConnector,
+	RunInvestigationOptions,
+} from "@prismalens/engine";
 import type { HarnessScope } from "@prismalens/integrations/harness";
 import type { AgentRuntime } from "../../core/harness/harness.service.js";
 import type {
@@ -203,6 +207,11 @@ export interface RunPorts {
 	questionTimeoutMs?(): Promise<number | undefined>;
 	/** The secrets the user gave this thread through `pl_secret_request`, by variable name, decrypted (#1024 spec B). */
 	requestedSecrets?(runId: string): Promise<Record<string, string>>;
+	/** The PrismaLens set as one run on `harness` in `cwd` receives it (#1180 §3.3). */
+	sharedSet?(
+		harness: HarnessId,
+		cwd: string,
+	): Promise<RunInvestigationOptions["shared"] | null>;
 	/**
 	 * The incident's newest run started after this one, with its `Run #N` and
 	 * the commits it looked at; null when there is none, or it kept no workspace (#673 w27).

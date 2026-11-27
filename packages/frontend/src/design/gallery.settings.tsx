@@ -7,6 +7,7 @@ import {
 	UpdateAllButton,
 	UpdateButton,
 } from "@/components/settings/AgentLines";
+import { CheckAllButton, CheckTimes } from "@/components/settings/agent-checks";
 import { ThreadTitleOptions } from "@/components/settings/ModelsSettings";
 import { SettingsResults } from "@/components/settings/SettingsSearch";
 import { Keys } from "@/components/settings/ShortcutsSettings";
@@ -15,6 +16,7 @@ import { SettingGroup, SettingRow } from "@/components/shared/SettingRow";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import type { GallerySection } from "./gallery";
+import { agentsGallery } from "./gallery.agents";
 
 /** An installed agent a release behind, with its own sign-out and account lines (#1180). */
 const behind = (id: string, label: string, command: string): HarnessStatus =>
@@ -34,8 +36,39 @@ const claude = behind("claude-code", "Claude Code", "claude update");
 
 const noop = () => {};
 
+const checkedAgent = {
+	id: "codex",
+	label: "Codex",
+	installed: true,
+	off: false,
+	checked: {
+		at: new Date(Date.now() - 3 * 60_000).toISOString(),
+		lastTry: {
+			at: new Date(Date.now() - 60_000).toISOString(),
+			outcome: "no-answer",
+			detail: "no answer",
+		},
+	},
+} as unknown as HarnessStatus;
+
 /** Settings states (#1101 cat 18): search, Reset, host-only, a dangerous row and a remap. */
 export const settingsGallery: GallerySection[] = [
+	{
+		id: "settings-agent-checks",
+		title: "Agents: Check all, the kept check's time and a newer failed try",
+		render: () => (
+			<div className="max-w-[42rem]">
+				<SettingGroup
+					title="Agents"
+					actions={<CheckAllButton agents={[checkedAgent]} />}
+				>
+					<Pool>
+						<CheckTimes agent={checkedAgent} />
+					</Pool>
+				</SettingGroup>
+			</div>
+		),
+	},
 	{
 		id: "agent-detail-actions",
 		title: "Agent page: Update when behind, Change account and Sign out",
@@ -172,4 +205,5 @@ export const settingsGallery: GallerySection[] = [
 			</div>
 		),
 	},
+	...agentsGallery,
 ];

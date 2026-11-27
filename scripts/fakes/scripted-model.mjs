@@ -4,7 +4,7 @@
 
 // The scripted model every agent's model calls go to: aimock serving the fixtures under
 // scripts/fakes/scenarios/, with the agent's own tool names filled in (#914).
-import { readdirSync, readFileSync } from "node:fs";
+import { appendFileSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -264,7 +264,9 @@ export async function startScriptedModel(harness, options = {}) {
 	mock.addFixture({
 		match: {
 			predicate: (req) => {
-				seen.push(requestSummary(req));
+				const summary = requestSummary(req);
+				seen.push(summary);
+				logPrompt(summary.row, req);
 				return false;
 			},
 		},
@@ -282,6 +284,26 @@ export async function startScriptedModel(harness, options = {}) {
 		},
 		close: () => mock.stop(),
 	};
+}
+
+/** Marker words a matrix row puts in the instructions it shares, `PLREV-<id>`. */
+const PROMPT_MARK = /PLREV-[A-Z0-9]+/g;
+
+/**
+ * With PL_MATRIX_PROMPT_LOG, one line per request: its row and the `PLREV-` words in its system
+ * prompt, so a row run in another process can tell which instructions the model saw (#1180).
+ * @param {string | null} row
+ * @param {import("@copilotkit/aimock").ChatCompletionRequest} req
+ */
+function logPrompt(row, req) {
+	const file = process.env.PL_MATRIX_PROMPT_LOG;
+	if (!file || !row) return;
+	const system = req.messages
+		.filter((m) => m.role === "system" || m.role === "developer")
+		.map(textOf)
+		.join("\n");
+	const marks = [...new Set(system.match(PROMPT_MARK) ?? [])].sort();
+	appendFileSync(file, `${JSON.stringify({ row, system: marks })}\n`);
 }
 
 /**

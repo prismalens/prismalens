@@ -46,7 +46,7 @@ import { startStubGateway } from "./stub-gateway.js";
 export const ROW_RUN_ID = "00000000-0000-4000-8000-0000000000a1";
 const DEFAULT_PROMPT_MS = 120_000;
 
-const CONTEXT: InvestigationContext = {
+export const CONTEXT: InvestigationContext = {
 	alerts: [
 		{
 			alertname: "ScenarioProbe",
@@ -63,7 +63,7 @@ const CONTEXT: InvestigationContext = {
 };
 
 /** The person at the run's card: allows each ask once, or refuses it. */
-const answerPolicy =
+export const answerPolicy =
 	(answer: "allow" | "deny"): PermissionPolicy =>
 	(req) => {
 		const allow = optionOf(req, "allow");
@@ -434,6 +434,10 @@ export function checkRow(
 			return toolResults > 0 && errors.length > 0 && !report
 				? null
 				: `expected the step's tool result, then an error and no report (${saw})`;
+		case "no-user-code":
+			return "an isolation row runs through runIsolationRow, not checkRow";
+		case "shared-set":
+			return "a shared-set row runs through runSharedSetRow, not checkRow";
 		case "gateway":
 			if (!report) return `no report (${saw})`;
 			return gatewayProblem(seen.events, gateway);

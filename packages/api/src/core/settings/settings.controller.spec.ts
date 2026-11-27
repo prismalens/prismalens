@@ -8,6 +8,8 @@ import type { HarnessService } from "../harness/harness.service.js";
 import { SettingsController } from "./settings.controller.js";
 import { ActiveRunsError, type SettingsService } from "./settings.service.js";
 import { telemetryStub } from "../../../test/factories/index.js";
+import type { HarnessRefreshService } from "../harness/harness-refresh.service.js";
+import type { AgentSetupService } from "../harness/agent-setup.service.js";
 import type { DiagnosticsService } from "./diagnostics.service.js";
 import type { UpdateService } from "./update.service.js";
 
@@ -41,6 +43,8 @@ function dangerHandlers(settings: Partial<SettingsService>) {
 		telemetryStub(),
 		{} as UpdateService,
 		{} as DiagnosticsService,
+		{} as HarnessRefreshService,
+		{} as AgentSetupService,
 	);
 	const procedures = controller.danger() as unknown as Record<
 		string,
@@ -145,6 +149,8 @@ describe("SettingsController usage data (#673 w45)", () => {
 			telemetry,
 			{} as UpdateService,
 			{} as DiagnosticsService,
+			{} as HarnessRefreshService,
+		{} as AgentSetupService,
 		);
 		const update = (
 			controller.telemetry() as unknown as Record<
@@ -167,6 +173,8 @@ describe("SettingsController usage data (#673 w45)", () => {
 			telemetry,
 			{} as UpdateService,
 			{} as DiagnosticsService,
+			{} as HarnessRefreshService,
+		{} as AgentSetupService,
 		);
 		const update = (
 			controller.telemetry() as unknown as Record<
@@ -197,6 +205,8 @@ describe("SettingsController host-only update routes (#724)", () => {
 			telemetryStub(),
 			update as UpdateService,
 			diagnostics as DiagnosticsService,
+			{} as HarnessRefreshService,
+		{} as AgentSetupService,
 		);
 	}
 
@@ -231,5 +241,56 @@ describe("SettingsController host-only update routes (#724)", () => {
 			update.install["~orpc"].handler({ input: { version: "9.9.9" }, context: paired }),
 		).rejects.toMatchObject({ code: "FORBIDDEN", message: "host only" });
 		expect(install).toHaveBeenCalledWith("9.9.9", false);
+	});
+});
+
+describe("SettingsController PrismaLens set routes (#1180 §3.3)", () => {
+	type Proc = { "~orpc": { handler: (args: { input: unknown; context: unknown }) => Promise<unknown> } };
+	const SOURCE = { agent: "codex", path: "/home/u/.codex/config.toml", key: "docs" };
+	// The host's own browser: the owner, from loopback, with a same-host origin.
+	const local = {
+		request: {
+			...host.request,
+			socket: { remoteAddress: "127.0.0.1", localPort: 3000 },
+			headers: { host: "127.0.0.1:3000", origin: "http://127.0.0.1:3000" },
+		},
+	};
+
+	it("refuses the preview and a reveal to a paired device without reading the source, and answers the host", async () => {
+		const preview = vi.fn(async () => ({ shown: "preview" }));
+		const reveal = vi.fn(async () => ({ shown: "row" }));
+		const routes = new SettingsController(
+			{} as SettingsService,
+			{} as HarnessService,
+			telemetryStub(),
+			{} as UpdateService,
+			{} as DiagnosticsService,
+			{} as HarnessRefreshService,
+			{ preview, reveal } as unknown as AgentSetupService,
+		).agentSetupRoutes() as unknown as Record<string, Proc>;
+		const call = async (name: string, input: unknown, context: unknown) => routes[name]?.["~orpc"].handler({ input, context });
+		await expect(call("previewSharedServer", { source: SOURCE }, paired)).rejects.toMatchObject({ code: "FORBIDDEN" });
+		await expect(call("revealSharedServerRow", { source: SOURCE, row: 0 }, paired)).rejects.toMatchObject({ code: "FORBIDDEN" });
+		expect([preview.mock.calls.length, reveal.mock.calls.length]).toEqual([0, 0]);
+		expect(await call("previewSharedServer", { source: SOURCE }, local)).toEqual({ shown: "preview" });
+		expect(await call("revealSharedServerRow", { source: SOURCE, row: 0 }, local)).toEqual({ shown: "row" });
+	});
+
+	it("refuses approving a shared server to an owner session that is not the host's own", async () => {
+		const approveSharedServer = vi.fn(async () => ({}));
+		const routes = new SettingsController(
+			{} as SettingsService,
+			{} as HarnessService,
+			telemetryStub(),
+			{} as UpdateService,
+			{} as DiagnosticsService,
+			{} as HarnessRefreshService,
+			{ approveSharedServer } as unknown as AgentSetupService,
+		).agentSetupRoutes() as unknown as Record<string, Proc>;
+		const remoteOwner = { request: { ...host.request, socket: { remoteAddress: "192.168.1.20", localPort: 3000 }, headers: {} } };
+		await expect(
+			Promise.resolve().then(() => routes.approveSharedServer["~orpc"].handler({ input: {}, context: remoteOwner })),
+		).rejects.toMatchObject({ code: "FORBIDDEN", message: "This only works on the computer running PrismaLens." });
+		expect(approveSharedServer).not.toHaveBeenCalled();
 	});
 });

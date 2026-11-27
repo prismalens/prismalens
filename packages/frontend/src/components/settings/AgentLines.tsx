@@ -9,6 +9,7 @@ import { CommandChip } from "@/components/ui/command-chip";
 import { terminalStore, useTerminalState } from "@/lib/terminal/store";
 import { useTerminalAvailability } from "@/lib/terminal/use-terminal-availability";
 import type { AgentCtx } from "./agent.actions";
+import { useCheckAll } from "./agent-checks";
 import { recheckWith, StagedCommand } from "./StagedCommand";
 
 /** The agent's update shows as a button only when it is older than tested or a newer release is out (#1180). */
@@ -70,6 +71,7 @@ export function useAgentCtx(h: HarnessStatus): AgentCtx {
 		signOut: () => can(signOut) && stage([h.id], signOut),
 		changeAccount: () => can(account) && stage([h.id], account),
 		updateAll: () => {},
+		checkAll: () => {},
 		facts: {
 			is: {
 				canUpdate: can(update),
@@ -80,9 +82,10 @@ export function useAgentCtx(h: HarnessStatus): AgentCtx {
 	};
 }
 
-/** The Agents list's context: Update all only. */
+/** The Agents list's context: Update all and Check all. */
 export function useAgentListCtx(list: readonly HarnessStatus[]): AgentCtx {
 	const { can, stage } = useStager();
+	const { part } = useCheckAll(list);
 	const all = updateAllLine(list);
 	const none = () => {};
 	return {
@@ -90,7 +93,8 @@ export function useAgentListCtx(list: readonly HarnessStatus[]): AgentCtx {
 		signOut: none,
 		changeAccount: none,
 		updateAll: () => all && can(all.command) && stage(all.ids, all.command),
-		facts: { is: { canUpdateAll: can(all?.command) } },
+		checkAll: part.checkAll,
+		facts: { is: { ...part.facts.is, canUpdateAll: can(all?.command) } },
 	};
 }
 

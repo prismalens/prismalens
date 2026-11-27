@@ -99,18 +99,24 @@ export function gatewayOffer(
 	entry: GatewayEntry,
 	delivery?: "mcp-config-file",
 ): {
-	pick: (capabilities: McpCapabilities | undefined) => McpServer[];
+	/** The gateway, then the PrismaLens set's resolved servers (#1180 §3.3); HTTP ones only where taken. */
+	pick: (
+		capabilities: McpCapabilities | undefined,
+		shared?: readonly McpServer[],
+	) => McpServer[];
 	/** The agent was handed the server, so waiting for its first request can pay off. */
 	offered: () => boolean;
 	taken: () => boolean;
 } {
 	let offered = delivery === "mcp-config-file";
 	return {
-		pick: (capabilities) => {
-			if (delivery === "mcp-config-file" || capabilities?.http !== true)
-				return [];
+		pick: (capabilities, shared = []) => {
+			if (delivery === "mcp-config-file") return [];
+			const http = capabilities?.http === true;
+			const rest = shared.filter((s) => http || !("type" in s));
+			if (!http) return rest;
 			offered = true;
-			return [gatewayServer(entry)];
+			return [gatewayServer(entry), ...rest];
 		},
 		offered: () => offered,
 		taken: () => entry.connected(),

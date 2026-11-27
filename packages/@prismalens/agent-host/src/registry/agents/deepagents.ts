@@ -12,7 +12,7 @@ export const deepagents = {
 	binary: "dcode",
 	gatewayDelivery: "mcp-config-file",
 	acpArgs: (env) =>
-		env.gateway
+		env.runFile
 			? ["--acp", "--mcp-config", inConfigDir(env, GATEWAY_RUN_FILE)]
 			: ["--acp"],
 	acpEnv: () => ({}),

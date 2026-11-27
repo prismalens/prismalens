@@ -5,6 +5,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { CredentialsService } from "../../modules/integrations/crypto/credentials.service.js";
 import { PrismaModule } from "../prisma/prisma.module.js";
+import { AgentSetupService } from "./agent-setup.service.js";
 import { AgentUpdatesService } from "./agent-updates.service.js";
 import { HarnessService } from "./harness.service.js";
 import { HarnessModelsService } from "./harness-models.service.js";
@@ -15,6 +16,7 @@ import { ThreadNamerService } from "./thread-namer.service.js";
 @Module({
 	imports: [PrismaModule, ConfigModule],
 	providers: [
+		AgentSetupService,
 		AgentUpdatesService,
 		CredentialsService,
 		HarnessService,
@@ -24,6 +26,7 @@ import { ThreadNamerService } from "./thread-namer.service.js";
 		ThreadNamerService,
 	],
 	exports: [
+		AgentSetupService,
 		AgentUpdatesService,
 		HarnessService,
 		RepoSourceService,

@@ -7,6 +7,7 @@ import { ACCESS_LEVELS, type AccessLevel, type LevelFacts } from "./levels.js";
 
 export * from "./agents.js";
 export * from "./facts.js";
+export * from "./isolation.js";
 export * from "./levels.js";
 export { opencodePermission } from "./opencode.js";
 

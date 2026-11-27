@@ -122,6 +122,20 @@ describe("sweepRunWorkspaces (#743)", () => {
 		expect(existsSync(join(dir, "runs", "run-done", "home"))).toBe(false);
 	});
 
+	it("removes the run file of a run it keeps, interrupted or pending, since a crashed run never reached its end (#1180 §3.3)", async () => {
+		const files = ["run-cut", "run-pending"].map((id) => {
+			const config = join(dir, "runs", id, "config");
+			mkdirSync(join(config, "skills"), { recursive: true });
+			writeFileSync(join(config, GATEWAY_RUN_FILE), "{}");
+			return config;
+		});
+		await sweepRunWorkspaces({ isInterrupted: (id) => id === "run-cut", isLive: (id) => id === "run-pending" });
+		expect(files.map((c) => [existsSync(join(c, GATEWAY_RUN_FILE)), existsSync(join(c, "skills"))])).toEqual([
+			[false, true],
+			[false, true],
+		]);
+	});
+
 	it("keeps a pending follow-up's expired keep-days workspace and run dir at boot", async () => {
 		const settings = { ...DEFAULT_RUN_WORKSPACE_SETTINGS, retention: { kind: "keep-days", days: 2 } as const };
 		setRunWorkspaceSource({

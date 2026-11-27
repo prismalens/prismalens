@@ -197,19 +197,19 @@ describe("registry facts", () => {
 		expect(AGENT_REGISTRY.gemini.acpEnv(env)).toEqual({});
 	});
 
-	it("hands deepagents the gateway by --mcp-config, and nothing without one (#848)", () => {
+	it("hands deepagents the gateway by --mcp-config once launch marks the run file, and nothing without one (#848)", () => {
 		const row = AGENT_REGISTRY.deepagents;
 		const env = { configDir: "/run/config", dataDir: "d", cwd: "w" };
 		expect(row.gatewayDelivery).toBe("mcp-config-file");
 		expect(row.acpArgs(env)).toEqual(["--acp"]);
 		expect(row.configFiles?.(env)).toEqual({});
 		const gateway = { url: "http://127.0.0.1:9/mcp", token: "tok", name: "prismalens-x" };
-		expect(row.acpArgs({ ...env, gateway })).toEqual([
+		expect(row.acpArgs({ ...env, gateway, runFile: true })).toEqual([
 			"--acp",
 			"--mcp-config",
 			`/run/config/${GATEWAY_RUN_FILE}`,
 		]);
-		expect(row.acpArgs({ ...env, configDir: "C:\\run\\config", gateway }).at(-1)).toBe(
+		expect(row.acpArgs({ ...env, configDir: "C:\\run\\config", gateway, runFile: true }).at(-1)).toBe(
 			`C:\\run\\config\\${GATEWAY_RUN_FILE}`,
 		);
 		expect(AGENT_IDS.filter((a) => AGENT_REGISTRY[a].gatewayDelivery)).toEqual(["deepagents"]);

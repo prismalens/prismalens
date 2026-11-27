@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import type { AgentDescriptor } from "../agents.js";
+import { codexProbeIsolation } from "../isolation.js";
 import { probed } from "../row.js";
 
 export const codex = {
@@ -72,4 +73,5 @@ export const codex = {
 			where: "dist/index.js resolveForkTurnId, readAirForkPoint",
 		},
 	},
+	probeIsolation: codexProbeIsolation,
 } satisfies AgentDescriptor;

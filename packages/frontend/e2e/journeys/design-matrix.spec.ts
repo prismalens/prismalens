@@ -715,6 +715,19 @@ test("design coverage matrix", async ({
 		expect(p.getByTestId("transcript")).toBeVisible(),
 	);
 	await shoot("sidebar-sections", "/new", home, { widths: [DESK] });
+	// The row grid (#1101 cat 2): status icon, title, time, agent; on a phone, in its Menu drawer.
+	await shoot(
+		"sidebar-rows",
+		"/new",
+		async (p) => {
+			await home(p);
+			const phone = (p.viewportSize()?.width ?? DESK.w) < 768;
+			if (phone) await p.getByTestId("strip-menu").click();
+			const list = phone ? p.getByTestId("phone-menu") : p;
+			await expect(list.getByTestId("thread-row").first()).toBeVisible();
+		},
+		{ widths: WIDTHS.filter((w) => w === DESK || w.w < 768) },
+	);
 	// What starts threads without you (#1020); the sidebar is the thread list (03d1002a4).
 	await shoot("automation-page", "/automation", (p) =>
 		expect(p.getByTestId("automation-page")).toBeVisible(),

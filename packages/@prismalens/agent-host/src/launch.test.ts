@@ -17,7 +17,16 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentHostError } from "./errors.js";
-import { GATEWAY_RUN_FILE } from "./registry/index.js";
+import {
+	claudeCleanIsolation,
+	claudeProbeIsolation,
+	codexProbeIsolation,
+	GATEWAY_RUN_FILE,
+	geminiCleanIsolation,
+	geminiProbeIsolation,
+	type Isolation,
+	opencodeProbeIsolation,
+} from "./registry/index.js";
 import {
 	GITHUB_TOKEN_VARS,
 	type LaunchPolicy,
@@ -414,6 +423,29 @@ describe("launch files", () => {
 		}
 	});
 
+	it("writes shared servers into deepagents' run file beside the gateway as env references, with their values in the child env only (#1180 §3.3)", () => {
+		const runDir = mkdtempSync(join(tmpdir(), "ah-runfile-"));
+		dirs.push(runDir);
+		const runFile = {
+			servers: { "pl-docs": { command: "/bin/docs", args: ["--key", "${PL_SV_DOCS_1}"], env: { TOKEN: "${PL_SV_DOCS_2}" } } },
+			env: { PL_SV_DOCS_1: "arg-value-1", PL_SV_DOCS_2: "env-value-2" },
+		};
+		const base = { agent: "deepagents" as const, level: "supervised" as const, policy: POLICY, launch: { command: "dcode" }, cwd: "/w", runDir, hostEnv: HOST };
+		const p = planLaunch({ ...base, runFile, gateway: { url: "http://127.0.0.1:9/mcp", token: "bearer-tok", name: "prismalens-run1" } });
+		const file = join(runDir, "config", GATEWAY_RUN_FILE);
+		expect(p.args).toEqual(["--acp", "--mcp-config", file]);
+		expect([p.env.PL_SV_DOCS_1, p.env.PL_SV_DOCS_2]).toEqual(["arg-value-1", "env-value-2"]);
+		writeLaunchFiles(p);
+		const text = readFileSync(file, "utf8");
+		expect(Object.keys(JSON.parse(text).mcpServers)).toEqual(["pl-docs", "prismalens-run1"]);
+		expect(JSON.parse(text).mcpServers["pl-docs"]).toEqual(runFile.servers["pl-docs"]);
+		expect([text.includes("arg-value-1"), text.includes("env-value-2")]).toEqual([false, false]);
+		const alone = planLaunch({ ...base, runFile });
+		expect([alone.args, Object.keys(JSON.parse(alone.files[file] ?? "{}").mcpServers)]).toEqual([["--acp", "--mcp-config", file], ["pl-docs"]]);
+		const other = planLaunch({ ...base, agent: "codex", launch: { command: "codex-acp" }, runFile });
+		expect([other.env.PL_SV_DOCS_1, other.runEnv.runFileServers]).toEqual([undefined, undefined]);
+	});
+
 	it("gives the gateway only to a row with gatewayDelivery", () => {
 		const gateway = { url: "http://127.0.0.1:9/mcp", token: "t", name: "n" };
 		const p = plan({ gateway });
@@ -500,4 +532,252 @@ describe("planLaunch sub-agent limits (#1024 spec B)", () => {
 		expect(limited.env).toEqual(base.env);
 		expect(limited.files).toEqual(base.files);
 	});
+});
+
+describe("planLaunch isolation (#1180 R1, §3.4)", () => {
+	const host = (files: Record<string, string> = {}) => ({
+		platform: "linux",
+		home: "/home/u",
+		read: (path: string) => files[path] ?? null,
+	});
+	const isolated = (
+		agent: PlanLaunchInput["agent"],
+		use: Isolation,
+		over: Partial<PlanLaunchInput> = {},
+	) =>
+		plan({
+			agent,
+			level: undefined,
+			launch: { command: agent },
+			isolation: [{ use, mcp: ["user-srv", "repo srv"] }],
+			isolationHost: host(),
+			...over,
+		});
+	const options = (p: { sessionMeta?: Record<string, unknown> }) =>
+		(p.sessionMeta?.claudeCode as { options: Record<string, unknown> }).options;
+
+	it("Claude Code check: strictMcpConfig and disableAllHooks merged into its options, and claude.ai connectors off", () => {
+		const p = isolated("claude-code", claudeProbeIsolation);
+		expect(p.sessionMeta).toEqual({
+			claudeCode: {
+				options: {
+					settingSources: ["user", "project", "local"],
+					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
+					perTaskStopAffordance: false,
+					strictMcpConfig: true,
+					settings: { disableAllHooks: true },
+				},
+			},
+		});
+		expect(p.env.ENABLE_CLAUDEAI_MCP_SERVERS).toBe("false");
+		expect(p.args).toEqual([]);
+	});
+
+	it("Claude Code check: a managed-mcp.json with mcpServers leaves strictMcpConfig out; one that does not parse keeps it", () => {
+		const managed = "/etc/claude-code/managed-mcp.json";
+		const valid = isolated("claude-code", claudeProbeIsolation, {
+			isolationHost: host({ [managed]: '{"mcpServers":{"corp":{}}}' }),
+		});
+		expect("strictMcpConfig" in options(valid)).toBe(false);
+		expect(options(valid).settings).toEqual({ disableAllHooks: true });
+		const broken = isolated("claude-code", claudeProbeIsolation, {
+			isolationHost: host({ [managed]: "{not json" }),
+		});
+		expect(options(broken).strictMcpConfig).toBe(true);
+	});
+
+	it("Codex check: CODEX_CONFIG holds hooks and plugins off and each found server off, merged into the user's own", () => {
+		const p = isolated("codex", codexProbeIsolation, {
+			stored: { CODEX_CONFIG: '{"model":"gpt-x","features":{"web":true}}' },
+		});
+		expect(JSON.parse(p.env.CODEX_CONFIG as string)).toEqual({
+			model: "gpt-x",
+			features: { web: true, hooks: false, plugins: false },
+			mcp_servers: {
+				"user-srv": { enabled: false },
+				"repo srv": { enabled: false },
+			},
+		});
+	});
+
+	it("an empty mcp list turns no server off by name and keeps hooks and plugins off", () => {
+		const p = isolated("codex", codexProbeIsolation, {
+			isolation: [{ use: codexProbeIsolation, mcp: [] }],
+		});
+		expect(JSON.parse(p.env.CODEX_CONFIG as string)).toEqual({
+			features: { hooks: false, plugins: false },
+		});
+	});
+
+	it("OpenCode check on a 1.x that honours OPENCODE_PURE: OPENCODE_PURE and each found server off in its inline config", () => {
+		const p = isolated("opencode", opencodeProbeIsolation, {
+			agentVersion: "1.20.0",
+		});
+		expect(p.env.OPENCODE_PURE).toBe("1");
+		expect(JSON.parse(p.env.OPENCODE_CONFIG_CONTENT as string)).toEqual({
+			$schema: "https://opencode.ai/config.json",
+			experimental: { continue_loop_on_deny: true },
+			share: "disabled",
+			mcp: { "user-srv": { enabled: false }, "repo srv": { enabled: false } },
+		});
+	});
+
+	it("OpenCode check on 2.4.1, which has no plugin switch, throws isolation-unavailable", () => {
+		let thrown: unknown;
+		try {
+			isolated("opencode", opencodeProbeIsolation, { agentVersion: "2.4.1" });
+		} catch (e) {
+			thrown = e;
+		}
+		expect(thrown).toEqual(
+			new AgentHostError(
+				"isolation-unavailable",
+				"OpenCode 2.4.1 has no switch for its plugins",
+			),
+		);
+		expect((thrown as AgentHostError).code).toBe("isolation-unavailable");
+	});
+
+	it("Gemini check: workspace untrusted, and a run copy of the system settings with hooks off that keeps the admin's keys", () => {
+		const p = isolated("gemini", geminiProbeIsolation, {
+			isolationHost: host({
+				"/etc/gemini-cli/settings.json":
+					'{"security":{"auth":{"enforcedType":"oauth"}},"hooksConfig":{"enabled":true}}',
+			}),
+		});
+		const copy = join("/run", "gemini-system-settings.json");
+		expect(p.env.GEMINI_CLI_TRUST_WORKSPACE).toBe("false");
+		expect(p.env.GEMINI_CLI_SYSTEM_SETTINGS_PATH).toBe(copy);
+		expect(p.env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH).toBe(
+			"/etc/gemini-cli/system-defaults.json",
+		);
+		expect(JSON.parse(p.files[copy] as string)).toEqual({
+			security: { auth: { enforcedType: "oauth" } },
+			hooksConfig: { enabled: false },
+		});
+	});
+
+	it("Gemini check keeps the defaults file the user pointed at, and an unreadable system file throws isolation-unavailable", () => {
+		const p = isolated("gemini", geminiProbeIsolation, {
+			stored: { GEMINI_CLI_SYSTEM_DEFAULTS_PATH: "/opt/defaults.json" },
+		});
+		expect(p.env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH).toBe("/opt/defaults.json");
+		expect(() =>
+			isolated("gemini", geminiProbeIsolation, {
+				isolationHost: {
+					...host(),
+					read: () => {
+						throw new Error("EACCES");
+					},
+				},
+			}),
+		).toThrow("Gemini CLI's system settings file could not be read");
+	});
+
+	it("Gemini clean: no extensions, only PrismaLens's servers, hooks off, trust left alone", () => {
+		const p = isolated("gemini", geminiCleanIsolation, {
+			gateway: { url: "http://127.0.0.1:1/mcp", token: "t", name: "pl-run" },
+		});
+		expect(p.args).toEqual([
+			"--acp",
+			"-e",
+			"none",
+			"--allowed-mcp-server-names",
+			"prismalens",
+		]);
+		expect(p.env.GEMINI_CLI_TRUST_WORKSPACE).toBeUndefined();
+		expect(JSON.parse(p.files[join("/run", "gemini-system-settings.json")] as string)).toEqual({
+			hooksConfig: { enabled: false },
+		});
+	});
+
+	it("Claude Code clean: user settings unread, hooks and plugins off, strict MCP", () => {
+		const p = isolated("claude-code", claudeCleanIsolation);
+		expect(p.sessionMeta).toEqual({
+			claudeCode: {
+				options: {
+					settingSources: ["project", "local"],
+					disallowedTools: ["EnterPlanMode", "ExitPlanMode"],
+					perTaskStopAffordance: false,
+					strictMcpConfig: true,
+					settings: { disableAllHooks: true, enabledPlugins: {} },
+				},
+			},
+		});
+	});
+
+	it("Claude Code clean turns off each plugin the project's or local settings enable", () => {
+		const p = isolated("claude-code", claudeCleanIsolation, {
+			isolationHost: host({
+				"/w/.claude/settings.json": '{"enabledPlugins":{"mk@mkt":true,"off@mkt":false}}',
+				"/w/.claude/settings.local.json": '{"enabledPlugins":{"loc@mkt":true}}',
+			}),
+		});
+		expect(options(p).settings).toEqual({
+			disableAllHooks: true,
+			enabledPlugins: { "mk@mkt": false, "off@mkt": false, "loc@mkt": false },
+		});
+	});
+
+	const signInSettings = (text: string) =>
+		host({ [join("/c", "settings.json").replaceAll("\\", "/")]: text });
+
+	it.each([
+		'{"apiKeyHelper":"get-key"}',
+		'{"awsCredentialExport":"x"}',
+		'{"env":{"ANTHROPIC_AUTH_TOKEN":"x"}}',
+		'{"env":{"CLAUDE_CODE_USE_BEDROCK":"1"}}',
+	])("Claude Code clean is unavailable when the user's settings carry sign-in: %s", (text) => {
+		expect(() =>
+			isolated("claude-code", claudeCleanIsolation, {
+				hostEnv: { ...HOST, CLAUDE_CONFIG_DIR: "/c" },
+				isolationHost: signInSettings(text),
+			}),
+		).toThrow("Your Claude settings carry sign-in");
+	});
+
+	it("Claude Code clean holds when the user's settings carry hooks but no sign-in", () => {
+		const hooksOnly = isolated("claude-code", claudeCleanIsolation, {
+			hostEnv: { ...HOST, CLAUDE_CONFIG_DIR: "/c" },
+			isolationHost: signInSettings('{"hooks":{}}'),
+		});
+		expect(options(hooksOnly).settingSources).toEqual(["project", "local"]);
+	});
+
+	const homes = {
+		CLAUDE_CONFIG_DIR: "/c",
+		CODEX_HOME: "/x",
+		GEMINI_CLI_HOME: "/g",
+		XDG_DATA_HOME: "/d",
+		HOME: "/home/u",
+	};
+	it.each([
+		["claude-code", claudeCleanIsolation, ["ENABLE_CLAUDEAI_MCP_SERVERS"]],
+		[
+			"gemini",
+			geminiCleanIsolation,
+			["GEMINI_CLI_SYSTEM_DEFAULTS_PATH", "GEMINI_CLI_SYSTEM_SETTINGS_PATH"],
+		],
+	] as const)(
+		"%s clean changes only its listed env keys, keeps the config and data folders and adds no sign-in key",
+		(agent, use, listed) => {
+			const base = {
+				agent,
+				level: undefined,
+				launch: { command: agent },
+				agentVersion: "1.20.0",
+				hostEnv: { ...HOST, ...homes },
+				isolationHost: host(),
+			};
+			const own = plan(base);
+			const p = plan({ ...base, isolation: [{ use, mcp: ["srv"] }] });
+			const changed = Object.keys({ ...own.env, ...p.env }).filter(
+				(k) => own.env[k] !== p.env[k],
+			);
+			expect(changed.sort()).toEqual([...listed]);
+			expect(
+				Object.fromEntries(Object.keys(homes).map((k) => [k, p.env[k]])),
+			).toEqual(homes);
+		},
+	);
 });

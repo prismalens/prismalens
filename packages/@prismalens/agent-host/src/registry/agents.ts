@@ -19,6 +19,7 @@ import { local } from "./agents/local.js";
 import { opencode } from "./agents/opencode.js";
 import { qwen } from "./agents/qwen.js";
 import type { AgentFacts } from "./facts.js";
+import type { Isolation } from "./isolation.js";
 import type { AccessLevel, LevelFacts, ModeMechanism } from "./levels.js";
 
 export const AGENT_IDS = [
@@ -50,6 +51,10 @@ export interface AgentRunEnv {
 	shipped?: boolean;
 	/** The product's MCP gateway and its per-run server name, set for a row with `gatewayDelivery` (#848). */
 	gateway?: { url: string; token: string; name: string };
+	/** Shared servers for a row's run file, each value an env reference (#1180 §3.3). */
+	runFileServers?: Record<string, Record<string, unknown>>;
+	/** Set by launch when a `mcp-config-file` row's run file holds the gateway or shared servers. */
+	runFile?: true;
 	/** The ANTHROPIC_BASE_URL the child gets from the host, stored and launch layers; unset when none. */
 	anthropicBaseUrl?: string;
 }
@@ -152,6 +157,10 @@ export interface AgentDescriptor {
 		depth?: SubagentLimitKey;
 		concurrency?: SubagentLimitKey;
 	};
+	/** How a health check turns off the user's and repo's hooks and MCP servers; absent, no background pass launches it (#1180 R1). */
+	probeIsolation?: Isolation;
+	/** The `Clean profile` switches: skip the user's hooks and plugins, keep the sign-in (#1180 §3.4). */
+	cleanProfile?: Isolation;
 }
 
 /** A finished run can be reopened with session/load or session/resume (#747). */

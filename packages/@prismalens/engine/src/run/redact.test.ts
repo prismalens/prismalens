@@ -26,7 +26,7 @@ vi.mock("./investigate.js", () => ({
 }));
 
 const { conductRun } = await import("./conductor.js");
-const { injectedSecrets, redactEvent, requestedSecrets, scrub } = await import(
+const { injectedSecrets, RecordScrubber, redactEvent, redactLine, requestedSecrets, scrub, StreamScrubber } = await import(
 	"./redact.js"
 );
 
@@ -82,5 +82,216 @@ describe("requestedSecrets (#1024 spec B)", () => {
 		expect(secrets).toEqual(["abcdef", "abc"]);
 		expect(scrub("token abcdef and abc", secrets)).toBe("token [redacted] and [redacted]");
 		expect(redactEvent({ text: "say abc" }, secrets)).toEqual({ text: "say [redacted]" });
+	});
+});
+
+describe("shared values never reach a stream, even split across pieces (#1180 §3.3)", () => {
+	const VALUE = 'sv-"quoted"\back\nline-9f';
+	const joined = (units: string[][]) => units.map((u) => u.join("")).join("");
+	const run = (s: InstanceType<typeof StreamScrubber>, units: string[][]) => [
+		...units.flatMap((u) => s.push(u)),
+		...s.end(),
+	];
+
+	it("replaces a value split across two stderr chunks in both chunks", () => {
+		const out = run(new StreamScrubber([VALUE]), [[`err ${VALUE.slice(0, 7)}`], [`${VALUE.slice(7)} tail`]]);
+		expect(out).toEqual([["err [redacted]"], ["[redacted] tail"]]);
+	});
+
+	it("replaces a value split across three streamed chunks with a tool update between two of them", () => {
+		const a = VALUE.slice(0, 5);
+		const b = VALUE.slice(5, 12);
+		const c = VALUE.slice(12);
+		const msg = (text: string) => ({ text, channel: "message" });
+		const out = run(new StreamScrubber([VALUE]), [[msg(a)], [msg(b), "tool_call_update"], [msg(c), "done"]]);
+		expect(joined(out)).not.toContain(VALUE);
+		expect(out).toEqual([["[redacted]"], ["[redacted]", "tool_call_update"], ["[redacted]", "done"]]);
+	});
+
+	it("holds a unit back until enough text follows it, and releases the rest at the end", () => {
+		const s = new StreamScrubber(["0123456789"]);
+		expect(s.push(["abc"])).toEqual([]);
+		expect(s.push(["defghijklmnop"])).toEqual([["abc"]]);
+		expect(s.end()).toEqual([["defghijklmnop"]]);
+	});
+
+	it("masks a tail that begins a secret when a flush or the end releases it, and the rest when it comes after a flush", () => {
+		const secret = "abcdefgh-0123456789";
+		const msg = (text: string) => ({ text, channel: "message" });
+		const split = new StreamScrubber([secret]);
+		const flushed = [split.push([msg("say abcdefgh-01")]), split.flush(), split.push([msg("23456789 end")]), split.end()];
+		const other = new StreamScrubber([secret]);
+		const unfinished = [other.push([msg("say abcdefgh-01")]), other.flush(), other.push([msg("2 is not it")]), other.end()];
+		const ended = (text: string) => {
+			const e = new StreamScrubber([secret]);
+			return [...e.push([text]), ...e.end()].flat();
+		};
+		expect([flushed, unfinished, ended("killed at abcd"), ended("a word ending abc"), ended("plain text")]).toEqual([
+			[[], [["say [redacted]"]], [], [["[redacted] end"]]],
+			[[], [["say [redacted]"]], [], [["2 is not it"]]],
+			["killed at [redacted]"],
+			["a word ending abc"],
+			["plain text"],
+		]);
+	});
+
+	it("releases a quiet channel's unit once the others run on, with its tail masked and the rest caught when that channel resumes", () => {
+		const secret = "abcdefgh-0123456789";
+		const thought = (text: string) => ({ text, channel: "thought" });
+		const msg = (text: string) => ({ text, channel: "message" });
+		const s = new StreamScrubber([secret]);
+		const out = [
+			s.push([thought("plan abcdefgh")]),
+			s.push([msg("the answer goes on")]),
+			s.push([msg(" and on past the secret's length")]),
+			s.push([thought("-0123456789 more")]),
+			s.end(),
+		];
+		expect(out).toEqual([
+			[],
+			[["plan [redacted]"]],
+			[["the answer goes on"]],
+			[],
+			[[" and on past the secret's length"], ["[redacted] more"]],
+		]);
+	});
+
+	it("replaces the JSON-escaped form inside a string that carries encoded JSON", () => {
+		const encoded = JSON.stringify({ arg: VALUE });
+		expect(joined(run(new StreamScrubber([VALUE]), [[encoded]]))).toBe('{"arg":"[redacted]"}');
+	});
+
+	it("redactEvent replaces inside string values, keeps a kind and a schema field name, so an argument equal to an event kind cannot change an event", () => {
+		const event = { kind: "turn_usage", text: "turn_usage", nested: [{ text: `x turn_usage y` }] };
+		expect(redactEvent(event, ["turn_usage"])).toEqual({
+			kind: "turn_usage",
+			text: "[redacted]",
+			nested: [{ text: "x [redacted] y" }],
+		});
+	});
+
+	it("redactEvent keeps schema values equal to a secret, nested in arrays, and redacts the same word in what the agent named", () => {
+		const loadout = {
+			kind: "agent_loadout",
+			profile: "own",
+			items: [
+				{ kind: "mcp", name: "loads", scope: "prismalens", state: "loads", transport: "stdio", layer: "config" },
+				{ kind: "mcp", name: "mcp", scope: "repo", state: "not-sent", transport: "http", layer: "config" },
+			],
+		};
+		expect([redactEvent(loadout, ["loads"]), redactEvent(loadout, ["mcp", "repo"])]).toEqual([
+			{ ...loadout, items: [{ ...loadout.items[0], name: "[redacted]" }, loadout.items[1]] },
+			{ ...loadout, items: [loadout.items[0], { ...loadout.items[1], name: "[redacted]" }] },
+		]);
+	});
+
+	it("redactEvent scrubs a secret in a key the agent or a person named, keeping two such keys apart", () => {
+		const step = {
+			kind: "agent_step",
+			text: "ok",
+			toolCalls: [{ toolCallId: "t1", name: "x", args: { "sv-key-one": 1, "sv-key-two": 2, plain: "sv-key-one" } }],
+		};
+		expect(redactEvent(step, ["sv-key-one", "sv-key-two"])).toEqual({
+			kind: "agent_step",
+			text: "ok",
+			toolCalls: [{ toolCallId: "t1", name: "x", args: { "[redacted]": 1, "[redacted] 2": 2, plain: "[redacted]" } }],
+		});
+	});
+
+	it("redactLine writes a parsed line back from what it parsed, so a repeated member or a key cannot carry a secret through", () => {
+		const secret = "sv-wire-0123456789";
+		expect([
+			redactLine(`{"a":"${secret}","a":"x"}`, [secret]),
+			redactLine(`{"${secret}":1}`, [secret]),
+			redactLine(`{"a":"\\u0073v-wire-0123456789"}`, [secret]),
+			redactLine(`{"a":1,"b":[true,null,"keep"]}`, [secret]),
+		]).toEqual(['{"a":"x"}', '{"[redacted]":1}', '{"a":"[redacted]"}', '{"a":1,"b":[true,null,"keep"]}']);
+	});
+
+	it("redactLine scrubs a line that does not parse, and one holding text that is not valid UTF-16, as text", () => {
+		const secret = "sv-wire-0123456789";
+		const lone = String.fromCharCode(0xd800);
+		expect([
+			redactLine(`{"a":"${secret}"`, [secret]),
+			redactLine(`not json ${secret}${lone}`, [secret]),
+			redactLine(JSON.stringify({ a: `${lone}${secret}` }), [secret]),
+		]).toEqual(['{"a":"[redacted]"', `not json [redacted]${lone}`, JSON.stringify({ a: `${lone}[redacted]` })]);
+	});
+
+	it("redactLine finds a secret in a line that does not parse through its JSON escapes, and redacts the escaped text whole", () => {
+		const secret = "sv-wire-0123456789";
+		const smile = "key-\u{1F600}-0123456789";
+		const path = "https://x.example/t0k3n-0123";
+		const win = "C:\\vault\\k3y-0123456789";
+		const [a, b] = ["alpha-0123456789", "0123456789-omega"];
+		expect([
+			redactLine(`{"a":"\\u0073\\u0076\\u002d\\u0077\\u0069\\u0072\\u0065\\u002d\\u0030\\u0031\\u0032\\u0033\\u0034\\u0035\\u0036\\u0037\\u0038\\u0039 tail`, [secret]),
+			redactLine(`{"a":"\\u0073\\u0076-wire-0123456789","b":`, [secret]),
+			redactLine(`{"a":"key-\\uD83D\\ude00-0123456789`, [smile]),
+			redactLine(`{"a":"\\u0073v-wire-0123456789 x\\`, [secret]),
+			redactLine(`{"a":"sv-wire-0123456789\\u00`, [secret]),
+			redactLine(`{"a":"\\u0061lpha-0123456789-omeg\\u0061 end`, [a, b]),
+			redactLine(`{"a":"alpha-0123456789-omega end`, [a, b]),
+			redactLine(`{"a":"https:\\/\\/x.example\\/t0k3n-0123`, [path]),
+			redactLine(`{"a":"C:\\\\vault\\u005ck3y-0123456789`, [win]),
+			redactLine(`{"a":"\\\\u0073v-wire-0123456789`, [secret]),
+		]).toEqual([
+			'{"a":"[redacted] tail',
+			'{"a":"[redacted]","b":',
+			'{"a":"[redacted]',
+			'{"a":"[redacted] x\\',
+			'{"a":"[redacted]\\u00',
+			'{"a":"[redacted] end',
+			'{"a":"[redacted] end',
+			'{"a":"[redacted]',
+			'{"a":"[redacted]',
+			'{"a":"\\\\u0073v-wire-0123456789',
+		]);
+	});
+
+	it("redactEvent scrubs a kind inside a tool's input or arguments, which the agent wrote, while the event's own kind stays", () => {
+		const secret = "shared-value-0123456789";
+		const call = { kind: "harness_tool_call", input: { kind: secret, deep: [{ kind: secret }] } };
+		const step = { kind: "agent_step", toolCalls: [{ toolCallId: "t1", name: "x", args: { kind: secret } }] };
+		expect([redactEvent(call, [secret]), redactEvent(step, [secret])]).toEqual([
+			{ kind: "harness_tool_call", input: { kind: "[redacted]", deep: [{ kind: "[redacted]" }] } },
+			{ kind: "agent_step", toolCalls: [{ toolCallId: "t1", name: "x", args: { kind: "[redacted]" } }] },
+		]);
+	});
+
+	it("redactEvent scrubs a form field named kind in an ask's answer, and keeps the answer's own kind", () => {
+		const secret = "shared-value-0123456789";
+		const closed = { kind: "ask_closed", askId: "a1", outcome: "answered", answer: { kind: "input", values: { kind: secret, other: secret } } };
+		expect(redactEvent(closed, [secret])).toEqual({
+			kind: "ask_closed",
+			askId: "a1",
+			outcome: "answered",
+			answer: { kind: "input", values: { kind: "[redacted]", other: "[redacted]" } },
+		});
+	});
+});
+
+describe("RecordScrubber (#1180 §3.3)", () => {
+	const VALUE = 'sv-"quoted"\back\nline-9f';
+	const msg = (text: string) => ({ kind: "agent_step", text, toolCalls: [] as unknown[] });
+	const tool = { kind: "tool_result", toolCallId: "t1", output: "ok" };
+	const channel = (r: { kind: string }, path: readonly (string | number)[]) =>
+		path.join(".") === "text" && r.kind === "agent_step" ? "message" : "";
+
+	it("replaces a value split across two records' string values with a record between, and keeps every shape", () => {
+		const s = new RecordScrubber<Record<string, unknown>>([VALUE], channel);
+		const out = [msg(`see ${VALUE.slice(0, 6)}`), tool, msg(`${VALUE.slice(6)} end`)].flatMap((r) => s.push(r));
+		expect([...out, ...s.end()]).toEqual([msg("see [redacted]"), tool, msg("[redacted] end")]);
+	});
+
+	it("gives back the same record when nothing in it changed, and never touches a kind", () => {
+		const s = new RecordScrubber<Record<string, unknown>>(["agent_step"], channel);
+		const plain = { kind: "agent_step", text: "nothing here", toolCalls: [] };
+		expect([...s.push(plain), ...s.end()][0]).toBe(plain);
+	});
+
+	it("leaves a value whose channel is null as it is", () => {
+		const s = new RecordScrubber<{ kind: string; m: string; held: string }>([VALUE], (_, p) => (p[0] === "held" ? "" : null));
+		expect([...s.push({ kind: "x", m: VALUE, held: VALUE }), ...s.end()]).toEqual([{ kind: "x", m: VALUE, held: "[redacted]" }]);
 	});
 });

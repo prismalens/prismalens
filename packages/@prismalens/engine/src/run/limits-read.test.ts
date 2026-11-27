@@ -85,7 +85,7 @@ describe("readLimits through codex app-server (#1180)", () => {
 		]);
 	});
 
-	it("starts app-server with hooks off and each MCP server of the user's config.toml off", async () => {
+	it("starts app-server with hooks and plugins off and each MCP server of the user's config.toml off", async () => {
 		const home = join(dir, "codex-home");
 		mkdirSync(home);
 		writeFileSync(
@@ -99,9 +99,9 @@ describe("readLimits through codex app-server (#1180)", () => {
 			"-c",
 			"features.hooks=false",
 			"-c",
-			"mcp_servers.docs.enabled=false",
+			"features.plugins=false",
 			"-c",
-			'mcp_servers."my.tools".enabled=false',
+			'mcp_servers={"docs"={enabled=false},"my.tools"={enabled=false}}',
 		]);
 	});
 
@@ -174,6 +174,7 @@ const claudeDeps = (query: FakeQuery): LimitReadDeps => ({
 	now: () => AT,
 	home: dir,
 	managedSettingsPath: join(dir, "managed-settings.json"),
+	isolationHost: { platform: "linux", read: () => null },
 });
 
 describe("readLimits through the Claude Agent SDK (#1180)", () => {
@@ -252,6 +253,29 @@ describe("readLimits through the Claude Agent SDK (#1180)", () => {
 			settings: { disableAllHooks: true },
 		});
 	});
+
+	it.each([
+		['{"mcpServers":{"corp":{"command":"c"}}}', false],
+		["{not json", true],
+	] as const)(
+		"with managed-mcp.json %s, strictMcpConfig is sent: %s",
+		async (text, strict) => {
+			const managed = "/etc/claude-code/managed-mcp.json";
+			const { query, calls } = fakeQuery({
+				usage: { rate_limits_available: false, rate_limits: null },
+			});
+			await readLimits("claude-code", claudePlan(), {
+				...claudeDeps(query),
+				isolationHost: {
+					platform: "linux",
+					read: (path) => (path === managed ? text : null),
+				},
+			});
+			const options = calls.options as Record<string, unknown>;
+			expect("strictMcpConfig" in options).toBe(strict);
+			expect(options.settings).toEqual({ disableAllHooks: true });
+		},
+	);
 
 	it("returns null when the SDK has no usage method", async () => {
 		const { query, calls } = fakeQuery({ noUsage: true });

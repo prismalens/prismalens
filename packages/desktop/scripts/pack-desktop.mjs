@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 import { createPackageWithOptions } from "@electron/asar";
 import {
 	addLicences,
+	agentSdkProblems,
 	assertLicences,
 	hollowPackages,
 	missingLicences,
@@ -90,6 +91,8 @@ if (hollow.length > 0)
 const licences = resolve(here, "../licences");
 addLicences(join(pkg, "node_modules"), licences);
 const pruned = prune(join(pkg, "node_modules"));
+const sdk = agentSdkProblems(pkg);
+if (sdk.length > 0) throw new Error(sdk.join("\n"));
 assertLicences(join(pkg, "node_modules"), licences);
 const missing = missingLicences(pkg);
 if (missing.length > 0)
