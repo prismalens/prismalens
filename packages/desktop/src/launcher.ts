@@ -214,3 +214,32 @@ export function installedByInstaller(input: {
 	const rel = p.relative(fold(real(app)), fold(real(input.execPath)));
 	return rel === "" || (!rel.startsWith("..") && !p.isAbsolute(rel));
 }
+
+export type LauncherIo = {
+	notify: (message: string) => Promise<void>;
+	warn: (message: string) => void;
+	mkdir: (dir: string) => void;
+	writeShortcut: (
+		path: string,
+		operation: "create" | "update" | "replace",
+		options: Extract<LauncherPlan, { kind: "shortcut" }>["options"],
+	) => void;
+	writeFile: (path: string, contents: string) => void;
+};
+
+/** Carries out a plan: tells the user a notice, writes a shortcut or entry. The macOS move is main.ts's. */
+export async function applyLauncherPlan(
+	plan: LauncherPlan,
+	io: LauncherIo,
+): Promise<void> {
+	if (plan.kind === "none" && plan.notice) {
+		io.warn(`launcher: ${plan.reason}`);
+		await io.notify(plan.notice);
+	} else if (plan.kind === "shortcut") {
+		io.mkdir(win32.dirname(plan.path));
+		io.writeShortcut(plan.path, plan.operation, plan.options);
+	} else if (plan.kind === "desktop-entry") {
+		io.mkdir(posix.dirname(plan.path));
+		io.writeFile(plan.path, plan.contents);
+	}
+}

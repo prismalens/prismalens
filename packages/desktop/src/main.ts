@@ -70,6 +70,7 @@ import {
 } from "./chrome.js";
 import {
 	APP_USER_MODEL_ID,
+	applyLauncherPlan,
 	installedByInstaller,
 	planLauncher,
 } from "./launcher.js";
@@ -201,12 +202,16 @@ async function openUpdate(version: string | null): Promise<void> {
 		platform: process.platform,
 		execPath: process.execPath,
 		receipt: readText(join(installerDataDir(), "receipt")),
-		// The installers mark their app: an xattr on the macOS bundle, a file beside the exe elsewhere.
+		// The installers mark their app: an xattr on the macOS bundle's executable, a file beside the exe elsewhere.
 		installId: (appPath) => {
 			if (process.platform === "darwin") {
 				const r = spawnSync(
 					"xattr",
-					["-p", "io.prismalens.install-id", appPath],
+					[
+						"-p",
+						"io.prismalens.install-id",
+						join(appPath, "Contents", "MacOS", "PrismaLens"),
+					],
 					{ encoding: "utf8" },
 				);
 				return r.status === 0 ? r.stdout.trim() : null;
@@ -290,16 +295,18 @@ async function registerLauncher(): Promise<void> {
 			}
 		},
 	);
-	if (plan.kind === "none" && plan.notice) {
-		console.warn(`launcher: ${plan.reason}`);
-		await dialog.showMessageBox({ title: TITLE, message: plan.notice });
-	} else if (plan.kind === "shortcut") {
-		mkdirSync(path.dirname(plan.path), { recursive: true });
-		shell.writeShortcutLink(plan.path, plan.operation, plan.options);
-	} else if (plan.kind === "desktop-entry") {
-		mkdirSync(path.dirname(plan.path), { recursive: true });
-		writeFileSync(plan.path, plan.contents);
-	} else if (plan.kind === "offer-move") {
+	await applyLauncherPlan(plan, {
+		notify: async (message) => {
+			await dialog.showMessageBox({ title: TITLE, message });
+		},
+		warn: (message) => console.warn(message),
+		mkdir: (dir) => mkdirSync(dir, { recursive: true }),
+		writeShortcut: (p, operation, options) => {
+			shell.writeShortcutLink(p, operation, options);
+		},
+		writeFile: (p, contents) => writeFileSync(p, contents),
+	});
+	if (plan.kind === "offer-move") {
 		const asked = join(
 			app.getPath("userData"),
 			"move-to-applications-declined",

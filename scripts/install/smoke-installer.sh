@@ -309,7 +309,6 @@ pass "interrupted upgrade: a rerun with no downloads puts the old app back"
 # A different app in the installer's place (the user's own download) is never replaced or deleted,
 # even one copied into the same folder, which keeps that folder's inode.
 if [ "$(uname -s)" = Darwin ]; then
-	xattr -d io.prismalens.install-id "$app"
 	rm -rf "$app/Contents"
 	mkdir -p "$app/Contents/MacOS" && printf '#!/bin/sh\necho users own\n' >"$app/Contents/MacOS/PrismaLens"
 	mine="$app/Contents/MacOS/PrismaLens"
@@ -336,6 +335,19 @@ if [ "$(uname -s)" != Darwin ]; then
 	[ "$(cat "$app/prismalens")" = "users own" ] || fail "the app that appeared during the download was replaced"
 	pass "an app that appears during the download: left as it is"
 fi
+
+# Another app arrives after the ownership check, just before the old app is moved aside: it is put
+# back, never deleted with the staging folder. The shim runs where the installer makes the new ID.
+rm -rf "$work/home" && mkdir -p "$work/home" "$work/shim-od"
+run_app_installer >/dev/null 2>&1 || fail "install before the late arrival"
+if [ "$(uname -s)" = Darwin ]; then late="$app/Contents/MacOS/PrismaLens"; else late="$app/prismalens"; fi
+printf '#!/bin/sh\nrm -rf "%s" && mkdir -p "%s" && printf "users own" >"%s"\nexec %s "$@"\n' \
+	"$app" "$(dirname "$late")" "$late" "$(command -v od)" >"$work/shim-od/od"
+chmod 755 "$work/shim-od/od"
+out=$(SHIM="$work/shim-od" run_app_installer 2>&1) || { echo "$out"; fail "install while another app arrives late"; }
+case "$out" in *"The desktop app wasn't installed: $app isn't the app this installer put there; it was left as it is"*) ;; *) echo "$out"; fail "the late arrival wasn't seen" ;; esac
+[ "$(cat "$late")" = "users own" ] || fail "the app that arrived late was deleted or replaced"
+pass "an app that arrives after the check: put back, not deleted"
 
 if [ "$(uname -s)" != Darwin ]; then
 	# A running app under a path with regex characters still counts as running.

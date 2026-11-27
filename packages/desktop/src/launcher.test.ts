@@ -8,6 +8,7 @@ import {
 	DESKTOP_ENTRY_MARKER,
 	desktopEntry,
 	desktopEntryExec,
+	applyLauncherPlan,
 	installedByInstaller,
 	type LauncherEnv,
 	planLauncher,
@@ -270,5 +271,34 @@ describe("installedByInstaller", () => {
 			}),
 		).toBe(false);
 		expect(installedByInstaller({ platform: "linux", execPath: `${linuxApp}/prismalens`, receipt: null, installId: marked })).toBe(false);
+	});
+});
+
+describe("applyLauncherPlan", () => {
+	const io = () => {
+		const calls: string[] = [];
+		return {
+			calls,
+			io: {
+				notify: async (m: string) => void calls.push(`notify ${m}`),
+				warn: (m: string) => void calls.push(`warn ${m}`),
+				mkdir: (d: string) => void calls.push(`mkdir ${d}`),
+				writeShortcut: (p: string, op: string) => void calls.push(`shortcut ${op} ${p}`),
+				writeFile: (p: string) => void calls.push(`write ${p}`),
+			},
+		};
+	};
+
+	it("shows the plan's notice to the user, and logs why", async () => {
+		const { calls, io: sink } = io();
+		await applyLauncherPlan({ kind: "none", reason: "a line break", notice: "Move the app." }, sink);
+		expect(calls).toEqual(["warn launcher: a line break", "notify Move the app."]);
+	});
+
+	it("does nothing visible for a plan without a notice, and writes the entry a plan asks for", async () => {
+		const { calls, io: sink } = io();
+		await applyLauncherPlan({ kind: "none", reason: "up to date" }, sink);
+		await applyLauncherPlan({ kind: "desktop-entry", path: "/x/applications/prismalens.desktop", contents: "" }, sink);
+		expect(calls).toEqual(["mkdir /x/applications", "write /x/applications/prismalens.desktop"]);
 	});
 });

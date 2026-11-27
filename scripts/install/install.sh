@@ -250,20 +250,20 @@ entry_ours() {
 # $1 as one single-quoted sh word.
 sh_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 
-# Each install marks its app with a random ID the receipt keeps: an app someone put in the
-# installer's place, even in the same folder, doesn't carry it. On macOS it's an extended
-# attribute, which leaves the bundle's signed contents as they were.
+# Each install marks the app it unpacked with a random ID the receipt keeps, inside the app, so
+# other contents in the same folder don't carry it. On macOS it's an extended attribute on the
+# bundle's executable, which leaves the signed contents as they were.
 new_install_id() { od -An -N8 -tx1 /dev/urandom | tr -d ' \n'; }
 app_id_of() {
 	if [ "$(uname -s)" = Darwin ]; then
-		xattr -p io.prismalens.install-id "$1" 2>/dev/null
+		xattr -p io.prismalens.install-id "$1/Contents/MacOS/PrismaLens" 2>/dev/null
 	else
 		cat "$1/.prismalens-install-id" 2>/dev/null
 	fi
 }
 set_app_id() {
 	if [ "$(uname -s)" = Darwin ]; then
-		xattr -w io.prismalens.install-id "$2" "$1"
+		xattr -w io.prismalens.install-id "$2" "$1/Contents/MacOS/PrismaLens"
 	else
 		printf '%s\n' "$2" >"$1/.prismalens-install-id"
 	fi
@@ -421,6 +421,18 @@ install_desktop() {
 	d_id=$(new_install_id)
 	set_app_id "$d_src" "$d_id" || { rm -rf "$d_stage"; why="couldn't mark the app as this installer's"; return 1; }
 	[ ! -e "$d_dest" ] || mv "$d_dest" "$d_stage/previous" || { rm -rf "$d_stage"; why="couldn't move the old app aside"; return 1; }
+	# What was moved aside is checked once more: an app that arrived after the check above goes
+	# back, or is kept where it is; staging is only deleted with the installer's own app in it.
+	if [ -e "$d_stage/previous" ] && [ "$(app_id_of "$d_stage/previous")" != "$(receipt_get desktop_app_id)" ]; then
+		rm -rf "$d_src"
+		if [ ! -e "$d_dest" ] && mv "$d_stage/previous" "$d_dest"; then
+			rm -rf "$d_stage"
+			why="$d_dest isn't the app this installer put there; it was left as it is"
+		else
+			why="$d_dest isn't the app this installer put there, and couldn't go back; it is kept in $d_stage/previous"
+		fi
+		return 1
+	fi
 	if ! mv "$d_src" "$d_dest"; then
 		if [ -e "$d_stage/previous" ] && ! mv "$d_stage/previous" "$d_dest"; then
 			why="couldn't move it into place at $d_dest, nor put the old app back; it is in $d_stage/previous, and the next install puts it back"
