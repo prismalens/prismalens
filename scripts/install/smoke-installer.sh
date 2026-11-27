@@ -202,7 +202,7 @@ if [ "$(uname -s)" = Darwin ]; then want_app=1; else want_app=; fi
 printf '0\n' >"$work/userns-off"
 printf '1\n' >"$work/userns-on"
 run_app_installer() {
-	env -i HOME="${APP_HOME:-$work/home}" PATH="$clean_path" SHELL=/bin/bash DISPLAY=:99 PRISMALENS_DESKTOP="${PRISMALENS_DESKTOP:-$want_app}" \
+	env -i HOME="${APP_HOME:-$work/home}" PATH="${SHIM:+$SHIM:}$clean_path" SHELL=/bin/bash DISPLAY=:99 PRISMALENS_DESKTOP="${PRISMALENS_DESKTOP:-$want_app}" \
 		PRISMALENS_USERNS_SYSCTL="${USERNS:-$work/userns-off}" PRISMALENS_APPARMOR_PROFILE="$work/apparmor.d/prismalens" \
 		PRISMALENS_RELEASE_BASE_URL="${APP_BASE:-$app_base}" sh "$installer" --version "$new_version" --no-modify-path "$@"
 }
@@ -250,7 +250,9 @@ out=$(PRISMALENS_DESKTOP=1 run_app_installer --no-desktop 2>&1) || { echo "$out"
 case "$out" in *"Desktop app skipped: you asked for the CLI only"*) ;; *) echo "$out"; fail "--no-desktop wasn't honoured over PRISMALENS_DESKTOP=1" ;; esac
 [ ! -e "$entry" ] && [ ! -e "$mac_app" ] && [ ! -e "$work/home/.local/share/prismalens/desktop/app" ] || fail "--no-desktop left the app it had installed"
 grep -qx "desktop=0" "$work/home/.local/share/prismalens/receipt" || fail "--no-desktop wasn't saved"
+saved_want=$want_app want_app=
 out=$(run_app_installer 2>&1) || fail "reinstall after --no-desktop"
+want_app=$saved_want
 case "$out" in *"an earlier install left it out"*) ;; *) echo "$out"; fail "a later install dropped the opt-out" ;; esac
 pass "--no-desktop: removes the app it had installed, beats PRISMALENS_DESKTOP=1, and a later install keeps it out"
 
@@ -304,22 +306,36 @@ app_runs || fail "the app put back doesn't run"
 [ ! -e "$stage" ] || fail "the emptied staging folder was left"
 pass "interrupted upgrade: a rerun with no downloads puts the old app back"
 
-# A different app in the installer's place (the user's own download) is never replaced or deleted.
-# The old folder is freed only after the new one exists, so the new one can't reuse its inode.
-mv "$app" "$work/replaced-app"
+# A different app in the installer's place (the user's own download) is never replaced or deleted,
+# even one copied into the same folder, which keeps that folder's inode.
 if [ "$(uname -s)" = Darwin ]; then
+	xattr -d io.prismalens.install-id "$app"
+	rm -rf "$app/Contents"
 	mkdir -p "$app/Contents/MacOS" && printf '#!/bin/sh\necho users own\n' >"$app/Contents/MacOS/PrismaLens"
 	mine="$app/Contents/MacOS/PrismaLens"
 else
-	mkdir -p "$app" && printf '#!/bin/sh\necho users own\n' >"$app/prismalens"
+	find "$app" -mindepth 1 -delete
+	printf '#!/bin/sh\necho users own\n' >"$app/prismalens"
 	mine="$app/prismalens"
 fi
-rm -rf "$work/replaced-app"
 out=$(run_app_installer 2>&1) || { echo "$out"; fail "install beside a replaced app"; }
 case "$out" in *"Desktop app skipped: $app"*) ;; *) echo "$out"; fail "the replaced app wasn't detected" ;; esac
 run_app_installer --no-desktop >/dev/null 2>&1 || fail "--no-desktop beside a replaced app"
 [ "$(cat "$mine")" = "$(printf '#!/bin/sh\necho users own')" ] || fail "--no-desktop changed the app that replaced the installer's"
-pass "a replaced app: install and --no-desktop leave it as it is"
+pass "a replaced app, in the same folder: install and --no-desktop leave it as it is"
+
+if [ "$(uname -s)" != Darwin ]; then
+	# Another app appears in the installer's place while the zip downloads: it's left, not moved aside.
+	rm -rf "$work/home" && mkdir -p "$work/home" "$work/shim"
+	run_app_installer >/dev/null 2>&1 || fail "install before the replacement during download"
+	printf '#!/bin/sh\nrm -rf "%s" && mkdir -p "%s" && printf "users own" >"%s/prismalens"\nexec /usr/bin/unzip "$@"\n' \
+		"$app" "$app" "$app" >"$work/shim/unzip"
+	chmod 755 "$work/shim/unzip"
+	out=$(SHIM="$work/shim" run_app_installer 2>&1) || { echo "$out"; fail "install while another app appears"; }
+	case "$out" in *"The desktop app wasn't installed: $app isn't the app this installer put there; it was left as it is"*) ;; *) echo "$out"; fail "the app that appeared during the download wasn't seen" ;; esac
+	[ "$(cat "$app/prismalens")" = "users own" ] || fail "the app that appeared during the download was replaced"
+	pass "an app that appears during the download: left as it is"
+fi
 
 if [ "$(uname -s)" != Darwin ]; then
 	# A running app under a path with regex characters still counts as running.
@@ -327,8 +343,8 @@ if [ "$(uname -s)" != Darwin ]; then
 	rm -rf "$odd_home" && mkdir -p "$odd_home"
 	APP_HOME="$odd_home" run_app_installer >/dev/null 2>&1 || fail "install under $odd_home"
 	odd_app="$odd_home/.local/share/prismalens/desktop/app"
-	cp "$(command -v sleep)" "$odd_app/prismalens"
-	"$odd_app/prismalens" 30 &
+	# A process whose command is the app's path, as the app's own is (sleep may be a multi-call binary).
+	bash -c 'exec -a "$0" sleep 30' "$odd_app/prismalens" &
 	running=$!
 	out=$(APP_HOME="$odd_home" run_app_installer --no-desktop 2>&1) && { kill "$running"; echo "$out"; fail "--no-desktop removed a running app"; }
 	kill "$running"

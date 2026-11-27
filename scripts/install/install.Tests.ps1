@@ -346,6 +346,38 @@ Describe "install.ps1 and the desktop app" {
 		}
 	}
 
+	It "a shortcut another copy saves while the app downloads: left when its app exists, replaced when it doesn't" {
+		$other = Join-Path $system32 "whoami.exe"
+		# The installer fetches a file:// release with Copy-Item; this one saves the shortcut first.
+		$during = {
+			param([string]$Target)
+			@"
+function global:Copy-Item {
+	if ("`$args" -like '*PrismaLens-Windows-X64-unsigned.zip*') {
+		New-Item -ItemType Directory -Path '$work\Programs' -Force | Out-Null
+		`$l = (New-Object -ComObject WScript.Shell).CreateShortcut('$lnk')
+		`$l.TargetPath = '$Target'
+		`$l.Save()
+	}
+	Microsoft.PowerShell.Management\Copy-Item @args
+}
+"@
+		}
+		$run = Invoke-Installer $work $base "$want`n$(& $during $other)"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match ([regex]::Escape("The desktop app wasn't installed: the Start menu's PrismaLens shortcut now opens $other, which isn't this installer's; it was left as it is"))
+		Get-Target $lnk | Should -Be $other
+
+		Remove-Item $lnk
+		$gone = Join-Path $work "gone\PrismaLens.exe"
+		$run = Invoke-Installer $work $base "$want`n$(& $during $gone)"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match ([regex]::Escape("Replaced the Start menu shortcut to $gone, which no longer exists."))
+		Get-Target $lnk | Should -BeExactly $app
+	}
+
 	It "skips the app by itself in CI, and installs the CLI" {
 		$run = Invoke-Installer $work $base
 

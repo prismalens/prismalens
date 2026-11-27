@@ -201,6 +201,20 @@ async function openUpdate(version: string | null): Promise<void> {
 		platform: process.platform,
 		execPath: process.execPath,
 		receipt: readText(join(installerDataDir(), "receipt")),
+		// The installers mark their app: an xattr on the macOS bundle, a file beside the exe elsewhere.
+		installId: (appPath) => {
+			if (process.platform === "darwin") {
+				const r = spawnSync(
+					"xattr",
+					["-p", "io.prismalens.install-id", appPath],
+					{ encoding: "utf8" },
+				);
+				return r.status === 0 ? r.stdout.trim() : null;
+			}
+			const dir =
+				process.platform === "win32" ? path.dirname(appPath) : appPath;
+			return readText(join(dir, ".prismalens-install-id"))?.trim() ?? null;
+		},
 		realpath: (p) => {
 			try {
 				return realpathSync.native(p);
@@ -276,7 +290,10 @@ async function registerLauncher(): Promise<void> {
 			}
 		},
 	);
-	if (plan.kind === "shortcut") {
+	if (plan.kind === "none" && plan.notice) {
+		console.warn(`launcher: ${plan.reason}`);
+		await dialog.showMessageBox({ title: TITLE, message: plan.notice });
+	} else if (plan.kind === "shortcut") {
 		mkdirSync(path.dirname(plan.path), { recursive: true });
 		shell.writeShortcutLink(plan.path, plan.operation, plan.options);
 	} else if (plan.kind === "desktop-entry") {

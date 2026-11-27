@@ -264,7 +264,7 @@ function Remove-Desktop {
 
 # Unpacks the verified app zip to desktop\<version> and points the Start menu shortcut at it. Returns the shortcut path.
 # Versioned folders, because Windows locks a running app's files; the one a running app holds is pruned next time.
-function Install-Desktop([string]$ZipFile) {
+function Install-Desktop([string]$ZipFile, [string]$InstallId) {
 	$dest = Join-Path $desktopRoot $Version
 	$unpacked = Join-Path $desktopRoot (".new-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
 	New-Item -ItemType Directory -Path $unpacked -Force | Out-Null
@@ -293,6 +293,8 @@ function Install-Desktop([string]$ZipFile) {
 		throw "couldn't move it into place: $why"
 	}
 	if ($backup) { Remove-Item $backup -Recurse -Force -ErrorAction SilentlyContinue }
+	# The app reads this ID beside its exe to tell it is the copy the receipt names.
+	Set-Content -Path (Join-Path $dest ".prismalens-install-id") -Encoding ASCII -Value $InstallId
 	$exe = Join-Path $dest "PrismaLens.exe"
 	New-Item -ItemType Directory -Path $shortcutDir -Force | Out-Null
 	$old = Get-ShortcutTarget $shortcut
@@ -459,12 +461,14 @@ try {
 	# desktop_app names the copy this installer owns; the app reads it to tell it's the installer's.
 	$desktopApp = if ($rec["desktop_app"]) { $rec["desktop_app"] } else { "" }
 	$desktopVersion = if ($rec["desktop_version"]) { $rec["desktop_version"] } else { "" }
+	$desktopAppId = if ($rec["desktop_app_id"]) { $rec["desktop_app_id"] } else { "" }
 	$launcher = ""
 	if ($NoDesktop -or $env:PRISMALENS_DESKTOP -eq "0") {
 		$desktop = "0"
 		Remove-Desktop
 		$desktopApp = ""
 		$desktopVersion = ""
+		$desktopAppId = ""
 	} elseif ($env:PRISMALENS_DESKTOP -eq "1") {
 		$desktop = "1"
 	}
@@ -481,10 +485,12 @@ try {
 				$why = Fetch-Verified $desktopAsset $appSum $appZip "the PrismaLens $Version desktop app"
 				if ($why) { throw "couldn't download it from $(Hosts-Tried): $why" }
 				$running = Get-DesktopProcesses | Where-Object { -not (Get-LongPath $_.Path).StartsWith("$(Get-LongPath (Join-Path $desktopRoot $Version))\", [StringComparison]::OrdinalIgnoreCase) }
-				$launcher = Install-Desktop $appZip
+				$installId = [guid]::NewGuid().ToString("N")
+				$launcher = Install-Desktop $appZip $installId
 				$desktop = "1"
 				$desktopApp = Join-Path $desktopRoot "$Version\PrismaLens.exe"
 				$desktopVersion = $Version
+				$desktopAppId = $installId
 				Done "Desktop app installed to $(Join-Path $desktopRoot $Version)"
 				if ($running) { Warn "An older PrismaLens app is still running; quit it and open it again for $Version." }
 			} catch {
@@ -502,6 +508,7 @@ try {
 		"desktop=$desktop",
 		"desktop_app=$desktopApp",
 		"desktop_version=$desktopVersion",
+		"desktop_app_id=$desktopAppId",
 		"installed_at=$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"
 	) | Set-Content -Path $receipt -Encoding ASCII
 

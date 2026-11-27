@@ -190,6 +190,8 @@ describe("planLauncher beside a package manager or a launcher it can't read", ()
 		expect(planLauncher(broken, noShortcut)).toEqual({
 			kind: "none",
 			reason: "/home/ada/a\nb/prismalens has a line break, which a desktop entry can't hold",
+			notice:
+				"PrismaLens can't add itself to your app menu: its folder's path has a line break, which a menu entry can't hold. Move the app to a folder without one to get its menu entry.",
 		});
 	});
 });
@@ -211,16 +213,17 @@ describe("desktopEntryExec", () => {
 });
 
 describe("installedByInstaller", () => {
-	const receipt = (app: string) => `version=0.5.7\nchannel=installer\ndesktop=1\ndesktop_app=${app}\n`;
+	const receipt = (app: string) => `version=0.5.7\nchannel=installer\ndesktop=1\ndesktop_app=${app}\ndesktop_app_id=abc123\n`;
+	const marked = () => "abc123";
 	const winApp = "C:\\Users\\ada\\AppData\\Local\\prismalens\\desktop\\0.5.7\\PrismaLens.exe";
 	const linuxApp = "/home/ada/.local/share/prismalens/desktop/app";
 	const macApp = "/Users/ada/Applications/PrismaLens.app";
 
 	it("is the installer's copy where its receipt names the app this copy runs from", () => {
-		expect(installedByInstaller({ platform: "win32", execPath: winApp.toLowerCase(), receipt: receipt(winApp) })).toBe(true);
-		expect(installedByInstaller({ platform: "linux", execPath: `${linuxApp}/prismalens`, receipt: receipt(linuxApp) })).toBe(true);
+		expect(installedByInstaller({ platform: "win32", execPath: winApp.toLowerCase(), receipt: receipt(winApp), installId: marked })).toBe(true);
+		expect(installedByInstaller({ platform: "linux", execPath: `${linuxApp}/prismalens`, receipt: receipt(linuxApp), installId: marked })).toBe(true);
 		expect(
-			installedByInstaller({ platform: "darwin", execPath: `${macApp}/Contents/MacOS/PrismaLens`, receipt: receipt(macApp) }),
+			installedByInstaller({ platform: "darwin", execPath: `${macApp}/Contents/MacOS/PrismaLens`, receipt: receipt(macApp), installId: marked }),
 		).toBe(true);
 	});
 
@@ -231,9 +234,18 @@ describe("installedByInstaller", () => {
 				platform: "linux",
 				execPath: "/var/home/ada/.local/share/prismalens/desktop/app/prismalens",
 				receipt: receipt(linuxApp),
+				installId: marked,
 				realpath,
 			}),
 		).toBe(true);
+	});
+
+	it("is not for another app put in the installer's place: it doesn't carry the receipt's ID", () => {
+		const execPath = `${macApp}/Contents/MacOS/PrismaLens`;
+		expect(installedByInstaller({ platform: "darwin", execPath, receipt: receipt(macApp), installId: () => null })).toBe(false);
+		expect(installedByInstaller({ platform: "darwin", execPath, receipt: receipt(macApp), installId: () => "other" })).toBe(false);
+		const noId = receipt(macApp).replace("desktop_app_id=abc123\n", "");
+		expect(installedByInstaller({ platform: "darwin", execPath, receipt: noId, installId: marked })).toBe(false);
 	});
 
 	it("is not for a copy the receipt doesn't name, even where desktop=1 and the path is the usual one", () => {
@@ -245,10 +257,10 @@ describe("installedByInstaller", () => {
 			}),
 		).toBe(false);
 		expect(
-			installedByInstaller({ platform: "linux", execPath: "/home/ada/Downloads/linux-unpacked/prismalens", receipt: receipt(linuxApp) }),
+			installedByInstaller({ platform: "linux", execPath: "/home/ada/Downloads/linux-unpacked/prismalens", receipt: receipt(linuxApp), installId: marked }),
 		).toBe(false);
 		expect(
-			installedByInstaller({ platform: "linux", execPath: `${linuxApp}-other/prismalens`, receipt: receipt(linuxApp) }),
+			installedByInstaller({ platform: "linux", execPath: `${linuxApp}-other/prismalens`, receipt: receipt(linuxApp), installId: marked }),
 		).toBe(false);
 		expect(
 			installedByInstaller({
@@ -257,6 +269,6 @@ describe("installedByInstaller", () => {
 				receipt: `version=0.5.7\ndesktop=0\ndesktop_app=${linuxApp}\n`,
 			}),
 		).toBe(false);
-		expect(installedByInstaller({ platform: "linux", execPath: `${linuxApp}/prismalens`, receipt: null })).toBe(false);
+		expect(installedByInstaller({ platform: "linux", execPath: `${linuxApp}/prismalens`, receipt: null, installId: marked })).toBe(false);
 	});
 });

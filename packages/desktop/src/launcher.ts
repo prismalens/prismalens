@@ -28,7 +28,7 @@ export type LauncherEnv = {
 };
 
 export type LauncherPlan =
-	| { kind: "none"; reason: string }
+	| { kind: "none"; reason: string; notice?: string }
 	| {
 			kind: "shortcut";
 			path: string;
@@ -155,6 +155,8 @@ export function planLauncher(
 			return {
 				kind: "none",
 				reason: `${env.execPath} has a line break, which a desktop entry can't hold`,
+				notice:
+					"PrismaLens can't add itself to your app menu: its folder's path has a line break, which a menu entry can't hold. Move the app to a folder without one to get its menu entry.",
 			};
 		const icon = posix.join(env.resourcesPath, "icon.png");
 		const contents = desktopEntry(env.execPath, env.exists(icon) ? icon : null);
@@ -191,17 +193,20 @@ export function planLauncher(
 
 /**
  * Whether the official installer put this copy here, so `pl upgrade` (which reruns it) is how it upgrades.
- * Its receipt says desktop=1 and names, as desktop_app, the app this copy runs from; paths compare canonical.
+ * Its receipt says desktop=1 and names, as desktop_app, the app this copy runs from (paths compare
+ * canonical), and that app still carries the receipt's desktop_app_id: another app put in its place doesn't.
  */
 export function installedByInstaller(input: {
 	platform: NodeJS.Platform;
 	execPath: string;
 	receipt: string | null;
+	installId: (app: string) => string | null;
 	realpath?: (path: string) => string;
 }): boolean {
 	if (!input.receipt || !/^desktop=1\r?$/m.test(input.receipt)) return false;
 	const app = /^desktop_app=(.+?)\r?$/m.exec(input.receipt)?.[1];
-	if (!app) return false;
+	const id = /^desktop_app_id=(.+?)\r?$/m.exec(input.receipt)?.[1];
+	if (!app || !id || input.installId(app) !== id) return false;
 	const real = input.realpath ?? ((path: string) => path);
 	const p = input.platform === "win32" ? win32 : posix;
 	const fold = (path: string) =>

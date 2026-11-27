@@ -250,13 +250,29 @@ entry_ours() {
 # $1 as one single-quoted sh word.
 sh_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 
-# A folder's inode: a bundle someone put in the installer's place is a different folder.
-inode_of() { stat -c %i "$1" 2>/dev/null || stat -f %i "$1" 2>/dev/null; }
+# Each install marks its app with a random ID the receipt keeps: an app someone put in the
+# installer's place, even in the same folder, doesn't carry it. On macOS it's an extended
+# attribute, which leaves the bundle's signed contents as they were.
+new_install_id() { od -An -N8 -tx1 /dev/urandom | tr -d ' \n'; }
+app_id_of() {
+	if [ "$(uname -s)" = Darwin ]; then
+		xattr -p io.prismalens.install-id "$1" 2>/dev/null
+	else
+		cat "$1/.prismalens-install-id" 2>/dev/null
+	fi
+}
+set_app_id() {
+	if [ "$(uname -s)" = Darwin ]; then
+		xattr -w io.prismalens.install-id "$2" "$1"
+	else
+		printf '%s\n' "$2" >"$1/.prismalens-install-id"
+	fi
+}
 
-# Whether $1 is the app this installer put there: the receipt names it and it is still that folder.
+# Whether $1 is the app this installer put there: the receipt names it and it carries the receipt's ID.
 app_ours() {
 	[ -n "$1" ] && [ -d "$1" ] && [ "$(receipt_get desktop_app)" = "$1" ] &&
-		[ -n "$(receipt_get desktop_app_id)" ] && [ "$(inode_of "$1")" = "$(receipt_get desktop_app_id)" ]
+		[ -n "$(receipt_get desktop_app_id)" ] && [ "$(app_id_of "$1")" = "$(receipt_get desktop_app_id)" ]
 }
 
 # A run killed between its two renames left the installer's old app in that run's staging
@@ -269,7 +285,7 @@ desktop_recover() {
 	fi
 	[ ! -e "$r_dest" ] && [ "$(receipt_get desktop_app)" = "$r_dest" ] || return 0
 	for r_prev in "$r_stage"*/previous; do
-		[ "$(inode_of "$r_prev")" = "$(receipt_get desktop_app_id)" ] || continue
+		[ "$(app_id_of "$r_prev")" = "$(receipt_get desktop_app_id)" ] || continue
 		mv "$r_prev" "$r_dest" || continue
 		rm -rf "$(dirname "$r_prev")"
 		done_ "Put back the desktop app an interrupted install had moved aside"
@@ -396,6 +412,14 @@ install_desktop() {
 		[ -z "$d_src" ] || [ -x "$d_src/prismalens" ] || d_src=
 	fi
 	[ -n "$d_src" ] || { rm -rf "$d_stage"; why="the archive doesn't hold the app"; return 1; }
+	# Checked again here: another app can appear in this place while the zip downloads.
+	if [ -e "$d_dest" ] && ! app_ours "$d_dest"; then
+		rm -rf "$d_stage"
+		why="$d_dest isn't the app this installer put there; it was left as it is"
+		return 1
+	fi
+	d_id=$(new_install_id)
+	set_app_id "$d_src" "$d_id" || { rm -rf "$d_stage"; why="couldn't mark the app as this installer's"; return 1; }
 	[ ! -e "$d_dest" ] || mv "$d_dest" "$d_stage/previous" || { rm -rf "$d_stage"; why="couldn't move the old app aside"; return 1; }
 	if ! mv "$d_src" "$d_dest"; then
 		if [ -e "$d_stage/previous" ] && ! mv "$d_stage/previous" "$d_dest"; then
@@ -408,7 +432,7 @@ install_desktop() {
 	fi
 	rm -rf "$d_stage"
 	owned="$d_dest"
-	owned_id=$(inode_of "$d_dest")
+	owned_id=$d_id
 	if [ "$platform" = darwin ]; then
 		# Launchpad and Spotlight would find it on their own; registering makes it immediate.
 		lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
