@@ -154,6 +154,18 @@ describe("keys pressed before the app is ready (#1020)", () => {
 		expect(onNew).not.toHaveBeenCalled();
 	});
 
+	it("leaves a letter pressed on a focused list row to the row, never typed into the message box (#1193 bar 1.8)", () => {
+		new Function(EARLY_KEYS_SCRIPT)();
+		const row = document.createElement("a");
+		row.setAttribute("data-list-row", "");
+		document.body.appendChild(row);
+		press(row, "j");
+		press(document.body, "q");
+		row.remove();
+		// Each test's script adds its own window listener, so a key repeats once per earlier run.
+		expect([...new Set(win.__plEarlyKeys?.map((k) => k.k))]).toEqual(["q"]);
+	});
+
 	it("keys pressed after mounting are handled once, not replayed", async () => {
 		await act(async () => root.render(createElement(Probe)));
 		window.dispatchEvent(new KeyboardEvent("keydown", { key: "c" }));

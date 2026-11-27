@@ -6,13 +6,13 @@ import { composePage } from "@/lib/compose-pending";
 /**
  * The prerendered shell shows the page before React runs, so a shortcut pressed then
  * reached no listener (#1020). This pre-paint script keeps those keys, with when and where
- * they were pressed, until the shortcuts mount; typing in a field, or in an open list or menu
- * whose typeahead owns plain letters, is left. A modified key
+ * they were pressed, until the shortcuts mount; typing in a field, in an open list or menu
+ * whose typeahead owns plain letters, or on a focused row whose keys are its own, is left. A modified key
  * (Ctrl K) keeps its modifiers, since the key listeners mount after the first content.
  */
 export const EARLY_KEYS_SCRIPT = `(function(){try{window.__plEarlyKeys=[];
 window.addEventListener('keydown',function(e){var k=window.__plEarlyKeys;if(!k||k.length>=64)return;
-var t=e.target,n=t&&t.tagName,mod=e.metaKey||e.ctrlKey||e.altKey;if(!mod&&(n==='INPUT'||n==='TEXTAREA'||n==='SELECT'||(t&&t.isContentEditable)||(t&&t.closest&&t.closest('[role=listbox],[role=menu]'))))return;
+var t=e.target,n=t&&t.tagName,mod=e.metaKey||e.ctrlKey||e.altKey;if(!mod&&(n==='INPUT'||n==='TEXTAREA'||n==='SELECT'||(t&&t.isContentEditable)||(t&&t.closest&&t.closest('[role=listbox],[role=menu],[data-list-row],[data-surface]'))))return;
 var r={k:e.key,t:Date.now(),p:location.pathname};if(mod){r.c=e.ctrlKey;r.m=e.metaKey;r.a=e.altKey;r.s=e.shiftKey;r.d=e.code;}k.push(r);},true);}catch(_){}})();`;
 
 /** Older keys are dropped; slow first loads still keep a key pressed as the page appeared. */
