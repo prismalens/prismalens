@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -715,7 +716,7 @@ test("design coverage matrix", async ({
 		expect(p.getByTestId("transcript")).toBeVisible(),
 	);
 	await shoot("sidebar-sections", "/new", home, { widths: [DESK] });
-	// The row grid (#1101 cat 2): status icon, title, time, agent; on a phone, in its Menu drawer.
+	// The row's fixed lines (#1020): place and status corner, title, meta with its badges; on a phone, in its Menu drawer.
 	await shoot(
 		"sidebar-rows",
 		"/new",
@@ -1025,8 +1026,123 @@ test("design coverage matrix", async ({
 		await page.unrouteAll({ behavior: "ignoreErrors" });
 	}
 
+	// Last, so no state above gains a row (#1020): a project thread whose branch holds two
+	// commits, so one list shows the place, branch, commits, PR, alerts and agent badges.
+	const badged = await projectThreadWithCommits(page, 2);
+	await shoot(
+		"sidebar-row-badges",
+		"/new",
+		async (p) => {
+			await home(p);
+			const row = p.locator(`[data-testid="thread-row"][data-id="${badged}"]`);
+			await expect(row.getByTestId("row-badge-commits")).toHaveAttribute(
+				"aria-label",
+				"2 commits",
+			);
+			// Resting on the row opens its card beside the list.
+			await row.getByTestId("row-title").hover();
+			await expect(p.getByTestId("row-rest-card")).toBeVisible();
+		},
+		{ widths: [DESK] },
+	);
+
 	save();
 });
+
+/**
+ * A project thread run in its own worktree on a named branch, then `commits` commits made
+ * there, as an agent's work leaves them. Returns the thread's id.
+ */
+async function projectThreadWithCommits(page: Page, commits: number) {
+	const workspace = process.env.PRISMALENS_E2E_WORKSPACE_DIR ?? "";
+	expect(workspace, "the e2e stack's workspace").not.toBe("");
+	const git = (cwd: string, ...a: string[]) =>
+		execFileSync(
+			"git",
+			[
+				"-c",
+				"user.name=PrismaLens e2e",
+				"-c",
+				"user.email=e2e@example.com",
+				...a,
+			],
+			{ cwd, encoding: "utf8" },
+		).trim();
+	const source = join(workspace, `matrix-badges-${Date.now()}`, "shop");
+	mkdirSync(source, { recursive: true });
+	writeFileSync(join(source, "README.md"), "# shop\n");
+	git(source, "init", "-q", "-b", "main");
+	git(source, "add", ".");
+	git(source, "commit", "-q", "-m", "init");
+	const api = async (
+		path: string,
+		init: { method?: "GET" | "POST" | "PUT"; data?: unknown } = {},
+	) => {
+		const r = await page.request.fetch(`/api${path}`, {
+			method: init.method ?? (init.data === undefined ? "GET" : "POST"),
+			...(init.data === undefined ? {} : { data: init.data }),
+		});
+		expect(r.ok(), `${path}: ${await r.text()}`).toBe(true);
+		return r.json();
+	};
+	// The states above leave runs live, and they fill the dispatch cap (3), so this run
+	// would queue until the poll gives up; stop them first.
+	for (const status of ["running", "pending"]) {
+		const { data } = await api(`/investigations?status=${status}&limit=100`);
+		for (const r of data as { id: string }[])
+			await page.request.post(`/api/investigations/${r.id}/cancel`);
+	}
+	const { settings } = await api("/settings/run-workspace");
+	await api("/settings/run-workspace", {
+		method: "PUT",
+		data: { ...settings, branch: "named" },
+	});
+	try {
+		const project = await api("/repositories/source", { data: { source } });
+		const { investigationId: id } = await api("/threads", {
+			data: {
+				subject: { kind: "project", repositoryId: project.id },
+				text: "Tidy the retry helper",
+				workIn: "worktree",
+			},
+		});
+		let cwd = "";
+		await expect
+			.poll(
+				async () => {
+					const run = await api(`/investigations/${id}`);
+					cwd = run.workspace?.cwd ?? "";
+					return ["pending", "running", "queued"].includes(run.status) || !cwd;
+				},
+				{ timeout: 60_000 },
+			)
+			.toBe(false);
+		for (let i = 1; i <= commits; i++) {
+			writeFileSync(join(cwd, `step-${i}.txt`), `${i}\n`);
+			git(cwd, "add", ".");
+			git(cwd, "commit", "-q", "-m", `agent: step ${i}`);
+		}
+		// The feed caches a worktree's count for 15 s and a commit refetches nothing, so the
+		// page would draw the count from before these commits.
+		await expect
+			.poll(
+				async () => {
+					const feed = await api(`/threads/feed?repositoryId=${project.id}`);
+					const rows = (
+						feed.units as {
+							threads: { id: string; commits?: number | null }[];
+						}[]
+					).flatMap((u) => u.threads);
+					return rows.find((r) => r.id === id)?.commits ?? null;
+				},
+				{ timeout: 30_000, intervals: [2000] },
+			)
+			.toBe(commits);
+		return id as string;
+	} finally {
+		await api("/settings/run-workspace", { method: "PUT", data: settings });
+	}
+}
 
 /** The Wave 2 kit's states (#1101): each `data-kit-state` box at 1440 and 390, both themes. */
 test("design kit states", async ({ page }) => {

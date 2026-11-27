@@ -19,7 +19,8 @@ import {
 	statusWord,
 } from "@/components/kit/Status";
 import { Time } from "@/components/kit/Time";
-import { RowAsk, type RowAskEntry, useRowAsk } from "@/components/shell/RowAsk";
+import { type RowAskEntry, useRowAsk } from "@/components/shell/RowAsk";
+import { RowAsk } from "@/components/shell/RowAskCard";
 import {
 	useAsksByThread,
 	useThreadListModel,

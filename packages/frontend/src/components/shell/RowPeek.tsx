@@ -15,7 +15,8 @@ import {
 } from "@/components/kit/MarkBadges";
 import { markLook } from "@/components/kit/marks";
 import { statusWord } from "@/components/kit/Status";
-import { prLabel, RowPlace } from "@/components/shell/RowLines";
+import { prLabel } from "@/components/shell/RowBadges";
+import { RowPlace } from "@/components/shell/RowLines";
 import { StatusMark, wordTone } from "@/components/shell/ThreadTree";
 import { GitStateMark } from "@/components/thread/git/GitStateMark";
 import type { ListNode } from "@/lib/thread-list";

@@ -16,13 +16,16 @@ export function RowCard({
 	label,
 	testId,
 	onClose,
+	passive = false,
 	children,
 }: {
-	anchor: RefObject<HTMLDivElement | null>;
+	anchor: RefObject<HTMLElement | null>;
 	side: "right" | "bottom";
 	label: string;
 	testId: string;
 	onClose: () => void;
+	/** Opened by a resting pointer: it takes no pointer, so leaving the row closes it. */
+	passive?: boolean;
 	children: ReactNode;
 }) {
 	return (
@@ -45,7 +48,12 @@ export function RowCard({
 					onCloseAutoFocus={(e) => e.preventDefault()}
 					aria-label={label}
 					data-float="pop"
-					className={cn(SURFACE, FAMILY_CLASS.card, "p-2.5")}
+					className={cn(
+						SURFACE,
+						FAMILY_CLASS.card,
+						"p-2.5",
+						passive && "pointer-events-none",
+					)}
 					data-testid={testId}
 				>
 					{children}

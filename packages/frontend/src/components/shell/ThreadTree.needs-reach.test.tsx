@@ -214,7 +214,7 @@ describe("the Needs you bar keeps the count on screen once the heading scrolls a
 });
 
 describe("a held row says where it goes (#1247 D25)", () => {
-	it("replaces its second line with Moves to Needs you, and keeps a row without one at one line", async () => {
+	it("puts where it goes in its meta line's lead, a row with nothing else to say included, so no held row changes height", async () => {
 		const withLine = [
 			...units.slice(0, 2),
 			{
@@ -242,7 +242,10 @@ describe("a held row says where it goes (#1247 D25)", () => {
 		).toBe("Moves to Needs you");
 		expect(moved?.querySelector('[data-testid="row-detail"]')).toBeNull();
 		const bare = container.querySelector('[data-moving="active"]');
-		expect(bare?.querySelector('[data-testid="row-meta"]')).toBeNull();
+		expect(
+			bare?.querySelector('[data-testid="row-meta"] [data-testid="row-moving"]')
+				?.textContent,
+		).toBe("Moves to Threads");
 	});
 });
 

@@ -6,7 +6,8 @@ import type { ThreadRow } from "@prismalens/contracts";
 import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RowBadges, RowPlace, useRest } from "./RowLines";
+import { RowBadges } from "./RowBadges";
+import { RowPlace, useRest } from "./RowLines";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }

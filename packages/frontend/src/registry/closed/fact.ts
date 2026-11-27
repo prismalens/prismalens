@@ -10,6 +10,7 @@ import { defineClosed } from "@prismalens/registry";
  */
 export type FactPlace =
 	| "sidebar.row"
+	| "sidebar.card"
 	| "home.card"
 	| "list.row"
 	| "thread.header"
@@ -56,6 +57,7 @@ export const factPlaces = defineClosed(
 	"factPlace",
 	[
 		"sidebar.row",
+		"sidebar.card",
 		"home.card",
 		"list.row",
 		"thread.header",
@@ -71,7 +73,24 @@ export const factPlaces = defineClosed(
 		"sidebar.row": {
 			title: "A thread's row in the sidebar",
 			match: '[data-testid="thread-row-wrap"]',
-			facts: ["title", "status", "agent", "cause", "startedBy", "activity"],
+			facts: [
+				"title",
+				"status",
+				"agent",
+				"cause",
+				"startedBy",
+				"activity",
+				"project",
+				"branch",
+				"pr",
+				"alert",
+			],
+		},
+		"sidebar.card": {
+			title:
+				"The card beside a sidebar row the pointer rests on, and its PR list",
+			match: '[data-testid="row-rest-card"], [data-testid="row-pr-list"]',
+			facts: ["status", "agent", "project", "branch", "pr", "alert"],
 		},
 		"home.card": {
 			title: "A card or row on Home, and the Needs you badge with its list",
@@ -155,6 +174,10 @@ interface Fact {
 const LIST_NAMES_ITS_ROWS =
 	"A list page names and marks its own rows; the sidebar stays the same on every page.";
 
+/** The card has no link, so on Home its facts read as Home's own. */
+const CARD_SPELLS_ROW =
+	"The resting card spells out the row under the pointer, and closes when the pointer leaves.";
+
 const ROW_MIRRORS_PAGE =
 	"The active row reads like its siblings while you move between threads; the page names what is open.";
 
@@ -209,6 +232,8 @@ export const facts = defineClosed(
 					why: "A strip is the status's action; the row keeps the list scannable.",
 				},
 				{ places: ["sidebar.row", "list.row"], why: LIST_NAMES_ITS_ROWS },
+				{ places: ["sidebar.row", "sidebar.card"], why: CARD_SPELLS_ROW },
+				{ places: ["sidebar.card", "home.card"], why: CARD_SPELLS_ROW },
 				{
 					places: ["thread.header", "transcript"],
 					why: "The transcript records how a turn ended; the header says where the thread stands now, and the two can differ.",
@@ -222,17 +247,41 @@ export const facts = defineClosed(
 		agent: {
 			label: "Agent",
 			home: "composer",
-			repeats: [{ places: ["sidebar.row", "composer"], why: ROW_MIRRORS_PAGE }],
+			repeats: [
+				{ places: ["sidebar.row", "composer"], why: ROW_MIRRORS_PAGE },
+				{ places: ["sidebar.row", "sidebar.card"], why: CARD_SPELLS_ROW },
+				{ places: ["sidebar.card", "composer"], why: CARD_SPELLS_ROW },
+			],
 		},
 		model: { label: "Model", home: "composer" },
 		effort: { label: "Effort", home: "composer" },
 		access: { label: "Permission mode", home: "composer" },
 		host: { label: "Host", home: "thread.box" },
 		folder: { label: "Folder or worktree", home: "thread.box" },
-		project: { label: "Project or service", home: "thread.header" },
-		branch: { label: "Branch", home: "thread.box" },
+		project: {
+			label: "Project or service",
+			home: "thread.header",
+			repeats: [
+				{ places: ["sidebar.row", "thread.header"], why: ROW_MIRRORS_PAGE },
+				{ places: ["sidebar.row", "incident.card"], why: ROW_MIRRORS_PAGE },
+				{ places: ["sidebar.row", "sidebar.card"], why: CARD_SPELLS_ROW },
+			],
+		},
+		branch: {
+			label: "Branch",
+			home: "thread.box",
+			repeats: [
+				{ places: ["sidebar.row", "sidebar.card"], why: CARD_SPELLS_ROW },
+			],
+		},
 		changes: { label: "Changes", home: "thread.box" },
-		pr: { label: "PR or MR", home: "thread.box" },
+		pr: {
+			label: "PR or MR",
+			home: "thread.box",
+			repeats: [
+				{ places: ["sidebar.row", "sidebar.card"], why: CARD_SPELLS_ROW },
+			],
+		},
 		cause: {
 			label: "Cause",
 			home: "incident.card",
@@ -244,7 +293,14 @@ export const facts = defineClosed(
 		next: { label: "Next step", home: "incident.card" },
 		firing: { label: "Alert firing time", home: "thread.header" },
 		severity: { label: "Severity", home: "thread.header" },
-		alert: { label: "Alert", home: "incident.card" },
+		alert: {
+			label: "Alert",
+			home: "incident.card",
+			repeats: [
+				{ places: ["sidebar.row", "incident.card"], why: ROW_MIRRORS_PAGE },
+				{ places: ["sidebar.row", "sidebar.card"], why: CARD_SPELLS_ROW },
+			],
+		},
 		context: { label: "Context window", home: "composer" },
 		cost: { label: "Cost", home: "page" },
 		usage: { label: "Usage limit", home: "strip" },

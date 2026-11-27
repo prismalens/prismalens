@@ -767,6 +767,26 @@
 			"controls": 10,
 			"tapOverlaps": 0
 		},
+		"sidebar-row-badges-1280-dark": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 14,
+			"tapOverlaps": 0
+		},
+		"sidebar-row-badges-1280-light": {
+			"contrastFails": 0,
+			"smallTargets": 0,
+			"clipped": 0,
+			"sideways": 0,
+			"consoleErrors": 0,
+			"otherAxe": 0,
+			"controls": 14,
+			"tapOverlaps": 0
+		},
 		"automation-page-1280-dark": {
 			"contrastFails": 0,
 			"smallTargets": 0,
