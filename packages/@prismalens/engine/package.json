@@ -47,7 +47,7 @@
 		"clean": "rm -rf dist"
 	},
 	"dependencies": {
-		"@agentclientprotocol/sdk": "2.7.0",
+		"@agentclientprotocol/sdk": "2.9.1",
 		"@anthropic-ai/claude-agent-sdk": "0.3.328",
 		"@prismalens/agent-host": "workspace:*",
 		"@prismalens/config": "workspace:*",

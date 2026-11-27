@@ -390,6 +390,21 @@ describe("runInvestigation over a fake ACP harness", () => {
 		expect(warnings.join("\n")).toContain("unknown_stop_reason");
 	});
 
+	it("adds no event and no drift for a cursor_update, which the SDK knows (#1262)", async () => {
+		const run = async (cursor: boolean) => {
+			const drift: string[] = [];
+			const { events } = await collect("tolerant", {
+				env: { ...process.env, FAKE_ACP_MODE: "tolerant", ...(cursor ? { FAKE_CURSOR: "1" } : {}) },
+				onHarnessDrift: (m) => drift.push(m),
+			});
+			return { kinds: events.map((e) => e.kind), drift: drift.join("\n") };
+		};
+		const without = await run(false);
+		const withCursor = await run(true);
+		expect(withCursor.kinds).toEqual(without.kinds);
+		expect(withCursor.drift).not.toContain("cursor_update");
+	});
+
 	it("hands the host the harness's usage_update, and nothing from a harness that sends none", async () => {
 		const seen: unknown[] = [];
 		await collect("ok", {
