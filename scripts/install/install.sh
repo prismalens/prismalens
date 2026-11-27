@@ -257,7 +257,8 @@ sum_of() { grep -E "(^|[[:space:]]|\*)$1\$" "$staging/SHA256SUMS" | cut -d' ' -f
 # Only the [Desktop Entry] group counts: an action's Exec isn't what the menu opens.
 entry_ours() {
 	[ -f "$desktop_file" ] && [ ! -L "$desktop_file" ] &&
-		E_LAUNCH="Exec=/bin/sh $(desktop_exec "$desktop_launch")" E_APP="Exec=$(desktop_exec "$data_root/desktop/app/prismalens")" \n			E_MARK="$desktop_marker" awk '
+		E_LAUNCH="Exec=/bin/sh $(desktop_exec "$desktop_launch")" E_APP="Exec=$(desktop_exec "$data_root/desktop/app/prismalens")" \
+			E_MARK="$desktop_marker" awk '
 			/^\[/ { main = ($0 == "[Desktop Entry]"); next }
 			main && ($0 == ENVIRON["E_LAUNCH"] || $0 == ENVIRON["E_APP"]) { exec_ok = 1 }
 			main && $0 == ENVIRON["E_MARK"] { marked = 1 }
