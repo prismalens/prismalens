@@ -335,7 +335,10 @@ discard() {
 		rm -f "$k_list"
 		[ -z "$k_failed" ] || return 1
 	fi
-	if [ -e "$1" ] || [ -L "$1" ]; then rm -rf "$1"; fi
+	[ -e "$1" ] || [ -L "$1" ] || return 0
+	# The install ID goes last, so a delete that stops partway leaves an app still marked as ours.
+	find "$1" ! -type d ! -name .prismalens-install-id ! -path '*/Contents/MacOS/PrismaLens' -exec rm -f {} + || return 1
+	rm -rf "$1"
 }
 
 # A run killed between its two renames left the installer's old app in that run's staging

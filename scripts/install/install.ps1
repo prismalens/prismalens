@@ -250,7 +250,7 @@ function Get-DesktopProcesses {
 
 function Get-InstallId([string]$Dir) {
 	$f = Join-Path $Dir ".prismalens-install-id"
-	if (Test-Path -LiteralPath $f) { return ([string](Get-Content -LiteralPath $f -TotalCount 1)).Trim() }
+	if (Test-Path -LiteralPath $f -PathType Leaf) { return ([IO.File]::ReadAllText($f)).Trim() }
 	return ""
 }
 
@@ -285,14 +285,31 @@ function Remove-Owned([string]$Path) {
 	}
 	if (-not (Test-Path -LiteralPath $Path)) { return $true }
 	$trash = "$Path.old-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
-	try { Rename-Item -LiteralPath $Path -NewName (Split-Path $trash -Leaf) -ErrorAction Stop } catch { return $false }
-	Remove-Item -LiteralPath $trash -Recurse -Force -ErrorAction SilentlyContinue
+	# A just-quit app's helpers, or a scanner, can hold a file for a moment after its last window closes.
+	for ($try = 1; $true; $try++) {
+		try { Rename-Item -LiteralPath $Path -NewName (Split-Path $trash -Leaf) -ErrorAction Stop; break } catch {
+			if ($try -ge 10) { return $false }
+			Start-Sleep -Milliseconds 500
+		}
+	}
+	# The install ID goes last, and a partial delete is put back at $Path, so what's left is still ours.
+	$left = @(Get-DeletableFiles $trash | Where-Object { Remove-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue; Test-Path -LiteralPath $_ })
+	if (-not $left) { Remove-Item -LiteralPath $trash -Recurse -Force -ErrorAction SilentlyContinue }
 	if (Test-Path -LiteralPath $trash) {
+		try { Rename-Item -LiteralPath $trash -NewName (Split-Path $Path -Leaf) -ErrorAction Stop; $trash = $Path } catch {}
 		$script:ownedLeft = $trash
 		Warn "Some of $Path couldn't be deleted; what's left is in $trash"
 		return $false
 	}
 	return $true
+}
+
+# The files under $Dir but its install IDs, not looking through links: Remove-Owned deletes these first.
+function Get-DeletableFiles([string]$Dir) {
+	foreach ($i in @(Get-ChildItem -LiteralPath $Dir -Force -ErrorAction SilentlyContinue)) {
+		if ($i.PSIsContainer -and -not ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) { Get-DeletableFiles $i.FullName }
+		elseif (-not $i.PSIsContainer -and $i.Name -ne ".prismalens-install-id") { $i.FullName }
+	}
 }
 
 # Removes the shortcut and the app this installer made, and nothing else.

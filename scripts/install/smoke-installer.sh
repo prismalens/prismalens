@@ -25,7 +25,8 @@ stage() {
 	echo "file://$base"
 }
 
-# Runs the installer as a fresh user: its own HOME, bash as the login shell.
+# Runs the installer as a fresh user: its own HOME, bash as the login shell. An override such as
+# PL_HOME=x before a call goes inside ( ) or $( ): macOS's sh keeps it after the function returns.
 run_installer() {
 	r_base=$1
 	shift
@@ -266,7 +267,7 @@ printf 'users own' >"$work/home/stuff/notes"
 out=$(PL_HOME="$work/home/stuff" run_installer "$app_base" --uninstall 2>&1) || { echo "$out"; fail "uninstall of a folder with no receipt"; }
 [ "$(cat "$work/home/stuff/notes")" = "users own" ] || fail "uninstall deleted a folder the installer didn't make"
 case "$out" in *"holds no receipt from this installer, so it was left as it is"*) ;; *) echo "$out"; fail "uninstall didn't say why it left the folder" ;; esac
-PL_HOME="$work/home/ws" PL_WS="$work/home/ws" run_installer "$app_base" --version "$new_version" --no-modify-path --no-desktop >/dev/null 2>&1 || fail "install with the data root as the workspace"
+(PL_HOME="$work/home/ws" PL_WS="$work/home/ws" run_installer "$app_base" --version "$new_version" --no-modify-path --no-desktop) >/dev/null 2>&1 || fail "install with the data root as the workspace"
 printf 'db' >"$work/home/ws/prismalens.db"
 out=$(PL_HOME="$work/home/ws" PL_WS="$work/home/ws" run_installer "$app_base" --uninstall 2>&1) || { echo "$out"; fail "uninstall with the data root as the workspace"; }
 [ "$(cat "$work/home/ws/prismalens.db")" = db ] || fail "uninstall deleted the workspace"
@@ -364,6 +365,22 @@ fi
 rm -rf "$data-kept"
 pass "a replaced app: uninstall keeps it and says where"
 
+# --no-desktop that deletes only part of the app: what's left is still the installer's, and a rerun removes it.
+if [ "$(id -u)" = 0 ]; then
+	echo "skip - --no-desktop after a partial delete: root deletes past the file permission that stops it"
+else
+	rm -rf "$work/home" && mkdir -p "$work/home"
+	run_app_installer >/dev/null 2>&1 || fail "install before the partial delete"
+	mkdir -p "$app/stuck" && printf 'x' >"$app/stuck/file" && chmod 555 "$app/stuck"
+	out=$(run_app_installer --no-desktop 2>&1) && { chmod 755 "$app/stuck"; echo "$out"; fail "--no-desktop that deleted only part of the app succeeded"; }
+	chmod 755 "$app/stuck"
+	case "$out" in *"Couldn't remove the desktop app $app; it is still the installer's, so running this again retries."*) ;; *) echo "$out"; fail "the partial delete wasn't reported" ;; esac
+	grep -qx "desktop_app=$app" "$data/receipt" || fail "a partial delete dropped the app from the receipt"
+	out=$(run_app_installer --no-desktop 2>&1) || { echo "$out"; fail "the --no-desktop rerun after a partial delete"; }
+	[ ! -e "$app" ] && [ ! -e "$data-kept" ] && grep -qx "desktop_app=" "$data/receipt" || { echo "$out"; fail "the rerun didn't remove what the partial delete left"; }
+	pass "--no-desktop after a partial delete: the receipt keeps the app, and a rerun removes it"
+fi
+
 if [ "$(uname -s)" != Darwin ]; then
 	# Another app appears in the installer's place while the zip downloads: it's left, not moved aside.
 	rm -rf "$work/home" && mkdir -p "$work/home" "$work/shim"
@@ -383,7 +400,8 @@ if [ "$(uname -s)" != Darwin ]; then
 	chmod 755 "$work/shim-entry/unzip"
 	out=$(SHIM="$work/shim-entry" run_app_installer 2>&1) || { echo "$out"; fail "install while another entry appears"; }
 	case "$out" in *"The desktop app wasn't installed: the app is in $app, but $entry now opens another copy of PrismaLens; it was left as it is"*) ;; *) echo "$out"; fail "the entry that appeared during the download wasn't seen" ;; esac
-	[ "$(cat "$entry")" = "$(printf '[Desktop Entry]\nExec=/opt/other/prismalens')" ] || { cat "$entry"; fail "the entry that appeared during the download was overwritten"; }
+	printf '[Desktop Entry]\nExec=/opt/other/prismalens\n' >"$work/entry-theirs"
+	cmp -s "$entry" "$work/entry-theirs" || { cat "$entry"; fail "the entry that appeared during the download was overwritten"; }
 	pass "a menu entry that appears during the download: left byte for byte"
 
 	# A first install killed after the app is in place: the receipt already names it and its ID, so
@@ -392,7 +410,7 @@ if [ "$(uname -s)" != Darwin ]; then
 	printf '#!/bin/sh\ncase "$*" in *.local/share/applications*) kill -9 "$PPID" ;; esac\nexec %s "$@"\n' \
 		"$(command -v mkdir)" >"$work/shim-kill/mkdir"
 	chmod 755 "$work/shim-kill/mkdir"
-	SHIM="$work/shim-kill" run_app_installer >/dev/null 2>&1 && fail "the killed first install finished"
+	(SHIM="$work/shim-kill" run_app_installer) >/dev/null 2>&1 && fail "the killed first install finished"
 	[ -x "$app/prismalens" ] && [ ! -e "$entry" ] || fail "the killed first install didn't stop between the app and its entry"
 	grep -qx "desktop_app=$app" "$data/receipt" && grep -qx "desktop_app_id=$(cat "$app/.prismalens-install-id")" "$data/receipt" ||
 		{ cat "$data/receipt" || true; fail "the killed first install's receipt doesn't name its app and ID"; }
@@ -404,7 +422,7 @@ if [ "$(uname -s)" != Darwin ]; then
 
 	# Uninstall with a data root spelled with a trailing slash: the replaced app is kept outside it.
 	rm -rf "$work/home" && mkdir -p "$work/home"
-	PL_HOME="$data/" run_app_installer >/dev/null 2>&1 || fail "install under a data root with a trailing slash"
+	(PL_HOME="$data/" run_app_installer) >/dev/null 2>&1 || fail "install under a data root with a trailing slash"
 	find "$app" -mindepth 1 -delete && printf '#!/bin/sh\necho users own\n' >"$app/prismalens"
 	out=$(PL_HOME="$data/" run_installer "$app_base" --uninstall 2>&1) || { echo "$out"; fail "uninstall under a data root with a trailing slash"; }
 	kept_app=$(find "$data-kept" -mindepth 2 -maxdepth 2 -name app 2>/dev/null || true)
@@ -415,9 +433,9 @@ if [ "$(uname -s)" != Darwin ]; then
 	# A data root named like a folder discard skips (runtime): its replaced app is still kept.
 	rm -rf "$work/home" && mkdir -p "$work/home"
 	rt="$work/home/pl/runtime"
-	PL_HOME="$rt" run_app_installer >/dev/null 2>&1 || fail "install under a data root named runtime"
+	(PL_HOME="$rt" run_app_installer) >/dev/null 2>&1 || fail "install under a data root named runtime"
 	find "$rt/desktop/app" -mindepth 1 -delete && printf 'users own' >"$rt/desktop/app/prismalens"
-	PL_HOME="$rt" run_installer "$app_base" --uninstall >/dev/null 2>&1 || fail "uninstall under a data root named runtime"
+	(PL_HOME="$rt" run_installer "$app_base" --uninstall) >/dev/null 2>&1 || fail "uninstall under a data root named runtime"
 	[ "$(cat "$rt-kept"/app.*/app/prismalens 2>/dev/null)" = "users own" ] || fail "a data root named runtime lost the replaced app"
 	pass "a data root named runtime: uninstall still keeps the replaced app"
 
@@ -492,7 +510,7 @@ if [ "$(uname -s)" != Darwin ]; then
 	# A running app under a path with regex characters still counts as running.
 	odd_home="$work/home [QA] (1)+"
 	rm -rf "$odd_home" && mkdir -p "$odd_home"
-	APP_HOME="$odd_home" run_app_installer >/dev/null 2>&1 || fail "install under $odd_home"
+	(APP_HOME="$odd_home" run_app_installer) >/dev/null 2>&1 || fail "install under $odd_home"
 	odd_app="$odd_home/.local/share/prismalens/desktop/app"
 	# A process whose command is the app's path, as the app's own is (sleep may be a multi-call binary).
 	bash -c 'exec -a "$0" sleep 30' "$odd_app/prismalens" &

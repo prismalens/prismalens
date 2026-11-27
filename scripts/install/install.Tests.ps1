@@ -363,6 +363,7 @@ Describe "install.ps1 and the desktop app" {
 		$kept.Count | Should -Be 1
 		$run.Stderr | Should -Match ([regex]::Escape("$theirs isn't the app this installer put there; it was moved to $($kept[0].FullName)"))
 		Get-Content (Join-Path $kept[0].FullName "marker.txt") | Should -BeExactly "theirs"
+		Test-Path -LiteralPath $theirs | Should -BeFalse
 		Test-Path $app | Should -BeTrue
 	}
 
@@ -442,7 +443,7 @@ function global:Move-Item {
 		}
 	}
 
-	It "uninstall that deletes only part of the app says what's left, and keeps pl and the shortcut" {
+	It "uninstall that deletes only part of the app keeps what's left as the installer's, with pl and the shortcut, and a rerun removes it" {
 		$null = Invoke-Installer $work $base $want
 		$stuck = Join-Path (Split-Path $app) "stuck.txt"
 		Set-Content -Path $stuck -Value "stuck"
@@ -452,12 +453,33 @@ function global:Move-Item {
 			$run = Invoke-Installer $work $base "" "-Uninstall"
 
 			$run.ExitCode | Should -Not -Be 0
-			$run.Stderr | Should -Match ("Couldn't remove all of the desktop app; what's left is in " + [regex]::Escape((Join-Path $work "data\desktop")) + "\.old-[0-9a-f]{8}\. Nothing else was removed\.")
+			$run.Stderr | Should -Match ([regex]::Escape("Couldn't remove all of the desktop app; what's left is in $(Join-Path $work 'data\desktop'). Nothing else was removed."))
 			Test-Path (Join-Path $work "bin\pl.cmd") | Should -BeTrue
 			Test-Path $lnk | Should -BeTrue
 		} finally {
 			Get-ChildItem (Join-Path $work "data") -Recurse -Force -Filter "stuck.txt" | ForEach-Object { & (Join-Path $system32 "icacls.exe") $_.FullName /remove:d $me | Out-Null }
 		}
+		$run = Invoke-Installer $work $base "" "-Uninstall"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Not -Match "isn't the app this installer put there"
+		Test-Path $lnk | Should -BeFalse
+		Test-Path (Join-Path $work "data") | Should -BeFalse
+		Test-Path (Join-Path $work "data-kept") | Should -BeFalse
+	}
+
+	It "uninstall waits for a file the app's last process holds for a moment after it quits" {
+		$null = Invoke-Installer $work $base $want
+		$ready = Join-Path $work "held"
+		$holder = Start-Process powershell -PassThru -WindowStyle Hidden -ArgumentList "-NoProfile", "-Command",
+			"`$f = [IO.File]::Open('$app', 'Open', 'Read', 'Read'); Set-Content '$ready' x; Start-Sleep -Milliseconds 1500; `$f.Dispose()"
+		while (-not (Test-Path $ready) -and -not $holder.HasExited) { Start-Sleep -Milliseconds 50 }
+		$run = Invoke-Installer $work $base "" "-Uninstall"
+		$holder.WaitForExit()
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		Test-Path (Join-Path $work "data") | Should -BeFalse
+		Test-Path $lnk | Should -BeFalse
 	}
 
 	It "uninstall leaves a data root without its receipt, and one that holds the workspace" {
