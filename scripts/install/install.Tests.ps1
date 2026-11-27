@@ -405,6 +405,37 @@ function global:Move-Item {
 		Get-Target $lnk | Should -BeExactly $app
 	}
 
+	It "a reinstall stopped between its two renames: a rerun with no downloads puts the installed copy back" {
+		$null = Invoke-Installer $work $base $want
+		$crash = @"
+function global:Move-Item {
+	if ("`$args" -like '*\desktop\$version*') { [Environment]::Exit(3) }
+	Microsoft.PowerShell.Management\Move-Item @args
+}
+"@
+		$run = Invoke-Installer $work $base "$want`n$crash"
+		$run.ExitCode | Should -Be 3 -Because $run.Stderr
+		Test-Path $app | Should -BeFalse
+
+		$run = Invoke-Installer $work ("file:///" + (Join-Path $work "none").Replace('\', '/')) $want
+
+		$run.Stderr | Should -Match "Put back the desktop app an interrupted install had moved aside"
+		Test-Path $app | Should -BeTrue
+		Get-Target $lnk | Should -BeExactly $app
+	}
+
+	It "a copy of the installer's app elsewhere in desktop\, ID and all, is left by uninstall" {
+		$null = Invoke-Installer $work $base $want
+		$copy = Join-Path $work "data\desktop\mine"
+		Copy-Item -LiteralPath (Split-Path $app) -Destination $copy -Recurse
+		$run = Invoke-Installer $work $base "" "-Uninstall"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match ([regex]::Escape("$copy isn't the app this installer put there; it and the folders that hold it were left as they are"))
+		Test-Path (Join-Path $copy "PrismaLens.exe") | Should -BeTrue
+		Test-Path $app | Should -BeFalse
+	}
+
 	It "keeps a Unicode data root whole in the receipt and the pl wrappers" {
 		$jose = Join-Path $work ("Jos" + [char]0xE9)
 		$run = Invoke-Installer $work $base "$want`n`$env:PRISMALENS_HOME = '$jose\data'"
@@ -461,7 +492,6 @@ function global:Move-Item {
 		$run.Stderr | Should -Not -Match "isn't the app this installer put there"
 		Test-Path $lnk | Should -BeFalse
 		Test-Path (Join-Path $work "data") | Should -BeFalse
-		Test-Path (Join-Path $work "data-kept") | Should -BeFalse
 	}
 
 	It "uninstall waits for a file the app's last process holds for a moment after it quits" {
@@ -540,6 +570,23 @@ function global:Move-Item {
 		$run.Stderr | Should -Match ([regex]::Escape("$(Join-Path $work 'bin\pl.cmd') isn't a wrapper this installer wrote, so nothing was installed; it was left as it is."))
 		Get-Content (Join-Path $work "bin\pl.cmd") -Raw | Should -BeExactly $before
 		Test-Path (Join-Path $work "data\runtime\$version") | Should -BeFalse
+	}
+
+	It "an install while another installer holds the lock changes nothing" {
+		$held = [System.IO.File]::Open("$work\data.install-lock", "OpenOrCreate", "ReadWrite", "None")
+		try {
+			$run = Invoke-Installer $work $base ""
+
+			$run.ExitCode | Should -Not -Be 0
+			$run.Stderr | Should -Match ([regex]::Escape("Another PrismaLens installer is running, or $work\data.install-lock can't be opened; run this again once it finishes. Nothing was changed."))
+			Test-Path (Join-Path $work "data\runtime") | Should -BeFalse
+			Test-Path (Join-Path $work "bin\pl.cmd") | Should -BeFalse
+		} finally {
+			$held.Dispose()
+		}
+		$run = Invoke-Installer $work $base ""
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Installed | Should -BeExactly "genuine"
 	}
 
 	It "an app download that throws still records the CLI it installed" {

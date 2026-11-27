@@ -175,6 +175,21 @@ out=$(env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash PRISMALENS_REL
 [ -L "$work/userbin/prismalens" ] && [ "$(cat "$work/elsewhere/prismalens")" = "users own target" ] || fail "the link at prismalens or its target was changed"
 pass "a pl the installer didn't write, or a link, in the bin dir: left as it is"
 
+# Another installer holds the data root's lock: nothing changes. A lock its killed run left is taken over.
+bash -c 'exec -a "$0" sleep 30' "installer-stand-in" &
+holder=$!
+lock="$work/home/.local/share/prismalens.lock"
+mkdir -p "$lock" && echo "$holder" >"$lock/pid"
+cp "$work/home/.local/share/prismalens/receipt" "$work/receipt-before"
+out=$(run_installer "$new_base" --version "$new_version" --no-modify-path 2>&1) && { kill "$holder"; echo "$out"; fail "an install ran beside another one"; }
+kill "$holder"
+wait "$holder" 2>/dev/null || true
+case "$out" in *"Another PrismaLens installer is running (process $holder); run this again once it finishes. Nothing was changed."*) ;; *) echo "$out"; fail "the running installer wasn't reported" ;; esac
+cmp -s "$work/home/.local/share/prismalens/receipt" "$work/receipt-before" || fail "an install beside another one changed the receipt"
+out=$(run_installer "$new_base" --version "$new_version" --no-modify-path 2>&1) || { echo "$out"; fail "install after a killed installer's lock"; }
+[ ! -e "$lock" ] || fail "the installer left its lock"
+pass "the installer lock: one beside a running installer changes nothing, a killed run's lock is taken over"
+
 # 6. Uninstall removes the wrappers, the PATH line and the runtime; the workspace stays.
 mkdir -p "$work/home/.prismalens"
 touch "$work/home/.prismalens/prismalens.db"
@@ -394,6 +409,31 @@ else
 	[ ! -e "$app" ] && grep -qx "desktop_app=" "$data/receipt" || { echo "$out"; fail "the rerun didn't remove what the partial delete left"; }
 	pass "--no-desktop after a partial delete: the receipt keeps the app, and a rerun removes it"
 fi
+
+# A copy of the installer's app elsewhere in its data folder, ID and all: uninstall leaves it.
+rm -rf "$work/home" && mkdir -p "$work/home"
+run_app_installer >/dev/null 2>&1 || fail "install before the copied app"
+copy="$data/keep/PrismaLens.app"
+mkdir -p "$data/keep"
+if [ "$(uname -s)" = Darwin ]; then
+	ditto "$app" "$copy"
+	xattr -p io.prismalens.install-id "$copy/Contents/MacOS/PrismaLens" >/dev/null || fail "the copy lost the app's ID"
+else
+	cp -R "$app" "$copy"
+	[ -s "$copy/.prismalens-install-id" ] || fail "the copy lost the app's ID"
+fi
+out=$(run_installer "$app_base" --uninstall 2>&1) || { echo "$out"; fail "uninstall beside a copy of the app"; }
+case "$out" in *"$copy isn't the app this installer put there; it and the folders that hold it were left as they are"*) ;; *) echo "$out"; fail "uninstall didn't name the copy it left" ;; esac
+[ -e "$copy" ] && [ ! -e "$app" ] || fail "uninstall deleted the copy, or kept the installer's app"
+pass "a copy of the installer's app, ID and all, elsewhere: uninstall leaves it"
+
+# Uninstall after an upgrade killed between its two renames: the app moved aside goes too.
+rm -rf "$work/home" && mkdir -p "$work/home"
+run_app_installer >/dev/null 2>&1 || fail "install before the interrupted upgrade and uninstall"
+mkdir -p "$stage" && mv "$app" "$stage/previous"
+out=$(run_installer "$app_base" --uninstall 2>&1) || { echo "$out"; fail "uninstall after an interrupted upgrade"; }
+[ ! -e "$app" ] && [ ! -e "$stage" ] || { echo "$out"; fail "uninstall left the app an interrupted upgrade moved aside"; }
+pass "uninstall after an interrupted upgrade: the app moved aside is removed too"
 
 if [ "$(uname -s)" != Darwin ]; then
 	# Another app appears in the installer's place while the zip downloads: it's left, not moved aside.

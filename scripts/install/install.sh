@@ -295,9 +295,14 @@ app_ours() {
 # Where an app sits: desktop/app, a staging folder's previous, or a *.app bundle.
 is_app_slot() { case "$1" in */desktop/app | */previous | *.app) return 0 ;; esac; return 1; }
 
-# Whether the app at $1 is one this install unpacked: it carries the receipt's ID or this run's.
+# Whether the app at $1 is one this install unpacked: it sits where the receipt says or in this
+# installer's staging, and carries the receipt's ID or this run's. A copy elsewhere is the user's.
 app_mine() {
 	[ ! -L "$1" ] || return 1
+	case "$1" in
+	"$(receipt_get desktop_app)" | "$data_root"/desktop/.new.*/previous | "$HOME"/Applications/.prismalens-new.*/previous) ;;
+	*) return 1 ;;
+	esac
 	k_id=$(app_id_of "$1" || true)
 	[ -n "$k_id" ] && { [ "$k_id" = "$(receipt_get desktop_app_id)" ] || [ "$k_id" = "${d_id:-}" ]; }
 }
@@ -359,9 +364,10 @@ discard() {
 }
 
 # A run killed between its two renames left the installer's old app in that run's staging
-# folder; put it back before anything else, so the launcher works even if no download does.
+# folder; put it back before anything else, so the launcher works even if no download does, and
+# uninstall finds it where the receipt says. uname, not $platform: uninstall runs before it is set.
 desktop_recover() {
-	if [ "$platform" = darwin ]; then
+	if [ "$(uname -s)" = Darwin ]; then
 		r_dest="$mac_app" r_stage="$HOME/Applications/.prismalens-new."
 	else
 		r_dest="$data_root/desktop/app" r_stage="$data_root/desktop/.new."
@@ -626,10 +632,38 @@ LAUNCH
 	chmod 755 "$desktop_launch"
 }
 
+# One installer at a time per data root: two at once could each delete what the other put in place.
+# The lock is a folder beside the data root holding its installer's process ID; one whose process
+# is gone was left by a killed run and is taken over.
+lock_dir="${data_root}.lock"
+take_lock() {
+	mkdir -p "$(dirname -- "$lock_dir")"
+	if ! mkdir "$lock_dir" 2>/dev/null; then
+		l_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
+		if [ -z "$l_pid" ] || kill -0 "$l_pid" 2>/dev/null; then
+			fail "Another PrismaLens installer is running${l_pid:+ (process $l_pid)}; run this again once it finishes. Nothing was changed. If none is running, remove $lock_dir."
+		fi
+		rm -f "$lock_dir/pid"
+		rmdir "$lock_dir" 2>/dev/null || true
+		mkdir "$lock_dir" 2>/dev/null || fail "Another PrismaLens installer just started; run this again once it finishes. Nothing was changed."
+	fi
+	echo "$$" >"$lock_dir/pid"
+	lock_held=1
+	trap 'release_lock' EXIT
+	trap 'exit 130' INT TERM
+}
+release_lock() {
+	[ -n "${lock_held:-}" ] || return 0
+	rm -f "$lock_dir/pid"
+	rmdir "$lock_dir" 2>/dev/null || true
+}
+
 # --- uninstall --------------------------------------------------------------
 
 if [ "$action" = uninstall ]; then
 	banner uninstaller
+	take_lock
+	desktop_recover
 	if [ -n "$(receipt_get desktop_app)" ] && desktop_running "$(receipt_get desktop_app)"; then
 		fail "The PrismaLens app is running; quit it and run the uninstaller again. Nothing was removed."
 	fi
@@ -680,6 +714,7 @@ fi
 # --- install ----------------------------------------------------------------
 
 banner installer
+take_lock
 
 case "$(uname -s)" in
 Darwin) platform=darwin ;;
@@ -696,7 +731,7 @@ command -v tar >/dev/null 2>&1 || fail "tar is required"
 desktop_recover
 
 staging=$(mktemp -d)
-trap 'discard "$staging"' EXIT INT TERM
+trap 'discard "$staging"; release_lock' EXIT
 
 # The newest release with its archives attached. build-standalone-cli.yml builds them for
 # about 20 minutes after a release publishes, so fall back to the one before.
