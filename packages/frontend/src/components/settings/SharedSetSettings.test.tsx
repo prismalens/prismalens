@@ -22,6 +22,7 @@ import {
 const live = vi.hoisted(() => ({
 	set: undefined as unknown,
 	sources: [] as unknown[],
+	sourcesLoading: false,
 	preview: vi.fn(),
 }));
 
@@ -34,7 +35,10 @@ vi.mock("@/lib/api/hooks/use-agent-setup-orpc", () => {
 	const change = () => ({ mutate: vi.fn(), isPending: false, reset: vi.fn() });
 	return {
 		useSharedSet: () => ({ data: live.set, isError: false }),
-		useSharedSources: () => ({ data: live.sources }),
+		useSharedSources: () => ({
+			data: live.sourcesLoading ? undefined : live.sources,
+			isLoading: live.sourcesLoading,
+		}),
 		usePreviewSharedServer: () => ({ ...change(), mutate: live.preview }),
 		useApproveSharedServer: change,
 		useRemoveSharedServer: change,
@@ -544,9 +548,12 @@ describe("SharedSetSettings Copy again", () => {
 		transport: "http",
 	};
 	const copied = { ...older, path: "~/work/.codex/config.toml" };
-	const copyAgain = async (from: SharedSource | null) => {
+	const copyAgain = async (
+		from: SharedSource | null,
+		sources: SharedSource[] = [older, copied],
+	) => {
 		live.preview.mockClear();
-		live.sources = [older, copied];
+		live.sources = sources;
 		live.set = {
 			decided: "shared",
 			instructions: "",
@@ -565,9 +572,31 @@ describe("SharedSetSettings Copy again", () => {
 		await click("shared-server-copy-again");
 	};
 
-	it("opens the source whose path and key the server was copied from, among two of one agent and name", async () => {
-		await copyAgain({ agent: "codex", path: copied.path, key: copied.key });
+	it("opens the source whose path and key the server was copied from, among sources of one agent sharing its name or its path", async () => {
+		const samePath = { ...copied, key: "wiki" };
+		await copyAgain({ agent: "codex", path: copied.path, key: copied.key }, [
+			samePath,
+			older,
+			copied,
+		]);
 		expect(live.preview.mock.calls).toEqual([[copied]]);
+	});
+
+	it("keeps Copy again off while the sources load, then opens the copied one", async () => {
+		live.sourcesLoading = true;
+		try {
+			await copyAgain({ agent: "codex", path: copied.path, key: copied.key });
+			const off = [
+				(byId("shared-server-copy-again") as HTMLButtonElement).disabled,
+				live.preview.mock.calls.length,
+			];
+			live.sourcesLoading = false;
+			await act(async () => root.render(<SharedSetSettings />));
+			await click("shared-server-copy-again");
+			expect([off, live.preview.mock.calls]).toEqual([[true, 0], [[copied]]]);
+		} finally {
+			live.sourcesLoading = false;
+		}
 	});
 
 	it("opens no source when the copied entry is gone", async () => {
@@ -575,8 +604,9 @@ describe("SharedSetSettings Copy again", () => {
 		expect(live.preview.mock.calls).toEqual([]);
 	});
 
-	it("opens the agent's source of the same name when the server records no entry", async () => {
-		await copyAgain(null);
+	it("opens the agent's source of the same name when the server records no entry, not its first source", async () => {
+		const first = { ...older, path: "~/a/.codex/config.toml", key: "wiki" };
+		await copyAgain(null, [first, older]);
 		expect(live.preview.mock.calls).toEqual([[older]]);
 	});
 });

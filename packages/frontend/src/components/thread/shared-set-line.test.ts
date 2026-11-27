@@ -13,7 +13,12 @@ const set = (over: Partial<SharedSet> = {}): SharedSet => ({
 	servers: [],
 	...over,
 });
-const opened = (how: string, revision: string) => ({ kind: "session_opened", how, sharedSet: { revision, servers: [] } });
+const opened = (how: string, revision: string, harness = "claude-code") => ({
+	kind: "session_opened",
+	how,
+	harness,
+	sharedSet: { revision, servers: [] },
+});
 
 describe("sharedSetLine (#1180 §3.3)", () => {
 	it("shows the compaction line on Claude Code when its session holds an older revision, with why", () => {
@@ -29,6 +34,10 @@ describe("sharedSetLine (#1180 §3.3)", () => {
 
 	it("shows the line when the agent stopped being a recipient of instructions its session still holds", () => {
 		expect(sharedSetLine([opened("new", "rev-7")], "claude-code", set({ instructionsFor: ["codex"] }))?.line).toBe(SHARED_SET_COMPACT_LINE);
+	});
+
+	it("reads only Claude Code's own session, not another agent's opened after it", () => {
+		expect(sharedSetLine([opened("new", "rev-7"), opened("handoff", "", "opencode")], "claude-code", set())).toBeNull();
 	});
 
 	it("shows nothing for an agent that takes instructions in its first prompt, or a thread with no session yet", () => {

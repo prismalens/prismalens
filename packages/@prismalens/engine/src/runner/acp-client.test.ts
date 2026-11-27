@@ -1312,4 +1312,15 @@ describe("AcpSession.close waits for the agent to exit (#1180)", () => {
 		const { ms, aliveAfter } = await closeTimed({ FAKE_IGNORE_TERM: "1" });
 		expect([aliveAfter, ms < 2 * CLOSE_EXIT_MS]).toEqual([false, true]);
 	}, 15_000);
+
+	// Windows ends the agent with taskkill /F at once, so it has no SIGTERM grace to wait out.
+	it.skipIf(process.platform === "win32")(
+		"waits out an agent's own exit after SIGTERM and the whole bound before SIGKILL (skipped on Windows: taskkill /F kills at once)",
+		async () => {
+			const slow = await closeTimed({ FAKE_TERM_DELAY_MS: "700" });
+			const stubborn = await closeTimed({ FAKE_IGNORE_TERM: "1" });
+			expect([slow.ms >= 650, stubborn.ms >= CLOSE_EXIT_MS - 50]).toEqual([true, true]);
+		},
+		20_000,
+	);
 });

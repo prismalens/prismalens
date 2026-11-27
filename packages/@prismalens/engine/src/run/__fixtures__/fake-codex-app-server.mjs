@@ -10,16 +10,31 @@
 // FAKE_CODEX_ARGS writes this process's arguments there, one JSON array, so a test
 // sees the `-c` overrides. `initialize` from any client but `prismalens` is refused.
 // FAKE_CODEX_ANSWERS: a JSON object of method -> result, answered as given (What loads, #1180).
-import { writeFileSync } from "node:fs";
+// `mcp list --json` prints FAKE_CODEX_MCP_LIST's names (or exits 1 for "fail"), writing its
+// folder to FAKE_CODEX_MCP_CWD. FAKE_CODEX_HOLD: a method never answered; FAKE_CODEX_ASKED: each
+// method asked is appended there; FAKE_CODEX_PID: this process's pid; FAKE_CODEX_IGNORE_TERM: it
+// outlives SIGTERM.
+import { appendFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const mode = process.env.FAKE_CODEX_MODE ?? "ok";
-if (process.env.FAKE_CODEX_ARGS)
+const listing = process.argv[2] === "mcp";
+if (listing) {
+	if (process.env.FAKE_CODEX_MCP_CWD)
+		writeFileSync(process.env.FAKE_CODEX_MCP_CWD, process.cwd());
+	const names = process.env.FAKE_CODEX_MCP_LIST ?? "[]";
+	if (names === "fail") process.exit(1);
+	const list = JSON.parse(names).map((name) => ({ name, enabled: true }));
+	process.stdout.write(JSON.stringify(list), () => process.exit(0));
+} else if (process.env.FAKE_CODEX_ARGS)
 	writeFileSync(
 		process.env.FAKE_CODEX_ARGS,
 		JSON.stringify(process.argv.slice(2)),
 	);
 
+if (!listing && process.env.FAKE_CODEX_PID)
+	writeFileSync(process.env.FAKE_CODEX_PID, String(process.pid));
+if (process.env.FAKE_CODEX_IGNORE_TERM) process.on("SIGTERM", () => {});
 const send = (msg) => process.stdout.write(`${JSON.stringify(msg)}\n`);
 let initialized = false;
 
@@ -58,6 +73,9 @@ const free = {
 
 createInterface({ input: process.stdin }).on("line", (line) => {
 	const msg = JSON.parse(line);
+	if (process.env.FAKE_CODEX_ASKED)
+		appendFileSync(process.env.FAKE_CODEX_ASKED, `${msg.method}\n`);
+	if (msg.method === process.env.FAKE_CODEX_HOLD) return;
 	if (msg.method === "initialized" && msg.id === undefined) {
 		initialized = true;
 		return;

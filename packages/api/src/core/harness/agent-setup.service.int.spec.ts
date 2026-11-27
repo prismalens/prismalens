@@ -20,6 +20,13 @@ const env = await vi.hoisted(async () => {
 	return { root };
 });
 
+// What Codex's own CLI says it loads; no CLI runs in this suite, so each test sets it.
+const codexSaid = vi.hoisted(() => ({ items: null as unknown[] | null }));
+vi.mock("@prismalens/engine", async (load) => ({
+	...(await load<typeof import("@prismalens/engine")>()),
+	readAgentLoadout: async (id: string) => (id === "codex" ? codexSaid.items : null),
+}));
+
 const { PrismaService } = await import("../prisma/prisma.service.js");
 const { CredentialsService } = await import(
 	"../../modules/integrations/crypto/credentials.service.js"
@@ -122,6 +129,18 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 			["docs", "stdio", "docs-mcp", 3, null, []],
 			["web", "http", null, 0, "mcp.example", []],
 		]);
+	});
+
+	it("reads a server stored with an empty copied-from key as copied from no entry, so the set still loads", async () => {
+		const path = join(env.root, "no-such-config.json");
+		await service.approveSharedServer({
+			name: "docs",
+			def: docsDef,
+			values: { TOKEN: SECRET, DB: SECRET },
+			recipients: ["codex"],
+			from: { agent: "claude-code", path, key: "", revision: mcpSourceHash(readMcpSource("claude-code", {}, path, "")) },
+		});
+		expect((await service.sharedSet()).servers.map((s) => [s.name, s.fromAgent, s.fromSource])).toEqual([["docs", "claude-code", null]]);
 	});
 
 	it("approving a changed URL without values leaves it Needs values and undelivered", async () => {
@@ -363,6 +382,14 @@ describe("the PrismaLens set (#1180 §3.3)", () => {
 			false,
 			["--acp", "--mcp-config", join(runDir, "config", GATEWAY_RUN_FILE)],
 		]);
+		// deepagents-code 0.2.1 expands each `${VAR}` once, from the env the child gets.
+		const resolved = JSON.parse(text.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, k: string) => run.env[k] ?? "<unset>")) as {
+			mcpServers: Record<string, Record<string, unknown>>;
+		};
+		expect([resolved.mcpServers["pl-docs"], resolved.mcpServers["pl-web"]]).toEqual([
+			{ command, args: ["--root", ARG, SECRET], env: { TOKEN: SECRET } },
+			{ type: "http", url: "https://mcp.example/v1", headers: {} },
+		]);
 	});
 });
 
@@ -421,6 +448,19 @@ describe("What loads merges only a matching session's report (#1180 §3.1)", () 
 		]);
 		const clean = await service.loadout({ id: "claude-code", repositoryId, profile: "clean" });
 		expect([clean.report, clean.staleReport, clean.items.some((i) => i.name === "lint@m")]).toEqual([null, null, false]);
+	});
+
+	it("a clean-profile view leaves out what Codex said its own config loads; the own view keeps it", async () => {
+		codexSaid.items = [
+			{ kind: "hook", name: "SessionStart", scope: "global", path: join(env.root, "home", ".codex", "hooks.json"), disk: true, reported: "2026-11-27T00:00:00.000Z", state: "loads" },
+		];
+		const said = async (profile: "own" | "clean") =>
+			(await service.loadout({ id: "codex", repositoryId, profile })).items.filter((i) => i.kind === "hook").map((i) => [i.name, i.state]);
+		try {
+			expect([await said("own"), await said("clean")]).toEqual([[["SessionStart", "loads"]], []]);
+		} finally {
+			codexSaid.items = null;
+		}
 	});
 
 	it("a config edit after the last run drops the merge and points at that run as a different setup", async () => {

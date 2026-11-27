@@ -484,6 +484,9 @@ async function turn(sessionId, promptText) {
 			status: "pending",
 			rawInput: { command: "pwd" },
 		});
+		// FAKE_BEFORE_ASK / FAKE_AFTER_ASK (JSON arrays): session updates sent around the first ask.
+		for (const u of JSON.parse(process.env.FAKE_BEFORE_ASK ?? "[]"))
+			notify(sessionId, u);
 		const a = await ask({
 			sessionId,
 			toolCall: {
@@ -498,6 +501,8 @@ async function turn(sessionId, promptText) {
 				{ optionId: "reject", name: "Reject", kind: "reject_once" },
 			],
 		});
+		for (const u of JSON.parse(process.env.FAKE_AFTER_ASK ?? "[]"))
+			notify(sessionId, u);
 		notify(sessionId, {
 			sessionUpdate: "tool_call_update",
 			toolCallId: "t1",

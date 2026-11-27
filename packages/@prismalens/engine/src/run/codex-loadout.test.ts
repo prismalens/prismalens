@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse as parseToml } from "smol-toml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readCodexLoadout } from "./codex-loadout.js";
 
@@ -75,25 +76,62 @@ describe("readCodexLoadout (#1180 §3.1)", () => {
 		]);
 	});
 
-	it("turns off the user's servers by name, and a project's only where Codex trusts the project, since naming an unloaded one stops Codex", async () => {
+	it("turns off exactly the servers Codex lists for the selected folder, as one inline table keyed by each literal name", async () => {
+		// Codex 0.171.0 lists a trusted root's project server from a subfolder of it, by its own trust rules.
 		const argsFile = join(dir, "args.json");
-		const untrusted = world(false);
-		await readCodexLoadout(plan(untrusted.home, { FAKE_CODEX_ARGS: argsFile }), untrusted.repo, { home: dir });
-		expect(JSON.parse(readFileSync(argsFile, "utf8"))).toEqual(["app-server", "-c", "mcp_servers.docs.enabled=false"]);
-		rmSync(join(dir, "codex-home"), { recursive: true });
-		const trusted = world(true);
-		await readCodexLoadout(plan(trusted.home, { FAKE_CODEX_ARGS: argsFile }), trusted.repo, { home: dir });
-		expect(JSON.parse(readFileSync(argsFile, "utf8"))).toEqual([
-			"app-server",
-			"-c",
-			"mcp_servers.docs.enabled=false",
-			"-c",
-			"mcp_servers.db.enabled=false",
+		const cwdFile = join(dir, "cwd.txt");
+		const { home, repo } = world(false);
+		const sub = join(repo, "sub", "deep");
+		mkdirSync(sub, { recursive: true });
+		const names = ["docs", "db", "docs.v2", `we ird="x'`, "dökü"];
+		await readCodexLoadout(
+			plan(home, { FAKE_CODEX_ARGS: argsFile, FAKE_CODEX_MCP_CWD: cwdFile, FAKE_CODEX_MCP_LIST: JSON.stringify(names) }),
+			sub,
+			{ home: dir },
+		);
+		const args = JSON.parse(readFileSync(argsFile, "utf8")) as string[];
+		const value = (args[2] ?? "").replace(/^mcp_servers=/, "");
+		expect([
+			resolve(readFileSync(cwdFile, "utf8")),
+			args.slice(0, 2),
+			args.length,
+			parseToml(`t = ${value}`).t,
+		]).toEqual([
+			resolve(sub),
+			["app-server", "-c"],
+			3,
+			Object.fromEntries(names.map((n) => [n, { enabled: false }])),
 		]);
 	});
 
-	it("is null when the CLI gives no answer in its budget", async () => {
+	it("is null, and starts no app-server, when Codex gives no server list", async () => {
+		const argsFile = join(dir, "args.json");
+		const { home, repo } = world(true);
+		const items = await readCodexLoadout(plan(home, { FAKE_CODEX_ARGS: argsFile, FAKE_CODEX_MCP_LIST: "fail" }), repo, { home: dir });
+		expect([items, existsSync(argsFile)]).toEqual([null, false]);
+	});
+
+	it("shows one row for an event's handlers in one file, loading if any of them is trusted", async () => {
 		const { home, repo } = world(false);
-		expect(await readCodexLoadout(plan(home, { FAKE_CODEX_MODE: "ok" }), repo, { home: dir, budgetMs: 1 })).toBeNull();
+		const file = join(home, "hooks.json");
+		const handler = (key: string, trustStatus: string) => ({ key, eventName: "sessionStart", source: "user", sourcePath: file, enabled: true, trustStatus });
+		const hooks = (...hs: object[]) => ({ "hooks/list": { data: [{ cwd: repo, errors: [], warnings: [], hooks: hs }] } });
+		const states = async (...hs: object[]) =>
+			(await readCodexLoadout(plan(home, { FAKE_CODEX_ANSWERS: JSON.stringify(hooks(...hs)) }), repo, { home: dir }))?.map((i) => [i.name, i.state]);
+		expect([
+			await states(handler("a", "untrusted"), handler("b", "trusted")),
+			await states(handler("a", "trusted"), handler("b", "untrusted")),
+			await states(handler("a", "untrusted"), handler("b", "modified")),
+		]).toEqual([[["SessionStart", "loads"]], [["SessionStart", "loads"]], [["SessionStart", "untrusted"]]]);
+	});
+
+	it("is null when an initialized CLI holds a loadout call past its budget", async () => {
+		const asked = join(dir, "asked.txt");
+		const { home, repo } = world(false);
+		const items = await readCodexLoadout(plan(home, { FAKE_CODEX_HOLD: "config/read", FAKE_CODEX_ASKED: asked }), repo, {
+			home: dir,
+			budgetMs: 1_000,
+		});
+		expect([items, readFileSync(asked, "utf8").trim().split("\n")]).toEqual([null, ["initialize", "initialized", "config/read"]]);
 	});
 });

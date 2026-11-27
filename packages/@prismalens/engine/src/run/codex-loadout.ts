@@ -8,14 +8,17 @@
  * MCP server is off by name; hooks and plugins stay on, since with them off Codex 0.171.0
  * lists none.
  */
-import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { LaunchPolicy } from "@prismalens/agent-host";
+import {
+	codexMcpOffArgs,
+	killProcessTree,
+	type LaunchPolicy,
+	spawnAgent,
+} from "@prismalens/agent-host";
 import { HARNESS_REGISTRY, type HarnessId } from "@prismalens/config/harness";
 import type { LoadedItem } from "@prismalens/contracts/schemas";
-import { parse as parseToml } from "smol-toml";
-import { foundMcpNames } from "./agent-config.js";
 import {
 	type CodexAppServerPlan,
 	withCodexAppServer,
@@ -25,61 +28,60 @@ import { prepareRunEnv } from "./investigate.js";
 
 export const CODEX_LOADOUT_BUDGET_MS = 15_000;
 
-type Env = Readonly<Record<string, string | undefined>>;
-
 const isRecord = (v: unknown): v is Record<string, unknown> =>
 	!!v && typeof v === "object" && !Array.isArray(v);
 const str = (v: unknown) => (typeof v === "string" && v ? v : null);
 
 /**
- * Whether Codex trusts `repoRoot`. On Windows, 0.171.0 looks the project up by its lowercased
- * path, so a key in any other case is not trusted (a scratch-home run with a mixed-case key).
+ * The MCP servers Codex loads in `plan.cwd`, by `mcp list --json`, which starts none. Codex's own
+ * trust rules pick the project layers, and naming a server of an unloaded layer in an override
+ * stops it at start (`invalid transport`, 0.171.0). Null when it gave no list in `budgetMs`.
  */
-export function codexTrusts(
-	env: Env,
-	repoRoot: string,
-	home: string,
-	platform: string = process.platform,
-): boolean {
-	const dir = env.CODEX_HOME || join(home, ".codex");
-	let projects: unknown;
-	try {
-		projects = parseToml(
-			readFileSync(join(dir, "config.toml"), "utf8"),
-		).projects;
-	} catch {
-		return false;
+export async function codexLoadedMcp(
+	plan: CodexAppServerPlan,
+	budgetMs: number,
+): Promise<string[] | null> {
+	const child = spawnAgent({
+		command: plan.command,
+		args: [...(plan.args ?? []), "mcp", "list", "--json"],
+		cwd: plan.cwd,
+		env: plan.env,
+	});
+	let out = "";
+	child.stdout.setEncoding("utf8").on("data", (d: string) => {
+		out += d;
+	});
+	child.stderr.resume();
+	child.stdin.end();
+	let timer: NodeJS.Timeout | undefined;
+	const code = await Promise.race([
+		new Promise<number | null>((r) => {
+			child.once("error", () => r(null));
+			child.once("close", (c) => r(c));
+		}),
+		new Promise<null>((r) => {
+			timer = setTimeout(() => r(null), budgetMs);
+		}),
+	]);
+	clearTimeout(timer);
+	if (code !== 0) {
+		killProcessTree(child);
+		return null;
 	}
-	if (!isRecord(projects)) return false;
-	const want =
-		platform === "win32" ? resolve(repoRoot).toLowerCase() : resolve(repoRoot);
-	const entry = projects[want];
-	return isRecord(entry) && entry.trust_level === "trusted";
-}
-
-/** `-c mcp_servers.<name>.enabled=false` for each name, quoted as Codex's TOML keys need. */
-export function codexMcpOffArgs(mcp: readonly string[]): string[] {
-	const key = (n: string) =>
-		/^[A-Za-z0-9_-]+$/.test(n) ? n : JSON.stringify(n);
-	return mcp.flatMap((n) => ["-c", `mcp_servers.${key(n)}.enabled=false`]);
-}
-
-/**
- * The names to turn off: the user's always, the project's only where Codex trusts it, since
- * an override naming a server of an unloaded project layer stops Codex at start
- * (`invalid transport in mcp_servers.<name>`, 0.171.0).
- */
-export function codexServersToSilence(
-	env: Env,
-	repoRoot: string | null,
-	home: string,
-): string[] {
-	const user = foundMcpNames("codex", env, null);
-	if (!repoRoot || !codexTrusts(env, repoRoot, home)) return user;
-	return [...new Set([...user, ...foundMcpNames("codex", env, repoRoot)])];
+	try {
+		const list: unknown = JSON.parse(out);
+		return Array.isArray(list)
+			? list.flatMap((s) =>
+					isRecord(s) && str(s.name) ? [String(s.name)] : [],
+				)
+			: null;
+	} catch {
+		return null;
+	}
 }
 
 const pascal = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const STATE_RANK: LoadedItem["state"][] = ["off", "untrusted", "loads"];
 
 const HOOK_SCOPES: Record<string, LoadedItem["scope"]> = {
 	user: "global",
@@ -200,15 +202,16 @@ export function codexItems(
 				p.enabled === false ? "off" : "loads",
 			);
 		}
-	const seen = new Set<string>();
-	return out
-		.filter((i) => {
-			const k = `${i.kind}\0${i.name}\0${i.scope}\0${i.path ?? ""}`;
-			if (seen.has(k)) return false;
-			seen.add(k);
-			return true;
-		})
-		.slice(0, 500);
+	// Handlers of one event in one file share a row: it loads if any of them does.
+	const rank = (i: LoadedItem) => STATE_RANK.indexOf(i.state);
+	const rows = new Map<string, LoadedItem>();
+	for (const i of out) {
+		const k = `${i.kind}\0${i.name}\0${i.scope}\0${i.path ?? ""}`;
+		const had = rows.get(k);
+		if (!had || rank(i) > rank(had))
+			rows.set(k, had ? { ...had, state: i.state } : i);
+	}
+	return [...rows.values()].slice(0, 500);
 }
 
 /** What Codex reports loading for `repoRoot` (or no project); null when the CLI gave no answer. */
@@ -218,13 +221,14 @@ export async function readCodexLoadout(
 	o: { home: string; budgetMs?: number; now?: () => Date },
 ): Promise<LoadedItem[] | null> {
 	const cwds = [repoRoot ?? plan.cwd];
-	const overrides = codexMcpOffArgs(
-		codexServersToSilence(plan.env, repoRoot, o.home),
-	);
+	const at = { ...plan, cwd: repoRoot ?? plan.cwd };
+	const budget = o.budgetMs ?? CODEX_LOADOUT_BUDGET_MS;
+	const loaded = await codexLoadedMcp(at, budget);
+	if (!loaded) return null;
 	const answers = await withCodexAppServer(
-		{ ...plan, cwd: repoRoot ?? plan.cwd },
-		overrides,
-		o.budgetMs ?? CODEX_LOADOUT_BUDGET_MS,
+		at,
+		codexMcpOffArgs(loaded),
+		budget,
 		async (call) => {
 			const ask = (method: string, params: unknown) =>
 				call(method, params).catch(() => undefined);

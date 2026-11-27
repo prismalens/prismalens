@@ -1989,7 +1989,7 @@ function turnInputPort(
 }
 
 /** The PrismaLens set this run's session gets; a set that cannot be read never stops a run (#1180). */
-async function sharedOf(
+export async function sharedOf(
 	ports: RunPorts,
 	harness: HarnessId,
 	cwd: string,
@@ -2002,9 +2002,10 @@ async function sharedOf(
 			return null;
 		})) ?? null;
 	if (!shared || !threadId) return shared;
+	// The session a follow-up reopens is `harness`'s own, so only its events say what it holds.
 	const held = await ports
 		.events(threadId)
-		.then(heldSharedRevision)
+		.then((events) => heldSharedRevision(events, harness))
 		.catch(() => null);
 	return { ...shared, held };
 }

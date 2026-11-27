@@ -193,7 +193,7 @@ export const ApproveSharedServerInputSchema = /* @__PURE__ */ lazySchema(() =>
 			.object({
 				agent: z.string().min(1).max(64),
 				path: z.string().max(1024),
-				key: z.string().max(200),
+				key: z.string().min(1).max(200),
 				/** The preview's `revision`. */
 				revision: z.string().max(128),
 			})

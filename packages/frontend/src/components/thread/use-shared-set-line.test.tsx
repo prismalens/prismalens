@@ -17,7 +17,12 @@ const set: SharedSet = {
 };
 
 const events = [
-	{ kind: "session_opened", how: "resume", sharedSet: { revision: "rev-6" } },
+	{
+		kind: "session_opened",
+		how: "resume",
+		harness: "claude-code",
+		sharedSet: { revision: "rev-6" },
+	},
 ];
 
 describe("useSharedSetLine (#1180 §3.3)", () => {

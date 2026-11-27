@@ -797,12 +797,14 @@ function ServerRow({
 	server,
 	labelOf,
 	canEdit,
+	copyWaits,
 	onCopyAgain,
 	onRemove,
 }: {
 	server: SharedMcpServerView;
 	labelOf: (id: string) => string;
 	canEdit: boolean;
+	copyWaits?: boolean;
 	onCopyAgain: () => void;
 	onRemove: () => void;
 }) {
@@ -844,6 +846,7 @@ function ServerRow({
 									variant="secondary"
 									size="sm"
 									onClick={onCopyAgain}
+									disabled={copyWaits}
 									data-testid="shared-server-copy-again"
 								>
 									Copy again
@@ -877,6 +880,7 @@ export function SharedSetView({
 	onSaveInstructions,
 	saveError,
 	onShare,
+	copyWaits,
 	onCopyAgain,
 	onRemove,
 	onMember,
@@ -890,6 +894,8 @@ export function SharedSetView({
 	onSaveInstructions: (text: string) => Promise<unknown>;
 	saveError?: unknown;
 	onShare: () => void;
+	/** Copy again waits for the sources, so it can open the one the server came from. */
+	copyWaits?: boolean;
 	/** The entry the server was copied from, or null when none is known. */
 	onCopyAgain: (server: SharedMcpServerView) => void;
 	onRemove: (name: string) => void;
@@ -980,6 +986,7 @@ export function SharedSetView({
 							server={server}
 							labelOf={labelOf}
 							canEdit={canEdit}
+							copyWaits={copyWaits}
 							onCopyAgain={() => onCopyAgain(server)}
 							onRemove={() => onRemove(server.name)}
 						/>
@@ -1072,6 +1079,7 @@ export function SharedSetSettings() {
 				}
 				saveError={update.error}
 				onShare={() => setSharing({})}
+				copyWaits={sources.isLoading}
 				onCopyAgain={copyAgain}
 				onRemove={setRemoving}
 				onMember={(id, member) => membership.mutate({ id, member })}

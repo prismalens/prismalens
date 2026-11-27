@@ -128,6 +128,7 @@ import {
 } from "./provider-failure.js";
 import {
 	injectedSecrets,
+	keptSchemaValue,
 	RecordScrubber,
 	redactEvent,
 	redactLine,
@@ -949,7 +950,7 @@ export async function* runInvestigation(
 		for await (const ev of runSession(scrubbed)) {
 			const out = events.push(redactEvent(ev, secrets));
 			// Anything else may wait on the person, so it goes out with all before it.
-			yield* CARRIED_EVENTS.has(ev.kind) ? out : [...out, ...events.end()];
+			yield* CARRIED_EVENTS.has(ev.kind) ? out : [...out, ...events.flush()];
 		}
 		yield* events.end();
 	} finally {
@@ -965,11 +966,16 @@ const CARRIED_EVENTS: ReadonlySet<CanonicalEvent["kind"]> = new Set([
 	"tool_result",
 ]);
 
-/** An event's values, with the agent's words and its thoughts each read as one text. */
+/** An event's values, with the agent's words and its thoughts each read as one text; its schema values are kept. */
 function eventChannel(
 	e: CanonicalEvent,
 	path: readonly (string | number)[],
-): string {
+): string | null {
+	const v = path.reduce<unknown>(
+		(o, k) => (o as Record<string | number, unknown> | null)?.[k],
+		e,
+	);
+	if (typeof v === "string" && keptSchemaValue(path, v)) return null;
 	if (path.length === 1 && path[0] === "text")
 		return e.kind === "agent_step"
 			? "message"
@@ -1008,6 +1014,9 @@ function wireChannel(
 	const text = path.slice(-2).join(".") === "content.text";
 	if (text && update === "agent_message_chunk") return "message";
 	if (text && update === "agent_thought_chunk") return "thought";
+	// Tool output is one text across calls, so a value split between two of them is caught.
+	if (text && (update === "tool_call" || update === "tool_call_update"))
+		return "tool";
 	return "";
 }
 
@@ -1374,7 +1383,8 @@ async function* sessionRun(
 								...(lastUsed !== undefined && lastUsed !== autoCompactFrom
 									? { after: lastUsed }
 									: {}),
-								...(status === "completed" ? compactedTo() : {}),
+								// A sub-agent's compaction rebuilds no system prompt of this session.
+								...(status === "completed" && main ? compactedTo() : {}),
 							},
 						);
 						autoCompactFrom = undefined;
@@ -1832,10 +1842,9 @@ async function* sessionRun(
 				? {
 						...opening,
 						sharedSet: {
-							revision:
-								reopened && (inSystemPrompt || !sharedTextOwed)
-									? held
-									: sentRevision,
+							// What the session holds now: another agent takes new instructions at its
+							// first turn's receipt, which records them.
+							revision: reopened ? held : inSystemPrompt ? sentRevision : "",
 							servers: sharedSent ?? sharedServers.map((s) => s.name),
 						},
 					}
@@ -2039,9 +2048,14 @@ async function* sessionRun(
 				// prompt never went in. A compact carries no missed context (#1168, #1179).
 				if ("stop" in end && end.stop !== "cancelled") {
 					if (carriesShared) sharedTextOwed = false;
-					// One receipt holds at most 50 ids, so a larger turn sends several.
-					for (let i = 0; i < receipt.length; i += 50)
-						yield adapter.messagesReceived(receipt.slice(i, i + 50));
+					// One receipt holds at most 50 ids, so a larger turn sends several; the first
+					// records the instructions the turn carried.
+					const shown = carriesShared ? sentRevision : undefined;
+					for (let i = 0; i < Math.max(receipt.length, shown ? 1 : 0); i += 50)
+						yield adapter.messagesReceived(
+							receipt.slice(i, i + 50),
+							i === 0 ? shown : undefined,
+						);
 					if (!compacting && (!owed || carrying)) {
 						owed = false;
 						if (session.sessionId) await delivered(session.sessionId, sent);

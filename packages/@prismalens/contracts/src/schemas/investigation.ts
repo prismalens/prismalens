@@ -1812,7 +1812,10 @@ export const CanonicalEventSchema = /* @__PURE__ */ lazySchema(() =>
 			/** The agent's turn on these messages ended; their delivery is real (#1179). */
 			kind: z.literal("message_received"),
 			...StreamBaseShape,
-			messageIds: z.array(z.string().uuid()).min(1).max(50),
+			/** Empty only on a receipt that records `sharedRevision` alone. */
+			messageIds: z.array(z.string().uuid()).max(50),
+			/** The set's instructions revision this turn delivered (#1180 §3.3). */
+			sharedRevision: z.string().optional(),
 		}),
 		z.object({
 			/** A PR subscription began, changed or ended (#1179). */

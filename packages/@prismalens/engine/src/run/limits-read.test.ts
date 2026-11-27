@@ -101,9 +101,7 @@ describe("readLimits through codex app-server (#1180)", () => {
 			"-c",
 			"features.plugins=false",
 			"-c",
-			"mcp_servers.docs.enabled=false",
-			"-c",
-			'mcp_servers."my.tools".enabled=false',
+			'mcp_servers={"docs"={enabled=false},"my.tools"={enabled=false}}',
 		]);
 	});
 

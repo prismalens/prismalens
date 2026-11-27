@@ -2901,7 +2901,7 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		profile: "own" as const,
 	};
 
-	it("sends each shared server in session/new, records the set on session_opened, and the transcript keeps only its name and type", async () => {
+	it("sends each shared server in session/new, records the set on session_opened and its instructions on the turn's receipt, and the transcript keeps only its name and type", async () => {
 		const record = join(tmp("rec"), "record.json");
 		const { events, runDir } = await collect("ok", {
 			env: { ...process.env, FAKE_ACP_MODE: "ok", FAKE_RECORD: record },
@@ -2909,7 +2909,11 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		});
 		const seen = JSON.parse(readFileSync(record, "utf8")) as { mcpServers: unknown };
 		expect(seen.mcpServers).toEqual(shared.servers);
-		expect(events.find((e) => e.kind === "session_opened")).toMatchObject({ sharedSet: { revision: "rev-7", servers: ["pl-docs"] } });
+		expect([
+			events.find((e) => e.kind === "session_opened"),
+			events.flatMap((e) => (e.kind === "message_received" ? [[e.messageIds, e.sharedRevision ?? null]] : [])),
+			heldSharedRevision(events),
+		]).toMatchObject([{ sharedSet: { revision: "", servers: ["pl-docs"] } }, [[[], "rev-7"]], "rev-7"]);
 		const wire = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
 		expect([wire.includes('{\\"name\\":\\"pl-docs\\",\\"type\\":\\"stdio\\"}'), wire.includes("secret-arg-path"), wire.includes(VALUE)]).toEqual([true, false, false]);
 	});
@@ -3035,15 +3039,63 @@ describe("the PrismaLens set over a fake ACP harness (#1180 §3.1, §3.3)", () =
 		expect(heldSharedRevision(compacted.events)).toBe("rev-7");
 	});
 
-	it("on another agent, a reopened session gets the instructions again only when it holds an older revision", async () => {
+	it("on Claude Code, a sub-agent's compaction records no revision, so the session keeps the one it held", async () => {
+		const sub = { _meta: { claudeCode: { parentToolUseId: "t9" } } };
+		const { events } = await collect("resume", {
+			harness: "claude-code",
+			...reopen({
+				FAKE_MODES: "default=Default,acceptEdits=Accept edits",
+				FAKE_UPDATES: JSON.stringify([
+					{ sessionUpdate: "compaction_update", status: "in_progress", ...sub },
+					{ sessionUpdate: "compaction_update", status: "completed", ...sub },
+				]),
+			}),
+			shared: { ...shared, held: "rev-6" },
+		});
+		expect([
+			events.filter((e) => e.kind === "compaction").map((e) => (e.kind === "compaction" ? [e.phase, e.sharedRevision ?? null] : null)),
+			heldSharedRevision(events),
+		]).toEqual([
+			[
+				["started", null],
+				["completed", null],
+			],
+			"rev-6",
+		]);
+	});
+
+	it("on another agent, a reopened session gets the instructions again only when it holds an older revision, in its first prompt alone", async () => {
 		const sentWith = async (held: string) => {
 			const prompts = join(tmp("rec"), "prompts.jsonl");
 			const { events } = await collect("resume", { ...reopen({ FAKE_RECORD_PROMPT: prompts }), shared: { ...shared, held } });
 			const sent = readFileSync(prompts, "utf8").trim().split("\n").map((l) => JSON.parse(l) as string);
-			return [sent[0] === "Always cite the runbook.", heldSharedRevision(events)];
+			return [sent.flatMap((p, i) => (p.includes("Always cite the runbook.") ? [i] : [])), heldSharedRevision(events)];
 		};
-		expect(await sentWith("rev-7")).toEqual([false, "rev-7"]);
-		expect(await sentWith("rev-6")).toEqual([true, "rev-7"]);
+		expect(await sentWith("rev-7")).toEqual([[], "rev-7"]);
+		expect(await sentWith("rev-6")).toEqual([[0], "rev-7"]);
+		expect(await sentWith("")).toEqual([[0], "rev-7"]);
+	});
+
+	it("on another agent, a run stopped before its first prompt records the revision the session holds, so the next run still sends the new one", async () => {
+		const stoppedAtOpen = async (extra: Partial<Parameters<typeof runInvestigation>[0]>) => {
+			const ctl = new AbortController();
+			const events: CanonicalEvent[] = [];
+			for await (const ev of runInvestigation(opts(extra.resume ? "resume" : "ok", { ...extra, signal: ctl.signal }))) {
+				events.push(ev);
+				if (ev.kind === "session_opened") ctl.abort();
+			}
+			return [
+				events.find((e) => e.kind === "session_opened")?.kind === "session_opened",
+				events.some((e) => e.kind === "message_received"),
+				heldSharedRevision(events),
+			];
+		};
+		const fresh = await stoppedAtOpen({ shared });
+		const reopened = await stoppedAtOpen({ ...reopen({}), shared: { ...shared, held: "rev-6" } });
+		expect([fresh, reopened]).toEqual([
+			[true, false, ""],
+			[true, false, "rev-6"],
+		]);
 	});
 });
 
@@ -3091,7 +3143,13 @@ describe("a shared value reaches no record of a run, however it ends (#1180 §3.
 			.map((m) => m.params?.update?.content?.text ?? "")
 			.join("");
 
-	async function sentinelRun(mode: string, extra: Record<string, string>, stop?: (o: ReturnType<typeof opts>) => Promise<void> | void) {
+	async function sentinelRun(
+		mode: string,
+		extra: Record<string, string>,
+		stop?: (o: ReturnType<typeof opts>) => Promise<void> | void,
+		/** After a kill, pull the run to its end, as a product that outlives its agent does. */
+		drain = false,
+	) {
 		const stderr: string[] = [];
 		const events: CanonicalEvent[] = [];
 		const ctl = new AbortController();
@@ -3104,29 +3162,36 @@ describe("a shared value reaches no record of a run, however it ends (#1180 §3.
 		});
 		const run = runInvestigation(o);
 		const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-		const allSent = (async () => {
-			while (!existsSync(sent)) await sleep(20);
-			await sleep(100);
-			return "sent" as const;
-		})();
+		let over = false;
+		const allSent = stop
+			? (async () => {
+					while (!over && !existsSync(sent)) await sleep(20);
+					await sleep(100);
+					return "sent" as const;
+				})()
+			: null;
 		let pending = run.next();
-		let stopped = !stop;
-		for (;;) {
-			const r = stopped ? await pending : await Promise.race([pending, allSent]);
-			if (r === "sent") {
-				// Stopped once the turn sent every sentinel update; a killed run is never pulled again.
-				stopped = true;
-				await stop?.(o);
-				if (extra.FAKE_PID_FILE) {
-					await sleep(200);
-					break;
+		let stopped = !allSent;
+		try {
+			for (;;) {
+				const r = stopped || !allSent ? await pending : await Promise.race([pending, allSent]);
+				if (r === "sent") {
+					// Stopped once the turn sent every sentinel update; a killed run is pulled again only to drain it.
+					stopped = true;
+					await stop?.(o);
+					if (extra.FAKE_PID_FILE && !drain) {
+						await sleep(200);
+						break;
+					}
+					if (!extra.FAKE_PID_FILE) ctl.abort();
+					continue;
 				}
-				ctl.abort();
-				continue;
+				if (r.done) break;
+				events.push(r.value);
+				pending = run.next();
 			}
-			if (r.done) break;
-			events.push(r.value);
-			pending = run.next();
+		} finally {
+			over = true;
 		}
 		return { events, stderr: stderr.join(""), runDir: o.runDir };
 	}
@@ -3145,31 +3210,118 @@ describe("a shared value reaches no record of a run, however it ends (#1180 §3.
 		};
 	};
 
+	const errorsOf = (r: Awaited<ReturnType<typeof sentinelRun>>) =>
+		r.events.flatMap((e) => (e.kind === "error" ? [e.message] : []));
+	const toolCallsOf = (r: Awaited<ReturnType<typeof sentinelRun>>) =>
+		r.events.flatMap((e) => (e.kind === "tool_result" ? [e.result.toolCallId] : []));
+	const stitched = "see [redacted][redacted][redacted] done";
+
 	it("a run that succeeds with a tool call", async () => {
 		const r = await sentinelRun("ok", {});
-		expect(check(r)).toEqual({ leaks: [], unparsed: [] });
-		expect(rebuilt(r.runDir)).toContain("see [redacted]");
+		expect([check(r), rebuilt(r.runDir).startsWith(`${stitched}Checking the tree.`), toolCallsOf(r)]).toEqual([
+			{ leaks: [], unparsed: [] },
+			true,
+			["t_s", "t1", "t2"],
+		]);
 		expect(r.stderr).toContain("warn [redacted]");
-		expect(rebuilt(r.runDir)).toContain("[redacted] done");
 	});
 
 	it("a run that fails at session/new", async () => {
 		const r = await sentinelRun("ok", { FAKE_NEW_ERROR: `refused ${VALUE}` });
-		expect(check(r)).toEqual({ leaks: [], unparsed: [] });
-		expect(r.events.filter((e) => e.kind === "error").length).toBe(1);
+		expect([check(r), errorsOf(r)]).toEqual([{ leaks: [], unparsed: [] }, ["refused [redacted]"]]);
 	});
 
 	it("a cancelled run", async () => {
 		const r = await sentinelRun("silent", {}, () => {});
-		expect(check(r)).toEqual({ leaks: [], unparsed: [] });
-		expect(rebuilt(r.runDir)).toContain("[redacted]");
+		expect([check(r), rebuilt(r.runDir), errorsOf(r)]).toEqual([
+			{ leaks: [], unparsed: [] },
+			stitched,
+			["investigation cancelled"],
+		]);
 	});
 
-	it("a run killed mid-turn, as a crash leaves it for the next boot", async () => {
+	it("masks a secret split across the output of two tool calls in the transcript", async () => {
+		const secret = "abcdefgh-0123456789";
+		const out = (id: string, t: string) => ({
+			sessionUpdate: "tool_call_update",
+			toolCallId: id,
+			status: "completed",
+			content: [{ type: "content", content: { type: "text", text: t } }],
+		});
+		const { runDir } = await collect("ok", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_UPDATES: JSON.stringify([out("t_a", "first abcdefgh-01"), out("t_b", "23456789 second")]),
+			},
+			secrets: [secret],
+		});
+		const transcript = readFileSync(join(runDir, "transcript.jsonl"), "utf8");
+		expect(["abcdefgh", "23456789", "first [redacted]", "[redacted] second"].map((f) => transcript.includes(f))).toEqual([
+			false,
+			false,
+			true,
+			true,
+		]);
+	});
+
+	it("keeps an event's own schema values when a requested secret equals one, so every event still parses", async () => {
+		const { events } = await collect("ok", { secrets: ["new"] });
+		expect([
+			events.find((e) => e.kind === "session_opened")?.kind === "session_opened" &&
+				(events.find((e) => e.kind === "session_opened") as { how: string }).how,
+			events.filter((e) => !CanonicalEventSchema.safeParse(e).success).map((e) => e.kind),
+		]).toEqual(["new", []]);
+	});
+
+	it("masks a secret split by a permission ask in the events and the transcript, where the ask goes out at once", async () => {
+		const secret = "abcdefgh-0123456789";
+		const { events, runDir } = await collect("ok", {
+			env: {
+				...process.env,
+				FAKE_ACP_MODE: "ok",
+				FAKE_BEFORE_ASK: JSON.stringify([text("say abcdefgh-01")]),
+				FAKE_AFTER_ASK: JSON.stringify([text("23456789 end")]),
+			},
+			permission: autoApprovePolicy,
+			secrets: [secret],
+		});
+		const said = events.flatMap((e) => (e.kind === "agent_step" ? [e.text] : []));
+		const ask = events.findIndex((e) => e.kind === "permission_ask");
+		const first = events.findIndex((e) => e.kind === "agent_step" && e.text.startsWith("say "));
+		expect([
+			said.filter((t) => t.startsWith("say ") || t.endsWith(" end")),
+			first < ask,
+			rebuilt(runDir).includes("say [redacted][redacted] end"),
+			[JSON.stringify(events), readFileSync(join(runDir, "transcript.jsonl"), "utf8")].map((s) =>
+				["abcdefgh", "23456789"].filter((f) => s.includes(f)),
+			),
+		]).toEqual([["say [redacted]", "[redacted] end"], true, true, [[], []]]);
+	});
+
+	it("a run killed mid-turn, as a crash leaves it for the next boot: the chunks still held are never written", async () => {
 		const pidFile = join(tmp("pid"), "pid");
 		const r = await sentinelRun("silent", { FAKE_PID_FILE: pidFile }, () => {
 			process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL");
 		});
-		expect(check(r)).toEqual({ leaks: [], unparsed: [] });
+		expect([check(r), rebuilt(r.runDir)]).toEqual([{ leaks: [], unparsed: [] }, ""]);
+	});
+
+	it("a run whose agent is killed mid-turn, pulled to its end: the transcript's chunks rebuild to the redacted text", async () => {
+		const pidFile = join(tmp("pid"), "pid");
+		const r = await sentinelRun(
+			"silent",
+			{ FAKE_PID_FILE: pidFile },
+			() => {
+				process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL");
+			},
+			true,
+		);
+		const text = rebuilt(r.runDir);
+		expect([check(r), text, forms.filter((f) => text.includes(f))]).toEqual([
+			{ leaks: [], unparsed: [] },
+			stitched,
+			[],
+		]);
 	});
 });

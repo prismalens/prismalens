@@ -214,7 +214,8 @@ export class AgentSetupService {
 			recipients: s.recipients,
 			changedInSource: changed,
 			fromAgent: s.from?.agent ?? null,
-			fromSource: s.from
+			// A record from before approval required a key has none to point at.
+			fromSource: s.from?.key
 				? { agent: s.from.agent, path: s.from.path, key: s.from.key }
 				: null,
 		};
@@ -561,9 +562,12 @@ export class AgentSetupService {
 			this.harness.runtimeFor(id),
 		]);
 		const disk = readOnDisk(id, env, root);
-		// An agent that answers before any run (Codex's app-server) is asked as the section opens.
+		// An agent that answers before any run (Codex's app-server) is asked as the section opens;
+		// it reads the agent's own config, so a clean-profile view takes none of it.
 		const agentSaid =
-			(await readAgentLoadout(id, runtime, root).catch(() => null)) ?? [];
+			profile === "own"
+				? ((await readAgentLoadout(id, runtime, root).catch(() => null)) ?? [])
+				: [];
 		const shared = await this.deliver(id, env, root, stored);
 		const member = row.instructionsFor.includes(id);
 		const ours: LoadedItem[] = [...shared.items];

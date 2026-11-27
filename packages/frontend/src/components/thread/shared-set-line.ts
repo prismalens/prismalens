@@ -24,7 +24,7 @@ export function sharedSetLine(
 	set: SharedSet | undefined,
 ): { line: string; detail: string } | null {
 	if (!set || !keepsSystemPrompt(harness)) return null;
-	const held = heldSharedRevision(events);
+	const held = heldSharedRevision(events, harness);
 	if (held === null) return null;
 	const want =
 		set.instructionsFor.includes(harness) && set.instructions.trim()

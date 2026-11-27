@@ -215,11 +215,14 @@ export interface RunFileServers {
 export function toRunFile(s: SharedMcpServerStored): RunFileServers {
 	const env: Record<string, string> = {};
 	const prefix = `PL_SV_${s.name.toUpperCase().replaceAll("-", "_")}`;
-	const ref = (n: string) => {
+	const slot = (value: string) => {
 		const key = `${prefix}_${Object.keys(env).length + 1}`;
-		env[key] = s.values[n] ?? "";
+		env[key] = value;
 		return `\${${key}}`;
 	};
+	const ref = (n: string) => slot(s.values[n] ?? "");
+	// deepagents expands every `${VAR}` in the file once, so a literal holding `${` goes in a slot.
+	const lit = (x: string) => (x.includes("${") ? slot(x) : x);
 	const pairs = (names: readonly string[]) =>
 		Object.fromEntries(names.map((n) => [n, ref(n)]));
 	const name = sharedServerName(s.name);
@@ -227,27 +230,20 @@ export function toRunFile(s: SharedMcpServerStored): RunFileServers {
 		return {
 			servers: {
 				[name]: {
-					command: s.def.command,
+					command: lit(s.def.command),
 					args: s.def.args.map((a) =>
-						typeof a === "string" ? a : ref(a.value),
+						typeof a === "string" ? lit(a) : ref(a.value),
 					),
 					env: pairs(s.def.env),
 				},
 			},
 			env,
 		};
-	// The reference stays unencoded in the query, so dcode can expand it there.
-	const base = new URL(s.def.url).toString();
-	const query = s.def.query.map((q) => `${encodeURIComponent(q)}=${ref(q)}`);
+	// The URL ACP would get, query values encoded, in one slot: deepagents substitutes plain text.
+	const url = slot(httpUrl(s));
 	return {
 		servers: {
-			[name]: {
-				type: "http",
-				url: query.length
-					? `${base}${base.includes("?") ? "&" : "?"}${query.join("&")}`
-					: base,
-				headers: pairs(s.def.headers),
-			},
+			[name]: { type: "http", url, headers: pairs(s.def.headers) },
 		},
 		env,
 	};
@@ -314,6 +310,14 @@ function relativeScript(s: SharedMcpServerStored, cwd: string): boolean {
 	}
 }
 
+/** An HTTP server's URL with its query values put in, form-encoded. */
+function httpUrl(s: SharedMcpServerStored): string {
+	if (s.def.type !== "http") return "";
+	const url = new URL(s.def.url);
+	for (const q of s.def.query) url.searchParams.set(q, s.values[q] ?? "");
+	return url.toString();
+}
+
 function toMcp(s: SharedMcpServerStored): McpServer {
 	const name = sharedServerName(s.name);
 	const v = (n: string) => s.values[n] ?? "";
@@ -324,12 +328,10 @@ function toMcp(s: SharedMcpServerStored): McpServer {
 			args: argvOf(s),
 			env: s.def.env.map((n) => ({ name: n, value: v(n) })),
 		};
-	const url = new URL(s.def.url);
-	for (const q of s.def.query) url.searchParams.set(q, v(q));
 	return {
 		type: "http",
 		name,
-		url: url.toString(),
+		url: httpUrl(s),
 		headers: s.def.headers.map((n) => ({ name: n, value: v(n) })),
 	};
 }
@@ -401,6 +403,14 @@ export async function deliverShared(
 			};
 		} else out.servers.push(toMcp(s));
 		out.hidden.push(...names.map((n) => s.values[n] ?? "").filter(Boolean));
+		// A query value travels form-encoded inside the URL, so its scrubbers need that form too.
+		if (s.def.type === "http")
+			for (const q of s.def.query) {
+				const form = new URLSearchParams([["", s.values[q] ?? ""]])
+					.toString()
+					.slice(1);
+				if (form && form !== s.values[q]) out.hidden.push(form);
+			}
 	}
 	return out;
 }

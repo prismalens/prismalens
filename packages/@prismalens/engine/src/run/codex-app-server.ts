@@ -89,8 +89,22 @@ export async function withCodexAppServer<T>(
 		return await Promise.race([run().catch(() => null), exited, late]);
 	} finally {
 		clearTimeout(timer);
+		// Windows keeps the folder locked until the process is gone; one that outlives SIGTERM is killed.
+		const gone = async (ms: number) => {
+			let grace: NodeJS.Timeout | undefined;
+			const out = await Promise.race([
+				exited.then(() => true),
+				new Promise<false>((r) => {
+					grace = setTimeout(() => r(false), ms);
+				}),
+			]);
+			clearTimeout(grace);
+			return out;
+		};
 		killProcessTree(child);
-		// Windows keeps the folder locked until the process is gone.
-		await Promise.race([exited, new Promise((r) => setTimeout(r, 2_000))]);
+		if (!(await gone(2_000))) {
+			killProcessTree(child, "SIGKILL");
+			await gone(2_000);
+		}
 	}
 }
