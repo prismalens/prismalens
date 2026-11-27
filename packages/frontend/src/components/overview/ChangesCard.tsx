@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Link } from "@tanstack/react-router";
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { GitCommitHorizontal } from "lucide-react";
 import { useMemo } from "react";
 import { dayClock } from "@/components/run/run-labels";
@@ -55,15 +56,14 @@ export function ChangesCard({ o }: { o: Overview }) {
 			testId="changes-card"
 			actions={
 				total > LATEST ? (
-					<button
-						type="button"
+					<SdkButton
 						onClick={() => o.setAllChanges(!o.allChanges)}
 						className="text-meta text-accent hover:underline"
 						aria-expanded={o.allChanges}
 						data-testid="changes-all"
 					>
 						{o.allChanges ? `Latest ${LATEST}` : `All ${total} events`}
-					</button>
+					</SdkButton>
 				) : null
 			}
 		>
@@ -89,18 +89,21 @@ export function ChangesCard({ o }: { o: Overview }) {
 							<Button
 								variant="secondary"
 								className="h-[26px] shrink-0 bg-surface-3 hover:bg-surface-4"
-								asChild
-							>
-								{problem.action.to === "service" && incident.service ? (
-									<Link to="/services/$id" params={{ id: incident.service.id }}>
-										{problem.action.label}
-									</Link>
-								) : (
-									<Link to="/settings" search={{ tab: "integrations" }}>
-										{problem.action.label}
-									</Link>
-								)}
-							</Button>
+								render={
+									problem.action.to === "service" && incident.service ? (
+										<Link
+											to="/services/$id"
+											params={{ id: incident.service.id }}
+										>
+											{problem.action.label}
+										</Link>
+									) : (
+										<Link to="/settings" search={{ tab: "integrations" }}>
+											{problem.action.label}
+										</Link>
+									)
+								}
+							/>
 						)}
 					</div>
 				)}

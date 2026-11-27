@@ -421,26 +421,26 @@ function Reason({ impact }: { impact: ImpactChart }) {
 				<Button
 					variant="secondary"
 					className="h-[26px] shrink-0 bg-surface-3 hover:bg-surface-4"
-					asChild
-				>
-					<Link
-						to="/settings"
-						search={{ tab: "sources" }}
-						data-testid="impact-connect"
-					>
-						Connect Prometheus
-					</Link>
-				</Button>
+					render={
+						<Link
+							to="/settings"
+							search={{ tab: "sources" }}
+							data-testid="impact-connect"
+						>
+							Connect Prometheus
+						</Link>
+					}
+				/>
 			) : impact.linkOut ? (
 				<Button
 					variant="secondary"
 					className="h-[26px] shrink-0 bg-surface-3 hover:bg-surface-4"
-					asChild
-				>
-					<a href={impact.linkOut} target="_blank" rel="noreferrer">
-						Open the query
-					</a>
-				</Button>
+					render={
+						<a href={impact.linkOut} target="_blank" rel="noreferrer">
+							Open the query
+						</a>
+					}
+				/>
 			) : null}
 		</div>
 	);

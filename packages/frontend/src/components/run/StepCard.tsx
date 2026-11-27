@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import {
+	Collapsible,
+	CollapsiblePanel,
+	CollapsibleTrigger,
+} from "@ui-sdk/react/collapsible";
 import { ChevronDown, FileText, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { refusalReason, refusalSentence } from "@/lib/refusal-sentence";
@@ -44,17 +49,15 @@ export function StepCard({
 			data-step={step.n}
 			data-highlight={highlight ? "" : undefined}
 		>
-			<div
+			<Collapsible
+				open={open}
+				onOpenChange={onToggle}
 				className={cn(
 					"flex flex-col overflow-hidden rounded-surface bg-surface-1 transition-shadow duration-(--dur-fast)",
 					highlight && "shadow-[0_0_0_2px_var(--accent)]",
 				)}
 			>
-				<button
-					type="button"
-					aria-expanded={open}
-					aria-controls={`step-${step.n}-body`}
-					onClick={onToggle}
+				<CollapsibleTrigger
 					className="flex min-w-0 items-center gap-2.5 px-3 py-2 text-left whitespace-nowrap text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3"
 					data-testid="step-toggle"
 				>
@@ -84,8 +87,8 @@ export function StepCard({
 							open && "rotate-180",
 						)}
 					/>
-				</button>
-				{open && (
+				</CollapsibleTrigger>
+				<CollapsiblePanel>
 					<div
 						id={`step-${step.n}-body`}
 						className="flex flex-col bg-[linear-gradient(var(--hairline),var(--hairline))] bg-[length:100%_1px] bg-no-repeat"
@@ -117,8 +120,8 @@ export function StepCard({
 										: "Running."))}
 						</pre>
 					</div>
-				)}
-			</div>
+				</CollapsiblePanel>
+			</Collapsible>
 			{ask && (
 				<p
 					className={cn(

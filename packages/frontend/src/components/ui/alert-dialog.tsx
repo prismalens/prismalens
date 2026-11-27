@@ -17,28 +17,7 @@ import { useHeightLock } from "@/hooks/use-height-lock";
 import { cn } from "@/lib/utils";
 
 const AlertDialog = SdkAlertDialog;
-
-function AlertDialogTrigger({
-	asChild = false,
-	children,
-	render,
-	...props
-}: React.ComponentProps<typeof SdkAlertDialogTrigger> & { asChild?: boolean }) {
-	const resolvedRender =
-		render ??
-		(asChild && React.isValidElement(children) ? children : undefined);
-	const resolvedChildren =
-		asChild && React.isValidElement(children) ? undefined : children;
-	return (
-		<SdkAlertDialogTrigger render={resolvedRender} {...props}>
-			{resolvedChildren}
-		</SdkAlertDialogTrigger>
-	);
-}
-
-const AlertDialogPortal = ({ children }: { children?: React.ReactNode }) => (
-	<>{children}</>
-);
+const AlertDialogTrigger = SdkAlertDialogTrigger;
 
 const AlertDialogOverlay = React.forwardRef<
 	HTMLDivElement,
@@ -107,24 +86,14 @@ AlertDialogTitle.displayName = "AlertDialogTitle";
 
 const AlertDialogDescription = React.forwardRef<
 	HTMLParagraphElement,
-	React.ComponentProps<typeof SdkAlertDialogDescription> & { asChild?: boolean }
->(({ className, asChild = false, children, render, ...props }, ref) => {
-	const resolvedRender =
-		render ??
-		(asChild && React.isValidElement(children) ? children : undefined);
-	const resolvedChildren =
-		asChild && React.isValidElement(children) ? undefined : children;
-	return (
-		<SdkAlertDialogDescription
-			ref={ref}
-			className={cn("text-body text-text-2", className)}
-			render={resolvedRender}
-			{...props}
-		>
-			{resolvedChildren}
-		</SdkAlertDialogDescription>
-	);
-});
+	React.ComponentProps<typeof SdkAlertDialogDescription>
+>(({ className, ...props }, ref) => (
+	<SdkAlertDialogDescription
+		ref={ref}
+		className={cn("text-body text-text-2", className)}
+		{...props}
+	/>
+));
 AlertDialogDescription.displayName = "AlertDialogDescription";
 
 const AlertDialogAction = React.forwardRef<
@@ -175,7 +144,6 @@ export {
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogOverlay,
-	AlertDialogPortal,
 	AlertDialogTitle,
 	AlertDialogTrigger,
 };

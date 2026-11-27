@@ -20,7 +20,6 @@ import { ReconnectLine } from "@/components/shell/ReconnectLine";
 import { TitleBarStrip } from "@/components/TitleBarStrip";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionError } from "@/lib/api/orpc-client";
 import { getErrorMessage } from "@/lib/get-error-message";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
@@ -86,19 +85,17 @@ function RootLayout() {
 				<TitleBarStrip />
 				<ThemeProvider>
 					<QueryClientProvider client={queryClient}>
-						<TooltipProvider delayDuration={400} skipDelayDuration={200}>
-							<NewIncidentProvider>
-								<div className="min-h-dvh bg-canvas text-text-1">
-									<Sidebar />
-									<main className="min-w-0 pt-(--titlebar-h) md:pl-(--sidebar-w)">
-										<ReconnectLine />
-										<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-											<Outlet />
-										</div>
-									</main>
-								</div>
-							</NewIncidentProvider>
-						</TooltipProvider>
+						<NewIncidentProvider>
+							<div className="min-h-dvh bg-canvas text-text-1">
+								<Sidebar />
+								<main className="min-w-0 pt-(--titlebar-h) md:pl-(--sidebar-w)">
+									<ReconnectLine />
+									<div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
+										<Outlet />
+									</div>
+								</main>
+							</div>
+						</NewIncidentProvider>
 						<Toaster />
 						<ReactQueryDevtools initialIsOpen={false} />
 					</QueryClientProvider>
@@ -116,9 +113,7 @@ function NotFound() {
 			<p className="max-w-md text-center text-body text-text-2">
 				This address does not match a page. It may have moved.
 			</p>
-			<Button asChild>
-				<Link to="/">Open the inbox</Link>
-			</Button>
+			<Button render={<Link to="/">Open the inbox</Link>} />
 		</div>
 	);
 }

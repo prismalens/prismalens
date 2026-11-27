@@ -256,11 +256,15 @@ export function AlertListPane({
 						testId="alerts-empty-state"
 						action={
 							sidebar ? undefined : (
-								<Button variant="text" size="sm" asChild>
-									<Link to="/settings" search={{ tab: "sources" }}>
-										Add an alert source
-									</Link>
-								</Button>
+								<Button
+									variant="text"
+									size="sm"
+									render={
+										<Link to="/settings" search={{ tab: "sources" }}>
+											Add an alert source
+										</Link>
+									}
+								/>
 							)
 						}
 					/>

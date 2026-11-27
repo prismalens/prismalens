@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { Listbox, ListboxItem } from "@ui-sdk/react/listbox";
 import { ChevronDown, MessageSquare, Search } from "lucide-react";
 import { useState } from "react";
 import { CHIP } from "@/components/agent/AgentPicker";
@@ -11,7 +12,6 @@ import {
 	PopoverTrigger,
 } from "@/components/ui/popover";
 import type { RunVerb } from "@/lib/run-verb";
-import { cn } from "@/lib/utils";
 
 const NAME: Record<RunVerb, string> = {
 	investigate: "Investigate",
@@ -41,22 +41,16 @@ export function VerbChip({
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<Hint label="What the next message asks for" keys={["Enter"]} side="top">
-				<PopoverTrigger asChild>
-					<button
-						type="button"
-						disabled={disabled}
-						className={CHIP}
-						data-testid="verb-chip"
-						data-verb={verb}
-						aria-label={`Next message: ${NAME[verb]}`}
-					>
-						<Icon className="size-3.5 shrink-0" aria-hidden />
-						<span>{NAME[verb]}</span>
-						<ChevronDown
-							className="size-3.5 shrink-0 text-text-3"
-							aria-hidden
-						/>
-					</button>
+				<PopoverTrigger
+					disabled={disabled}
+					className={CHIP}
+					data-testid="verb-chip"
+					data-verb={verb}
+					aria-label={`Next message: ${NAME[verb]}`}
+				>
+					<Icon className="size-3.5 shrink-0" aria-hidden />
+					<span>{NAME[verb]}</span>
+					<ChevronDown className="size-3.5 shrink-0 text-text-3" aria-hidden />
 				</PopoverTrigger>
 			</Hint>
 			<PopoverContent
@@ -66,23 +60,21 @@ export function VerbChip({
 				className="w-[min(380px,calc(100vw-32px))] rounded-surface p-1"
 				data-testid="verb-menu"
 			>
-				<div role="listbox" aria-label="What the next message asks for">
+				<Listbox
+					aria-label="What the next message asks for"
+					value={verb}
+					onValueChange={(v) => {
+						setOpen(false);
+						if (v && v !== verb) onVerb(v as RunVerb);
+					}}
+				>
 					{verbs.map((v) => {
 						const RowIcon = ICON[v];
 						return (
-							<button
+							<ListboxItem
 								key={v}
-								type="button"
-								role="option"
-								aria-selected={v === verb}
-								onClick={() => {
-									setOpen(false);
-									if (v !== verb) onVerb(v);
-								}}
-								className={cn(
-									"grid w-full grid-cols-[16px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 rounded-control px-2.5 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
-									v === verb && "bg-surface-3",
-								)}
+								value={v}
+								className="grid w-full cursor-default grid-cols-[16px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 rounded-control px-2.5 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3 data-highlighted:bg-surface-3 data-selected:bg-surface-3"
 								data-testid={`verb-${v}`}
 							>
 								<RowIcon className="size-3.5 text-text-2" aria-hidden />
@@ -92,10 +84,10 @@ export function VerbChip({
 								<span className="col-start-2 text-meta text-text-2">
 									{copy[v]}
 								</span>
-							</button>
+							</ListboxItem>
 						);
 					})}
-				</div>
+				</Listbox>
 				<p className="px-2.5 pt-2 pb-1 text-meta text-text-3">
 					Enter does what the chip says. A different agent, model or mode starts
 					a new run.

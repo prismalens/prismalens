@@ -4,6 +4,11 @@
 "use client";
 
 import type { DeletionImpact } from "@prismalens/contracts";
+import {
+	Collapsible,
+	CollapsiblePanel,
+	CollapsibleTrigger,
+} from "@ui-sdk/react/collapsible";
 import { ChevronRight, FolderGit2, Server } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -44,13 +49,8 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 					))}
 				</div>
 			) : (
-				<>
-					<button
-						type="button"
-						aria-expanded={expanded}
-						onClick={() => setExpanded((v) => !v)}
-						className="flex w-full items-center gap-1.5 text-left text-body text-text-1"
-					>
+				<Collapsible open={expanded} onOpenChange={setExpanded}>
+					<CollapsibleTrigger className="flex w-full items-center gap-1.5 text-left text-body text-text-1">
 						<span className="flex-shrink-0">{icon}</span>
 						<span>
 							{count} {count === 1 ? singular : plural}
@@ -61,8 +61,8 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 								expanded && "rotate-90",
 							)}
 						/>
-					</button>
-					{expanded && (
+					</CollapsibleTrigger>
+					<CollapsiblePanel>
 						<div className="ml-5 space-y-0.5 text-meta text-text-2">
 							{items.slice(0, EXPANDED_LIMIT).map((item) => (
 								<div key={item.id} className="flex items-center gap-2">
@@ -78,8 +78,8 @@ function ImpactLine({ icon, count, singular, plural, items }: ImpactLineProps) {
 								</div>
 							)}
 						</div>
-					)}
-				</>
+					</CollapsiblePanel>
+				</Collapsible>
 			)}
 		</div>
 	);

@@ -51,11 +51,15 @@ export function SetupNextStepHint({
 		hint = {
 			message: "No coding agent is on PATH, so investigations cannot run yet.",
 			actions: (
-				<Button variant="secondary" size="sm" asChild>
-					<Link to="/settings" search={{ tab: "harness" }}>
-						Investigation agent settings
-					</Link>
-				</Button>
+				<Button
+					variant="secondary"
+					size="sm"
+					render={
+						<Link to="/settings" search={{ tab: "harness" }}>
+							Investigation agent settings
+						</Link>
+					}
+				/>
 			),
 		};
 	} else if (!steps.codeLocation) {
@@ -63,9 +67,11 @@ export function SetupNextStepHint({
 			message:
 				"No service names its code yet. Edit a service and set Repository to a folder or git URL, or investigations run unmapped.",
 			actions: (
-				<Button variant="secondary" size="sm" asChild>
-					<Link to="/services">Services</Link>
-				</Button>
+				<Button
+					variant="secondary"
+					size="sm"
+					render={<Link to="/services">Services</Link>}
+				/>
 			),
 		};
 	} else if (!steps.firstIncident) {
@@ -74,14 +80,20 @@ export function SetupNextStepHint({
 				"No incidents yet. Author one by hand, or connect a monitoring tool and let alerts correlate.",
 			actions: (
 				<>
-					<Button variant="secondary" size="sm" asChild>
-						<Link to="/incidents">Go to incidents</Link>
-					</Button>
-					<Button variant="text" size="sm" asChild>
-						<Link to="/settings" search={{ tab: "integrations" }}>
-							Connect a tool
-						</Link>
-					</Button>
+					<Button
+						variant="secondary"
+						size="sm"
+						render={<Link to="/incidents">Go to incidents</Link>}
+					/>
+					<Button
+						variant="text"
+						size="sm"
+						render={
+							<Link to="/settings" search={{ tab: "integrations" }}>
+								Connect a tool
+							</Link>
+						}
+					/>
 				</>
 			),
 		};

@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 /** shadcn `input-group` (shadcn@4.21.4), restyled: a surface-1 well, no outline or ring (#673). */
+import { Textarea as SdkTextarea } from "@ui-sdk/react/textarea";
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 import { Button } from "@/components/ui/button";
@@ -69,9 +70,9 @@ function InputGroupButton({
 function InputGroupTextarea({
 	className,
 	...props
-}: React.ComponentProps<"textarea">) {
+}: React.ComponentProps<typeof SdkTextarea>) {
 	return (
-		<textarea
+		<SdkTextarea
 			data-slot="input-group-control"
 			className={cn(
 				"block w-full min-w-0 resize-none bg-transparent text-body text-text-1 outline-none placeholder:text-text-3 disabled:cursor-not-allowed",

@@ -8,6 +8,7 @@ import {
 	type TopologyEdge,
 } from "@prismalens/contracts";
 import { Link } from "@tanstack/react-router";
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { Database } from "lucide-react";
 import { Fragment, useState } from "react";
 import { firingOf } from "@/components/inbox/inbox-model";
@@ -142,8 +143,7 @@ export function SituationCard({
 			data-testid="situation"
 		>
 			<div className="flex min-w-0 flex-wrap items-start gap-x-6 gap-y-2 px-4 pt-3 pb-2">
-				<button
-					type="button"
+				<SdkButton
 					onClick={() => setOpen((v) => !v)}
 					aria-expanded={open}
 					className={cn(
@@ -155,7 +155,7 @@ export function SituationCard({
 					data-testid="situation-brief"
 				>
 					{plain(brief)}
-				</button>
+				</SdkButton>
 				{facts.length > 0 && (
 					<dl
 						className="flex min-w-0 shrink flex-wrap justify-end gap-x-6 gap-y-1"

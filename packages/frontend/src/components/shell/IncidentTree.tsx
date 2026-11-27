@@ -7,6 +7,12 @@ import {
 } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "@tanstack/react-router";
+import { Button } from "@ui-sdk/react/button";
+import {
+	Collapsible,
+	CollapsiblePanel,
+	CollapsibleTrigger,
+} from "@ui-sdk/react/collapsible";
 import {
 	ChevronRight,
 	Cloud,
@@ -143,7 +149,14 @@ export function IncidentTree() {
 								open[incident.id] ?? incident.id === here.incidentId;
 							const on = incident.id === here.incidentId && !here.runId;
 							return (
-								<div key={incident.id} className="flex flex-col gap-px">
+								<Collapsible
+									key={incident.id}
+									open={expanded}
+									onOpenChange={(next) =>
+										setOpen((o) => ({ ...o, [incident.id]: next }))
+									}
+									className="flex flex-col gap-px"
+								>
 									<div
 										className={cn(
 											"group/row flex h-7 min-w-0 items-center gap-1.5 rounded-control pr-2.5 pl-1 text-body text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1",
@@ -151,13 +164,8 @@ export function IncidentTree() {
 										)}
 										data-testid="tree-incident"
 									>
-										<button
-											type="button"
+										<CollapsibleTrigger
 											aria-label={`Runs and questions in INC-${incident.number}`}
-											aria-expanded={expanded}
-											onClick={() =>
-												setOpen((o) => ({ ...o, [incident.id]: !expanded }))
-											}
 											className="flex size-5 shrink-0 items-center justify-center rounded-[4px] text-text-3 hover:text-text-1"
 											data-testid="tree-toggle"
 										>
@@ -168,7 +176,7 @@ export function IncidentTree() {
 													expanded && "rotate-90",
 												)}
 											/>
-										</button>
+										</CollapsibleTrigger>
 										<Hint
 											label={incident.title}
 											side="right"
@@ -195,25 +203,24 @@ export function IncidentTree() {
 											</Link>
 										</Hint>
 									</div>
-									{expanded && (
+									<CollapsiblePanel>
 										<RunList
 											incidentId={incident.id}
 											runId={here.runId}
 											now={now}
 										/>
-									)}
-								</div>
+									</CollapsiblePanel>
+								</Collapsible>
 							);
 						})}
 						{more > 0 && (
-							<button
-								type="button"
+							<Button
 								onClick={() => setAll((a) => ({ ...a, [g.id]: true }))}
 								className="flex h-6 items-center rounded-control pl-6 text-left text-meta text-text-3 transition-colors duration-(--dur-instant) hover:bg-surface-3 hover:text-text-1"
 								data-testid="tree-more"
 							>
 								{more.toLocaleString("en-US")} more
-							</button>
+							</Button>
 						)}
 					</section>
 				);

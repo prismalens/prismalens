@@ -5,6 +5,7 @@ import {
 	SERVICE_METRIC_CONFIG_KEY,
 	type ServiceIntegrationWithStatus,
 } from "@prismalens/contracts";
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { useState } from "react";
 import { RecordSection } from "@/components/shared/RecordSection";
 import { Button } from "@/components/ui/button";
@@ -171,15 +172,14 @@ function MetricField({
 				) : (
 					<span>none</span>
 				)}
-				<button
-					type="button"
+				<SdkButton
 					className="shrink-0 text-accent hover:underline"
 					disabled={disabled}
 					onClick={() => setDraft(value)}
 					data-testid="service-metric-edit"
 				>
 					{value ? "Change" : "Add"}
-				</button>
+				</SdkButton>
 			</p>
 		);
 	return (

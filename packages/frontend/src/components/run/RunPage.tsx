@@ -11,6 +11,7 @@ import {
 	type RunState,
 } from "@prismalens/contracts";
 import { useLocation, useSearch } from "@tanstack/react-router";
+import { Toggle } from "@ui-sdk/react/toggle";
 import { PanelRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { modelName, useAgentChoice } from "@/components/agent/AgentPicker";
@@ -374,13 +375,12 @@ function DetailsToggle({
 			: title;
 	return (
 		<Hint label={label}>
-			<button
+			<Toggle
 				ref={ref}
-				type="button"
 				aria-label={label}
-				aria-pressed={open}
+				pressed={open}
 				aria-controls="run-details"
-				onClick={onToggle}
+				onPressedChange={onToggle}
 				className={cn(
 					"relative flex size-7 shrink-0 items-center justify-center rounded-control transition-colors duration-(--dur-instant) hover:bg-surface-3",
 					open ? "bg-surface-3 text-text-1" : "bg-surface-2 text-text-2",
@@ -395,7 +395,7 @@ function DetailsToggle({
 						data-testid="details-flag"
 					/>
 				)}
-			</button>
+			</Toggle>
 		</Hint>
 	);
 }

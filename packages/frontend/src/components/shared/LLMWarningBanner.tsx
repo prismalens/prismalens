@@ -44,11 +44,15 @@ export function LLMWarningBanner({
 			>
 				{message}
 			</span>
-			<Button variant="secondary" size="sm" asChild>
-				<Link to="/settings" search={{ tab: "harness" }}>
-					Configure agent
-				</Link>
-			</Button>
+			<Button
+				variant="secondary"
+				size="sm"
+				render={
+					<Link to="/settings" search={{ tab: "harness" }}>
+						Configure agent
+					</Link>
+				}
+			/>
 		</div>
 	);
 }

@@ -12,28 +12,7 @@ import { titleRowHeight } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 
 const Popover = SdkPopover;
-
-function PopoverTrigger({
-	asChild = false,
-	children,
-	render,
-	...props
-}: React.ComponentProps<typeof SdkPopoverTrigger> & { asChild?: boolean }) {
-	const resolvedRender =
-		render ??
-		(asChild && React.isValidElement(children) ? children : undefined);
-	const resolvedChildren =
-		asChild && React.isValidElement(children) ? undefined : children;
-	return (
-		<SdkPopoverTrigger render={resolvedRender} {...props}>
-			{resolvedChildren}
-		</SdkPopoverTrigger>
-	);
-}
-
-const PopoverAnchor = ({ children }: { children?: React.ReactNode }) => (
-	<>{children}</>
-);
+const PopoverTrigger = SdkPopoverTrigger;
 
 const PopoverContent = React.forwardRef<
 	HTMLDivElement,
@@ -54,4 +33,4 @@ const PopoverContent = React.forwardRef<
 ));
 PopoverContent.displayName = "PopoverContent";
 
-export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger };
+export { Popover, PopoverContent, PopoverTrigger };

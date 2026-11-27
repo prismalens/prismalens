@@ -191,11 +191,15 @@ function AlertNumbers() {
 						text="Nothing has fired yet."
 						testId="alerts-none"
 						action={
-							<Button variant="text" size="sm" asChild>
-								<Link to="/settings" search={{ tab: "sources" }}>
-									Add an alert source
-								</Link>
-							</Button>
+							<Button
+								variant="text"
+								size="sm"
+								render={
+									<Link to="/settings" search={{ tab: "sources" }}>
+										Add an alert source
+									</Link>
+								}
+							/>
 						}
 					/>
 				) : (

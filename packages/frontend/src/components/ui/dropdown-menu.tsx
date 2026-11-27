@@ -21,36 +21,15 @@ import {
 	MenuTrigger as SdkMenuTrigger,
 } from "@ui-sdk/react/menu";
 import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 
 import { titleRowHeight } from "@/lib/desktop";
 import { cn } from "@/lib/utils";
 
-function DropdownMenu({ ...props }: React.ComponentProps<typeof SdkMenu>) {
-	return <SdkMenu {...props} />;
-}
-
-function DropdownMenuPortal({ children }: { children?: React.ReactNode }) {
-	return <>{children}</>;
-}
-
-function DropdownMenuTrigger({
-	asChild = false,
-	children,
-	render,
-	...props
-}: React.ComponentProps<typeof SdkMenuTrigger> & { asChild?: boolean }) {
-	const resolvedRender =
-		render ??
-		(asChild && React.isValidElement(children) ? children : undefined);
-	const resolvedChildren =
-		asChild && React.isValidElement(children) ? undefined : children;
-	return (
-		<SdkMenuTrigger render={resolvedRender} {...props}>
-			{resolvedChildren}
-		</SdkMenuTrigger>
-	);
-}
+const DropdownMenu = SdkMenu;
+const DropdownMenuTrigger = SdkMenuTrigger;
+const DropdownMenuGroup = SdkMenuGroup;
+const DropdownMenuSub = SdkMenuSub;
 
 function DropdownMenuContent({
 	className,
@@ -71,41 +50,24 @@ function DropdownMenuContent({
 	);
 }
 
-function DropdownMenuGroup({
-	...props
-}: React.ComponentProps<typeof SdkMenuGroup>) {
-	return <SdkMenuGroup {...props} />;
-}
-
 function DropdownMenuItem({
 	className,
 	inset,
 	variant = "default",
-	asChild = false,
-	children,
-	render,
 	onClick,
 	onSelect,
 	...props
 }: Omit<React.ComponentProps<typeof SdkMenuItem>, "onSelect"> & {
 	inset?: boolean;
 	variant?: "default" | "destructive";
-	asChild?: boolean;
 	onSelect?: () => void;
 	onClick?: React.MouseEventHandler<HTMLElement>;
 }) {
-	const resolvedRender =
-		render ??
-		(asChild && React.isValidElement(children) ? children : undefined);
-	const resolvedChildren =
-		asChild && React.isValidElement(children) ? undefined : children;
-
 	return (
 		<SdkMenuItem
 			data-inset={inset || undefined}
 			data-variant={variant}
 			destructive={variant === "destructive"}
-			render={resolvedRender}
 			onSelect={onSelect}
 			onClick={onClick}
 			className={cn(
@@ -113,9 +75,7 @@ function DropdownMenuItem({
 				className,
 			)}
 			{...props}
-		>
-			{resolvedChildren}
-		</SdkMenuItem>
+		/>
 	);
 }
 
@@ -220,12 +180,6 @@ function DropdownMenuShortcut({
 	);
 }
 
-function DropdownMenuSub({
-	...props
-}: React.ComponentProps<typeof SdkMenuSub>) {
-	return <SdkMenuSub {...props} />;
-}
-
 function DropdownMenuSubTrigger({
 	className,
 	inset,
@@ -273,7 +227,6 @@ export {
 	DropdownMenuGroup,
 	DropdownMenuItem,
 	DropdownMenuLabel,
-	DropdownMenuPortal,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
 	DropdownMenuSeparator,

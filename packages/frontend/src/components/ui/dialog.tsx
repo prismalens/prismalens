@@ -26,46 +26,8 @@ export const DIALOG_PANEL =
 	"floating fixed top-[50%] left-[50%] z-50 grid max-h-[80dvh] translate-x-[-50%] translate-y-[-50%] content-start gap-4 overflow-y-auto rounded-dialog p-5 outline-none";
 
 const Dialog = SdkDialog;
-
-function DialogTrigger({
-	asChild = false,
-	children,
-	render,
-	...props
-}: React.ComponentProps<typeof SdkDialogTrigger> & { asChild?: boolean }) {
-	const resolvedRender =
-		render ??
-		(asChild && React.isValidElement(children) ? children : undefined);
-	const resolvedChildren =
-		asChild && React.isValidElement(children) ? undefined : children;
-	return (
-		<SdkDialogTrigger render={resolvedRender} {...props}>
-			{resolvedChildren}
-		</SdkDialogTrigger>
-	);
-}
-
-const DialogPortal = ({ children }: { children?: React.ReactNode }) => (
-	<>{children}</>
-);
-
-function DialogClose({
-	asChild = false,
-	children,
-	render,
-	...props
-}: React.ComponentProps<typeof SdkDialogClose> & { asChild?: boolean }) {
-	const resolvedRender =
-		render ??
-		(asChild && React.isValidElement(children) ? children : undefined);
-	const resolvedChildren =
-		asChild && React.isValidElement(children) ? undefined : children;
-	return (
-		<SdkDialogClose render={resolvedRender} {...props}>
-			{resolvedChildren}
-		</SdkDialogClose>
-	);
-}
+const DialogTrigger = SdkDialogTrigger;
+const DialogClose = SdkDialogClose;
 
 const DialogOverlay = React.forwardRef<
 	HTMLDivElement,
@@ -146,24 +108,14 @@ DialogTitle.displayName = "DialogTitle";
 
 const DialogDescription = React.forwardRef<
 	HTMLParagraphElement,
-	React.ComponentProps<typeof SdkDialogDescription> & { asChild?: boolean }
->(({ className, asChild = false, children, render, ...props }, ref) => {
-	const resolvedRender =
-		render ??
-		(asChild && React.isValidElement(children) ? children : undefined);
-	const resolvedChildren =
-		asChild && React.isValidElement(children) ? undefined : children;
-	return (
-		<SdkDialogDescription
-			ref={ref}
-			className={cn("text-body text-text-2", className)}
-			render={resolvedRender}
-			{...props}
-		>
-			{resolvedChildren}
-		</SdkDialogDescription>
-	);
-});
+	React.ComponentProps<typeof SdkDialogDescription>
+>(({ className, ...props }, ref) => (
+	<SdkDialogDescription
+		ref={ref}
+		className={cn("text-body text-text-2", className)}
+		{...props}
+	/>
+));
 DialogDescription.displayName = "DialogDescription";
 
 export {
@@ -174,7 +126,6 @@ export {
 	DialogFooter,
 	DialogHeader,
 	DialogOverlay,
-	DialogPortal,
 	DialogTitle,
 	DialogTrigger,
 };

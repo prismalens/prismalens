@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 import {
 	Tooltip,
 	TooltipContent,
@@ -30,8 +30,12 @@ export function Hint({
 }) {
 	if (!when) return children;
 	return (
-		<Tooltip disableHoverableContent>
-			<TooltipTrigger asChild>{children}</TooltipTrigger>
+		<Tooltip>
+			{isValidElement(children) ? (
+				<TooltipTrigger render={children} />
+			) : (
+				<TooltipTrigger>{children}</TooltipTrigger>
+			)}
 			<TooltipContent side={side} data-testid="hint">
 				<span className="flex items-center gap-2">
 					<span className="min-w-0">{label}</span>

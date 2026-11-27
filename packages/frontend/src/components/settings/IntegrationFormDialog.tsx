@@ -7,6 +7,7 @@ import type {
 	AuthTemplateResponse,
 	Integration,
 } from "@prismalens/contracts/schemas";
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { ArrowLeft, ExternalLink, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Mono } from "@/components/shared/Mono";
@@ -246,9 +247,8 @@ export function IntegrationFormDialog({
 									t.listed !== false,
 							)
 							.map((template) => (
-								<button
+								<SdkButton
 									key={template.id}
-									type="button"
 									onClick={() => handlePickTemplate(template)}
 									className="flex min-h-11 w-full items-center gap-3 rounded-control px-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3"
 									data-testid={`template-${template.id}`}
@@ -264,7 +264,7 @@ export function IntegrationFormDialog({
 											{CATEGORY_WORD[template.category] ?? template.category}
 										</span>
 									</span>
-								</button>
+								</SdkButton>
 							))}
 					</div>
 				)}

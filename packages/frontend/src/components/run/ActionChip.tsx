@@ -51,18 +51,15 @@ export function ActionChip({
 		);
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<button
-					type="button"
-					disabled={disabled}
-					className={cn(CHIP, "text-text-1")}
-					aria-label={`Send: ${current.label}`}
-					data-testid="action-chip"
-					data-action={current.id}
-				>
-					{current.label}
-					<ChevronDown className="size-3 shrink-0 text-text-3" aria-hidden />
-				</button>
+			<DropdownMenuTrigger
+				disabled={disabled}
+				className={cn(CHIP, "text-text-1")}
+				aria-label={`Send: ${current.label}`}
+				data-testid="action-chip"
+				data-action={current.id}
+			>
+				{current.label}
+				<ChevronDown className="size-3 shrink-0 text-text-3" aria-hidden />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent
 				side="top"

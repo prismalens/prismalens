@@ -10,6 +10,7 @@
  * pairing, where nothing leads away.
  */
 import { Link, useLocation, useMatch, useSearch } from "@tanstack/react-router";
+import { Button } from "@ui-sdk/react/button";
 import {
 	Bell,
 	Boxes,
@@ -361,15 +362,14 @@ function SettingsBar({ onBack }: { onBack: () => void }) {
 	useEscape(onBack, !phone);
 	return (
 		<>
-			<button
-				type="button"
+			<Button
 				onClick={onBack}
 				className="flex h-(--header-h) shrink-0 items-center gap-2 px-4 text-body font-medium text-text-1"
 				data-testid="settings-back"
 			>
-				<ChevronLeft className="size-4 text-text-2" />
+				<ChevronLeft className="size-4 text-text-2" aria-hidden="true" />
 				Back
-			</button>
+			</Button>
 			<nav
 				className="grid gap-0.5 px-2"
 				aria-label="Settings sections"

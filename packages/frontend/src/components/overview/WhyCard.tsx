@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Link } from "@tanstack/react-router";
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { useMemo, useState } from "react";
 import { viewName } from "@/components/run/run-labels";
 import { deriveSteps } from "@/components/run/run-steps";
@@ -326,8 +327,7 @@ function Finding({
 				)}
 				<span className="flex-1" />
 				{fix && (
-					<button
-						type="button"
+					<SdkButton
 						aria-expanded={lasting}
 						aria-controls="lasting-fix"
 						onClick={() => {
@@ -344,7 +344,7 @@ function Finding({
 						data-testid="why-lasting-toggle"
 					>
 						Lasting fix
-					</button>
+					</SdkButton>
 				)}
 			</div>
 		</>

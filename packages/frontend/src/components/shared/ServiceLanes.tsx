@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { ChevronRight } from "lucide-react";
 import {
 	Select,
@@ -57,8 +58,7 @@ export function LaneHeader({
 	const { folded, toggleLane } = useLayoutPrefs();
 	const isFolded = folded[view].includes(id) !== foldedByDefault;
 	return (
-		<button
-			type="button"
+		<SdkButton
 			aria-expanded={!isFolded}
 			onClick={() => toggleLane(view, id)}
 			className={cn(
@@ -77,7 +77,7 @@ export function LaneHeader({
 				)}
 			/>
 			<span className="ml-auto tabular-nums">{count}</span>
-		</button>
+		</SdkButton>
 	);
 }
 

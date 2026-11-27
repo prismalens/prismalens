@@ -3,7 +3,7 @@
 
 import { Button as SdkButton } from "@ui-sdk/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -63,7 +63,6 @@ type ButtonProps = Omit<
 	"onClick" | "children"
 > &
 	VariantProps<typeof buttonVariants> & {
-		asChild?: boolean;
 		children?: React.ReactNode;
 		onClick?: React.MouseEventHandler<HTMLButtonElement>;
 	};
@@ -72,31 +71,19 @@ function Button({
 	className,
 	variant = "default",
 	size = "default",
-	asChild = false,
-	children,
 	onClick,
-	render,
 	...props
 }: ButtonProps) {
-	const resolvedRender =
-		render ??
-		(asChild && React.isValidElement(children) ? children : undefined);
-	const resolvedChildren =
-		asChild && React.isValidElement(children) ? undefined : children;
-
 	return (
 		<SdkButton
 			data-variant={variant}
 			data-size={size}
 			className={cn(buttonVariants({ variant, size, className }))}
-			render={resolvedRender}
 			onClick={
 				onClick as unknown as React.ComponentProps<typeof SdkButton>["onClick"]
 			}
 			{...props}
-		>
-			{resolvedChildren}
-		</SdkButton>
+		/>
 	);
 }
 

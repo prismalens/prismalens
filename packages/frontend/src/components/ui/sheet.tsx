@@ -19,30 +19,8 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 const Sheet = SdkDrawer;
-
-function SheetTrigger({
-	asChild = false,
-	children,
-	render,
-	...props
-}: React.ComponentProps<typeof SdkDrawerTrigger> & { asChild?: boolean }) {
-	const resolvedRender =
-		render ??
-		(asChild && React.isValidElement(children) ? children : undefined);
-	const resolvedChildren =
-		asChild && React.isValidElement(children) ? undefined : children;
-	return (
-		<SdkDrawerTrigger render={resolvedRender} {...props}>
-			{resolvedChildren}
-		</SdkDrawerTrigger>
-	);
-}
-
+const SheetTrigger = SdkDrawerTrigger;
 const SheetClose = SdkDrawerClose;
-
-const SheetPortal = ({ children }: { children?: React.ReactNode }) => (
-	<>{children}</>
-);
 
 const SheetOverlay = React.forwardRef<
 	HTMLDivElement,
@@ -160,7 +138,6 @@ export {
 	SheetFooter,
 	SheetHeader,
 	SheetOverlay,
-	SheetPortal,
 	SheetTitle,
 	SheetTrigger,
 };

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { FileText, Paperclip, Plus, X } from "lucide-react";
 import {
 	type ClipboardEvent,
@@ -303,8 +304,7 @@ export function ComposerBox({
 											<FileText className="ml-1 size-3.5 shrink-0 text-text-3" />
 										)}
 										<span className="truncate">{d.file.name}</span>
-										<button
-											type="button"
+										<SdkButton
 											aria-label={`Remove ${d.file.name}`}
 											onClick={() => {
 												release([d]);
@@ -312,8 +312,8 @@ export function ComposerBox({
 											}}
 											className="rounded-[4px] p-0.5 text-text-3 hover:bg-surface-3 hover:text-text-1"
 										>
-											<X className="size-3" />
-										</button>
+											<X className="size-3" aria-hidden="true" />
+										</SdkButton>
 									</li>
 								))}
 							</ul>

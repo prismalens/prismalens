@@ -10,42 +10,8 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-function TooltipProvider({
-	children,
-}: {
-	children: React.ReactNode;
-	delayDuration?: number;
-	skipDelayDuration?: number;
-}) {
-	return <>{children}</>;
-}
-
-function Tooltip({
-	disableHoverableContent: _disableHoverableContent,
-	...props
-}: React.ComponentProps<typeof SdkTooltip> & {
-	disableHoverableContent?: boolean;
-}) {
-	return <SdkTooltip {...props} />;
-}
-
-function TooltipTrigger({
-	asChild = false,
-	children,
-	render,
-	...props
-}: React.ComponentProps<typeof SdkTooltipTrigger> & { asChild?: boolean }) {
-	const resolvedRender =
-		render ??
-		(asChild && React.isValidElement(children) ? children : undefined);
-	const resolvedChildren =
-		asChild && React.isValidElement(children) ? undefined : children;
-	return (
-		<SdkTooltipTrigger render={resolvedRender} {...props}>
-			{resolvedChildren}
-		</SdkTooltipTrigger>
-	);
-}
+const Tooltip = SdkTooltip;
+const TooltipTrigger = SdkTooltipTrigger;
 
 const TooltipContent = React.forwardRef<
 	HTMLDivElement,
@@ -64,4 +30,4 @@ const TooltipContent = React.forwardRef<
 ));
 TooltipContent.displayName = "TooltipContent";
 
-export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger };
+export { Tooltip, TooltipContent, TooltipTrigger };

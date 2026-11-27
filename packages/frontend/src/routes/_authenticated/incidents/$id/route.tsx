@@ -282,9 +282,11 @@ function IncidentLayout() {
 	// A failed refetch (the run tree polls this query) keeps the page it already has.
 	if (!incident || !record) {
 		const back = (
-			<Button variant="text" size="sm" asChild>
-				<Link to="/incidents">Back to the inbox</Link>
-			</Button>
+			<Button
+				variant="text"
+				size="sm"
+				render={<Link to="/incidents">Back to the inbox</Link>}
+			/>
 		);
 		return (
 			<div className="px-4 pt-6 sm:px-6">

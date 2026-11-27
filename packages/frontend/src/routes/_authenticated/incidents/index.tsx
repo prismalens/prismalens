@@ -5,6 +5,10 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+	Input as SdkInput,
+	InputGroup as SdkInputGroup,
+} from "@ui-sdk/react/input";
 import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AllIncidents } from "@/components/inbox/AllIncidents";
@@ -135,18 +139,21 @@ function IncidentsLanding() {
 							testId="incidents-view"
 						/>
 						<div className="flex basis-full items-center gap-2 md:grow-[999] md:basis-auto md:justify-end">
-							<label className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control bg-surface-2 px-2.5 md:w-40 md:flex-none">
-								<Search className="size-3.5 shrink-0 text-text-3" />
-								<input
+							<SdkInputGroup className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control bg-surface-2 px-2.5 md:w-40 md:flex-none">
+								<Search
+									className="size-3.5 shrink-0 text-text-3"
+									aria-hidden="true"
+								/>
+								<SdkInput
 									type="search"
 									value={q}
-									onChange={(e) => setQ(e.target.value)}
+									onValueChange={setQ}
 									placeholder="Filter"
 									aria-label="Filter incidents"
 									className="h-6 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-text-3 md:text-body"
 									data-testid="incidents-filter"
 								/>
-							</label>
+							</SdkInputGroup>
 							{view !== "inbox" && (
 								<Select
 									value={viewKey}

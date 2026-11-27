@@ -2,7 +2,9 @@
 // Copyright 2026 Sumit Patel
 
 import { Link } from "@tanstack/react-router";
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@ui-sdk/react/tabs";
+import { Toggle } from "@ui-sdk/react/toggle";
 import { X } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -180,21 +182,15 @@ export function RunDetailsPanel({
 						className="m-0 flex min-w-0 shrink-0 gap-1 border-0 px-3 pt-2.5 pb-0"
 					>
 						{FILTERS.map((f) => (
-							<button
+							<Toggle
 								key={f.id}
-								type="button"
-								aria-pressed={f.id === filter}
-								onClick={() => setFilter(f.id)}
-								className={cn(
-									"h-6 rounded-[4px] px-2 text-meta transition-colors duration-(--dur-instant)",
-									f.id === filter
-										? "bg-surface-3 text-text-1"
-										: "text-text-2 hover:text-text-1",
-								)}
+								pressed={f.id === filter}
+								onPressedChange={() => setFilter(f.id)}
+								className="h-6 rounded-[4px] px-2 text-meta text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 data-pressed:bg-surface-3 data-pressed:text-text-1"
 								data-testid={`steps-filter-${f.id}`}
 							>
 								{f.label}
-							</button>
+							</Toggle>
 						))}
 					</fieldset>
 					<ol className="m-0 min-h-0 flex-1 list-none overflow-y-auto px-3 pt-3 pb-5">
@@ -207,8 +203,7 @@ export function RunDetailsPanel({
 						)}
 						{shown.map((s) => (
 							<li key={s.callId}>
-								<button
-									type="button"
+								<SdkButton
 									onClick={() => onJump(s.n)}
 									className="flex w-full items-baseline gap-2.5 rounded-control px-2 py-1.5 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3"
 									data-testid="steps-row"
@@ -235,7 +230,7 @@ export function RunDetailsPanel({
 									<span className="shrink-0 text-meta text-text-3 tabular-nums">
 										{clock(s.at)}
 									</span>
-								</button>
+								</SdkButton>
 							</li>
 						))}
 					</ol>
@@ -336,15 +331,14 @@ function Row({
 				)}
 			</span>
 			{row.step !== undefined && (
-				<button
-					type="button"
+				<SdkButton
 					onClick={() => onJump(row.step as number)}
 					aria-label={`Show step ${row.step} in the transcript`}
 					className="h-[22px] shrink-0 rounded-full bg-surface-3 px-2 text-meta text-accent transition-colors duration-(--dur-instant) hover:bg-surface-4"
 					data-testid="detail-step"
 				>
 					Step {row.step}
-				</button>
+				</SdkButton>
 			)}
 			{row.step === undefined && row.from && (
 				<span

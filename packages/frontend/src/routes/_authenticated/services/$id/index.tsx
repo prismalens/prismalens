@@ -144,21 +144,26 @@ function ServicePage() {
 				className="flex min-h-(--header-h) shrink-0 items-center gap-2 bg-surface-1 px-3 md:px-4"
 				data-testid="service-band"
 			>
-				<Button variant="text" size="icon" className="shrink-0" asChild>
-					<a
-						href={backHref}
-						onClick={(e) => {
-							e.preventDefault();
-							back();
-						}}
-						aria-label={
-							backHref === "/services" ? "Back to the services" : "Back"
-						}
-						data-testid="service-back"
-					>
-						<ChevronLeft className="size-4" />
-					</a>
-				</Button>
+				<Button
+					variant="text"
+					size="icon"
+					className="shrink-0"
+					render={
+						<a
+							href={backHref}
+							onClick={(e) => {
+								e.preventDefault();
+								back();
+							}}
+							aria-label={
+								backHref === "/services" ? "Back to the services" : "Back"
+							}
+							data-testid="service-back"
+						>
+							<ChevronLeft className="size-4" />
+						</a>
+					}
+				/>
 				<h1 className="min-w-0 truncate text-title">{service.name}</h1>
 				<span
 					className="flex min-w-0 items-baseline gap-2.5 text-meta"

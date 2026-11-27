@@ -5,6 +5,10 @@ import type { ServiceWithRelations } from "@prismalens/contracts";
 import { isIncidentOpen } from "@prismalens/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+	Input as SdkInput,
+	InputGroup as SdkInputGroup,
+} from "@ui-sdk/react/input";
 import { Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ServiceFormDialog } from "@/components/services/ServiceFormDialog";
@@ -291,17 +295,20 @@ function ServicesPage() {
 				}
 			>
 				<div className="flex basis-full items-center gap-2 md:basis-auto">
-					<label className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">
-						<Search className="size-3.5 shrink-0 text-text-3" />
-						<input
+					<SdkInputGroup className="raised flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control px-2.5 md:w-44 md:flex-none">
+						<Search
+							className="size-3.5 shrink-0 text-text-3"
+							aria-hidden="true"
+						/>
+						<SdkInput
 							value={q}
-							onChange={(e) => setQ(e.target.value)}
+							onValueChange={setQ}
 							placeholder="Filter"
 							aria-label="Filter services"
 							className="h-6 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-text-3 md:text-body"
 							data-testid="services-search"
 						/>
-					</label>
+					</SdkInputGroup>
 					{teamOptions.length > 0 && (
 						<Select
 							value={teamFilter}

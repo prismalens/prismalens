@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Link } from "@tanstack/react-router";
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { Copy, TriangleAlert } from "lucide-react";
 import { type RefObject, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -106,9 +107,8 @@ export function StopImpactCard({
 				)}
 				<YouAsked o={o} />
 				{o.others.map((x) => (
-					<button
+					<SdkButton
 						key={x.id ?? x.title}
-						type="button"
 						onClick={() => o.pickOption(x)}
 						className="flex min-w-0 flex-col rounded-surface bg-surface-2 px-3 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3"
 						data-row
@@ -120,7 +120,7 @@ export function StopImpactCard({
 						<span className="truncate text-meta text-text-3" dir="auto">
 							{otherLine(o, x)}
 						</span>
-					</button>
+					</SdkButton>
 				))}
 			</div>
 		</Card>

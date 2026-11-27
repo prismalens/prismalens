@@ -126,15 +126,20 @@ export function IncidentHeader({
 			data-testid="incident-header"
 		>
 			<Hint label="Back to the inbox">
-				<Button variant="text" size="icon" className="shrink-0" asChild>
-					<Link
-						to="/incidents"
-						aria-label="Back to the inbox"
-						data-testid="incident-back"
-					>
-						<ChevronLeft className="size-4" />
-					</Link>
-				</Button>
+				<Button
+					variant="text"
+					size="icon"
+					className="shrink-0"
+					render={
+						<Link
+							to="/incidents"
+							aria-label="Back to the inbox"
+							data-testid="incident-back"
+						>
+							<ChevronLeft className="size-4" />
+						</Link>
+					}
+				/>
 			</Hint>
 			<Mono className="shrink-0 text-meta text-text-3">
 				INC-{incident.number}
@@ -229,16 +234,18 @@ export function IncidentHeader({
 				</Button>
 			)}
 			<DropdownMenu>
-				<DropdownMenuTrigger asChild>
-					<Button
-						variant="secondary"
-						size="icon"
-						className="size-7 shrink-0 bg-surface-2 text-text-2 hover:bg-surface-3"
-						aria-label="More actions"
-						data-testid="header-more"
-					>
-						<MoreHorizontal className="size-4" />
-					</Button>
+				<DropdownMenuTrigger
+					render={
+						<Button
+							variant="secondary"
+							size="icon"
+							className="size-7 shrink-0 bg-surface-2 text-text-2 hover:bg-surface-3"
+							aria-label="More actions"
+							data-testid="header-more"
+						/>
+					}
+				>
+					<MoreHorizontal className="size-4" />
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="w-60">
 					<DropdownMenuItem
@@ -295,10 +302,10 @@ export function IncidentHeader({
 						</DropdownMenuItem>
 					)}
 					{merged && (
-						<DropdownMenuItem asChild>
-							<Link to="/incidents/$id" params={{ id: merged.id }}>
-								Merged into INC-{merged.number}
-							</Link>
+						<DropdownMenuItem
+							render={<Link to="/incidents/$id" params={{ id: merged.id }} />}
+						>
+							Merged into INC-{merged.number}
 						</DropdownMenuItem>
 					)}
 					{incident.status === "closed" && (

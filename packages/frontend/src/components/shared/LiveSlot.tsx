@@ -153,13 +153,11 @@ export function LiveSlot(props: LiveSlotProps) {
 				)}
 				{props.state === "not-configured" && (
 					<Button
-						asChild
 						variant="text"
 						size="sm"
 						className="h-6 px-0 font-sans text-meta"
-					>
-						<Link to={props.action.to}>{props.action.label}</Link>
-					</Button>
+						render={<Link to={props.action.to}>{props.action.label}</Link>}
+					/>
 				)}
 			</div>
 		</div>

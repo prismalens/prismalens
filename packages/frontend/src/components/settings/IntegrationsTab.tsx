@@ -50,10 +50,10 @@ function RowMenu({
 }) {
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button variant="text" size="icon-sm" aria-label="More">
-					<MoreHorizontal />
-				</Button>
+			<DropdownMenuTrigger
+				render={<Button variant="text" size="icon-sm" aria-label="More" />}
+			>
+				<MoreHorizontal />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
 				<DropdownMenuItem onClick={onEdit}>Edit</DropdownMenuItem>

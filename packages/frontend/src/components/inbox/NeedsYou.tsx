@@ -10,6 +10,7 @@ import {
 } from "@prismalens/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { Toggle } from "@ui-sdk/react/toggle";
 import { MoreHorizontal } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { MergeDialog } from "@/components/incidents/MergeDialog";
@@ -127,20 +128,16 @@ export function NeedsYou({ groups, now }: { groups: Grouped[]; now: number }) {
 						].map((f) => {
 							const on = f.key === filter;
 							return (
-								<button
+								<Toggle
 									key={f.key}
-									type="button"
-									aria-pressed={on}
-									onClick={() => setFilter(f.key)}
-									className={cn(
-										"h-6 rounded-[4px] px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1",
-										on && "bg-surface-3 text-text-1",
-									)}
+									pressed={on}
+									onPressedChange={() => setFilter(f.key)}
+									className="h-6 rounded-[4px] px-2.5 text-body text-text-2 transition-colors duration-(--dur-instant) hover:text-text-1 data-pressed:bg-surface-3 data-pressed:text-text-1"
 									data-testid={`needs-filter-${f.key}`}
 								>
 									{f.label}{" "}
 									<span className="text-text-3 tabular-nums">{f.count}</span>
-								</button>
+								</Toggle>
 							);
 						})}
 					</fieldset>
@@ -382,15 +379,17 @@ function InboxRow({
 					{busy ?? primary.label}
 				</Button>
 				<DropdownMenu>
-					<DropdownMenuTrigger asChild>
-						<Button
-							variant="text"
-							size="icon"
-							aria-label={`More actions for INC-${incident.number}`}
-							data-testid="inbox-row-menu"
-						>
-							<MoreHorizontal className="size-4" />
-						</Button>
+					<DropdownMenuTrigger
+						render={
+							<Button
+								variant="text"
+								size="icon"
+								aria-label={`More actions for INC-${incident.number}`}
+								data-testid="inbox-row-menu"
+							/>
+						}
+					>
+						<MoreHorizontal className="size-4" />
 					</DropdownMenuTrigger>
 					<DropdownMenuContent align="end">
 						<MenuLink to={incident.id}>Open overview</MenuLink>
@@ -422,10 +421,8 @@ function InboxRow({
 
 function MenuLink({ to, children }: { to: string; children: ReactNode }) {
 	return (
-		<DropdownMenuItem asChild>
-			<Link to="/incidents/$id" params={{ id: to }}>
-				{children}
-			</Link>
+		<DropdownMenuItem render={<Link to="/incidents/$id" params={{ id: to }} />}>
+			{children}
 		</DropdownMenuItem>
 	);
 }

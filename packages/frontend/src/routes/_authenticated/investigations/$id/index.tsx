@@ -43,9 +43,11 @@ function RunNotFound() {
 			<NotFound
 				text="No run has this address. It may have been deleted, or the link is wrong."
 				back={
-					<Button variant="text" size="sm" asChild>
-						<Link to="/incidents">Back to the inbox</Link>
-					</Button>
+					<Button
+						variant="text"
+						size="sm"
+						render={<Link to="/incidents">Back to the inbox</Link>}
+					/>
 				}
 			/>
 		</div>

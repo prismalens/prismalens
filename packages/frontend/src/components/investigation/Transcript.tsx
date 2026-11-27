@@ -2,6 +2,7 @@
 // Copyright 2026 Sumit Patel
 
 import { Link } from "@tanstack/react-router";
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { FileText } from "lucide-react";
 import { Fragment, useState } from "react";
 import {
@@ -396,15 +397,14 @@ function StepGroup({
 				<Fragment key={s.callId}>
 					{fold && i === FOLD_KEEP && (
 						<li>
-							<button
-								type="button"
+							<SdkButton
 								onClick={() => setUnfolded(true)}
 								className="w-full rounded-surface px-3 py-1.5 text-left text-meta text-text-2 transition-colors duration-(--dur-instant) hover:bg-surface-2 hover:text-text-1"
 								data-testid="steps-unfold"
 							>
 								Steps {hidden[0]?.n} to {hidden[hidden.length - 1]?.n},{" "}
 								{hidden.length} more
-							</button>
+							</SdkButton>
 						</li>
 					)}
 					<StepCard

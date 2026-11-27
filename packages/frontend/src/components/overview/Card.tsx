@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { ChevronDown } from "lucide-react";
 import {
 	type ReactNode,
@@ -137,8 +138,7 @@ export function ScrollBody({
 			</div>
 			{state.overflows && (
 				<div className="flex h-6 shrink-0 items-end justify-end">
-					<button
-						type="button"
+					<SdkButton
 						onClick={() => {
 							const el = ref.current;
 							if (!el) return;
@@ -158,7 +158,7 @@ export function ScrollBody({
 							className={cn("size-3", state.atEnd && "rotate-180")}
 							aria-hidden
 						/>
-					</button>
+					</SdkButton>
 				</div>
 			)}
 		</div>

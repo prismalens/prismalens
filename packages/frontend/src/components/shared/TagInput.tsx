@@ -3,6 +3,8 @@
 
 "use client";
 
+import { Button } from "@ui-sdk/react/button";
+import { Input as SdkInput } from "@ui-sdk/react/input";
 import { X } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -59,20 +61,20 @@ export function TagInput({
 				>
 					{tag}
 					{!disabled && (
-						<button
-							type="button"
+						<Button
 							onClick={() => removeTag(tag)}
 							aria-label={`Remove ${tag}`}
 							className="inline-flex size-4 items-center justify-center rounded-[3px] text-text-2 hover:text-text-1"
 						>
-							<X className="size-3" />
-						</button>
+							<X className="size-3" aria-hidden="true" />
+						</Button>
 					)}
 				</span>
 			))}
-			<input
+			<SdkInput
+				aria-label={placeholder}
 				value={inputValue}
-				onChange={(e) => setInputValue(e.target.value)}
+				onValueChange={setInputValue}
 				onKeyDown={handleKeyDown}
 				placeholder={tags.length === 0 ? placeholder : ""}
 				disabled={disabled}

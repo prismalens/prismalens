@@ -127,11 +127,12 @@ export function DestructiveConfirm({
 			<AlertDialogContent>
 				<AlertDialogHeader>
 					<AlertDialogTitle>{title}</AlertDialogTitle>
-					<AlertDialogDescription asChild>
-						{/* What goes with it reads as rows, never a bulleted list. */}
-						<div className="space-y-2 text-body text-text-2 [&_li]:py-1 [&_li]:text-text-1 [&_ul]:list-none [&_ul]:p-0">
-							{description}
-						</div>
+					<AlertDialogDescription
+						render={
+							<div className="space-y-2 text-body text-text-2 [&_li]:py-1 [&_li]:text-text-1 [&_ul]:list-none [&_ul]:p-0" />
+						}
+					>
+						{description}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 

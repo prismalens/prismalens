@@ -15,6 +15,8 @@ import {
 	type HarnessSetting,
 	type HarnessStatus,
 } from "@prismalens/contracts";
+import { Button as SdkButton } from "@ui-sdk/react/button";
+import { Listbox, ListboxItem } from "@ui-sdk/react/listbox";
 import { Check, ChevronDown, Lock, Star } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
 import {
@@ -378,20 +380,17 @@ export function ModelChip({
 				if (o) setTile(null);
 			}}
 		>
-			<PopoverTrigger asChild>
-				<button
-					type="button"
-					disabled={disabled}
-					className={cn(CHIP, "max-w-56", className)}
-					data-testid="agent-picker"
-					aria-label={`Agent and model: ${harness?.label ?? "none"}, ${label}`}
-				>
-					{harness && <AgentMark id={harness.id} />}
-					<span className="truncate" data-testid="model-pill">
-						{label}
-					</span>
-					<Caret />
-				</button>
+			<PopoverTrigger
+				disabled={disabled}
+				className={cn(CHIP, "max-w-56", className)}
+				data-testid="agent-picker"
+				aria-label={`Agent and model: ${harness?.label ?? "none"}, ${label}`}
+			>
+				{harness && <AgentMark id={harness.id} />}
+				<span className="truncate" data-testid="model-pill">
+					{label}
+				</span>
+				<Caret />
 			</PopoverTrigger>
 			<PopoverContent
 				side={side}
@@ -514,8 +513,7 @@ export function ModelChip({
 										}
 									/>
 									{chosen(r.harness, r.model) && <Tick />}
-									<button
-										type="button"
+									<SdkButton
 										aria-label={
 											isStarred(favourites, r.harness.id, r.model)
 												? `Unstar ${r.name}`
@@ -549,7 +547,7 @@ export function ModelChip({
 													"fill-warn text-warn",
 											)}
 										/>
-									</button>
+									</SdkButton>
 								</ModelSelectorItem>
 							))}
 						</ModelSelectorGroup>
@@ -637,8 +635,7 @@ function RailTile({
 }) {
 	return (
 		<Hint label={label} side="left">
-			<button
-				type="button"
+			<SdkButton
 				role="tab"
 				aria-selected={on}
 				aria-disabled={off}
@@ -656,7 +653,7 @@ function RailTile({
 				data-off={off ? "" : undefined}
 			>
 				{children}
-			</button>
+			</SdkButton>
 		</Hint>
 	);
 }
@@ -714,9 +711,9 @@ export function EffortChip({
 		return (
 			<Hint label={reason} side="top">
 				<span className="inline-flex">
-					<button
-						type="button"
+					<SdkButton
 						disabled
+						focusableWhenDisabled
 						className={CHIP}
 						data-testid="effort-chip"
 						data-off=""
@@ -724,7 +721,7 @@ export function EffortChip({
 						{/* A bare "Effort" read as an empty value (#673 w56). */}
 						Default
 						<Caret />
-					</button>
+					</SdkButton>
 				</span>
 			</Hint>
 		);
@@ -745,17 +742,14 @@ export function EffortChip({
 	);
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<button
-					type="button"
-					disabled={disabled}
-					className={CHIP}
-					data-testid="effort-chip"
-				>
-					<span>{current.name}</span>
-					{windowed && <span className="font-normal text-text-3">{win}</span>}
-					<Caret />
-				</button>
+			<PopoverTrigger
+				disabled={disabled}
+				className={CHIP}
+				data-testid="effort-chip"
+			>
+				<span>{current.name}</span>
+				{windowed && <span className="font-normal text-text-3">{win}</span>}
+				<Caret />
 			</PopoverTrigger>
 			<PopoverContent
 				side={side}
@@ -768,9 +762,8 @@ export function EffortChip({
 			>
 				<p className="px-2.5 pt-2 pb-1 text-meta text-text-3">Effort</p>
 				{levels.map((l) => (
-					<button
+					<SdkButton
 						key={l.id}
-						type="button"
 						className={cn(item, l.id === current.id && "bg-surface-3")}
 						tabIndex={l.id === current.id ? 0 : -1}
 						data-rove=""
@@ -783,14 +776,13 @@ export function EffortChip({
 					>
 						{l.name}
 						{l.default && tag}
-					</button>
+					</SdkButton>
 				))}
 				<div className="mx-1.5 my-1 h-px bg-hairline" />
 				<p className="px-2.5 pt-2 pb-1 text-meta text-text-3">Context window</p>
 				{(["200k", "1M"] as const).map((w) => (
-					<button
+					<SdkButton
 						key={w}
-						type="button"
 						disabled={!windowed || (w === "1M" && !base)}
 						tabIndex={-1}
 						data-rove=""
@@ -809,7 +801,7 @@ export function EffortChip({
 					>
 						{w}
 						{w === "200k" && windowed && tag}
-					</button>
+					</SdkButton>
 				))}
 				{!windowed && (
 					<p className="px-2.5 pb-2 text-meta text-text-3">
@@ -848,18 +840,15 @@ export function AccessChip({
 	const locked = levelIcon(levelSandbox(harness, level)) === "lock";
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<button
-					type="button"
-					disabled={disabled}
-					className={cn(CHIP, "max-w-48")}
-					data-testid={testId}
-					aria-label={`Permission: ${text}`}
-				>
-					{locked && <Lock className="size-3.5 shrink-0" aria-hidden />}
-					<span className="truncate">{text}</span>
-					<Caret />
-				</button>
+			<PopoverTrigger
+				disabled={disabled}
+				className={cn(CHIP, "max-w-48")}
+				data-testid={testId}
+				aria-label={`Permission: ${text}`}
+			>
+				{locked && <Lock className="size-3.5 shrink-0" aria-hidden />}
+				<span className="truncate">{text}</span>
+				<Caret />
 			</PopoverTrigger>
 			<PopoverContent
 				side={side}
@@ -867,27 +856,23 @@ export function AccessChip({
 				sideOffset={6}
 				className="w-[min(460px,calc(100vw-32px))] rounded-surface p-1"
 				data-testid="access-menu"
-				onKeyDown={roveKeys}
-				initialFocus="[data-chosen]"
 			>
-				<div role="listbox" aria-label="Permission level">
+				<Listbox
+					aria-label="Permission level"
+					value={level}
+					onValueChange={(v) => {
+						setOpen(false);
+						if (v && v !== level) onLevel(v as AccessLevel);
+					}}
+				>
 					{rows.map((l) => {
 						const sandbox = harness ? levelSandbox(harness, l) : undefined;
 						return (
-							<button
+							<ListboxItem
 								key={l}
-								type="button"
-								role="option"
-								aria-selected={l === level}
-								tabIndex={l === level ? 0 : -1}
-								data-rove=""
-								data-chosen={l === level ? "" : undefined}
-								onClick={() => {
-									setOpen(false);
-									if (l !== level) onLevel(l);
-								}}
+								value={l}
 								className={cn(
-									"grid w-full grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-control px-2.5 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3",
+									"grid w-full cursor-default grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-control px-2.5 py-2 text-left transition-colors duration-(--dur-instant) hover:bg-surface-3 focus-visible:bg-surface-3 data-highlighted:bg-surface-3 data-selected:bg-surface-3",
 									l === level && "bg-surface-3",
 								)}
 								data-testid={`access-level-${l}`}
@@ -922,10 +907,10 @@ export function AccessChip({
 								>
 									{ACCESS_LEVEL_LINE[l]}
 								</span>
-							</button>
+							</ListboxItem>
 						);
 					})}
-				</div>
+				</Listbox>
 			</PopoverContent>
 		</Popover>
 	);

@@ -163,19 +163,23 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 			data-testid="alert-band"
 		>
 			<Hint label={backLabel} keys={["Esc"]}>
-				<Button variant="text" size="icon" asChild>
-					<a
-						href={target}
-						onClick={(e) => {
-							e.preventDefault();
-							back();
-						}}
-						aria-label={backLabel}
-						data-testid="alert-back"
-					>
-						<ChevronLeft className="size-4" />
-					</a>
-				</Button>
+				<Button
+					variant="text"
+					size="icon"
+					render={
+						<a
+							href={target}
+							onClick={(e) => {
+								e.preventDefault();
+								back();
+							}}
+							aria-label={backLabel}
+							data-testid="alert-back"
+						>
+							<ChevronLeft className="size-4" />
+						</a>
+					}
+				/>
 			</Hint>
 			{alert && (
 				<>
@@ -203,26 +207,31 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 						since {dayOrClock(alertSince(alert))}
 					</span>
 					{alert.incident && (
-						<Button variant="secondary" asChild>
-							<Link
-								to="/incidents/$id"
-								params={{ id: alert.incident.id }}
-								data-testid="alert-open-incident"
-							>
-								Open INC-{alert.incident.number}
-							</Link>
-						</Button>
+						<Button
+							variant="secondary"
+							render={
+								<Link
+									to="/incidents/$id"
+									params={{ id: alert.incident.id }}
+									data-testid="alert-open-incident"
+								>
+									Open INC-{alert.incident.number}
+								</Link>
+							}
+						/>
 					)}
 					<DropdownMenu modal={false}>
-						<DropdownMenuTrigger asChild>
-							<Button
-								variant="text"
-								size="icon"
-								aria-label="More actions"
-								data-testid="alert-more"
-							>
-								<MoreHorizontal className="size-4" />
-							</Button>
+						<DropdownMenuTrigger
+							render={
+								<Button
+									variant="text"
+									size="icon"
+									aria-label="More actions"
+									data-testid="alert-more"
+								/>
+							}
+						>
+							<MoreHorizontal className="size-4" />
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
 							{canAlertAction("resolve", alert.status) && (
@@ -328,16 +337,20 @@ export function AlertDetail({ alertId }: { alertId: string }) {
 										.
 									</div>
 								</div>
-								<Button variant="text" size="sm" asChild>
-									<Link
-										to="/incidents/$id"
-										params={{ id: alert.incident.id }}
-										tabIndex={-1}
-										aria-hidden
-									>
-										Open
-									</Link>
-								</Button>
+								<Button
+									variant="text"
+									size="sm"
+									render={
+										<Link
+											to="/incidents/$id"
+											params={{ id: alert.incident.id }}
+											tabIndex={-1}
+											aria-hidden
+										>
+											Open
+										</Link>
+									}
+								/>
 							</div>
 						) : (
 							<div

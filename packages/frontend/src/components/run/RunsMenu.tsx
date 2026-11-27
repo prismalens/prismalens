@@ -37,18 +37,15 @@ export function RunsMenu({
 	const now = useNow(10_000);
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<button
-					type="button"
-					className={cn(
-						"inline-flex h-[26px] shrink-0 items-center gap-1 rounded-control px-2 text-body text-accent transition-colors duration-(--dur-instant) hover:bg-surface-3 data-[state=open]:bg-surface-3",
-						className,
-					)}
-					data-testid="runs-menu"
-				>
-					Runs<span className="max-xl:hidden"> and questions</span>
-					<ChevronDown className="size-3" aria-hidden />
-				</button>
+			<DropdownMenuTrigger
+				className={cn(
+					"inline-flex h-[26px] shrink-0 items-center gap-1 rounded-control px-2 text-body text-accent transition-colors duration-(--dur-instant) hover:bg-surface-3 data-open:bg-surface-3",
+					className,
+				)}
+				data-testid="runs-menu"
+			>
+				Runs<span className="max-xl:hidden"> and questions</span>
+				<ChevronDown className="size-3" aria-hidden />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent
 				align="end"
@@ -61,47 +58,47 @@ export function RunsMenu({
 					return (
 						<DropdownMenuItem
 							key={r.id}
-							asChild
+							render={
+								<Link
+									to="/incidents/$id/conversation"
+									params={{ id: incidentId }}
+									search={{ investigation: r.id }}
+									aria-current={on ? "page" : undefined}
+									data-testid="runs-menu-item"
+									data-run={r.id}
+								/>
+							}
 							className={cn(
-								"h-auto gap-2 px-2.5 py-1.5 focus:bg-surface-4",
+								"h-auto gap-2 px-2.5 py-1.5 data-highlighted:bg-surface-4",
 								on && "bg-surface-4",
 							)}
 						>
-							<Link
-								to="/incidents/$id/conversation"
-								params={{ id: incidentId }}
-								search={{ investigation: r.id }}
-								aria-current={on ? "page" : undefined}
-								data-testid="runs-menu-item"
-								data-run={r.id}
-							>
-								<RunDot state={refRunState(r)} />
-								<span className="min-w-0 flex-1 truncate">
-									{runLabel(runs, r)}
-								</span>
-								<span className="shrink-0 text-meta text-text-3 tabular-nums">
-									{runAge(r, now)}
-								</span>
-							</Link>
+							<RunDot state={refRunState(r)} />
+							<span className="min-w-0 flex-1 truncate">
+								{runLabel(runs, r)}
+							</span>
+							<span className="shrink-0 text-meta text-text-3 tabular-nums">
+								{runAge(r, now)}
+							</span>
 						</DropdownMenuItem>
 					);
 				})}
 				<DropdownMenuItem
-					asChild
+					render={
+						<Link
+							to="/incidents/$id/conversation"
+							params={{ id: incidentId }}
+							search={{ investigation: DRAFT }}
+							aria-current={current === DRAFT ? "page" : undefined}
+							data-testid="runs-menu-new"
+						/>
+					}
 					className={cn(
-						"h-auto px-2.5 py-1.5 pl-[22px] text-text-2 focus:bg-surface-4",
+						"h-auto px-2.5 py-1.5 pl-[22px] text-text-2 data-highlighted:bg-surface-4",
 						current === DRAFT && "bg-surface-4 text-text-1",
 					)}
 				>
-					<Link
-						to="/incidents/$id/conversation"
-						params={{ id: incidentId }}
-						search={{ investigation: DRAFT }}
-						aria-current={current === DRAFT ? "page" : undefined}
-						data-testid="runs-menu-new"
-					>
-						New conversation
-					</Link>
+					New conversation
 				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>

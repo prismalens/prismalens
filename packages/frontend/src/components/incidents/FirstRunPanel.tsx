@@ -208,11 +208,15 @@ export function FirstRunPanel() {
 					title="Or pull what is firing now"
 					testId="first-run-step-2"
 					action={
-						<Button asChild variant="secondary" size="sm">
-							<Link to="/settings" search={{ tab: "sources" }}>
-								Add a source
-							</Link>
-						</Button>
+						<Button
+							variant="secondary"
+							size="sm"
+							render={
+								<Link to="/settings" search={{ tab: "sources" }}>
+									Add a source
+								</Link>
+							}
+						/>
 					}
 				>
 					Connect Alertmanager or Prometheus by URL; PrismaLens pulls the firing
@@ -224,11 +228,15 @@ export function FirstRunPanel() {
 					title="A coding agent on this machine"
 					testId="first-run-step-3"
 					action={
-						<Button asChild variant="secondary" size="sm">
-							<Link to="/settings" search={{ tab: "harness" }}>
-								Agent
-							</Link>
-						</Button>
+						<Button
+							variant="secondary"
+							size="sm"
+							render={
+								<Link to="/settings" search={{ tab: "harness" }}>
+									Agent
+								</Link>
+							}
+						/>
 					}
 				>
 					{p.agent ? (
@@ -254,11 +262,15 @@ export function FirstRunPanel() {
 					title="A service that names its code"
 					testId="first-run-step-4"
 					action={
-						<Button asChild variant="secondary" size="sm">
-							<Link to="/services" search={{ add: "1" }}>
-								Add a service
-							</Link>
-						</Button>
+						<Button
+							variant="secondary"
+							size="sm"
+							render={
+								<Link to="/services" search={{ add: "1" }}>
+									Add a service
+								</Link>
+							}
+						/>
 					}
 				>
 					Give the service in the alert's <Mono>service</Mono> label a folder or

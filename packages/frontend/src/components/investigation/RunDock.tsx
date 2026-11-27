@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { FileText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -155,14 +156,13 @@ function AskPanel({
 					</span>
 				)}
 				{ask.step !== undefined && onStep && (
-					<button
-						type="button"
+					<SdkButton
 						onClick={() => ask.step !== undefined && onStep(ask.step)}
 						className="text-accent underline-offset-[3px] hover:underline"
 						data-testid="dock-ask-step"
 					>
 						Step {ask.step}
-					</button>
+					</SdkButton>
 				)}
 				<span className="ml-auto text-text-3 tabular-nums">
 					{ask.clamped

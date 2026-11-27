@@ -21,6 +21,7 @@ import {
 	type HarnessProbeResult,
 	type HarnessStatus,
 } from "@prismalens/contracts";
+import { Button as SdkButton } from "@ui-sdk/react/button";
 import { X } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { AgentMark } from "@/components/agent/AgentMark";
@@ -316,15 +317,14 @@ function CustomModelRow({ harness }: { harness: HarnessStatus }) {
 								data-testid="custom-model"
 							>
 								<Mono className="truncate">{model}</Mono>
-								<button
-									type="button"
+								<SdkButton
 									aria-label={`Remove ${model}`}
 									onClick={() => setRemoving(model)}
 									className="inline-flex size-5 items-center justify-center rounded-[4px] text-text-3 hover:bg-surface-4 hover:text-text-1"
 									data-testid="custom-model-remove"
 								>
-									<X className="size-3" />
-								</button>
+									<X className="size-3" aria-hidden="true" />
+								</SdkButton>
 							</span>
 						))}
 					</span>
