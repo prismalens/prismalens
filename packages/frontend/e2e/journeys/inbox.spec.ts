@@ -548,9 +548,9 @@ test.describe("Inbox (PR #812, umbrella #811)", () => {
 			"href",
 			new RegExp(`/incidents/${liveRunInc.id}`),
 		);
-		// Its state is one status mark with its word, never a fold (#1101 cat 1).
+		// Its state is one status mark named by its word, never a fold (#1101 cat 1, cat 2).
 		await expect(row.getByRole("img", { name: "Done" })).toBeVisible();
-		await expect(row.getByTestId("row-status")).toHaveText("Done");
+		await expect(row.getByTestId("row-status")).toHaveCount(0);
 		await expect(tree.getByTestId("tree-toggle")).toHaveCount(0);
 		await expect(
 			tree.locator(

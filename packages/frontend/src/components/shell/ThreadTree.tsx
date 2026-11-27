@@ -4,16 +4,13 @@
 import {
 	agentName,
 	isWorkflowLive,
-	lastPlainLine,
 	type ThreadRow,
 	type ThreadStatus,
 	type ThreadStatusInfo,
 } from "@prismalens/contracts";
-import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
 	ArrowUp,
-	Check,
 	ChevronRight,
 	MessageSquareReply,
 	MoreHorizontal,
@@ -37,18 +34,18 @@ import { causeOf } from "@/components/home/needs-cause";
 import { fact } from "@/components/kit/fact";
 import {
 	AgentBadge,
-	BranchMark,
+	Mark,
 	PrMark,
 	StartedByMark,
 	startedByLabel,
 } from "@/components/kit/MarkBadges";
+import { markLook } from "@/components/kit/marks";
 import { relTime } from "@/components/kit/rel-time";
 import {
 	fixActionId,
 	Status,
 	type StatusKind,
 	statusIcon,
-	statusShort,
 	statusText,
 	statusTint,
 	statusWord,
@@ -56,22 +53,18 @@ import {
 import { startedByUser } from "@/components/run/trigger-types";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
-import { RenameField } from "@/components/shell/RenameField";
 import {
 	RowAsk,
 	type RowAskEntry,
 	useAnswerNote,
 	useRowAsk,
 } from "@/components/shell/RowAsk";
-import { GitStateMark } from "@/components/thread/git/GitStateMark";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { orpc } from "@/lib/api/orpc-client";
 import { askSubject, whyAsked } from "@/lib/ask-lines";
 import { formatDateTimeUtc } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import { lazyPart, useAfterFirstContent } from "@/lib/lazy";
-import { settleEndsLine } from "@/lib/settle-holds";
 import type { Destination } from "@/lib/thread-hold";
 import {
 	type ListNode,
@@ -83,6 +76,8 @@ import {
 	ageWord,
 	elapsedWord,
 	infoReason,
+	type ReasonToken,
+	rowReason,
 	rowSettled,
 	statusReason,
 } from "@/lib/thread-status";
@@ -120,6 +115,25 @@ const RowCard = lazyPart(
 		now: true,
 	},
 );
+// Its preview and the settle words load after the list draws; the actions show on hover.
+const RowSettle = lazyPart(
+	() => import("./RowSettle").then((m) => m.RowSettle),
+	null,
+	{ afterFirstContent: true },
+);
+// The field loads when a rename starts.
+const RenameField = lazyPart(
+	() => import("./RenameField").then((m) => m.RenameField),
+	null,
+	{ now: true },
+);
+const RowPeek = lazyPart(() => import("./RowPeek").then((m) => m.Peek), null, {
+	now: true,
+});
+const preloadCard = () => {
+	void RowCard.preload(true);
+	void RowPeek.preload(true);
+};
 
 /**
  * Whether a row reads as unread (bold title). The list's default is the feed's
@@ -658,13 +672,13 @@ function ListRowView({
 		return (
 			<RenameField id={t.id} title={title} onDone={() => setRenaming(false)} />
 		);
-	// One status slot (sheet §1): the word while it says something, then its one time;
-	// an idle row someone has read shows only its age. Actions take it on hover and focus.
+	// The row's one time: elapsed while Working, the reset while Limited, else its age (sheet §1).
 	const running = mark === "working";
 	const since = running && t.startedAt ? Date.parse(t.startedAt) : Number.NaN;
 	const slotTime =
 		running && !Number.isNaN(since) && now
-			? elapsedWord(now - since)
+			? // One unit fits the time column; the hint has the exact start.
+				elapsedWord(now - since).split(" ")[0]
 			: mark === "limited" && t.limit?.resetsAt && now
 				? relTime(t.limit.resetsAt, now)
 				: now
@@ -677,53 +691,50 @@ function ListRowView({
 			: mark === "limited" && t.limit?.resetsAt
 				? Date.parse(t.limit.resetsAt)
 				: node.at || null;
-	// Every row carries its word beside its shape, Needs you too (#1101 cat 1 item 4, cat 2 item 1).
-	const word = statusShort(mark);
-	const showWord = !!word;
 	const agentLabel = t.harness ? agentName(t.harness) : null;
+	// The time and agent columns: the status says itself by its icon, so no word sits here.
 	const right = (
 		<span
 			className={cn(
-				// Keyboard focus, not a click, swaps the slot for actions: a clicked row keeps its word.
-				"flex shrink-0 items-center justify-end gap-1.5 text-meta tabular-nums group-hover/row:invisible group-has-[:focus-visible]/row:invisible group-has-[[data-row-actions]:focus-within]/row:invisible group-has-[[data-row-actions]_[data-state=open]]/row:invisible",
+				// Keyboard focus, not a click, swaps the columns for actions.
+				"contents group-hover/row:invisible group-has-[:focus-visible]/row:invisible group-has-[[data-row-actions]:focus-within]/row:invisible group-has-[[data-row-actions]_[data-state=open]]/row:invisible",
 			)}
 			data-testid="row-slot"
 		>
-			{t.harness && agentLabel && (
-				<AgentBadge
-					agent={t.harness}
-					label={agentLabel}
-					model={t.model}
-					inRow
-				/>
-			)}
-			{showWord && (
-				<span
-					className={cn(
-						"max-sm:sr-only",
-						running ? "text-accent" : wordTone(mark),
-					)}
-					data-testid="row-status"
-					{...fact("status")}
-				>
-					{word}
-				</span>
-			)}
 			<time
 				dateTime={slotAt ? new Date(slotAt).toISOString() : undefined}
-				className={running ? "text-accent" : "text-text-3"}
+				className={cn(
+					"whitespace-nowrap text-right text-meta tabular-nums",
+					running ? "text-accent" : "text-text-3",
+				)}
 				data-testid="row-age"
 				{...fact("activity")}
 			>
 				{slotTime}
 			</time>
+			{/* Reserved on every row, so the agent always sits at the right edge; empty means your default. */}
+			<span className="flex justify-center" data-testid="row-agent">
+				{t.harness && agentLabel && (
+					<AgentBadge
+						agent={t.harness}
+						label={agentLabel}
+						model={t.model}
+						inRow
+					/>
+				)}
+			</span>
 		</span>
 	);
-	// The second line only when it says something: where it stands, a starter, a PR or a branch (#1101 density).
+	// Line 2 holds one fact: a needs-you row's cause, else its reason, its PR, or the agent's line.
 	const cause = inNeeds && detail;
-	// The second line shows only when it says something; a lone ↳ rides the title line (#1101).
-	const said = !!(detail || t.pr || t.git || t.branch);
-	const metaLine = said && (
+	const reason = inNeeds
+		? null
+		: rowReason(t, node.info, now, (iso) => relTime(iso, now));
+	const agentLine =
+		t.status === "failed" || t.status === "cancelled" ? null : rowLine(t);
+	const said = !!(cause || reason || t.pr || agentLine);
+	// A starter always leads line 2, so a row with one always draws it (#1101 cat 10).
+	const metaLine = (said || by) && (
 		<span
 			className="flex min-w-0 items-center gap-1.5 pl-5"
 			data-testid="row-meta"
@@ -742,37 +753,33 @@ function ListRowView({
 				>
 					{MOVES[moving]}
 				</span>
-			) : /* A row that needs you says why on its second line (#1101 cat 1). */
-			cause ? (
-				<span className="flex min-w-0 flex-1 items-center gap-1.5">
-					{t.git && <GitStateMark git={t.git} />}
-					<span
-						className="min-w-0 flex-1 truncate text-meta text-text-3"
-						data-testid="row-cause"
-						{...fact("cause")}
-					>
-						{detail}
-					</span>
+			) : cause ? (
+				<span
+					className="min-w-0 flex-1 truncate text-meta text-text-3"
+					data-testid="row-cause"
+					{...fact("cause")}
+				>
+					{detail}
 				</span>
-			) : (
-				<span className="flex min-w-0 flex-1 items-center gap-1.5">
-					{t.pr && (
-						<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
-					)}
-					{t.git && <GitStateMark git={t.git} />}
-					{/* The git state names the branch in its hint; the row keeps room for its word. */}
-					{t.branch && !t.git && <BranchMark branch={t.branch} />}
-					{/* Every row says where it stands on its second line, not only rows that need you (#1101 cat 1). */}
-					{detail && (
-						<span
-							className="min-w-0 flex-1 truncate text-meta text-text-3"
-							data-testid="row-detail"
-						>
-							{detail}
-						</span>
-					)}
+			) : reason?.mark ? (
+				<ReasonMark reason={reason} />
+			) : reason ? (
+				<span
+					className="min-w-0 flex-1 truncate text-meta text-text-3"
+					data-testid="row-detail"
+				>
+					{reason.words}
 				</span>
-			)}
+			) : t.pr ? (
+				<PrMark number={t.pr.number} tone={t.pr.tone} count={t.pr.count} />
+			) : agentLine ? (
+				<span
+					className="min-w-0 flex-1 truncate text-meta text-text-3"
+					data-testid="row-detail"
+				>
+					{agentLine}
+				</span>
+			) : null}
 		</span>
 	);
 	return (
@@ -790,8 +797,8 @@ function ListRowView({
 				data-moving={moving}
 				onKeyDown={onKey}
 				// The card's code loads as the row is reached, so Space opens it at once (#1101 cat 1).
-				onPointerEnter={() => void RowCard.preload(true)}
-				onFocus={() => void RowCard.preload(true)}
+				onPointerEnter={preloadCard}
+				onFocus={preloadCard}
 				// Only a row with details redraws on hover: rows passing under a still pointer as the list scrolls stay put (#1101 bar 1.8).
 				onPointerOver={() =>
 					more && !moreAt.hover && setMoreAt((m) => ({ ...m, hover: true }))
@@ -847,7 +854,7 @@ function ListRowView({
 						data-started-by={by?.via}
 						data-quiet={quiet || undefined}
 					>
-						<span className="flex min-w-0 items-center gap-1.5">
+						<span className="grid min-w-0 grid-cols-[0.875rem_minmax(0,1fr)_2.25rem_1rem] items-center gap-x-1.5">
 							<Hint label={statusWord(mark)}>
 								<span
 									role="img"
@@ -886,11 +893,6 @@ function ListRowView({
 									{title}
 								</span>
 							</Hint>
-							{by && !said && (
-								<span className="flex w-3.5 shrink-0" data-starter={by.id}>
-									<StartedByMark by={by} />
-								</span>
-							)}
 							{right}
 						</span>
 						{metaLine}
@@ -932,7 +934,7 @@ function ListRowView({
 								Loading the ask
 							</p>
 						) : (
-							<Peek node={node} now={now} title={title} />
+							<RowPeek node={node} now={now} title={title} />
 						)}
 					</RowCard>
 				)}
@@ -1118,77 +1120,18 @@ const RowFix = lazyPart(
 	{ afterFirstContent: true },
 );
 
-/** Space, or Answer on an ask row: the last agent sentence and what holds the thread. */
-function Peek({
-	node,
-	now,
-	title,
-}: {
-	node: ListNode;
-	now: number;
-	title: string;
-}) {
-	const t = node.thread;
-	const reason = statusReason(t, node.info, now);
+/** A reason with a shape: its icon and token, the sentence in its hint and accessible name. */
+function ReasonMark({ reason }: { reason: ReasonToken }) {
+	const look = markLook("reason", reason.mark);
 	return (
-		<div className="flex flex-col gap-1.5 text-body">
-			<p className="truncate font-medium text-text-1">{title}</p>
-			<p className="flex items-center gap-1.5 text-meta">
-				<StatusMark status={node.info.status} />
-				<span className={cn("font-medium", wordTone(node.info.status))}>
-					{statusWord(node.info.status)}
-				</span>
-			</p>
-			{reason && <p className="line-clamp-2 text-meta text-text-3">{reason}</p>}
-			{t.startedBy && (
-				<p className="flex items-center gap-1.5 text-meta text-text-2">
-					<StartedByMark by={t.startedBy} />
-					<span className="min-w-0 truncate">
-						{startedByLabel(t.startedBy)}
-					</span>
-				</p>
-			)}
-			<p
-				dir="auto"
-				className="line-clamp-4 text-meta text-text-2"
-				data-testid="peek-latest"
-			>
-				{lastPlainLine(t.latestText) ?? "No reply yet"}
-			</p>
-			{t.pr && (
-				<p className="text-meta text-text-2">
-					PR #{t.pr.number} {t.pr.tone}
-				</p>
-			)}
-		</div>
-	);
-}
-
-/** The row's one-click Settle; its hint previews what Settle ends, read on first hover (#1101 cat 2). */
-function RowSettle({ id, onSettle }: { id: string; onSettle: () => void }) {
-	const [asked, setAsked] = useState(false);
-	const preview = useQuery({
-		...orpc.threads.settlePreview.queryOptions({ input: { id } }),
-		enabled: asked,
-		staleTime: 30_000,
-	});
-	const ask = () => setAsked(true);
-	return (
-		<Hint
-			label="Settle"
-			{...(preview.data ? { meta: settleEndsLine(preview.data) } : {})}
-		>
-			<button
-				type="button"
-				aria-label="Settle"
-				onClick={onSettle}
-				onPointerEnter={ask}
-				onFocus={ask}
-				className="flex size-6 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
-				data-testid="thread-settle"
-			>
-				<Check className="size-3.5" aria-hidden />
-			</button>
-		</Hint>
+		<span className="flex min-w-0 flex-1 text-text-3" data-reason={reason.mark}>
+			<Mark label={reason.words} testId="row-detail">
+				<look.icon
+					aria-hidden
+					className={cn("size-3 shrink-0", look.className)}
+				/>
+				{reason.token && <span>{reason.token}</span>}
+			</Mark>
+		</span>
 	);
 }

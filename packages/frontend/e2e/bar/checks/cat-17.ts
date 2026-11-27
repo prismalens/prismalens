@@ -59,9 +59,9 @@ async function rowOf(page: Page, id: string) {
 				.getAttribute("aria-label")
 				.catch(() => null)) ??
 			(await wrap
-				.getByTestId("row-status")
+				.locator('[role="img"][data-fact="status"]')
 				.first()
-				.textContent()
+				.getAttribute("aria-label")
 				.catch(() => null)) ??
 			""
 		).trim(),
@@ -442,7 +442,7 @@ export default defineChecks([
 				fails.push("strip missing Cancel auto-resume / Resume at reset action");
 			if (!hasSnoozeOrSwitch) fails.push("strip missing Snooze until reset");
 
-			// Sidebar row carries "Limited" badge (row-status)
+			// The sidebar row reads Limited: its status icon (data-state)
 			await open("/", "home");
 			await expect(page.getByTestId("thread-row").first()).toBeVisible();
 			const own = await rowOf(page, path.split("/").pop() ?? "");

@@ -44,7 +44,7 @@ export const threadRow = defineSurface({
 		],
 	},
 	states: { default: "thread-menu", phone: "thread-list-started" },
-	marks: ["status", "agent", "startedBy"],
+	marks: ["status", "agent", "startedBy", "reason", "changeRequest"],
 });
 
 /** The thread page's header ⋯: a phone folds the header's own controls in first, then the row's full set with the same keys (sheet §2, #1101 bar 20.1). */
