@@ -42,7 +42,8 @@ irm https://prismalens.io/install.ps1 | iex
 ```
 
 Both installers bring their own Node, check the download against the
-release's `SHA256SUMS`, and put `pl` on your PATH.
+release's `SHA256SUMS`, and put `pl` on your PATH. With a display, they add
+the desktop app and its launcher too; `--no-desktop` (`-NoDesktop`) skips it.
 
 ### Homebrew, and Scoop (preview)
 
@@ -54,6 +55,9 @@ brew install prismalens/tap/prismalens
 scoop bucket add prismalens https://github.com/prismalens/scoop-bucket
 scoop install prismalens
 ```
+
+The desktop app is a separate package: `brew install --cask
+prismalens/tap/prismalens-app` or `scoop install prismalens/prismalens-app`.
 
 ## Quick start
 

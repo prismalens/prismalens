@@ -20,6 +20,7 @@ import {
 	runSteps,
 	STEP_TIMEOUT_MS,
 	resolveUpdateChannel,
+	appPackageInstalled,
 	upgradeArgv,
 	upgradeEnv,
 } from "./upgrade.js";
@@ -132,6 +133,37 @@ describe("upgradeArgv", () => {
 	});
 	it("leaves the desktop app to its download", () => {
 		expect(upgradeArgv("electron", "0.5.1", "darwin")).toBe(null);
+	});
+	it("upgrades the app's own Homebrew or Scoop package with the CLI when it is installed", () => {
+		expect(upgradeArgv("homebrew", "0.5.1", "darwin", true)).toEqual(["brew", "upgrade", "prismalens", "prismalens-app"]);
+		expect(upgradeArgv("scoop", "0.5.1", "win32", true)).toEqual([
+			"cmd",
+			"/c",
+			"scoop",
+			"update",
+			"prismalens",
+			"prismalens-app",
+		]);
+	});
+});
+
+describe("appPackageInstalled", () => {
+	const brewNode = "/opt/homebrew/Cellar/prismalens/0.5.1/libexec/node/bin/node";
+	const scoopNode = "C:\\Users\\ada\\scoop\\apps\\prismalens\\current\\node\\node.exe";
+
+	it("finds the cask in the Caskroom beside Homebrew's Cellar", () => {
+		const seen: string[] = [];
+		const found = appPackageInstalled("homebrew", brewNode, (p) => (seen.push(p), true));
+		expect(found).toBe(true);
+		expect(seen).toEqual(["/opt/homebrew/Caskroom/prismalens-app"]);
+		expect(appPackageInstalled("homebrew", brewNode, () => false)).toBe(false);
+	});
+
+	it("finds Scoop's app beside the CLI's, and nothing for other channels", () => {
+		const seen: string[] = [];
+		expect(appPackageInstalled("scoop", scoopNode, (p) => (seen.push(p), true))).toBe(true);
+		expect(seen.map((p) => p.replaceAll("\\", "/"))).toEqual(["C:/Users/ada/scoop/apps/prismalens-app"]);
+		expect(appPackageInstalled("installer", "/home/ada/.local/share/prismalens/runtime/0.5.1/node/bin/node", () => true)).toBe(false);
 	});
 });
 

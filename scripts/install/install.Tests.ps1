@@ -9,11 +9,13 @@ BeforeAll {
 	$system32 = Join-Path $env:SystemRoot "System32"
 	$version = "0.5.6"
 	$archive = "prismalens-$version-win32-x64.zip"
+	$appArchive = "PrismaLens-Windows-X64-unsigned.zip"
 	$mirror = "https://downloads.prismalens.io"
 	$github = "https://github.com/prismalens/prismalens/releases/download"
 
-	# <Root>\v<version>\ holding an archive whose pl prints $Says, and its SHA256SUMS.
-	function New-Release([string]$Root, [string]$Says) {
+	# <Root>\v<version>\ holding an archive whose pl prints $Says, and its SHA256SUMS; -App adds the
+	# desktop app's zip, win-unpacked\PrismaLens.exe as the release builds it.
+	function New-Release([string]$Root, [string]$Says, [switch]$App) {
 		$top = "prismalens-$version-win32-x64"
 		$stage = Join-Path $Root "stage"
 		New-Item -ItemType Directory -Path (Join-Path $stage "$top\bin") -Force | Out-Null
@@ -26,7 +28,16 @@ BeforeAll {
 		& (Join-Path $system32 "tar.exe") -a -cf $zip -C $stage $top
 		if ($LASTEXITCODE -ne 0) { throw "tar could not build $zip" }
 		$digest = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
-		Set-Content -Path (Join-Path $dir "SHA256SUMS") -Encoding ASCII -Value "$digest  $archive"
+		$lines = @("$digest  $archive")
+		if ($App) {
+			New-Item -ItemType Directory -Path (Join-Path $stage "win-unpacked") -Force | Out-Null
+			Copy-Item (Join-Path $system32 "whoami.exe") (Join-Path $stage "win-unpacked\PrismaLens.exe")
+			$appZip = Join-Path $dir $appArchive
+			& (Join-Path $system32 "tar.exe") -a -cf $appZip -C $stage "win-unpacked"
+			if ($LASTEXITCODE -ne 0) { throw "tar could not build $appZip" }
+			$lines += "$((Get-FileHash -Path $appZip -Algorithm SHA256).Hash.ToLower())  $appArchive"
+		}
+		Set-Content -Path (Join-Path $dir "SHA256SUMS") -Encoding ASCII -Value $lines
 	}
 
 	# Answers GETs from $Root. A HEAD of the archive redirects, and the redirect's target never answers.
@@ -79,7 +90,7 @@ function global:Test-Path {
 '@
 
 	# Runs install.ps1 in its own powershell.exe; $Setup is PowerShell run there first.
-	function Invoke-Installer([string]$Work, [string]$BaseUrl, [string]$Setup = "") {
+	function Invoke-Installer([string]$Work, [string]$BaseUrl, [string]$Setup = "", [string]$Arguments = "") {
 		$wrapper = Join-Path $Work "run.ps1"
 		Set-Content -Path $wrapper -Encoding UTF8 -Value @"
 `$ErrorActionPreference = 'Stop'
@@ -91,9 +102,11 @@ function global:Test-Path {
 `$env:PRISMALENS_ALLOW_DOWNGRADE = ''
 `$env:http_proxy = ''
 `$env:CI = '1'
+`$env:PRISMALENS_DESKTOP = ''
+`$env:PRISMALENS_SHORTCUT_DIR = '$Work\Programs'
 `$env:Path = '$system32'
 $Setup
-& '$installer'
+& '$installer' $Arguments
 "@
 		$err = Join-Path $Work "stderr.txt"
 		$p = Start-Process -FilePath (Join-Path $system32 "WindowsPowerShell\v1.0\powershell.exe") `
@@ -222,5 +235,101 @@ Describe "install.ps1 with the default bases" {
 		)
 		$run.Installed | Should -BeExactly "genuine"
 		Get-Content (Join-Path $work "requests.log") | Should -BeExactly $requests
+	}
+}
+
+Describe "install.ps1 and the desktop app" {
+	BeforeEach {
+		$work = Join-Path $TestDrive ([guid]::NewGuid().ToString("N"))
+		New-Release (Join-Path $work "release") "genuine" -App
+		$base = "file:///" + (Join-Path $work "release").Replace('\', '/')
+		$lnk = Join-Path $work "Programs\PrismaLens.lnk"
+		$app = Join-Path $work "data\desktop\$version\PrismaLens.exe"
+		$want = "`$env:PRISMALENS_DESKTOP = '1'"
+		function Get-Target([string]$Path) { (New-Object -ComObject WScript.Shell).CreateShortcut($Path).TargetPath }
+		function Get-Receipt { Get-Content (Join-Path $work "data\receipt") }
+	}
+
+	It "installs the app beside the CLI, points a Start menu shortcut with its icon at it, and says where" {
+		$run = Invoke-Installer $work $base $want
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Installed | Should -BeExactly "genuine"
+		Test-Path $app | Should -BeTrue
+		Get-Target $lnk | Should -BeExactly $app
+		(New-Object -ComObject WScript.Shell).CreateShortcut($lnk).IconLocation | Should -BeExactly "$app,0"
+		$run.Stderr | Should -Match ([regex]::Escape("Open the desktop app from the Start menu: PrismaLens   ($lnk)"))
+		$run.Stderr | Should -Match "If Windows SmartScreen stops it, choose More info, then Run anyway"
+		Get-Receipt | Should -Contain "desktop=1"
+	}
+
+	It "skips the app by itself in CI, and installs the CLI" {
+		$run = Invoke-Installer $work $base
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Installed | Should -BeExactly "genuine"
+		$run.Stderr | Should -Match "Desktop app skipped: this is CI"
+		Test-Path $lnk | Should -BeFalse
+		Test-Path (Join-Path $work "data\desktop") | Should -BeFalse
+	}
+
+	It "-NoDesktop leaves the app out, and a later install keeps it out until PRISMALENS_DESKTOP=1" {
+		$run = Invoke-Installer $work $base "" "-NoDesktop"
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match "Desktop app skipped: you asked for the CLI only"
+		Get-Receipt | Should -Contain "desktop=0"
+
+		$again = Invoke-Installer $work $base "`$env:CI = ''"
+		$again.Stderr | Should -Match "Desktop app skipped: an earlier install left it out; set PRISMALENS_DESKTOP=1 to add it"
+		Test-Path $lnk | Should -BeFalse
+
+		$added = Invoke-Installer $work $base $want
+		$added.ExitCode | Should -Be 0 -Because $added.Stderr
+		Get-Target $lnk | Should -BeExactly $app
+		Get-Receipt | Should -Contain "desktop=1"
+	}
+
+	It "repoints another copy's shortcut at this install and names the copy it left" {
+		$other = Join-Path $work "Downloads\win-unpacked\PrismaLens.exe"
+		New-Item -ItemType Directory -Path (Split-Path $other), (Join-Path $work "Programs") -Force | Out-Null
+		Copy-Item (Join-Path $system32 "whoami.exe") $other
+		$link = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+		$link.TargetPath = $other
+		$link.Save()
+
+		$run = Invoke-Installer $work $base $want
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		Get-Target $lnk | Should -BeExactly $app
+		$run.Stderr | Should -Match ([regex]::Escape("The Start menu shortcut opened $other; it now opens this install."))
+	}
+
+	It "uninstall removes the shortcut and the app, and leaves another copy's shortcut" {
+		(Invoke-Installer $work $base $want).ExitCode | Should -Be 0
+		$run = Invoke-Installer $work $base "" "-Uninstall"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match ([regex]::Escape("Removed the Start menu shortcut $lnk"))
+		Test-Path $lnk | Should -BeFalse
+		Test-Path (Join-Path $work "data") | Should -BeFalse
+
+		$whoami = Join-Path $system32 "whoami.exe"
+		$link = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+		$link.TargetPath = $whoami
+		$link.Save()
+		(Invoke-Installer $work $base "" "-Uninstall").ExitCode | Should -Be 0
+		Get-Target $lnk | Should -Be $whoami
+	}
+
+	It "installs the CLI and says so when the release has no app for Windows" {
+		$sums = Join-Path $work "release\v$version\SHA256SUMS"
+		Set-Content -Path $sums -Encoding ASCII -Value (Get-Content $sums | Where-Object { $_ -notmatch $appArchive })
+
+		$run = Invoke-Installer $work $base $want
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Installed | Should -BeExactly "genuine"
+		$run.Stderr | Should -Match "PrismaLens $version has no desktop app for win32-x64, so only the CLI was installed."
+		Test-Path $lnk | Should -BeFalse
 	}
 }

@@ -166,3 +166,80 @@ run_installer "$new_base" --uninstall >/dev/null 2>&1 || fail "uninstall"
 [ ! -d "$work/home/.local/share/prismalens" ] || fail "runtime left behind"
 [ -f "$work/home/.prismalens/prismalens.db" ] || fail "uninstall touched the workspace"
 pass "uninstall: wrappers, PATH line and runtime gone, workspace kept"
+
+# 7. The desktop app, where a release builds one: installed with its launcher in the OS's usual place,
+# skipped without a display or when asked, removed on uninstall. A stand-in app keeps this fast;
+# build-desktop-app.yml opens the real one through its launcher.
+case "$(uname -s)-$(uname -m)" in
+Darwin-arm64) app_zip=PrismaLens-macOS-ARM64-unsigned.zip ;;
+Linux-x86_64) app_zip=PrismaLens-Linux-X64-unsigned.zip ;;
+*) app_zip= ;;
+esac
+if [ -z "$app_zip" ]; then
+	echo "note: no desktop app is built for $(uname -s)-$(uname -m); section 7 skipped"
+	exit 0
+fi
+app_base_dir="$work/base-app/v$new_version"
+mkdir -p "$app_base_dir" "$work/fake-app"
+cp "$new_dir"/prismalens-"$new_version"-*.tar.gz "$app_base_dir/"
+if [ "$(uname -s)" = Darwin ]; then
+	mkdir -p "$work/fake-app/mac-arm64/PrismaLens.app/Contents/MacOS"
+	printf '#!/bin/sh\necho stand-in app\n' >"$work/fake-app/mac-arm64/PrismaLens.app/Contents/MacOS/PrismaLens"
+	chmod 755 "$work/fake-app/mac-arm64/PrismaLens.app/Contents/MacOS/PrismaLens"
+	(cd "$work/fake-app" && ditto -c -k --keepParent mac-arm64 "$app_base_dir/$app_zip")
+else
+	mkdir -p "$work/fake-app/linux-unpacked/resources"
+	printf '#!/bin/sh\necho stand-in app\n' >"$work/fake-app/linux-unpacked/prismalens"
+	chmod 755 "$work/fake-app/linux-unpacked/prismalens"
+	printf 'png' >"$work/fake-app/linux-unpacked/resources/icon.png"
+	(cd "$work/fake-app" && zip -qry "$app_base_dir/$app_zip" linux-unpacked)
+fi
+(cd "$app_base_dir" && { sha256sum ./* 2>/dev/null || shasum -a 256 ./*; } | sed 's# \./# #' >SHA256SUMS)
+app_base="file://$work/base-app"
+# A fresh user with a display: DISPLAY is all the installer looks at.
+run_app_installer() {
+	env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash DISPLAY=:99 \
+		PRISMALENS_RELEASE_BASE_URL="$app_base" sh "$installer" --version "$new_version" --no-modify-path "$@"
+}
+rm -rf "$work/home" && mkdir -p "$work/home"
+entry="$work/home/.local/share/applications/prismalens.desktop"
+mac_app="$work/home/Applications/PrismaLens.app"
+
+out=$(run_app_installer 2>&1) || { echo "$out"; fail "install with the desktop app"; }
+grep -q "^desktop=1$" "$work/home/.local/share/prismalens/receipt" || fail "receipt has no desktop=1"
+if [ "$(uname -s)" = Darwin ]; then
+	[ "$("$mac_app/Contents/MacOS/PrismaLens")" = "stand-in app" ] || fail "no runnable $mac_app"
+	case "$out" in *"Open the desktop app from Launchpad or Spotlight: PrismaLens ($mac_app)"*) ;; *) echo "$out"; fail "the final message doesn't say where the app is" ;; esac
+	# curl, unlike a browser, sets no quarantine flag; the installer neither adds nor strips one.
+	if xattr -p com.apple.quarantine "$mac_app" >/dev/null 2>&1; then fail "$mac_app is quarantined"; fi
+	pass "desktop app: $mac_app runs, the final message names it, no quarantine flag"
+else
+	app="$work/home/.local/share/prismalens/desktop/app"
+	grep -qx "Exec=\"$app/prismalens\"" "$entry" || { cat "$entry"; fail "the desktop entry doesn't run $app/prismalens"; }
+	grep -qx "Icon=$app/resources/icon.png" "$entry" || { cat "$entry"; fail "the desktop entry has no icon"; }
+	grep -qx "Type=Application" "$entry" || fail "the desktop entry has no Type"
+	[ "$("$app/prismalens")" = "stand-in app" ] || fail "the entry's Exec target doesn't run"
+	case "$out" in *"Open the desktop app from your app menu: PrismaLens ($entry)"*) ;; *) echo "$out"; fail "the final message doesn't say where the entry is" ;; esac
+	pass "desktop app: $entry runs $app/prismalens with its icon, and the final message names it"
+
+	rm -rf "$work/home" && mkdir -p "$work/home"
+	out=$(env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash PRISMALENS_RELEASE_BASE_URL="$app_base" \
+		sh "$installer" --version "$new_version" --no-modify-path 2>&1) || { echo "$out"; fail "install without a display"; }
+	case "$out" in *"Desktop app skipped: no display (DISPLAY and WAYLAND_DISPLAY are unset)"*) ;; *) echo "$out"; fail "no display wasn't detected" ;; esac
+	[ ! -e "$entry" ] || fail "a desktop entry was written without a display"
+	pass "no display: the app is skipped by itself"
+fi
+
+run_app_installer >/dev/null 2>&1 || fail "reinstall with the desktop app"
+run_installer "$app_base" --uninstall >/dev/null 2>&1 || fail "uninstall with the desktop app"
+[ ! -e "$entry" ] || fail "uninstall left $entry"
+[ ! -e "$mac_app" ] || fail "uninstall left $mac_app"
+[ ! -d "$work/home/.local/share/prismalens" ] || fail "uninstall left the app's data"
+pass "uninstall: the app and its launcher gone"
+
+out=$(run_app_installer --no-desktop 2>&1) || { echo "$out"; fail "install with --no-desktop"; }
+case "$out" in *"Desktop app skipped: you asked for the CLI only"*) ;; *) echo "$out"; fail "--no-desktop wasn't honoured" ;; esac
+[ ! -e "$entry" ] && [ ! -e "$mac_app" ] || fail "--no-desktop still installed the app"
+out=$(run_app_installer 2>&1) || fail "reinstall after --no-desktop"
+case "$out" in *"an earlier install left it out"*) ;; *) echo "$out"; fail "a later install dropped the opt-out" ;; esac
+pass "--no-desktop: no app, and a later install keeps it out"

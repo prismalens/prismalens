@@ -23,6 +23,10 @@ marker="# Added by the PrismaLens installer"
 version="${PRISMALENS_VERSION:-}"
 modify_path=true
 [ "${PRISMALENS_NO_MODIFY_PATH:-}" = 1 ] && modify_path=false
+want_desktop="${PRISMALENS_DESKTOP:-}"
+xdg_data="${XDG_DATA_HOME:-$HOME/.local/share}"
+desktop_file="$xdg_data/applications/prismalens.desktop"
+mac_app="$HOME/Applications/PrismaLens.app"
 action=install
 
 usage() {
@@ -36,12 +40,15 @@ Install PrismaLens without Node.
 Options:
   --version <v>       Install this version instead of the newest.
   --no-modify-path    Don't add the bin directory to your shell's rc file.
-  --uninstall         Remove the runtime, the pl wrappers and the PATH line.
-                      Your workspace (~/.prismalens) is kept.
+  --no-desktop        Install the CLI only, without the desktop app and its launcher.
+                      Skipped by itself without a display (DISPLAY, WAYLAND_DISPLAY) and in CI.
+  --uninstall         Remove the runtime, the desktop app, the pl wrappers, the launcher
+                      and the PATH line. Your workspace (~/.prismalens) is kept.
   -h, --help          Show this.
 
 Environment:
   PRISMALENS_VERSION, PRISMALENS_NO_MODIFY_PATH=1   Same as the flags.
+  PRISMALENS_DESKTOP=0           Same as --no-desktop; =1 installs the app even where it would be skipped.
   PRISMALENS_ALLOW_DOWNGRADE=1   Allow an older version than the one installed.
   PRISMALENS_HOME                Where the runtime and receipt go (default ~/.local/share/prismalens).
   PRISMALENS_INSTALL_BIN_DIR     Where pl goes (default ~/.local/bin).
@@ -61,6 +68,7 @@ while [ $# -gt 0 ]; do
 		;;
 	--version=*) version=${1#*=}; shift ;;
 	--no-modify-path) modify_path=false; shift ;;
+	--no-desktop) want_desktop=0; shift ;;
 	--uninstall) action=uninstall; shift ;;
 	-y | --yes) shift ;;
 	-h | --help) usage; exit 0 ;;
@@ -204,15 +212,156 @@ other_pls() {
 	IFS=$old_ifs
 }
 
+# fetch_verified <name> <sha256> <file> <what>: v$version/<name> from each base in turn until one
+# matches; on failure, $tried says why each base failed.
+fetch_verified() {
+	tried=
+	for b in $bases; do
+		h=$(host_of "$b")
+		# A base with a successor is dropped after 30 s without a byte.
+		if [ "$b" = "$sums_base" ]; then stall=; else stall=30; fi
+		url="$b/v${version}/$1"
+		bytes=$(remote_size "$url")
+		size=
+		[ -z "$bytes" ] || size=$(awk -v b="$bytes" 'BEGIN { printf " (%.0f MB)", b / 1048576 }')
+		step "Downloading $4${size} from ${h}"
+		fetch "$url" "$3" progress || { tried="${tried:+$tried; }${h}: download failed"; continue; }
+		step "Verifying $(size_mb "$3") against SHA256SUMS from $(host_of "$sums_base")"
+		[ "$(checksum "$3")" = "$2" ] && return 0
+		tried="${tried:+$tried; }${h}: Checksum mismatch"
+	done
+	return 1
+}
+
+sum_of() { grep -E "(^|[[:space:]]|\*)$1\$" "$staging/SHA256SUMS" | cut -d' ' -f1 | head -n 1; }
+
+# Why the desktop app is skipped here, or nothing to install it. A receipt's desktop=0 keeps an earlier opt-out.
+desktop_skip() {
+	case "$want_desktop" in
+	1) return 0 ;;
+	0) echo "you asked for the CLI only"; return 0 ;;
+	esac
+	if [ "$(receipt_get desktop)" = 0 ]; then
+		echo "an earlier install left it out; set PRISMALENS_DESKTOP=1 to add it"
+	elif [ -n "${CI:-}" ]; then
+		echo "this is CI"
+	elif [ "$platform" = linux ] && [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+		echo "no display (DISPLAY and WAYLAND_DISPLAY are unset)"
+	elif [ "$platform" = linux ] && ! command -v unzip >/dev/null 2>&1 && ! command -v bsdtar >/dev/null 2>&1; then
+		echo "unzip is needed to unpack it; install unzip and run the installer again"
+	elif [ "$platform" = darwin ] && [ -d /Applications/PrismaLens.app ]; then
+		echo "/Applications/PrismaLens.app is already there (Homebrew's prismalens-app or a download); upgrade it the way you installed it"
+	fi
+}
+
+# The installed app, when it's running: `desktop_running [<path>]`.
+desktop_running() {
+	command -v pgrep >/dev/null 2>&1 || return 1
+	if [ "$(uname -s)" = Darwin ]; then
+		pgrep -f "${1:-$mac_app}/Contents/MacOS/PrismaLens" >/dev/null 2>&1
+	else
+		pgrep -f "${1:-$data_root/desktop/app}/prismalens" >/dev/null 2>&1
+	fi
+}
+
+desktop_asset() {
+	case "$target" in
+	darwin-arm64) echo PrismaLens-macOS-ARM64-unsigned.zip ;;
+	linux-x64) echo PrismaLens-Linux-X64-unsigned.zip ;;
+	esac
+}
+
+# install_desktop <zip>: the app in the OS's usual per-user place, and $launcher set to how it opens.
+install_desktop() {
+	if [ "$platform" = darwin ]; then
+		mkdir -p "$HOME/Applications"
+		d_stage="$HOME/Applications/.prismalens-new"
+		rm -rf "$d_stage"
+		ditto -x -k "$1" "$d_stage" || { why="couldn't unpack it"; return 1; }
+		d_src=$(find "$d_stage" -maxdepth 2 -name PrismaLens.app -type d | head -n 1)
+		[ -n "$d_src" ] || { rm -rf "$d_stage"; why="the archive has no PrismaLens.app"; return 1; }
+		# The old copy moves aside first, so a failed move puts it back rather than leaving none.
+		[ ! -d "$mac_app" ] || mv "$mac_app" "$d_stage/previous.app"
+		if ! mv "$d_src" "$mac_app"; then
+			[ ! -d "$d_stage/previous.app" ] || mv "$d_stage/previous.app" "$mac_app"
+			rm -rf "$d_stage"
+			why="couldn't move it into $HOME/Applications"
+			return 1
+		fi
+		rm -rf "$d_stage"
+		# Launchpad and Spotlight would find it on their own; registering makes it immediate.
+		lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+		[ -x "$lsregister" ] && "$lsregister" -f "$mac_app" >/dev/null 2>&1 || true
+		launcher="Launchpad or Spotlight: PrismaLens (${mac_app})"
+		return 0
+	fi
+	d_stage="$data_root/desktop/.new"
+	d_app="$data_root/desktop/app"
+	rm -rf "$d_stage"
+	mkdir -p "$d_stage"
+	if command -v unzip >/dev/null 2>&1; then
+		unzip -q "$1" -d "$d_stage" || { why="couldn't unpack it"; return 1; }
+	else
+		bsdtar -xf "$1" -C "$d_stage" || { why="couldn't unpack it"; return 1; }
+	fi
+	d_src=$(find "$d_stage" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+	[ -n "$d_src" ] && [ -x "$d_src/prismalens" ] || { rm -rf "$d_stage"; why="the archive has no prismalens"; return 1; }
+	rm -rf "$d_app.old"
+	[ ! -d "$d_app" ] || mv "$d_app" "$d_app.old"
+	if ! mv "$d_src" "$d_app"; then
+		[ ! -d "$d_app.old" ] || mv "$d_app.old" "$d_app"
+		rm -rf "$d_stage"
+		why="couldn't move it into $d_app"
+		return 1
+	fi
+	rm -rf "$d_stage" "$d_app.old"
+	mkdir -p "$(dirname "$desktop_file")"
+	if [ -f "$desktop_file" ] && ! grep -q "^X-PrismaLens-Installer=" "$desktop_file"; then
+		warn "Replaced your own $desktop_file with the installer's."
+	fi
+	{
+		echo "[Desktop Entry]"
+		echo "Type=Application"
+		echo "Name=PrismaLens"
+		echo "Comment=Investigate alerts with the coding agent you already use"
+		echo "Exec=\"$d_app/prismalens\""
+		[ ! -f "$d_app/resources/icon.png" ] || echo "Icon=$d_app/resources/icon.png"
+		echo "Terminal=false"
+		echo "Categories=Development;"
+		echo "StartupWMClass=PrismaLens"
+		echo "X-PrismaLens-Installer=true"
+	} >"$desktop_file"
+	launcher="your app menu: PrismaLens (${desktop_file})"
+	# Chromium's sandbox needs user namespaces or a root-owned setuid helper; every fix Chromium documents needs root.
+	if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ] ||
+		[ "$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null)" = 0 ]; then
+		sandbox_note="This system restricts the user namespaces Chromium's sandbox needs, so the app may not open. Chromium's fix needs root, once per install or upgrade:
+      sudo chown root:root \"$d_app/chrome-sandbox\" && sudo chmod 4755 \"$d_app/chrome-sandbox\"
+    (https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md)"
+	fi
+	return 0
+}
+
 # --- uninstall --------------------------------------------------------------
 
 if [ "$action" = uninstall ]; then
 	banner uninstaller
+	if [ "$(receipt_get desktop)" = 1 ] && desktop_running; then
+		fail "The PrismaLens app is running; quit it and run the uninstaller again. Nothing was removed."
+	fi
 	installed_bin=$(receipt_get bin_dir)
 	dir="${installed_bin:-$bin_dir}"
 	# The background service runs this install's pl; remove it before pl goes (#732).
 	if [ -f "$dir/pl" ] && { [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/prismalens.service" ] || [ -f "$HOME/Library/LaunchAgents/io.prismalens.server.plist" ]; }; then
 		"$dir/pl" service uninstall >/dev/null 2>&1 && done_ "Removed the background service"
+	fi
+	if [ "$(receipt_get desktop)" = 1 ] && [ "$(uname -s)" = Darwin ] && [ -d "$mac_app" ]; then
+		rm -rf "$mac_app"
+		done_ "Removed $mac_app"
+	fi
+	if [ -f "$desktop_file" ] && grep -q "^X-PrismaLens-Installer=" "$desktop_file"; then
+		rm -f "$desktop_file"
+		done_ "Removed the app menu entry $desktop_file"
 	fi
 	for name in pl prismalens; do
 		if [ -f "$dir/$name" ] && grep -q "$marker" "$dir/$name"; then
@@ -297,27 +446,10 @@ fi
 
 archive="prismalens-${version}-${target}.tar.gz"
 # The checksum is the release's own; the archive may come from any base and is verified against it.
-expected=$(grep -E "(^|[[:space:]]|\*)${archive}\$" "$staging/SHA256SUMS" | cut -d' ' -f1 | head -n 1)
+expected=$(sum_of "$archive")
 [ -n "$expected" ] || fail "${archive} isn't listed in SHA256SUMS on $(host_of "$sums_base"); nothing was installed."
-tried=
-verified=false
-stall=
-for b in $bases; do
-	"$verified" && break
-	h=$(host_of "$b")
-	# A base with a successor is dropped after 30 s without a byte.
-	if [ "$b" = "$sums_base" ]; then stall=; else stall=30; fi
-	url="$b/v${version}/${archive}"
-	bytes=$(remote_size "$url")
-	size=
-	[ -z "$bytes" ] || size=$(awk -v b="$bytes" 'BEGIN { printf " (%.0f MB)", b / 1048576 }')
-	step "Downloading PrismaLens ${version} for ${target}${size} from ${h}"
-	fetch "$url" "$staging/$archive" progress || { tried="${tried:+$tried; }${h}: download failed"; continue; }
-	step "Verifying $(size_mb "$staging/$archive") against SHA256SUMS from $(host_of "$sums_base")"
-	[ "$(checksum "$staging/$archive")" = "$expected" ] || { tried="${tried:+$tried; }${h}: Checksum mismatch"; continue; }
-	verified=true
-done
-"$verified" || fail "Couldn't install ${archive} from $(hosts_tried); nothing was installed. ${tried}"
+fetch_verified "$archive" "$expected" "$staging/$archive" "PrismaLens ${version} for ${target}" ||
+	fail "Couldn't install ${archive} from $(hosts_tried); nothing was installed. ${tried}"
 
 step "Installing to ${runtime_root}/${version}"
 tar -xzf "$staging/$archive" -C "$staging"
@@ -366,12 +498,42 @@ case ":$PATH:" in
 	;;
 esac
 
+# The desktop app is the release's own zip, verified like the CLI; a failure here leaves the CLI installed.
+desktop=$(receipt_get desktop)
+[ "$want_desktop" != 0 ] || desktop=0
+launcher=
+sandbox_note=
+skip=$(desktop_skip)
+app_asset=$(desktop_asset)
+if [ -n "$skip" ]; then
+	step "Desktop app skipped: $skip"
+elif [ -z "$app_asset" ] || [ -z "$(sum_of "$app_asset")" ]; then
+	warn "PrismaLens ${version} has no desktop app for ${target}, so only the CLI was installed."
+else
+	why=
+	was_running=false
+	! desktop_running || was_running=true
+	if fetch_verified "$app_asset" "$(sum_of "$app_asset")" "$staging/$app_asset" "the PrismaLens ${version} desktop app"; then
+		install_desktop "$staging/$app_asset" || true
+	else
+		why="couldn't download it from $(hosts_tried): ${tried}"
+	fi
+	if [ -n "$launcher" ]; then
+		desktop=1
+		done_ "Desktop app installed"
+		! "$was_running" || warn "The PrismaLens app is still running the version it started with; quit it and open it again for ${version}."
+	else
+		warn "The desktop app wasn't installed: ${why}. The CLI is; run the installer again for the app."
+	fi
+fi
+
 cat >"$receipt" <<EOF
 version=$version
 channel=installer
 target=$target
 bin_dir=$bin_dir
 rc=$rc
+desktop=$desktop
 installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
 
@@ -384,5 +546,7 @@ if [ -n "$others" ]; then
 fi
 
 done_ "PrismaLens $("$bin_dir/pl" --version) installed"
+[ -z "$launcher" ] || printf '\n  Open the desktop app from %s\n' "$launcher" >&2
+[ -z "$sandbox_note" ] || warn "$sandbox_note"
 printf '\n  Start it with %spl up%s   ·   Upgrade with %spl upgrade%s   ·   Docs: https://docs.prismalens.io\n\n' \
 	"$bold" "$r" "$bold" "$r" >&2

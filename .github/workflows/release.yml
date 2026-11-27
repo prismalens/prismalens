@@ -421,6 +421,9 @@ jobs:
           }
           publish prismalens/homebrew-tap "$RUNNER_TEMP/manifests/Formula/prismalens.rb" Formula/prismalens.rb
           publish prismalens/scoop-bucket "$RUNNER_TEMP/manifests/bucket/prismalens.json" bucket/prismalens.json
+          # The desktop app's own packages: a cask, and a Scoop manifest with a Start menu shortcut.
+          publish prismalens/homebrew-tap "$RUNNER_TEMP/manifests/Casks/prismalens-app.rb" Casks/prismalens-app.rb
+          publish prismalens/scoop-bucket "$RUNNER_TEMP/manifests/bucket/prismalens-app.json" bucket/prismalens-app.json
 
   # The real tap and bucket, as a user meets them (#920). The standalone workflow smokes a
   # formula and manifest built beside the archives; only this installs what was pushed.
@@ -456,6 +459,21 @@ jobs:
           brew test prismalens/tap/prismalens
           brew uninstall prismalens
 
+      - name: brew install --cask prismalens/tap/prismalens-app
+        if: runner.os == 'macOS'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          set -eu
+          brew install --cask prismalens/tap/prismalens-app
+          plist=/Applications/PrismaLens.app/Contents/Info.plist
+          [ -f "$plist" ] || { echo "::error::the cask put no PrismaLens.app in /Applications"; exit 1; }
+          v=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
+          [ "$v" = "$VERSION" ] || { echo "::error::the cask installed $v, expected $VERSION"; exit 1; }
+          brew uninstall --cask prismalens-app
+          [ ! -e /Applications/PrismaLens.app ] || { echo "::error::uninstall left /Applications/PrismaLens.app"; exit 1; }
+
       - name: scoop install prismalens
         if: runner.os == 'Windows'
         shell: pwsh
@@ -469,3 +487,9 @@ jobs:
           $out = (pl --version).Trim()
           if ($out -ne $env:VERSION) { Write-Error "pl --version printed $out, expected $env:VERSION"; exit 1 }
           scoop uninstall prismalens
+          scoop install prismalens/prismalens-app
+          if ($LASTEXITCODE -ne 0) { Write-Error "scoop install prismalens-app failed"; exit 1 }
+          $lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'Scoop Apps\PrismaLens.lnk'
+          if (-not (Test-Path $lnk)) { Write-Error "no Start menu shortcut at $lnk"; exit 1 }
+          scoop uninstall prismalens-app
+          if (Test-Path $lnk) { Write-Error "uninstall left $lnk"; exit 1 }

@@ -7,7 +7,13 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formula, parseSums, scoopManifest } from "./package-manifests.mjs";
+import {
+	appCask,
+	formula,
+	parseSums,
+	scoopAppManifest,
+	scoopManifest,
+} from "./package-manifests.mjs";
 
 const SUMS = parseSums(
 	[
@@ -76,4 +82,52 @@ test("a missing archive fails unless --allow-missing", () => {
 	});
 	assert.match(rb, /darwin-arm64/);
 	assert.doesNotMatch(rb, /on_linux|darwin-x64/);
+});
+
+const APP_SUMS = parseSums(
+	[
+		"f7  PrismaLens-macOS-ARM64-unsigned.zip",
+		"af  PrismaLens-Windows-X64-unsigned.zip",
+	].join("\n"),
+);
+
+test("the app's cask is prismalens-app: the arm64 zip, its hash, the app inside, and the unsigned first open", () => {
+	const rb = appCask({ version: "1.2.3", baseUrl: BASE, sums: APP_SUMS });
+	assert.match(
+		rb,
+		/^cask "prismalens-app" do\n {2}version "1\.2\.3"\n {2}sha256 "f7"\n/,
+	);
+	assert.match(
+		rb,
+		new RegExp(`url "${BASE}/PrismaLens-macOS-ARM64-unsigned.zip"`),
+	);
+	assert.match(rb, /depends_on arch: :arm64/);
+	assert.match(rb, /app "mac-arm64\/PrismaLens\.app"/);
+	assert.match(rb, /Privacy & Security and click Open Anyway/);
+	assert.throws(
+		() => appCask({ version: "1.2.3", baseUrl: BASE, sums: SUMS }),
+		/PrismaLens-macOS-ARM64-unsigned\.zip is not in SHA256SUMS/,
+	);
+});
+
+test("the app's Scoop manifest extracts win-unpacked and adds a Start menu shortcut", () => {
+	const manifest = JSON.parse(
+		scoopAppManifest({ version: "1.2.3", baseUrl: BASE, sums: APP_SUMS }),
+	);
+	assert.equal(manifest.version, "1.2.3");
+	assert.deepEqual(manifest.architecture["64bit"], {
+		url: `${BASE}/PrismaLens-Windows-X64-unsigned.zip`,
+		hash: "af",
+		extract_dir: "win-unpacked",
+	});
+	assert.deepEqual(manifest.shortcuts, [["PrismaLens.exe", "PrismaLens"]]);
+	assert.equal(manifest.bin, undefined);
+	assert.equal(
+		manifest.autoupdate.architecture["64bit"].url,
+		"https://github.com/prismalens/prismalens/releases/download/v$version/PrismaLens-Windows-X64-unsigned.zip",
+	);
+	assert.throws(
+		() => scoopAppManifest({ version: "1.2.3", baseUrl: BASE, sums: SUMS }),
+		/PrismaLens-Windows-X64-unsigned\.zip is not in SHA256SUMS/,
+	);
 });
