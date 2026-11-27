@@ -329,7 +329,7 @@ Describe "install.ps1 and the desktop app" {
 		}
 	}
 
-	It "a folder someone else put at desktop\<version>: a reinstall leaves it, and uninstall moves it aside and says where" {
+	It "a folder someone else put at desktop\<version>: a reinstall and uninstall leave it where it is, and say so" {
 		$null = Invoke-Installer $work $base $want
 		$theirs = Split-Path $app
 		Remove-Item -LiteralPath (Join-Path $theirs ".prismalens-install-id")
@@ -345,25 +345,22 @@ Describe "install.ps1 and the desktop app" {
 		$run = Invoke-Installer $work $base "" "-Uninstall"
 
 		$run.ExitCode | Should -Be 0 -Because $run.Stderr
-		$kept = @(Get-ChildItem (Join-Path $work "data-kept") -Directory)
-		$kept.Count | Should -Be 1
-		$run.Stderr | Should -Match ([regex]::Escape("$theirs isn't the app this installer put there; it was moved to $($kept[0].FullName)"))
-		Get-Content (Join-Path $kept[0].FullName "marker.txt") | Should -BeExactly "theirs"
-		Test-Path (Join-Path $work "data") | Should -BeFalse
+		$run.Stderr | Should -Match ([regex]::Escape("$theirs isn't the app this installer put there; it and the folders that hold it were left as they are"))
+		$run.Stderr | Should -Match ([regex]::Escape("$(Join-Path $work 'data') stays, holding only what this installer didn't put there"))
+		Get-Content (Join-Path $theirs "marker.txt") | Should -BeExactly "theirs"
+		Test-Path (Join-Path $work "data\receipt") | Should -BeFalse
+		Test-Path (Join-Path $work "data\runtime") | Should -BeFalse
 	}
 
-	It "an older version's folder the installer didn't make is moved aside when it prunes, not deleted" {
+	It "an older version's folder the installer didn't make is left where it is when it prunes" {
 		$theirs = Join-Path $work "data\desktop\0.0.1"
 		New-Item -ItemType Directory -Path $theirs -Force | Out-Null
 		Set-Content -Path (Join-Path $theirs "marker.txt") -Value "theirs"
 		$run = Invoke-Installer $work $base $want
 
 		$run.ExitCode | Should -Be 0 -Because $run.Stderr
-		$kept = @(Get-ChildItem (Join-Path $work "data-kept") -Directory)
-		$kept.Count | Should -Be 1
-		$run.Stderr | Should -Match ([regex]::Escape("$theirs isn't the app this installer put there; it was moved to $($kept[0].FullName)"))
-		Get-Content (Join-Path $kept[0].FullName "marker.txt") | Should -BeExactly "theirs"
-		Test-Path -LiteralPath $theirs | Should -BeFalse
+		$run.Stderr | Should -Match ([regex]::Escape("$theirs isn't the app this installer put there; it and the folders that hold it were left as they are"))
+		Get-Content (Join-Path $theirs "marker.txt") | Should -BeExactly "theirs"
 		Test-Path $app | Should -BeTrue
 	}
 
@@ -404,7 +401,6 @@ function global:Move-Item {
 
 		$run.ExitCode | Should -Be 0 -Because $run.Stderr
 		$run.Stderr | Should -Not -Match "isn't the app this installer put there"
-		Test-Path (Join-Path $work "data-kept") | Should -BeFalse
 		@(Get-ChildItem (Join-Path $work "data\desktop") -Directory -Force | ForEach-Object Name) | Should -BeExactly @($version)
 		Get-Target $lnk | Should -BeExactly $app
 	}
@@ -503,7 +499,7 @@ function global:Move-Item {
 		Get-Content (Join-Path $ws "prismalens.db") | Should -BeExactly "db"
 	}
 
-	It "a data root given with a trailing backslash: uninstall keeps a folder it didn't make outside it" {
+	It "a data root given with a trailing backslash: uninstall leaves a folder it didn't make where it is" {
 		$slash = "$want`n`$env:PRISMALENS_HOME = '$work\data\'"
 		$null = Invoke-Installer $work $base $slash
 		$theirs = Split-Path $app
@@ -512,10 +508,9 @@ function global:Move-Item {
 		$run = Invoke-Installer $work $base "`$env:PRISMALENS_HOME = '$work\data\'" "-Uninstall"
 
 		$run.ExitCode | Should -Be 0 -Because $run.Stderr
-		$kept = @(Get-ChildItem (Join-Path $work "data-kept") -Directory)
-		$kept.Count | Should -Be 1
-		Get-Content (Join-Path $kept[0].FullName "marker.txt") | Should -BeExactly "theirs"
-		$run.Stderr | Should -Match ([regex]::Escape("it was moved to $($kept[0].FullName)"))
+		Get-Content (Join-Path $theirs "marker.txt") | Should -BeExactly "theirs"
+		$run.Stderr | Should -Match ([regex]::Escape("$theirs isn't the app this installer put there; it and the folders that hold it were left as they are"))
+		Test-Path (Join-Path $work "data\receipt") | Should -BeFalse
 	}
 
 	It "a folder that appears where the new copy goes: nothing nested in it, and the old copy kept" {
@@ -533,6 +528,18 @@ function global:Move-Item {
 		$run.Stderr | Should -Match ([regex]::Escape("The desktop app wasn't installed: couldn't move it into place (something else appeared at $dest during the install), nor put the old copy back; it is in $dest.old-"))
 		@(Get-ChildItem -LiteralPath $dest -Force).Count | Should -Be 0
 		@(Get-ChildItem (Join-Path $work "data\desktop") -Directory -Filter "$version.old-*" | Where-Object { Test-Path (Join-Path $_.FullName "PrismaLens.exe") }).Count | Should -Be 1
+	}
+
+	It "a pl.cmd in the bin dir the installer didn't write is left byte for byte, and nothing is installed" {
+		New-Item -ItemType Directory -Path (Join-Path $work "bin") -Force | Out-Null
+		Set-Content -Path (Join-Path $work "bin\pl.cmd") -Encoding ASCII -Value "@echo users own"
+		$before = Get-Content (Join-Path $work "bin\pl.cmd") -Raw
+		$run = Invoke-Installer $work $base ""
+
+		$run.ExitCode | Should -Not -Be 0
+		$run.Stderr | Should -Match ([regex]::Escape("$(Join-Path $work 'bin\pl.cmd') isn't a wrapper this installer wrote, so nothing was installed; it was left as it is."))
+		Get-Content (Join-Path $work "bin\pl.cmd") -Raw | Should -BeExactly $before
+		Test-Path (Join-Path $work "data\runtime\$version") | Should -BeFalse
 	}
 
 	It "an app download that throws still records the CLI it installed" {

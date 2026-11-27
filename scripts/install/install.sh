@@ -26,7 +26,6 @@ dir_path() {
 }
 data_root=$(dir_path "${PRISMALENS_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/prismalens}")
 runtime_root="${data_root}/runtime"
-kept_root="${data_root}-kept"
 receipt="${data_root}/receipt"
 bin_dir="${PRISMALENS_INSTALL_BIN_DIR:-$HOME/.local/bin}"
 marker="# Added by the PrismaLens installer"
@@ -296,51 +295,67 @@ app_ours() {
 # Where an app sits: desktop/app, a staging folder's previous, or a *.app bundle.
 is_app_slot() { case "$1" in */desktop/app | */previous | *.app) return 0 ;; esac; return 1; }
 
-# Leaves the app at $1 to be deleted when it carries the receipt's ID or this run's; moves anything
-# else there, a link included, to $kept_root and names it. 1 when that move fails.
-keep_foreign() {
-	if [ ! -L "$1" ]; then
-		k_id=$(app_id_of "$1" || true)
-		if [ -n "$k_id" ] && { [ "$k_id" = "$(receipt_get desktop_app_id)" ] || [ "$k_id" = "${d_id:-}" ]; }; then return 0; fi
-	fi
-	if [ "$(uname -s)" = Darwin ]; then k_name=PrismaLens.app; else k_name=app; fi
-	if mkdir -p "$kept_root" && k_to=$(mktemp -d "$kept_root/app.XXXXXX") && mv "$1" "$k_to/$k_name"; then
-		warn "$1 isn't the app this installer put there; it was moved to $k_to/$k_name"
-		return 0
-	fi
-	warn "$1 isn't the app this installer put there and couldn't be moved aside, so it was left as it is"
-	return 1
+# Whether the app at $1 is one this install unpacked: it carries the receipt's ID or this run's.
+app_mine() {
+	[ ! -L "$1" ] || return 1
+	k_id=$(app_id_of "$1" || true)
+	[ -n "$k_id" ] && { [ "$k_id" = "$(receipt_get desktop_app_id)" ] || [ "$k_id" = "${d_id:-}" ]; }
 }
 
-# The only way this installer deletes a folder: every app in it goes through keep_foreign first,
-# and nothing is deleted unless all of it was looked through and kept. The CLI's runtime holds none.
-discard() {
-	[ -e "$1" ] || [ -L "$1" ] || return 0
-	case "$(dir_path "$kept_root" -P)/" in "$(dir_path "$1" -P)/"*)
-		warn "$kept_root, where apps that aren't the installer's are kept, is inside $1, so $1 was left as it is"
-		return 1
-		;;
-	esac
-	if is_app_slot "$1"; then
-		keep_foreign "$1" || return 1
-	else
-		k_list=$(mktemp) || return 1
-		# Below $1 only: $1 itself may be named like a pruned folder (PRISMALENS_HOME=.../runtime).
-		if ! find "$1" -mindepth 1 -maxdepth 3 \( -name unpacked -o -name runtime -o -name node_modules \) -prune -o \
-			\( -type d -o -type l \) \( -name previous -o -name '*.app' -o -path '*/desktop/app' \) -prune -print >"$k_list"; then
-			rm -f "$k_list"
-			warn "couldn't look through $1, so it was left as it is"
-			return 1
-		fi
-		k_failed=
-		while IFS= read -r k_app; do keep_foreign "$k_app" || k_failed=1; done <"$k_list"
-		rm -f "$k_list"
-		[ -z "$k_failed" ] || return 1
-	fi
-	[ -e "$1" ] || [ -L "$1" ] || return 0
-	# The install ID goes last, so a delete that stops partway leaves an app still marked as ours.
+# purge <path>: deletes it, the install ID last, so a delete that stops partway leaves an app still marked as ours.
+purge() {
 	find "$1" ! -type d ! -name .prismalens-install-id ! -path '*/Contents/MacOS/PrismaLens' -exec rm -f {} + || return 1
 	rm -rf "$1"
+}
+
+# delete_around <dir> <list>: deletes what's in <dir> except the paths in <list> and the folders
+# that hold them. A subshell per level keeps each level's loop variables its own.
+delete_around() {
+	a_st=0
+	for a_c in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+		[ -e "$a_c" ] || [ -L "$a_c" ] || continue
+		if grep -qxF -- "$a_c" "$2"; then
+			continue
+		elif A_P="$a_c/" awk 'index($0, ENVIRON["A_P"]) == 1 { f = 1 } END { exit !f }' "$2"; then
+			(delete_around "$a_c" "$2") || a_st=1
+		else
+			purge "$a_c" || a_st=1
+		fi
+	done
+	return "$a_st"
+}
+
+# The only way this installer deletes a folder. What it put there goes; an app it didn't (no
+# receipt ID nor this run's, or a link at an app's place) stays where it is with the folders
+# around it, and is named. 1 when something couldn't be looked through or deleted.
+discard() {
+	[ -e "$1" ] || [ -L "$1" ] || return 0
+	if is_app_slot "$1"; then
+		app_mine "$1" || { warn "$1 isn't the app this installer put there; it was left as it is"; return 0; }
+		purge "$1"
+		return
+	fi
+	k_list=$(mktemp) || return 1
+	# Below $1 only: $1 itself may be named like a pruned folder (PRISMALENS_HOME=.../runtime).
+	if ! find "$1" -mindepth 1 -maxdepth 3 \( -name unpacked -o -name runtime -o -name node_modules \) -prune -o \
+		\( -type d -o -type l \) \( -name previous -o -name '*.app' -o -path '*/desktop/app' \) -prune -print >"$k_list"; then
+		rm -f "$k_list"
+		warn "couldn't look through $1, so it was left as it is"
+		return 1
+	fi
+	k_left=$(mktemp) || { rm -f "$k_list"; return 1; }
+	while IFS= read -r k_app; do app_mine "$k_app" || printf '%s\n' "$k_app" >>"$k_left"; done <"$k_list"
+	rm -f "$k_list"
+	if [ ! -s "$k_left" ]; then
+		rm -f "$k_left"
+		purge "$1"
+		return
+	fi
+	while IFS= read -r k_app; do warn "$k_app isn't the app this installer put there; it and the folders that hold it were left as they are"; done <"$k_left"
+	k_st=0
+	(delete_around "$1" "$k_left") || k_st=1
+	rm -f "$k_left"
+	return "$k_st"
 }
 
 # A run killed between its two renames left the installer's old app in that run's staging
@@ -501,9 +516,8 @@ install_desktop() {
 		if [ ! -e "$d_dest" ] && mv "$d_stage/previous" "$d_dest"; then
 			discard "$d_stage"
 			why="$d_dest isn't the app this installer put there; it was left as it is"
-		elif discard "$d_stage"; then
-			why="$d_dest isn't the app this installer put there, and couldn't go back; it was moved aside, as said above"
 		else
+			discard "$d_stage" || true
 			why="$d_dest isn't the app this installer put there, and couldn't go back; it is kept in $d_stage/previous"
 		fi
 		return 1
@@ -652,7 +666,7 @@ if [ "$action" = uninstall ]; then
 		elif case "$workspace/" in "$(dir_path "$data_root" -P)/"*) true ;; *) false ;; esac; then
 			warn "Your workspace is inside $data_root, so $data_root was left as it is"
 		elif discard "$data_root"; then
-			done_ "Removed $data_root"
+			if [ -e "$data_root" ]; then warn "$data_root stays, holding only what this installer didn't put there"; else done_ "Removed $data_root"; fi
 		else
 			warn "$data_root was kept"
 		fi
@@ -731,6 +745,13 @@ expected=$(sum_of "$archive")
 fetch_verified "$archive" "$expected" "$staging/$archive" "PrismaLens ${version} for ${target}" ||
 	fail "Couldn't install ${archive} from $(hosts_tried); nothing was installed. ${tried}"
 
+# A pl or prismalens in the bin dir that this installer didn't write is someone's own: never replaced.
+for name in pl prismalens; do
+	if [ -L "$bin_dir/$name" ] || { [ -e "$bin_dir/$name" ] && ! grep -q "$marker" "$bin_dir/$name" 2>/dev/null; }; then
+		fail "$bin_dir/$name isn't a wrapper this installer wrote, so nothing was installed; it was left as it is. Set PRISMALENS_INSTALL_BIN_DIR to install pl somewhere else."
+	fi
+done
+
 step "Installing to ${runtime_root}/${version}"
 tar -xzf "$staging/$archive" -C "$staging"
 [ -d "$staging/prismalens-${version}-${target}" ] || fail "Unexpected archive layout"
@@ -742,12 +763,13 @@ mv "$runtime_root/${version}.new" "$runtime_root/${version}"
 
 mkdir -p "$bin_dir"
 for name in pl prismalens; do
-	cat >"$bin_dir/$name" <<EOF
+	cat >"$bin_dir/$name.new" <<EOF
 #!/bin/sh
 $marker
 exec "$runtime_root/$version/bin/$name" "\$@"
 EOF
-	chmod 755 "$bin_dir/$name"
+	chmod 755 "$bin_dir/$name.new"
+	mv -f "$bin_dir/$name.new" "$bin_dir/$name"
 done
 
 # Keep this version and the one it replaced, for rollback.

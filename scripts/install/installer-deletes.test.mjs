@@ -4,7 +4,8 @@
 // Copyright 2026 Sumit Patel
 
 // Each installer deletes folders through one helper, which keeps any app this install didn't put
-// there: discard in install.sh, Remove-Owned in install.ps1. A recursive delete anywhere else fails.
+// there: discard (with delete_around and purge) in install.sh, Remove-Owned in install.ps1. A recursive
+// delete anywhere else fails.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -69,14 +70,17 @@ test("the guard sees rm -r in any option group, and a continued Remove-Item -Rec
 });
 
 test("install.sh deletes folders only through discard", () => {
-	const rest = withoutHelper(read("./install.sh"), "discard() {\n");
+	const rest = ["discard() {\n", "delete_around() {\n", "purge() {\n"].reduce(
+		withoutHelper,
+		read("./install.sh"),
+	);
 	assert.deepEqual(shOffending(rest), []);
 });
 
 test("install.ps1 deletes folders only through Remove-Owned", () => {
 	const rest = withoutHelper(
 		read("./install.ps1"),
-		"function Remove-Owned([string]$Path) {\n",
+		"function Remove-Owned([string]$Path, [switch]$Quiet) {\n",
 	);
 	assert.deepEqual(psOffending(rest), []);
 });

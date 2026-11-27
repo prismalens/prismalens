@@ -27,7 +27,6 @@ $receipt = Join-Path $dataRoot "receipt"
 $binDir = if ($env:PRISMALENS_INSTALL_BIN_DIR) { $env:PRISMALENS_INSTALL_BIN_DIR } else { Join-Path $dataRoot "bin" }
 $marker = "rem Added by the PrismaLens installer"
 $desktopRoot = Join-Path $dataRoot "desktop"
-$keptRoot = "$dataRoot-kept"
 # The ID every app folder this installer unpacks carries; the receipt keeps it as desktop_app_id.
 $ownId = ""
 $desktopAsset = "PrismaLens-Windows-X64-unsigned.zip"
@@ -254,36 +253,31 @@ function Get-InstallId([string]$Dir) {
 	return ""
 }
 
-# The only way this installer deletes a folder. An app folder (a folder in desktop\) in it that
-# doesn't carry $ownId is moved to $keptRoot and named instead. False when that fails, or a file in
-# it is open: it is renamed before it's deleted, so a running copy is never half removed.
-function Remove-Owned([string]$Path) {
+# The only way this installer deletes a folder. What it put there goes; an app folder (a folder in
+# desktop\) that doesn't carry $ownId stays where it is with the folders that hold it, and is named.
+# False when something of the installer's can't go: each folder is renamed before it's deleted, so
+# a running copy is never half removed.
+function Remove-Owned([string]$Path, [switch]$Quiet) {
 	$script:ownedLeft = ""
 	if (-not (Test-Path -LiteralPath $Path)) { return $true }
 	$long = Get-LongPath $Path
-	if ("$(Get-LongPath $keptRoot)\".StartsWith("$long\", [StringComparison]::OrdinalIgnoreCase)) {
-		Warn "$keptRoot, where apps that aren't the installer's are kept, is inside $Path, so $Path was left as it is"
-		return $false
-	}
 	$root = Get-LongPath $desktopRoot
 	$apps = @()
 	if ((Split-Path -Parent $long) -eq $root) { $apps = @($long) }
 	elseif ("$root\".StartsWith("$long\", [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $root)) {
 		$apps = @(Get-ChildItem -LiteralPath $root -Directory -Force | ForEach-Object { $_.FullName })
 	}
-	foreach ($a in $apps) {
-		if ($ownId -and (Get-InstallId $a) -eq $ownId) { continue }
-		$to = Join-Path $keptRoot ((Split-Path -Leaf $a) + "-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
-		try {
-			New-Item -ItemType Directory -Path $keptRoot -Force | Out-Null
-			Move-Item -LiteralPath $a -Destination $to -ErrorAction Stop
-		} catch {
-			Warn "$a isn't the app this installer put there and couldn't be moved aside, so $Path is kept"
-			return $false
+	$foreign = @($apps | Where-Object { -not ($ownId -and (Get-InstallId $_) -eq $ownId) })
+	if (-not $Quiet) { foreach ($a in $foreign) { Warn "$a isn't the app this installer put there; it and the folders that hold it were left as they are" } }
+	if ($foreign -contains $long) { return $true }
+	if ($foreign.Count -gt 0) {
+		$ok = $true
+		foreach ($c in @(Get-ChildItem -LiteralPath $Path -Force)) {
+			if ($foreign -contains $c.FullName) { continue }
+			if (-not (Remove-Owned $c.FullName -Quiet)) { $ok = $false }
 		}
-		Warn "$a isn't the app this installer put there; it was moved to $to"
+		return $ok
 	}
-	if (-not (Test-Path -LiteralPath $Path)) { return $true }
 	$trash = "$Path.old-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
 	# A just-quit app's helpers, or a scanner, can hold a file for a moment after its last window closes.
 	for ($try = 1; $true; $try++) {
@@ -433,7 +427,7 @@ if ($Uninstall) {
 		} elseif ("$(Get-LongPath $ws)\".StartsWith("$(Get-LongPath $dataRoot)\", [StringComparison]::OrdinalIgnoreCase)) {
 			Warn "Your workspace is inside $dataRoot, so $dataRoot was left as it is"
 		} elseif (Remove-Owned $dataRoot) {
-			Done "Removed $dataRoot"
+			if (Test-Path -LiteralPath $dataRoot) { Warn "$dataRoot stays, holding only what this installer didn't put there" } else { Done "Removed $dataRoot" }
 		} else {
 			Warn "$dataRoot was kept: a file in it is open, or an app in it couldn't be moved aside"
 		}
@@ -503,6 +497,13 @@ try {
 	if ($tried) { Fail "Couldn't install $archive from $(Hosts-Tried); nothing was installed. $tried" }
 
 	$dest = Join-Path $runtimeRoot $Version
+	# A pl.cmd or prismalens.cmd in the bin dir that this installer didn't write is someone's own: never replaced.
+	foreach ($name in "pl", "prismalens") {
+		$f = Join-Path $binDir "$name.cmd"
+		if ((Test-Path -LiteralPath $f) -and -not (Select-String -LiteralPath $f -SimpleMatch $marker -Quiet)) {
+			Fail "$f isn't a wrapper this installer wrote, so nothing was installed; it was left as it is. Set PRISMALENS_INSTALL_BIN_DIR to install pl somewhere else."
+		}
+	}
 	Step "Installing to $dest"
 	# Unpack beside $dest, not under %TEMP%: Windows PowerShell 5.1 can't reach paths of 260+
 	# chars on a default box, and build-standalone-cli.yml holds the archive to that from here (#902).

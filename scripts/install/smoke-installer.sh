@@ -159,6 +159,22 @@ env -i HOME="$work/home" PATH="$work/other:$clean_path" SHELL=/bin/bash PRISMALE
 grep -q "Another PrismaLens is on your PATH" "$work/other.log" || fail "second pl not reported"
 pass "second pl on PATH reported"
 
+# A pl in the bin dir that the installer didn't write, or a link there: never replaced.
+mkdir -p "$work/userbin" "$work/elsewhere"
+printf '#!/bin/sh\necho users own\n' >"$work/userbin/pl"
+cp "$work/userbin/pl" "$work/pl-before"
+printf 'users own target\n' >"$work/elsewhere/prismalens"
+ln -sf "$work/elsewhere/prismalens" "$work/userbin/prismalens"
+out=$(env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash PRISMALENS_RELEASE_BASE_URL="$new_base" PRISMALENS_INSTALL_BIN_DIR="$work/userbin" \
+	sh "$installer" --version "$new_version" --no-modify-path 2>&1) && { echo "$out"; fail "install over the user's own pl succeeded"; }
+case "$out" in *"$work/userbin/pl isn't a wrapper this installer wrote, so nothing was installed; it was left as it is."*) ;; *) echo "$out"; fail "the user's own pl wasn't reported" ;; esac
+cmp -s "$work/userbin/pl" "$work/pl-before" || fail "the user's own pl was changed"
+rm "$work/userbin/pl"
+out=$(env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash PRISMALENS_RELEASE_BASE_URL="$new_base" PRISMALENS_INSTALL_BIN_DIR="$work/userbin" \
+	sh "$installer" --version "$new_version" --no-modify-path 2>&1) && { echo "$out"; fail "install over a link at prismalens succeeded"; }
+[ -L "$work/userbin/prismalens" ] && [ "$(cat "$work/elsewhere/prismalens")" = "users own target" ] || fail "the link at prismalens or its target was changed"
+pass "a pl the installer didn't write, or a link, in the bin dir: left as it is"
+
 # 6. Uninstall removes the wrappers, the PATH line and the runtime; the workspace stays.
 mkdir -p "$work/home/.prismalens"
 touch "$work/home/.prismalens/prismalens.db"
@@ -354,18 +370,14 @@ run_app_installer --no-desktop >/dev/null 2>&1 || fail "--no-desktop beside a re
 [ "$(cat "$mine")" = "$(printf '#!/bin/sh\necho users own')" ] || fail "--no-desktop changed the app that replaced the installer's"
 pass "a replaced app, in the same folder: install and --no-desktop leave it as it is"
 
-# Uninstall deletes its data folder, but not the replaced app in it: that is moved aside and named.
+# Uninstall deletes what it put in its data folder, and leaves the replaced app where it is.
 out=$(run_installer "$app_base" --uninstall 2>&1) || { echo "$out"; fail "uninstall beside a replaced app"; }
-if [ "$(uname -s)" = Darwin ]; then
-	kept_app="$app"
-else
-	case "$out" in *"$app isn't the app this installer put there; it was moved to $data-kept/app."*/app*) ;; *) echo "$out"; fail "uninstall didn't say where the replaced app went" ;; esac
-	kept_app=$(find "$data-kept" -mindepth 2 -maxdepth 2 -name app 2>/dev/null || true)
-	[ ! -e "$data" ] || fail "uninstall left its data folder"
+if [ "$(uname -s)" != Darwin ]; then
+	case "$out" in *"$app isn't the app this installer put there; it and the folders that hold it were left as they are"*"$data stays, holding only what this installer didn't put there"*) ;; *) echo "$out"; fail "uninstall didn't say what it left" ;; esac
+	[ ! -e "$data/receipt" ] && [ ! -e "$data/runtime" ] || fail "uninstall left what it put in its data folder"
 fi
-[ "$(cat "$kept_app/${mine#"$app"/}")" = "$(printf '#!/bin/sh\necho users own')" ] || fail "uninstall deleted the app that replaced the installer's"
-rm -rf "$data-kept"
-pass "a replaced app: uninstall keeps it and says where"
+[ "$(cat "$mine")" = "$(printf '#!/bin/sh\necho users own')" ] || fail "uninstall changed or moved the app that replaced the installer's"
+pass "a replaced app: uninstall leaves it where it is and says so"
 
 # --no-desktop that deletes only part of the app: what's left is still the installer's, and a rerun removes it.
 if [ "$(id -u)" = 0 ]; then
@@ -379,7 +391,7 @@ else
 	case "$out" in *"Couldn't remove the desktop app $app; it is still the installer's, so running this again retries."*) ;; *) echo "$out"; fail "the partial delete wasn't reported" ;; esac
 	grep -qx "desktop_app=$app" "$data/receipt" || fail "a partial delete dropped the app from the receipt"
 	out=$(run_app_installer --no-desktop 2>&1) || { echo "$out"; fail "the --no-desktop rerun after a partial delete"; }
-	[ ! -e "$app" ] && [ ! -e "$data-kept" ] && grep -qx "desktop_app=" "$data/receipt" || { echo "$out"; fail "the rerun didn't remove what the partial delete left"; }
+	[ ! -e "$app" ] && grep -qx "desktop_app=" "$data/receipt" || { echo "$out"; fail "the rerun didn't remove what the partial delete left"; }
 	pass "--no-desktop after a partial delete: the receipt keeps the app, and a rerun removes it"
 fi
 
@@ -422,34 +434,34 @@ if [ "$(uname -s)" != Darwin ]; then
 	[ -e "$entry" ] || fail "the rerun after a killed first install wrote no entry"
 	pass "a first install killed after the unpack: the next run takes its app as its own"
 
-	# Uninstall with a data root spelled with a trailing slash: the replaced app is kept outside it.
+	# Uninstall with a data root spelled with a trailing slash: the replaced app stays where it is.
 	rm -rf "$work/home" && mkdir -p "$work/home"
 	(PL_HOME="$data/" run_app_installer) >/dev/null 2>&1 || fail "install under a data root with a trailing slash"
 	find "$app" -mindepth 1 -delete && printf '#!/bin/sh\necho users own\n' >"$app/prismalens"
 	out=$(PL_HOME="$data/" run_installer "$app_base" --uninstall 2>&1) || { echo "$out"; fail "uninstall under a data root with a trailing slash"; }
-	kept_app=$(find "$data-kept" -mindepth 2 -maxdepth 2 -name app 2>/dev/null || true)
-	[ "$(cat "$kept_app/prismalens" 2>/dev/null)" = "$(printf '#!/bin/sh\necho users own')" ] || { echo "$out"; fail "a trailing slash on the data root lost the replaced app"; }
-	case "$out" in *"it was moved to $kept_app"*) ;; *) echo "$out"; fail "uninstall didn't name where the app went" ;; esac
-	pass "a data root with a trailing slash: uninstall keeps the replaced app outside it"
+	[ "$(cat "$app/prismalens" 2>/dev/null)" = "$(printf '#!/bin/sh\necho users own')" ] || { echo "$out"; fail "a trailing slash on the data root lost the replaced app"; }
+	case "$out" in *"$app isn't the app this installer put there; it and the folders that hold it were left as they are"*) ;; *) echo "$out"; fail "uninstall didn't name the app it left" ;; esac
+	pass "a data root with a trailing slash: uninstall leaves the replaced app where it is"
 
-	# A data root named like a folder discard skips (runtime): its replaced app is still kept.
+	# A data root named like a folder discard skips (runtime): its replaced app still stays.
 	rm -rf "$work/home" && mkdir -p "$work/home"
 	rt="$work/home/pl/runtime"
 	(PL_HOME="$rt" run_app_installer) >/dev/null 2>&1 || fail "install under a data root named runtime"
 	find "$rt/desktop/app" -mindepth 1 -delete && printf 'users own' >"$rt/desktop/app/prismalens"
 	(PL_HOME="$rt" run_installer "$app_base" --uninstall) >/dev/null 2>&1 || fail "uninstall under a data root named runtime"
-	[ "$(cat "$rt-kept"/app.*/app/prismalens 2>/dev/null)" = "users own" ] || fail "a data root named runtime lost the replaced app"
-	pass "a data root named runtime: uninstall still keeps the replaced app"
+	[ "$(cat "$rt/desktop/app/prismalens" 2>/dev/null)" = "users own" ] || fail "a data root named runtime lost the replaced app"
+	[ ! -e "$rt/receipt" ] || fail "uninstall under a data root named runtime left its receipt"
+	pass "a data root named runtime: uninstall still leaves the replaced app"
 
-	# A link at the app's place, to the user's own folder: the link is kept, and so is the folder.
+	# A link at the app's place, to the user's own folder: the link stays, and so does the folder.
 	rm -rf "$work/home" && mkdir -p "$work/home/mine"
 	run_app_installer >/dev/null 2>&1 || fail "install before the app link"
 	printf 'users own' >"$work/home/mine/prismalens"
 	rm -rf "$app" && ln -s "$work/home/mine" "$app"
 	run_installer "$app_base" --uninstall >/dev/null 2>&1 || fail "uninstall with a link at the app's place"
 	[ "$(cat "$work/home/mine/prismalens")" = "users own" ] || fail "the linked folder was changed"
-	[ -L "$(echo "$data-kept"/app.*/app)" ] || fail "the link at the app's place wasn't kept"
-	pass "a link at the app's place: uninstall keeps the link and its folder"
+	[ -L "$app" ] || fail "the link at the app's place wasn't left"
+	pass "a link at the app's place: uninstall leaves the link and its folder"
 
 	# --no-desktop that can't delete the installer's app: nothing changes, and a rerun retries.
 	rm -rf "$work/home" && mkdir -p "$work/home" "$work/shim-rm"
