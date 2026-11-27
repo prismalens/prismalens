@@ -252,7 +252,8 @@ export function launcherIo(
 		warn: (message) => console.warn(message),
 		mkdir: (dir) => mkdirSync(dir, { recursive: true }),
 		writeShortcut: (path, operation, options) => {
-			electron.shell.writeShortcutLink(path, operation, options);
+			if (!electron.shell.writeShortcutLink(path, operation, options))
+				throw new Error(`couldn't write the Start menu shortcut ${path}`);
 		},
 		writeFile: (path, contents) => writeFileSync(path, contents),
 	};
