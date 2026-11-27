@@ -293,7 +293,11 @@ function Remove-Owned([string]$Path) {
 		}
 	}
 	# The install ID goes last, and a partial delete is put back at $Path, so what's left is still ours.
-	$left = @(Get-DeletableFiles $trash | Where-Object { Remove-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue; Test-Path -LiteralPath $_ })
+	# Only app folders carry an ID: the runtime's thousands of files go in one Remove-Item below.
+	$below = @($trash, (Join-Path $trash "desktop") | ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory -Force -ErrorAction SilentlyContinue } | ForEach-Object { $_.FullName })
+	$marked = @(@($trash) + $below |
+		Where-Object { Test-Path -LiteralPath (Join-Path $_ ".prismalens-install-id") -PathType Leaf })
+	$left = @($marked | ForEach-Object { Get-DeletableFiles $_ } | Where-Object { Remove-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue; Test-Path -LiteralPath $_ })
 	if (-not $left) { Remove-Item -LiteralPath $trash -Recurse -Force -ErrorAction SilentlyContinue }
 	if (Test-Path -LiteralPath $trash) {
 		try { Rename-Item -LiteralPath $trash -NewName (Split-Path $Path -Leaf) -ErrorAction Stop; $trash = $Path } catch {}
