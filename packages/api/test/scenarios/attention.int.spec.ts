@@ -115,6 +115,12 @@ describe("attention: read state, presence and the away view (#1101 categories 3 
 			body: { subject: { kind: "none" }, text: ASK, place: "alerts" },
 		});
 		await finished(id);
+		// The scan shows only the newer end of two turns that end between its ticks.
+		await eventually(
+			unread,
+			(e) => e.events.some((x) => x.threadId === id),
+			"the first finish to be recorded",
+		);
 		await pl.api(`/investigations/${id}/messages`, {
 			method: "POST",
 			body: { text: "fake-session:echo And the backoff?" },
