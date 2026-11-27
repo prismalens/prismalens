@@ -20,6 +20,8 @@ $githubBase = "https://github.com/prismalens/prismalens/releases/download"
 $sumsBase = $bases[$bases.Count - 1]
 $localAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE "AppData\Local" }
 $dataRoot = if ($env:PRISMALENS_HOME) { $env:PRISMALENS_HOME } else { Join-Path $localAppData "prismalens" }
+# One spelling of it, full and without a trailing separator, so its -kept sibling sits outside it.
+$dataRoot = [IO.Path]::GetFullPath($dataRoot).TrimEnd('\')
 $runtimeRoot = Join-Path $dataRoot "runtime"
 $receipt = Join-Path $dataRoot "receipt"
 $binDir = if ($env:PRISMALENS_INSTALL_BIN_DIR) { $env:PRISMALENS_INSTALL_BIN_DIR } else { Join-Path $dataRoot "bin" }
@@ -162,7 +164,7 @@ function Fetch-Sums([string]$Ver, [string]$OutFile) { Fetch "$sumsBase/v$Ver/SHA
 function Read-Receipt {
 	$h = @{}
 	if (Test-Path $receipt) {
-		foreach ($line in Get-Content $receipt) {
+		foreach ($line in Get-Content -LiteralPath $receipt -Encoding UTF8) {
 			$i = $line.IndexOf("=")
 			if ($i -gt 0) { $h[$line.Substring(0, $i)] = $line.Substring($i + 1) }
 		}
@@ -256,12 +258,17 @@ function Get-InstallId([string]$Dir) {
 # doesn't carry $ownId is moved to $keptRoot and named instead. False when that fails, or a file in
 # it is open: it is renamed before it's deleted, so a running copy is never half removed.
 function Remove-Owned([string]$Path) {
+	$script:ownedLeft = ""
 	if (-not (Test-Path -LiteralPath $Path)) { return $true }
 	$long = Get-LongPath $Path
+	if ("$(Get-LongPath $keptRoot)\".StartsWith("$long\", [StringComparison]::OrdinalIgnoreCase)) {
+		Warn "$keptRoot, where apps that aren't the installer's are kept, is inside $Path, so $Path was left as it is"
+		return $false
+	}
 	$root = Get-LongPath $desktopRoot
 	$apps = @()
 	if ((Split-Path -Parent $long) -eq $root) { $apps = @($long) }
-	elseif ("$root".StartsWith("$long", [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $root)) {
+	elseif ("$root\".StartsWith("$long\", [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $root)) {
 		$apps = @(Get-ChildItem -LiteralPath $root -Directory -Force | ForEach-Object { $_.FullName })
 	}
 	foreach ($a in $apps) {
@@ -280,6 +287,11 @@ function Remove-Owned([string]$Path) {
 	$trash = "$Path.old-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
 	try { Rename-Item -LiteralPath $Path -NewName (Split-Path $trash -Leaf) -ErrorAction Stop } catch { return $false }
 	Remove-Item -LiteralPath $trash -Recurse -Force -ErrorAction SilentlyContinue
+	if (Test-Path -LiteralPath $trash) {
+		$script:ownedLeft = $trash
+		Warn "Some of $Path couldn't be deleted; what's left is in $trash"
+		return $false
+	}
 	return $true
 }
 
@@ -289,7 +301,10 @@ function Remove-Desktop {
 	$hadApp = Test-Path $desktopRoot
 	# Judged before the app goes: a shortcut is the installer's when its target carries the ID.
 	$ownShortcut = Test-Ours (Get-ShortcutTarget $shortcut)
-	if ($hadApp -and -not (Remove-Owned $desktopRoot)) { Fail "Couldn't remove the desktop app in ${desktopRoot}: a file in it is open. Nothing was removed." }
+	if ($hadApp -and -not (Remove-Owned $desktopRoot)) {
+		if ($ownedLeft) { Fail "Couldn't remove all of the desktop app; what's left is in $ownedLeft. Nothing else was removed." }
+		Fail "Couldn't remove the desktop app in ${desktopRoot}: a file in it is open. Nothing was removed."
+	}
 	if ($ownShortcut) {
 		Remove-Item -LiteralPath $shortcut -Force
 		Done "Removed the Start menu shortcut $shortcut"
@@ -330,6 +345,12 @@ function Install-Desktop([string]$ZipFile, [string]$InstallId) {
 		# Test seam: the one failure a test can't otherwise cause between the two renames.
 		if ($env:PRISMALENS_TEST_FAIL_DESKTOP_MOVE -eq "1") { throw "the test made the move fail" }
 		Move-Item -Path $unpacked -Destination $dest -ErrorAction Stop
+		# Into a folder that appeared at $dest, Move-Item nests the copy: only the copy itself there counts.
+		$nested = Join-Path $dest (Split-Path -Leaf $unpacked)
+		if ((Test-Path -LiteralPath $nested) -or (Get-InstallId $dest) -ne $InstallId) {
+			if (Test-Path -LiteralPath $nested) { Move-Item -LiteralPath $nested -Destination $unpacked -ErrorAction SilentlyContinue }
+			throw "something else appeared at $dest during the install"
+		}
 	} catch {
 		$why = "$_"
 		[void](Remove-Owned $unpacked)
@@ -384,10 +405,18 @@ if ($Uninstall) {
 		Set-UserPath ($parts -join ';')
 		Done "Removed $dir from your user PATH"
 	}
-	if (Test-Path $dataRoot) {
-		if (Remove-Owned $dataRoot) { Done "Removed $dataRoot" } else { Warn "$dataRoot was kept: a file in it is open, or an app in it couldn't be moved aside" }
-	}
 	$ws = if ($env:PRISMALENS_WORKSPACE_DIR) { $env:PRISMALENS_WORKSPACE_DIR } else { Join-Path $env:USERPROFILE ".prismalens" }
+	if (Test-Path -LiteralPath $dataRoot) {
+		if ($rec["channel"] -ne "installer") {
+			Warn "$dataRoot holds no receipt from this installer, so it was left as it is"
+		} elseif ("$(Get-LongPath $ws)\".StartsWith("$(Get-LongPath $dataRoot)\", [StringComparison]::OrdinalIgnoreCase)) {
+			Warn "Your workspace is inside $dataRoot, so $dataRoot was left as it is"
+		} elseif (Remove-Owned $dataRoot) {
+			Done "Removed $dataRoot"
+		} else {
+			Warn "$dataRoot was kept: a file in it is open, or an app in it couldn't be moved aside"
+		}
+	}
 	[Console]::Error.WriteLine("`n  Your workspace is kept: $ws`n  To delete it as well, run ${bold}pl reset${r} first, or remove that folder.`n")
 	return
 }
@@ -442,6 +471,8 @@ try {
 	if (($NoDesktop -or $env:PRISMALENS_DESKTOP -eq "0") -and (Get-DesktopProcesses)) {
 		Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run this again to leave it out. Nothing was changed."
 	}
+	# Before the CLI changes, so a removal that fails leaves the install as it was.
+	if ($NoDesktop -or $env:PRISMALENS_DESKTOP -eq "0") { Remove-Desktop }
 
 	$archive = "prismalens-$Version-$target.zip"
 	$archiveFile = Join-Path $staging $archive
@@ -479,8 +510,21 @@ try {
 	}
 
 	New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+	# cmd reads a .cmd file in the console's code page, which can change after the install. Inside the
+	# data root (the default) the wrapper finds the runtime from its own folder, so it holds no path.
+	$cp = [Console]::OutputEncoding.CodePage
+	$cmdEncoding = if ($cp -eq 65001) { New-Object Text.UTF8Encoding $false } else { [Text.Encoding]::GetEncoding($cp) }
+	$binLong = Get-LongPath $binDir
+	$rootLong = Get-LongPath $dataRoot
+	$up = ""
+	if ("$binLong\".StartsWith("$rootLong\", [StringComparison]::OrdinalIgnoreCase)) {
+		$up = "..\" * @($binLong.Substring($rootLong.Length).Split("\", [StringSplitOptions]::RemoveEmptyEntries)).Count
+	}
 	foreach ($name in "pl", "prismalens") {
-		Set-Content -Path (Join-Path $binDir "$name.cmd") -Encoding ASCII -Value "@echo off`r`n$marker`r`n`"$dest\bin\$name.cmd`" %*`r`n"
+		$runtimeCmd = if ($up) { "%~dp0${up}runtime\$Version\bin\$name.cmd" } else { "$dest\bin\$name.cmd" }
+		$text = "@echo off`r`n$marker`r`n`"$runtimeCmd`" %*`r`n"
+		if ($cmdEncoding.GetString($cmdEncoding.GetBytes($text)) -ne $text) { Warn "$dest has characters cmd can't read in code page $cp, so $name may not start" }
+		[IO.File]::WriteAllText((Join-Path $binDir "$name.cmd"), $text, $cmdEncoding)
 	}
 
 	# Keep this version and the one it replaced, for rollback.
@@ -502,7 +546,8 @@ try {
 	if (($env:Path -split ';') -notcontains $binDir) { $env:Path = "$binDir;$env:Path" }
 
 	# Written before the desktop step too, so a run that stops partway still records the app's ID.
-	$writeReceipt = { @(
+	$writeReceipt = {
+		$lines = @(
 		"version=$Version",
 		"channel=installer",
 		"target=$target",
@@ -513,7 +558,11 @@ try {
 		"desktop_version=$desktopVersion",
 		"desktop_app_id=$desktopAppId",
 		"installed_at=$((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"
-	) | Set-Content -Path $receipt -Encoding ASCII }
+	)
+		# UTF-8 without a BOM, which the app and CLI read; renamed into place, so a short write or a link
+		# at the receipt's path never leaves a half receipt or changes another file.
+		[IO.File]::WriteAllText("$receipt.new", (($lines -join "`r`n") + "`r`n"), (New-Object Text.UTF8Encoding $false))
+		Move-Item -LiteralPath "$receipt.new" -Destination $receipt -Force }
 
 	# The desktop app is the release's own zip, verified like the CLI; a failure here leaves the CLI installed.
 	# desktop= is the user's choice; the app and shortcut uninstall removes are the ones in $desktopRoot.
@@ -525,7 +574,6 @@ try {
 	$launcher = ""
 	if ($NoDesktop -or $env:PRISMALENS_DESKTOP -eq "0") {
 		$desktop = "0"
-		Remove-Desktop
 		$desktopApp = ""
 		$desktopVersion = ""
 		$desktopAppId = ""

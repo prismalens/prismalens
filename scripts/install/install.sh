@@ -15,7 +15,16 @@ else
 	bases="$mirror_base $github_base"
 fi
 sums_base=${bases##* }
-data_root="${PRISMALENS_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/prismalens}"
+# dir_path <dir> [-P]: <dir> as an absolute path without a trailing slash or .., even before it
+# exists; -P also resolves its symlinks. A rerun spells paths as the receipt does.
+dir_path() {
+	p_dir=$1 p_rest=
+	while [ "$p_dir" != / ] && [ "${p_dir%/}" != "$p_dir" ]; do p_dir=${p_dir%/}; done
+	while [ ! -d "$p_dir" ]; do p_rest="/${p_dir##*/}$p_rest" p_dir=$(dirname -- "$p_dir"); done
+	p_base=$(CDPATH='' cd -- "$p_dir" && pwd ${2:-})
+	printf '%s%s' "${p_base%/}" "$p_rest"
+}
+data_root=$(dir_path "${PRISMALENS_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/prismalens}")
 runtime_root="${data_root}/runtime"
 kept_root="${data_root}-kept"
 receipt="${data_root}/receipt"
@@ -244,8 +253,14 @@ sum_of() { grep -E "(^|[[:space:]]|\*)$1\$" "$staging/SHA256SUMS" | cut -d' ' -f
 
 # The entry is the installer's only when it opens the installer's app: the app's own download
 # writes the same marker for its copy, which can live anywhere.
+# Only the [Desktop Entry] group counts: an action's Exec isn't what the menu opens.
 entry_ours() {
-	[ -f "$desktop_file" ] && [ ! -L "$desktop_file" ] && grep -qxF "Exec=$(desktop_exec "$data_root/desktop/app/prismalens")" "$desktop_file"
+	[ -f "$desktop_file" ] && [ ! -L "$desktop_file" ] &&
+		E_WANT="Exec=$(desktop_exec "$data_root/desktop/app/prismalens")" E_MARK="$desktop_marker" awk '
+			/^\[/ { main = ($0 == "[Desktop Entry]"); next }
+			main && $0 == ENVIRON["E_WANT"] { exec_ok = 1 }
+			main && $0 == ENVIRON["E_MARK"] { marked = 1 }
+			END { exit !(exec_ok && marked) }' "$desktop_file"
 }
 
 # $1 as one single-quoted sh word.
@@ -276,26 +291,51 @@ app_ours() {
 		[ -n "$(receipt_get desktop_app_id)" ] && [ "$(app_id_of "$1")" = "$(receipt_get desktop_app_id)" ]
 }
 
-# The only way this installer deletes a folder. An app in it that doesn't carry the receipt's ID or
-# this run's is moved to $kept_root and named instead; if that move fails, nothing is deleted.
-# Apps sit in desktop/app, a staging folder's previous, or a *.app bundle; the CLI's runtime holds none.
+# Where an app sits: desktop/app, a staging folder's previous, or a *.app bundle.
+is_app_slot() { case "$1" in */desktop/app | */previous | *.app) return 0 ;; esac; return 1; }
+
+# Leaves the app at $1 to be deleted when it carries the receipt's ID or this run's; moves anything
+# else there, a link included, to $kept_root and names it. 1 when that move fails.
+keep_foreign() {
+	if [ ! -L "$1" ]; then
+		k_id=$(app_id_of "$1" || true)
+		if [ -n "$k_id" ] && { [ "$k_id" = "$(receipt_get desktop_app_id)" ] || [ "$k_id" = "${d_id:-}" ]; }; then return 0; fi
+	fi
+	if [ "$(uname -s)" = Darwin ]; then k_name=PrismaLens.app; else k_name=app; fi
+	if mkdir -p "$kept_root" && k_to=$(mktemp -d "$kept_root/app.XXXXXX") && mv "$1" "$k_to/$k_name"; then
+		warn "$1 isn't the app this installer put there; it was moved to $k_to/$k_name"
+		return 0
+	fi
+	warn "$1 isn't the app this installer put there and couldn't be moved aside, so it was left as it is"
+	return 1
+}
+
+# The only way this installer deletes a folder: every app in it goes through keep_foreign first,
+# and nothing is deleted unless all of it was looked through and kept. The CLI's runtime holds none.
 discard() {
 	[ -e "$1" ] || [ -L "$1" ] || return 0
-	k_left=$(find "$1" -maxdepth 3 \( -name unpacked -o -name runtime -o -name node_modules \) -prune -o -type d \( -name previous -o -name '*.app' -o -path '*/desktop/app' \) -prune -print |
-		while IFS= read -r k_app; do
-			k_id=$(app_id_of "$k_app" || true)
-			if [ -n "$k_id" ] && { [ "$k_id" = "$(receipt_get desktop_app_id)" ] || [ "$k_id" = "${d_id:-}" ]; }; then continue; fi
-			if [ "$(uname -s)" = Darwin ]; then k_name=PrismaLens.app; else k_name=app; fi
-			if mkdir -p "$kept_root" && k_to=$(mktemp -d "$kept_root/app.XXXXXX") && mv "$k_app" "$k_to/$k_name"; then
-				warn "$k_app isn't the app this installer put there; it was moved to $k_to/$k_name"
-			else
-				warn "$k_app isn't the app this installer put there and couldn't be moved aside, so $1 is kept"
-				echo kept
-			fi
-		done && echo checked)
-	# Only a loop that ran to its end, keeping nothing, lets the folder go.
-	[ "$k_left" = checked ] || return 1
-	rm -rf "$1"
+	case "$(dir_path "$kept_root" -P)/" in "$(dir_path "$1" -P)/"*)
+		warn "$kept_root, where apps that aren't the installer's are kept, is inside $1, so $1 was left as it is"
+		return 1
+		;;
+	esac
+	if is_app_slot "$1"; then
+		keep_foreign "$1" || return 1
+	else
+		k_list=$(mktemp) || return 1
+		# Below $1 only: $1 itself may be named like a pruned folder (PRISMALENS_HOME=.../runtime).
+		if ! find "$1" -mindepth 1 -maxdepth 3 \( -name unpacked -o -name runtime -o -name node_modules \) -prune -o \
+			\( -type d -o -type l \) \( -name previous -o -name '*.app' -o -path '*/desktop/app' \) -prune -print >"$k_list"; then
+			rm -f "$k_list"
+			warn "couldn't look through $1, so it was left as it is"
+			return 1
+		fi
+		k_failed=
+		while IFS= read -r k_app; do keep_foreign "$k_app" || k_failed=1; done <"$k_list"
+		rm -f "$k_list"
+		[ -z "$k_failed" ] || return 1
+	fi
+	if [ -e "$1" ] || [ -L "$1" ]; then rm -rf "$1"; fi
 }
 
 # A run killed between its two renames left the installer's old app in that run's staging
@@ -341,8 +381,13 @@ desktop_skip() {
 		echo "$data_root/desktop/app isn't the app this installer put there; it was left as it is"
 		return 0
 	elif [ "$platform" = linux ]; then
-		case "$data_root" in *"$nl"*)
+		case "$data_root" in
+		*"$nl"*)
 			echo "$data_root has a line break, which a menu entry can't hold"
+			return 0
+			;;
+		*=*)
+			echo "$data_root has an =, which a menu entry's program path can't hold"
 			return 0
 			;;
 		esac
@@ -396,13 +441,15 @@ remove_desktop() {
 		warn "The PrismaLens app started meanwhile, so $r_app stays; quit it and run this again to remove it."
 		return 1
 	fi
-	if app_ours "$r_app" && discard "$r_app"; then
+	# 1, with the receipt as it was, when the installer's own app or entry can't be removed.
+	if app_ours "$r_app"; then
+		discard "$r_app" || { warn "Couldn't remove the desktop app $r_app; it is still the installer's, so running this again retries."; return 1; }
 		done_ "Removed the desktop app $r_app"
-	elif [ -n "$r_app" ] && [ -e "$r_app" ]; then
+	elif [ -n "$r_app" ] && { [ -e "$r_app" ] || [ -L "$r_app" ]; }; then
 		warn "$r_app isn't the app this installer put there, so it wasn't removed"
 	fi
 	if entry_ours; then
-		rm -f "$desktop_file"
+		rm -f "$desktop_file" || { warn "Couldn't remove the app menu entry $desktop_file; running this again retries."; return 1; }
 		done_ "Removed the app menu entry $desktop_file"
 	fi
 	rm -f "$data_root/desktop/apparmor-profile"
@@ -440,7 +487,7 @@ install_desktop() {
 		why="$d_dest isn't the app this installer put there; it was left as it is"
 		return 1
 	fi
-	d_id=$(new_install_id)
+	d_id=$owned_id
 	set_app_id "$d_src" "$d_id" || { discard "$d_stage"; why="couldn't mark the app as this installer's"; return 1; }
 	[ ! -e "$d_dest" ] || mv "$d_dest" "$d_stage/previous" || { discard "$d_stage"; why="couldn't move the old app aside"; return 1; }
 	# What was moved aside is checked once more: an app that arrived after the check above goes
@@ -457,7 +504,7 @@ install_desktop() {
 		return 1
 	fi
 	if ! mv "$d_src" "$d_dest"; then
-		if [ -e "$d_stage/previous" ] && ! mv "$d_stage/previous" "$d_dest"; then
+		if [ -e "$d_stage/previous" ] && { [ -e "$d_dest" ] || ! mv "$d_stage/previous" "$d_dest"; }; then
 			why="couldn't move it into place at $d_dest, nor put the old app back; it is in $d_stage/previous, and the next install puts it back"
 			return 1
 		fi
@@ -465,9 +512,14 @@ install_desktop() {
 		why="couldn't move it into place at $d_dest"
 		return 1
 	fi
+	# A folder that appeared at $d_dest makes mv nest the app inside it: only the app itself there counts.
+	if [ "$(app_id_of "$d_dest" || true)" != "$d_id" ] || [ -e "$d_dest/${d_src##*/}" ]; then
+		mv "$d_dest/${d_src##*/}" "$d_src" 2>/dev/null || true
+		why="something else appeared at $d_dest during the install, so the new app wasn't put there; the old one is kept in $d_stage/previous"
+		return 1
+	fi
 	discard "$d_stage"
 	owned="$d_dest"
-	owned_id=$d_id
 	if [ "$platform" = darwin ]; then
 		# Launchpad and Spotlight would find it on their own; registering makes it immediate.
 		lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -509,6 +561,23 @@ install_desktop() {
 	return 0
 }
 
+# write_receipt <desktop_app> <desktop_app_id>: through a temporary file and a rename, so a
+# short write never leaves half a receipt and a link at its path is replaced, not followed.
+write_receipt() {
+	cat >"$receipt.new" <<EOF
+version=$version
+channel=installer
+target=$target
+bin_dir=$bin_dir
+rc=$rc
+desktop=$desktop
+desktop_app=$1
+desktop_app_id=$2
+installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+	mv -f "$receipt.new" "$receipt"
+}
+
 # --- uninstall --------------------------------------------------------------
 
 if [ "$action" = uninstall ]; then
@@ -542,8 +611,17 @@ if [ "$action" = uninstall ]; then
 		esac
 		done_ "Removed the PATH line from $rc"
 	fi
+	workspace=$(dir_path "${PRISMALENS_WORKSPACE_DIR:-$HOME/.prismalens}" -P)
 	if [ -d "$data_root" ]; then
-		if discard "$data_root"; then done_ "Removed $data_root"; else warn "$data_root was kept"; fi
+		if [ "$(receipt_get channel)" != installer ]; then
+			warn "$data_root holds no receipt from this installer, so it was left as it is"
+		elif case "$workspace/" in "$(dir_path "$data_root" -P)/"*) true ;; *) false ;; esac; then
+			warn "Your workspace is inside $data_root, so $data_root was left as it is"
+		elif discard "$data_root"; then
+			done_ "Removed $data_root"
+		else
+			warn "$data_root was kept"
+		fi
 	fi
 	[ -n "$installed_bin$rc" ] || [ -d "$data_root" ] || warn "Nothing installed by this installer was found."
 	printf '\n  Your workspace is kept: %s\n  To delete it as well, run %spl reset%s first, or remove that folder.\n\n' \
@@ -606,6 +684,10 @@ fi
 
 if [ "$want_desktop" = 0 ] && [ -n "$(receipt_get desktop_app)" ] && desktop_running "$(receipt_get desktop_app)"; then
 	fail "The PrismaLens app is running; quit it and run the installer again to leave it out. Nothing was changed."
+fi
+# Before the CLI changes, so a removal that fails leaves the install as it was.
+if [ "$want_desktop" = 0 ] && [ -n "$(receipt_get desktop_app)" ]; then
+	remove_desktop || fail "Nothing else was changed."
 fi
 
 archive="prismalens-${version}-${target}.tar.gz"
@@ -671,10 +753,8 @@ launcher=
 sandbox_note=
 if [ "$want_desktop" = 0 ]; then
 	desktop=0
-	if [ -n "$owned" ] && remove_desktop; then
-		owned=
-		owned_id=
-	fi
+	owned=
+	owned_id=
 fi
 [ "$want_desktop" != 1 ] || desktop=1
 skip=$(desktop_skip)
@@ -688,6 +768,10 @@ else
 	was_running=false
 	[ -z "$owned" ] || ! desktop_running "$owned" || was_running=true
 	if fetch_verified "$app_asset" "$(sum_of "$app_asset")" "$staging/$app_asset" "the PrismaLens ${version} desktop app"; then
+		# One ID for every copy this install unpacks, recorded with the app's path before it's
+		# unpacked, so a copy a killed run leaves is still the installer's.
+		[ -n "$owned_id" ] || owned_id=$(new_install_id)
+		if [ "$platform" = darwin ]; then write_receipt "$mac_app" "$owned_id"; else write_receipt "$data_root/desktop/app" "$owned_id"; fi
 		install_desktop "$staging/$app_asset" || true
 	else
 		why="couldn't download it from $(hosts_tried): ${tried}"
@@ -701,17 +785,7 @@ else
 	fi
 fi
 
-cat >"$receipt" <<EOF
-version=$version
-channel=installer
-target=$target
-bin_dir=$bin_dir
-rc=$rc
-desktop=$desktop
-desktop_app=$owned
-desktop_app_id=$owned_id
-installed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-EOF
+write_receipt "$owned" "$owned_id"
 
 others=$(other_pls)
 if [ -n "$others" ]; then

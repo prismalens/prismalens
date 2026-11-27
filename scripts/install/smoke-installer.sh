@@ -29,7 +29,8 @@ stage() {
 run_installer() {
 	r_base=$1
 	shift
-	env -i HOME="$work/home" PATH="$clean_path" SHELL=/bin/bash \
+	env -i HOME="$work/home" PATH="${SHIM:+$SHIM:}$clean_path" SHELL=/bin/bash \
+		PRISMALENS_HOME="${PL_HOME:-$work/home/.local/share/prismalens}" PRISMALENS_WORKSPACE_DIR="${PL_WS:-}" \
 		PRISMALENS_RELEASE_BASE_URL="$r_base" sh "$installer" "$@"
 }
 
@@ -206,6 +207,7 @@ printf '1\n' >"$work/userns-on"
 run_app_installer() {
 	env -i HOME="${APP_HOME:-$work/home}" PATH="${SHIM:+$SHIM:}$clean_path" SHELL=/bin/bash DISPLAY=:99 PRISMALENS_DESKTOP="${PRISMALENS_DESKTOP:-$want_app}" \
 		PRISMALENS_USERNS_SYSCTL="${USERNS:-$work/userns-off}" PRISMALENS_APPARMOR_PROFILE="$work/apparmor.d/prismalens" \
+		PRISMALENS_HOME="${PL_HOME:-${APP_HOME:-$work/home}/.local/share/prismalens}" \
 		PRISMALENS_RELEASE_BASE_URL="${APP_BASE:-$app_base}" sh "$installer" --version "$new_version" --no-modify-path "$@"
 }
 rm -rf "$work/home" && mkdir -p "$work/home"
@@ -257,6 +259,30 @@ out=$(run_app_installer 2>&1) || fail "reinstall after --no-desktop"
 want_app=$saved_want
 case "$out" in *"an earlier install left it out"*) ;; *) echo "$out"; fail "a later install dropped the opt-out" ;; esac
 pass "--no-desktop: removes the app it had installed, beats PRISMALENS_DESKTOP=1, and a later install keeps it out"
+
+# Uninstall deletes no data root it didn't make, and none that holds the workspace.
+rm -rf "$work/home" && mkdir -p "$work/home/stuff"
+printf 'users own' >"$work/home/stuff/notes"
+out=$(PL_HOME="$work/home/stuff" run_installer "$app_base" --uninstall 2>&1) || { echo "$out"; fail "uninstall of a folder with no receipt"; }
+[ "$(cat "$work/home/stuff/notes")" = "users own" ] || fail "uninstall deleted a folder the installer didn't make"
+case "$out" in *"holds no receipt from this installer, so it was left as it is"*) ;; *) echo "$out"; fail "uninstall didn't say why it left the folder" ;; esac
+PL_HOME="$work/home/ws" PL_WS="$work/home/ws" run_installer "$app_base" --version "$new_version" --no-modify-path --no-desktop >/dev/null 2>&1 || fail "install with the data root as the workspace"
+printf 'db' >"$work/home/ws/prismalens.db"
+out=$(PL_HOME="$work/home/ws" PL_WS="$work/home/ws" run_installer "$app_base" --uninstall 2>&1) || { echo "$out"; fail "uninstall with the data root as the workspace"; }
+[ "$(cat "$work/home/ws/prismalens.db")" = db ] || fail "uninstall deleted the workspace"
+case "$out" in *"Your workspace is inside $work/home/ws, so $work/home/ws was left as it is"*) ;; *) echo "$out"; fail "uninstall didn't say it kept the workspace" ;; esac
+pass "uninstall: a folder without its receipt, or holding the workspace, is left as it is"
+
+# A link at the receipt's path: replaced by the receipt, the file it pointed to left as it was.
+rm -rf "$work/home" && mkdir -p "$work/home"
+run_app_installer >/dev/null 2>&1 || fail "install before the receipt link"
+{ cat "$work/home/.local/share/prismalens/receipt"; echo "users=own"; } >"$work/home/linked"
+cp "$work/home/linked" "$work/linked-before"
+ln -sf "$work/home/linked" "$work/home/.local/share/prismalens/receipt"
+run_app_installer >/dev/null 2>&1 || fail "install over a receipt link"
+cmp -s "$work/home/linked" "$work/linked-before" || fail "the installer wrote through a link at the receipt's path"
+[ -f "$work/home/.local/share/prismalens/receipt" ] && [ ! -L "$work/home/.local/share/prismalens/receipt" ] || fail "the receipt is still a link"
+pass "a link at the receipt's path: replaced, its target left as it was"
 
 # 8. A launcher or app the installer didn't make is left as it is, through install and uninstall.
 rm -rf "$work/home" && mkdir -p "$work/home"
@@ -360,28 +386,103 @@ if [ "$(uname -s)" != Darwin ]; then
 	[ "$(cat "$entry")" = "$(printf '[Desktop Entry]\nExec=/opt/other/prismalens')" ] || { cat "$entry"; fail "the entry that appeared during the download was overwritten"; }
 	pass "a menu entry that appears during the download: left byte for byte"
 
-	# A first install killed after the app is in place, before the receipt: the next run keeps that
-	# app, which carries no receipt's ID, and says so. The shim runs as the menu entry is written.
+	# A first install killed after the app is in place: the receipt already names it and its ID, so
+	# the next run upgrades it as its own. The shim runs as the menu entry is written.
 	rm -rf "$work/home" && mkdir -p "$work/home" "$work/shim-kill"
 	printf '#!/bin/sh\ncase "$*" in *.local/share/applications*) kill -9 "$PPID" ;; esac\nexec %s "$@"\n' \
 		"$(command -v mkdir)" >"$work/shim-kill/mkdir"
 	chmod 755 "$work/shim-kill/mkdir"
 	SHIM="$work/shim-kill" run_app_installer >/dev/null 2>&1 && fail "the killed first install finished"
-	[ -x "$app/prismalens" ] && [ ! -e "$data/receipt" ] || fail "the killed first install didn't stop between the app and the receipt"
+	[ -x "$app/prismalens" ] && [ ! -e "$entry" ] || fail "the killed first install didn't stop between the app and its entry"
+	grep -qx "desktop_app=$app" "$data/receipt" && grep -qx "desktop_app_id=$(cat "$app/.prismalens-install-id")" "$data/receipt" ||
+		{ cat "$data/receipt" || true; fail "the killed first install's receipt doesn't name its app and ID"; }
 	out=$(run_app_installer 2>&1) || { echo "$out"; fail "install after a killed first install"; }
-	case "$out" in *"Desktop app skipped: $app isn't the app this installer put there; it was left as it is"*) ;; *) echo "$out"; fail "the app a killed first install left wasn't kept" ;; esac
-	[ "$("$app/prismalens")" = "stand-in app" ] || fail "the app a killed first install left was changed"
-	pass "a first install killed after the unpack: the next run keeps its app and says so"
+	case "$out" in *"Desktop app installed"*) ;; *) echo "$out"; fail "the app a killed first install left wasn't taken as the installer's" ;; esac
+	app_runs || fail "the app after a killed first install doesn't run"
+	[ -e "$entry" ] || fail "the rerun after a killed first install wrote no entry"
+	pass "a first install killed after the unpack: the next run takes its app as its own"
+
+	# Uninstall with a data root spelled with a trailing slash: the replaced app is kept outside it.
+	rm -rf "$work/home" && mkdir -p "$work/home"
+	PL_HOME="$data/" run_app_installer >/dev/null 2>&1 || fail "install under a data root with a trailing slash"
+	find "$app" -mindepth 1 -delete && printf '#!/bin/sh\necho users own\n' >"$app/prismalens"
+	out=$(PL_HOME="$data/" run_installer "$app_base" --uninstall 2>&1) || { echo "$out"; fail "uninstall under a data root with a trailing slash"; }
+	kept_app=$(find "$data-kept" -mindepth 2 -maxdepth 2 -name app 2>/dev/null || true)
+	[ "$(cat "$kept_app/prismalens" 2>/dev/null)" = "$(printf '#!/bin/sh\necho users own')" ] || { echo "$out"; fail "a trailing slash on the data root lost the replaced app"; }
+	case "$out" in *"it was moved to $kept_app"*) ;; *) echo "$out"; fail "uninstall didn't name where the app went" ;; esac
+	pass "a data root with a trailing slash: uninstall keeps the replaced app outside it"
+
+	# A data root named like a folder discard skips (runtime): its replaced app is still kept.
+	rm -rf "$work/home" && mkdir -p "$work/home"
+	rt="$work/home/pl/runtime"
+	PL_HOME="$rt" run_app_installer >/dev/null 2>&1 || fail "install under a data root named runtime"
+	find "$rt/desktop/app" -mindepth 1 -delete && printf 'users own' >"$rt/desktop/app/prismalens"
+	PL_HOME="$rt" run_installer "$app_base" --uninstall >/dev/null 2>&1 || fail "uninstall under a data root named runtime"
+	[ "$(cat "$rt-kept"/app.*/app/prismalens 2>/dev/null)" = "users own" ] || fail "a data root named runtime lost the replaced app"
+	pass "a data root named runtime: uninstall still keeps the replaced app"
+
+	# A link at the app's place, to the user's own folder: the link is kept, and so is the folder.
+	rm -rf "$work/home" && mkdir -p "$work/home/mine"
+	run_app_installer >/dev/null 2>&1 || fail "install before the app link"
+	printf 'users own' >"$work/home/mine/prismalens"
+	rm -rf "$app" && ln -s "$work/home/mine" "$app"
+	run_installer "$app_base" --uninstall >/dev/null 2>&1 || fail "uninstall with a link at the app's place"
+	[ "$(cat "$work/home/mine/prismalens")" = "users own" ] || fail "the linked folder was changed"
+	[ -L "$(echo "$data-kept"/app.*/app)" ] || fail "the link at the app's place wasn't kept"
+	pass "a link at the app's place: uninstall keeps the link and its folder"
+
+	# --no-desktop that can't delete the installer's app: nothing changes, and a rerun retries.
+	rm -rf "$work/home" && mkdir -p "$work/home" "$work/shim-rm"
+	run_app_installer >/dev/null 2>&1 || fail "install before the undeletable app"
+	printf '#!/bin/sh\ncase "$*" in *"/desktop/app") exit 1 ;; esac\nexec %s "$@"\n' "$(command -v rm)" >"$work/shim-rm/rm"
+	chmod 755 "$work/shim-rm/rm"
+	printf 'mark' >"$data/runtime/$new_version/bin/mark"
+	out=$(SHIM="$work/shim-rm" run_app_installer --no-desktop 2>&1) && { echo "$out"; fail "--no-desktop that couldn't delete the app succeeded"; }
+	case "$out" in *"Couldn't remove the desktop app $app; it is still the installer's, so running this again retries."*"Nothing else was changed."*) ;; *) echo "$out"; fail "the failed removal wasn't reported" ;; esac
+	grep -qx "desktop_app=$app" "$data/receipt" || fail "a failed removal dropped the app from the receipt"
+	[ -e "$data/runtime/$new_version/bin/mark" ] || fail "a failed removal still replaced the CLI"
+	out=$(run_app_installer --no-desktop 2>&1) || { echo "$out"; fail "the retried --no-desktop"; }
+	[ ! -e "$app" ] && grep -qx "desktop_app=" "$data/receipt" || { echo "$out"; fail "the retried --no-desktop didn't remove the app"; }
+	pass "--no-desktop that can't delete the app: nothing changes, and a rerun removes it"
+
+	# A folder that appears where the new app goes, after the old one moved aside: no nested app, the old one kept.
+	rm -rf "$work/home" && mkdir -p "$work/home" "$work/shim-mv"
+	run_app_installer >/dev/null 2>&1 || fail "install before the folder that appears"
+	printf '#!/bin/sh\ncase "$1" in */unpacked/*) [ -e "$2" ] || %s -p "$2" ;; esac\nexec %s "$@"\n' "$(command -v mkdir)" "$(command -v mv)" >"$work/shim-mv/mv"
+	chmod 755 "$work/shim-mv/mv"
+	out=$(SHIM="$work/shim-mv" run_app_installer 2>&1) || { echo "$out"; fail "install while a folder appears"; }
+	case "$out" in *"something else appeared at $app during the install, so the new app wasn't put there; the old one is kept in $data/desktop/.new."*"/previous"*) ;; *) echo "$out"; fail "the nested move wasn't caught" ;; esac
+	[ "$("$data"/desktop/.new.*/previous/prismalens)" = "stand-in app" ] || fail "the old app wasn't kept"
+	[ -z "$(ls -A "$app")" ] || fail "the new app was nested inside the folder that appeared"
+	pass "a folder that appears where the new app goes: nothing nested, the old app kept"
+
+	# An entry whose main Exec is another copy's, with the installer's Exec in an action: left byte for byte.
+	rm -rf "$work/home" && mkdir -p "$work/home" "$(dirname "$entry")"
+	printf '[Desktop Entry]\nType=Application\nName=PrismaLens\nExec=/opt/other/prismalens\n\n[Desktop Action mine]\nExec="%s/prismalens"\nX-PrismaLens-Installer=true\n' "$app" >"$entry"
+	cp "$entry" "$work/entry-before"
+	out=$(run_app_installer 2>&1) || { echo "$out"; fail "install beside an entry with the installer's Exec in an action"; }
+	case "$out" in *"Desktop app skipped: $entry opens another copy of PrismaLens"*) ;; *) echo "$out"; fail "an action's Exec made the entry the installer's" ;; esac
+	cmp -s "$entry" "$work/entry-before" || fail "the entry with an action was changed"
+	pass "an entry with the installer's Exec only in an action: left byte for byte"
+
+	# A data root with an =, which a menu entry's program path can't hold: the app is skipped.
+	rm -rf "$work/home" && mkdir -p "$work/home"
+	out=$(PL_HOME="$work/home/a=b/pl" run_app_installer 2>&1) || { echo "$out"; fail "install under a data root with an ="; }
+	case "$out" in *"has an =, which a menu entry's program path can't hold"*) ;; *) echo "$out"; fail "the = wasn't caught" ;; esac
+	[ ! -e "$entry" ] || fail "an entry was written for a data root with an ="
+	pass "a data root with an =: the app is skipped, the CLI installed"
 fi
 
 # Another app arrives after the ownership check, just before the old app is moved aside: it is put
-# back, never deleted with the staging folder. The shim runs where the installer makes the new ID.
+# back, never deleted with the staging folder. The shim swaps the app once the installer has read
+# its ID the second time: desktop_skip reads it first, install_desktop's last check second.
 rm -rf "$work/home" && mkdir -p "$work/home" "$work/shim-od"
 run_app_installer >/dev/null 2>&1 || fail "install before the late arrival"
-if [ "$(uname -s)" = Darwin ]; then late="$app/Contents/MacOS/PrismaLens"; else late="$app/prismalens"; fi
-printf '#!/bin/sh\nrm -rf "%s" && mkdir -p "%s" && printf "users own" >"%s"\nexec %s "$@"\n' \
-	"$app" "$(dirname "$late")" "$late" "$(command -v od)" >"$work/shim-od/od"
-chmod 755 "$work/shim-od/od"
+if [ "$(uname -s)" = Darwin ]; then late="$app/Contents/MacOS/PrismaLens" reader=xattr; else late="$app/prismalens" reader=cat; fi
+printf '#!/bin/sh\n%s "$@"; st=$?\ncase "$*" in *"%s"*) n=$(( $(%s "%s" 2>/dev/null || echo 0) + 1 )); echo "$n" >"%s"\n\t[ "$n" != 2 ] || { rm -rf "%s" && mkdir -p "%s" && printf "users own" >"%s"; } ;;\nesac\nexit "$st"\n' \
+	"$(command -v "$reader")" "$app" "$(command -v cat)" "$work/reads" "$work/reads" "$app" "$(dirname "$late")" "$late" >"$work/shim-od/$reader"
+chmod 755 "$work/shim-od/$reader"
+rm -f "$work/reads"
 out=$(SHIM="$work/shim-od" run_app_installer 2>&1) || { echo "$out"; fail "install while another app arrives late"; }
 case "$out" in *"The desktop app wasn't installed: $app isn't the app this installer put there; it was left as it is"*) ;; *) echo "$out"; fail "the late arrival wasn't seen" ;; esac
 [ "$(cat "$late")" = "users own" ] || fail "the app that arrived late was deleted or replaced"

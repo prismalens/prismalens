@@ -408,6 +408,111 @@ function global:Move-Item {
 		Get-Target $lnk | Should -BeExactly $app
 	}
 
+	It "keeps a Unicode data root whole in the receipt and the pl wrappers" {
+		$jose = Join-Path $work ("Jos" + [char]0xE9)
+		$run = Invoke-Installer $work $base "$want`n`$env:PRISMALENS_HOME = '$jose\data'"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Installed | Should -BeExactly "genuine"
+		$text = [IO.File]::ReadAllText((Join-Path $jose "data\receipt"), [Text.Encoding]::UTF8)
+		$text | Should -Match ([regex]::Escape("desktop_app=$jose\data\desktop\$version\PrismaLens.exe"))
+
+		# The default bin dir, inside the data root.
+		$run = Invoke-Installer $work $base "`$env:PRISMALENS_HOME = '$jose\data'`n`$env:PRISMALENS_INSTALL_BIN_DIR = ''"
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		[string](& (Join-Path $jose "data\bin\pl.cmd") --version) | Should -BeExactly "genuine"
+	}
+
+	It "-NoDesktop that can't remove the app changes nothing, the CLI included, and says so" {
+		$null = Invoke-Installer $work $base $want
+		Set-Content -Path (Join-Path $work "data\runtime\$version\bin\pl.cmd") -Encoding ASCII -Value "@echo before"
+		$runtimeBefore = Get-Content (Join-Path $work "data\runtime\$version\bin\pl.cmd") -Raw
+		$receiptBefore = Get-Content (Join-Path $work "data\receipt") -Raw
+		$held = [System.IO.File]::Open($app, "Open", "Read", "Read")
+		try {
+			$run = Invoke-Installer $work $base "" "-NoDesktop"
+
+			$run.ExitCode | Should -Not -Be 0
+			$run.Stderr | Should -Match ([regex]::Escape("Couldn't remove the desktop app in $(Join-Path $work 'data\desktop'): a file in it is open. Nothing was removed."))
+			Get-Content (Join-Path $work "data\runtime\$version\bin\pl.cmd") -Raw | Should -BeExactly $runtimeBefore
+			Get-Content (Join-Path $work "data\receipt") -Raw | Should -BeExactly $receiptBefore
+			Get-Target $lnk | Should -BeExactly $app
+		} finally {
+			$held.Dispose()
+		}
+	}
+
+	It "uninstall that deletes only part of the app says what's left, and keeps pl and the shortcut" {
+		$null = Invoke-Installer $work $base $want
+		$stuck = Join-Path (Split-Path $app) "stuck.txt"
+		Set-Content -Path $stuck -Value "stuck"
+		$me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+		& (Join-Path $system32 "icacls.exe") $stuck /deny "${me}:(D)" | Out-Null
+		try {
+			$run = Invoke-Installer $work $base "" "-Uninstall"
+
+			$run.ExitCode | Should -Not -Be 0
+			$run.Stderr | Should -Match ("Couldn't remove all of the desktop app; what's left is in " + [regex]::Escape((Join-Path $work "data\desktop")) + "\.old-[0-9a-f]{8}\. Nothing else was removed\.")
+			Test-Path (Join-Path $work "bin\pl.cmd") | Should -BeTrue
+			Test-Path $lnk | Should -BeTrue
+		} finally {
+			Get-ChildItem (Join-Path $work "data") -Recurse -Force -Filter "stuck.txt" | ForEach-Object { & (Join-Path $system32 "icacls.exe") $_.FullName /remove:d $me | Out-Null }
+		}
+	}
+
+	It "uninstall leaves a data root without its receipt, and one that holds the workspace" {
+		$stuff = Join-Path $work "stuff"
+		New-Item -ItemType Directory -Path $stuff -Force | Out-Null
+		Set-Content -Path (Join-Path $stuff "notes.txt") -Value "theirs"
+		$run = Invoke-Installer $work $base "`$env:PRISMALENS_HOME = '$stuff'" "-Uninstall"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match ([regex]::Escape("$stuff holds no receipt from this installer, so it was left as it is"))
+		Get-Content (Join-Path $stuff "notes.txt") | Should -BeExactly "theirs"
+
+		$ws = Join-Path $work "ws"
+		$both = "`$env:PRISMALENS_HOME = '$ws'`n`$env:PRISMALENS_WORKSPACE_DIR = '$ws'"
+		$null = Invoke-Installer $work $base $both
+		Set-Content -Path (Join-Path $ws "prismalens.db") -Value "db"
+		$run = Invoke-Installer $work $base $both "-Uninstall"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match ([regex]::Escape("Your workspace is inside $ws, so $ws was left as it is"))
+		Get-Content (Join-Path $ws "prismalens.db") | Should -BeExactly "db"
+	}
+
+	It "a data root given with a trailing backslash: uninstall keeps a folder it didn't make outside it" {
+		$slash = "$want`n`$env:PRISMALENS_HOME = '$work\data\'"
+		$null = Invoke-Installer $work $base $slash
+		$theirs = Split-Path $app
+		Remove-Item -LiteralPath (Join-Path $theirs ".prismalens-install-id")
+		Set-Content -Path (Join-Path $theirs "marker.txt") -Value "theirs"
+		$run = Invoke-Installer $work $base "`$env:PRISMALENS_HOME = '$work\data\'" "-Uninstall"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$kept = @(Get-ChildItem (Join-Path $work "data-kept") -Directory)
+		$kept.Count | Should -Be 1
+		Get-Content (Join-Path $kept[0].FullName "marker.txt") | Should -BeExactly "theirs"
+		$run.Stderr | Should -Match ([regex]::Escape("it was moved to $($kept[0].FullName)"))
+	}
+
+	It "a folder that appears where the new copy goes: nothing nested in it, and the old copy kept" {
+		$null = Invoke-Installer $work $base $want
+		$dest = Split-Path $app
+		$appear = @"
+function global:Move-Item {
+	if (("`$args" -like '*\desktop\.new-*') -and ("`$args" -like '*\desktop\$version *')) { New-Item -ItemType Directory -Path '$dest' -Force | Out-Null }
+	Microsoft.PowerShell.Management\Move-Item @args
+}
+"@
+		$run = Invoke-Installer $work $base "$want`n$appear"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Match ([regex]::Escape("The desktop app wasn't installed: couldn't move it into place (something else appeared at $dest during the install), nor put the old copy back; it is in $dest.old-"))
+		@(Get-ChildItem -LiteralPath $dest -Force).Count | Should -Be 0
+		@(Get-ChildItem (Join-Path $work "data\desktop") -Directory -Filter "$version.old-*" | Where-Object { Test-Path (Join-Path $_.FullName "PrismaLens.exe") }).Count | Should -Be 1
+	}
+
 	It "an app download that throws still records the CLI it installed" {
 		$zip = Join-Path $work "release\v$version\PrismaLens-Windows-X64-unsigned.zip"
 		$me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name

@@ -22,15 +22,55 @@ function withoutHelper(source, opening) {
 	return source.slice(0, start) + source.slice(end + 3);
 }
 
-const offending = (source, pattern) =>
+// Commands as written, one per entry: a line ending in a continuation joins the next.
+const commands = (source, continuation) =>
 	source
+		.replace(new RegExp(`\\${continuation}\\n\\s*`, "g"), " ")
 		.split("\n")
-		.map((line, i) => ({ line: i + 1, text: line.trim() }))
-		.filter(({ text }) => !text.startsWith("#") && pattern.test(text));
+		.map((text) => text.trim())
+		.filter((text) => text && !text.startsWith("#"));
+
+// rm with -r or -R in any of its option groups, or --recursive.
+const recursiveRm = (command) =>
+	[...command.matchAll(/(?:^|[\s;&|({!])rm((?:\s+-[-\w]+)+)/g)].some(
+		([, options]) =>
+			options
+				.trim()
+				.split(/\s+/)
+				.some(
+					(o) => o === "--recursive" || (/^-[^-]/.test(o) && /[rR]/.test(o)),
+				),
+	);
+
+// Remove-Item with -Recurse, or any prefix of it PowerShell accepts (-r, -rec, ...).
+const recursiveRemoveItem = (command) =>
+	/\bRemove-Item\b/i.test(command) &&
+	/\s-r(e(c(u(r(s(e)?)?)?)?)?)?\b/i.test(command);
+
+const shOffending = (source) => commands(source, "\\").filter(recursiveRm);
+const psOffending = (source) =>
+	commands(source, "`").filter(recursiveRemoveItem);
+
+test("the guard sees rm -r in any option group, and a continued Remove-Item -Recurse", () => {
+	assert.deepEqual(
+		shOffending(
+			'rm -f -r "$dir"\nrm -rf "$a"\nrm --recursive x\nrm -f "$file"\n',
+		),
+		['rm -f -r "$dir"', 'rm -rf "$a"', "rm --recursive x"],
+	);
+	assert.deepEqual(shOffending('x || rm -fR "$d"\n'), ['x || rm -fR "$d"']);
+	assert.deepEqual(
+		psOffending("Remove-Item $x `\n\t-Recurse -Force\nRemove-Item $f -Force\n"),
+		["Remove-Item $x  -Recurse -Force"],
+	);
+	assert.deepEqual(psOffending("Remove-Item $x -Rec\n"), [
+		"Remove-Item $x -Rec",
+	]);
+});
 
 test("install.sh deletes folders only through discard", () => {
 	const rest = withoutHelper(read("./install.sh"), "discard() {\n");
-	assert.deepEqual(offending(rest, /\brm\s+-[a-zA-Z]*[rR]/), []);
+	assert.deepEqual(shOffending(rest), []);
 });
 
 test("install.ps1 deletes folders only through Remove-Owned", () => {
@@ -38,5 +78,5 @@ test("install.ps1 deletes folders only through Remove-Owned", () => {
 		read("./install.ps1"),
 		"function Remove-Owned([string]$Path) {\n",
 	);
-	assert.deepEqual(offending(rest, /Remove-Item\b.*-Recurse/i), []);
+	assert.deepEqual(psOffending(rest), []);
 });
