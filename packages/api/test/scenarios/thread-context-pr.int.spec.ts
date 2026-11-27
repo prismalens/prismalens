@@ -140,13 +140,21 @@ describe("Thread context and pull requests (#1024, surface D)", () => {
 		expect(hostCalls).toHaveLength(n);
 		const feed = await pl.api<ThreadFeed>("/threads/feed");
 		const row = feed.units.flatMap((u) => u.threads).find((t) => t.id === thread);
-		// The palette's PR results and preview (#1101 category 19) add the title and checks.
+		// The palette's PR results and preview (#1101 category 19) add the title and checks;
+		// the row's PR list (#1020) adds the stack.
 		expect(row?.pr).toEqual({
 			number: 14927,
 			tone: "draft",
 			count: 1,
 			title: "Add guided multi-account setup and evaluation",
 			checks: { failed: 1, pending: 0, state: "failing", total: 26 },
+			stack: [
+				{
+					number: 14927,
+					tone: "draft",
+					title: "Add guided multi-account setup and evaluation",
+				},
+			],
 		});
 	});
 
