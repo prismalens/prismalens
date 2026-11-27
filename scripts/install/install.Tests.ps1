@@ -589,6 +589,19 @@ function global:Move-Item {
 		$run.Installed | Should -BeExactly "genuine"
 	}
 
+	It "a run that finished or failed lets go of the lock, so another in the same PowerShell session, as irm | iex runs it, goes ahead" {
+		$none = "file:///" + (Join-Path $work "none").Replace('\', '/')
+		$failedFirst = "`$env:PRISMALENS_RELEASE_BASE_URL = '$none'; try { & '$installer' } catch {}; `$env:PRISMALENS_RELEASE_BASE_URL = '$base'"
+		$run = Invoke-Installer $work $base $failedFirst
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Installed | Should -BeExactly "genuine"
+
+		$run = Invoke-Installer $work $base "& '$installer'" "-Uninstall"
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		Test-Path (Join-Path $work "data") | Should -BeFalse
+		Test-Path "$work\data.install-lock" | Should -BeFalse
+	}
+
 	It "an app download that throws still records the CLI it installed" {
 		$zip = Join-Path $work "release\v$version\PrismaLens-Windows-X64-unsigned.zip"
 		$me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name

@@ -426,8 +426,8 @@ function Set-UserPath([string]$v) { [Environment]::SetEnvironmentVariable("Path"
 # --- uninstall --------------------------------------------------------------
 
 # One installer at a time per data root: two at once could each delete what the other put in place.
-# The lock is a file beside the data root held open with no sharing; Windows lets go of it when the
-# process ends, however it ends.
+# The lock is a file beside the data root held open with no sharing. Windows lets go of it when the
+# process ends; under irm | iex the session outlives the run, so every way out lets go of it too.
 $lockFile = "$dataRoot.install-lock"
 function Lock-Install {
 	New-Item -ItemType Directory -Path (Split-Path $lockFile) -Force | Out-Null
@@ -435,6 +435,13 @@ function Lock-Install {
 		Fail "Another PrismaLens installer is running, or $lockFile can't be opened; run this again once it finishes. Nothing was changed."
 	}
 }
+function Unlock-Install {
+	if (-not $script:lock) { return }
+	$script:lock.Dispose()
+	$script:lock = $null
+	Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+}
+trap { Unlock-Install; break }
 
 if ($Uninstall) {
 	Banner "uninstaller"
@@ -470,8 +477,7 @@ if ($Uninstall) {
 		}
 	}
 	[Console]::Error.WriteLine("`n  Your workspace is kept: $ws`n  To delete it as well, run ${bold}pl reset${r} first, or remove that folder.`n")
-	$lock.Dispose()
-	Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+	Unlock-Install
 	return
 }
 
@@ -711,4 +717,5 @@ try {
 	[Console]::Error.WriteLine("`n  Start it with ${bold}pl up${r}   ${middot}   Upgrade with ${bold}pl upgrade${r}   ${middot}   Docs: https://docs.prismalens.io`n")
 } finally {
 	[void](Remove-Owned $staging)
+	Unlock-Install
 }
