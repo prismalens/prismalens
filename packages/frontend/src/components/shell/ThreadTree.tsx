@@ -4,16 +4,13 @@
 import {
 	agentName,
 	isWorkflowLive,
-	lastPlainLine,
 	type ThreadRow,
 	type ThreadStatus,
 	type ThreadStatusInfo,
 } from "@prismalens/contracts";
-import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
 	ArrowUp,
-	Check,
 	ChevronRight,
 	MessageSquareReply,
 	MoreHorizontal,
@@ -37,7 +34,6 @@ import { causeOf } from "@/components/home/needs-cause";
 import { fact } from "@/components/kit/fact";
 import {
 	AgentBadge,
-	BranchMark,
 	Mark,
 	PrMark,
 	StartedByMark,
@@ -57,22 +53,18 @@ import {
 import { startedByUser } from "@/components/run/trigger-types";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
-import { RenameField } from "@/components/shell/RenameField";
 import {
 	RowAsk,
 	type RowAskEntry,
 	useAnswerNote,
 	useRowAsk,
 } from "@/components/shell/RowAsk";
-import { GitStateMark } from "@/components/thread/git/GitStateMark";
 import { listenKeys } from "@/hooks/use-global-shortcuts";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { orpc } from "@/lib/api/orpc-client";
 import { askSubject, whyAsked } from "@/lib/ask-lines";
 import { formatDateTimeUtc } from "@/lib/format-time";
 import { plainExcerpt } from "@/lib/inbound-rows";
 import { lazyPart, useAfterFirstContent } from "@/lib/lazy";
-import { settleEndsLine } from "@/lib/settle-holds";
 import type { Destination } from "@/lib/thread-hold";
 import {
 	type ListNode,
@@ -123,6 +115,25 @@ const RowCard = lazyPart(
 		now: true,
 	},
 );
+// Its preview and the settle words load after the list draws; the actions show on hover.
+const RowSettle = lazyPart(
+	() => import("./RowSettle").then((m) => m.RowSettle),
+	null,
+	{ afterFirstContent: true },
+);
+// The field loads when a rename starts.
+const RenameField = lazyPart(
+	() => import("./RenameField").then((m) => m.RenameField),
+	null,
+	{ now: true },
+);
+const RowPeek = lazyPart(() => import("./RowPeek").then((m) => m.Peek), null, {
+	now: true,
+});
+const preloadCard = () => {
+	void RowCard.preload(true);
+	void RowPeek.preload(true);
+};
 
 /**
  * Whether a row reads as unread (bold title). The list's default is the feed's
@@ -786,8 +797,8 @@ function ListRowView({
 				data-moving={moving}
 				onKeyDown={onKey}
 				// The card's code loads as the row is reached, so Space opens it at once (#1101 cat 1).
-				onPointerEnter={() => void RowCard.preload(true)}
-				onFocus={() => void RowCard.preload(true)}
+				onPointerEnter={preloadCard}
+				onFocus={preloadCard}
 				// Only a row with details redraws on hover: rows passing under a still pointer as the list scrolls stay put (#1101 bar 1.8).
 				onPointerOver={() =>
 					more && !moreAt.hover && setMoreAt((m) => ({ ...m, hover: true }))
@@ -923,7 +934,7 @@ function ListRowView({
 								Loading the ask
 							</p>
 						) : (
-							<Peek node={node} now={now} title={title} />
+							<RowPeek node={node} now={now} title={title} />
 						)}
 					</RowCard>
 				)}
@@ -1122,89 +1133,5 @@ function ReasonMark({ reason }: { reason: ReasonToken }) {
 				{reason.token && <span>{reason.token}</span>}
 			</Mark>
 		</span>
-	);
-}
-
-/** Space, or Answer on an ask row: the last agent sentence and what holds the thread. */
-function Peek({
-	node,
-	now,
-	title,
-}: {
-	node: ListNode;
-	now: number;
-	title: string;
-}) {
-	const t = node.thread;
-	const reason = statusReason(t, node.info, now);
-	return (
-		<div className="flex flex-col gap-1.5 text-body">
-			<p className="truncate font-medium text-text-1">{title}</p>
-			<p className="flex items-center gap-1.5 text-meta">
-				<StatusMark status={node.info.status} />
-				<span className={cn("font-medium", wordTone(node.info.status))}>
-					{statusWord(node.info.status)}
-				</span>
-			</p>
-			{reason && <p className="line-clamp-2 text-meta text-text-3">{reason}</p>}
-			{(t.git || t.branch) && (
-				<p
-					className="flex min-w-0 items-center gap-1.5 text-meta"
-					data-testid="peek-branch"
-				>
-					{t.git && <GitStateMark git={t.git} />}
-					{t.branch && <BranchMark branch={t.branch} />}
-				</p>
-			)}
-			{t.startedBy && (
-				<p className="flex items-center gap-1.5 text-meta text-text-2">
-					<StartedByMark by={t.startedBy} />
-					<span className="min-w-0 truncate">
-						{startedByLabel(t.startedBy)}
-					</span>
-				</p>
-			)}
-			<p
-				dir="auto"
-				className="line-clamp-4 text-meta text-text-2"
-				data-testid="peek-latest"
-			>
-				{lastPlainLine(t.latestText) ?? "No reply yet"}
-			</p>
-			{t.pr && (
-				<p className="text-meta text-text-2">
-					PR #{t.pr.number} {t.pr.tone}
-				</p>
-			)}
-		</div>
-	);
-}
-
-/** The row's one-click Settle; its hint previews what Settle ends, read on first hover (#1101 cat 2). */
-function RowSettle({ id, onSettle }: { id: string; onSettle: () => void }) {
-	const [asked, setAsked] = useState(false);
-	const preview = useQuery({
-		...orpc.threads.settlePreview.queryOptions({ input: { id } }),
-		enabled: asked,
-		staleTime: 30_000,
-	});
-	const ask = () => setAsked(true);
-	return (
-		<Hint
-			label="Settle"
-			{...(preview.data ? { meta: settleEndsLine(preview.data) } : {})}
-		>
-			<button
-				type="button"
-				aria-label="Settle"
-				onClick={onSettle}
-				onPointerEnter={ask}
-				onFocus={ask}
-				className="flex size-6 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
-				data-testid="thread-settle"
-			>
-				<Check className="size-3.5" aria-hidden />
-			</button>
-		</Hint>
 	);
 }

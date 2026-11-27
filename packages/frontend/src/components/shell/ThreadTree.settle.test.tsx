@@ -110,6 +110,14 @@ describe("a row's Settle control reads the thread's own state, as its menu does"
 				),
 			),
 		);
+		// Settle's control is a lazy part: it arrives after the list draws.
+		await vi.waitFor(
+			() =>
+				expect(
+					container.querySelector('[data-testid="thread-settle"]'),
+				).not.toBeNull(),
+			{ timeout: 5_000 },
+		);
 		const settles = Array.from(
 			container.querySelectorAll('[data-testid="thread-row"]'),
 		).map((r) => [

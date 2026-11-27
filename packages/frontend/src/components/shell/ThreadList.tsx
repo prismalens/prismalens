@@ -38,7 +38,6 @@ import { relTime } from "@/components/kit/rel-time";
 import { startedByUser } from "@/components/run/trigger-types";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
-import { RenameField } from "@/components/shell/RenameField";
 import type { RowAskEntry } from "@/components/shell/RowAsk";
 import {
 	FilterTrigger,
@@ -560,6 +559,13 @@ const HIDE_AGENTS_KEY = "pl.threads.hideAgentStarted";
 
 /** A click before the popover's code arrives opens it once it does. */
 let filterOpenOnLoad = false;
+// The field loads when a rename starts.
+const RenameField = lazyPart(
+	() => import("./RenameField").then((m) => m.RenameField),
+	null,
+	{ now: true },
+);
+
 const FilterMenu = lazyPart(
 	() =>
 		import("./ThreadFilters").then((m) => (props: FilterProps) => {

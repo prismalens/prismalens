@@ -121,7 +121,11 @@ const detail = (id: string) => {
 describe("a row is four columns: status icon, title, time, agent (#1101 cat 2)", () => {
 	it("says its status by the icon alone, and keeps the time and agent cells on every row", async () => {
 		await render([
-			thread({ id: "done", title: "Done one" }),
+			thread({
+				id: "done",
+				title: "Done one",
+				harness: "claude-code",
+			} as Partial<ThreadRow>),
 			thread({
 				id: "other",
 				title: "Other agent",
@@ -302,18 +306,22 @@ describe("line 2 holds one fact (#1101 density)", () => {
 		).toHaveLength(0);
 	});
 
-	it("leads line 2 with the starter, even on a row with nothing else to say", async () => {
+	it("leads line 2 with the starter, before another fact and on a row with nothing else to say", async () => {
+		const startedBy = {
+			id: "root",
+			title: "Starter",
+			link: "/threads/root",
+			via: "agent",
+		};
 		await render([
+			thread({ id: "started", startedBy } as Partial<ThreadRow>),
 			thread({
-				id: "started",
-				startedBy: {
-					id: "root",
-					title: "Starter",
-					link: "/threads/root",
-					via: "agent",
-				},
+				id: "said",
+				startedBy,
+				latestText: "Pushed the fix.",
 			} as Partial<ThreadRow>),
 		]);
+		expect(testIds(lineTwo("said"))).toEqual(["mark-started-by", "row-detail"]);
 		expect(testIds(lineTwo("started"))).toEqual(["mark-started-by"]);
 		expect(
 			firstLine("started").querySelector('[data-testid="mark-started-by"]'),
