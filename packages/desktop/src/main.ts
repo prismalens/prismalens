@@ -11,7 +11,9 @@
 
 import { type ChildProcess, execFile, spawnSync } from "node:child_process";
 import {
+	accessSync,
 	existsSync,
+	constants as fsConstants,
 	lstatSync,
 	mkdirSync,
 	readFileSync,
@@ -219,6 +221,20 @@ async function openUpdate(version: string | null): Promise<void> {
 	if (response === 0) clipboard.writeText("pl upgrade");
 }
 
+/**
+ * Electron moves into /Applications only, asks for an administrator over a folder the user
+ * can't write, and replaces what is there; offer it only when neither happens.
+ */
+function canMoveToApplications(): boolean {
+	if (existsSync("/Applications/PrismaLens.app")) return false;
+	try {
+		accessSync("/Applications", fsConstants.W_OK);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 /** Gives a copy run from its download the launcher the installers write; see launcher.ts. */
 async function registerLauncher(): Promise<void> {
 	// The installed-app smoke turns it on to check the launcher this leaves (smoke-installed.mjs).
@@ -265,7 +281,7 @@ async function registerLauncher(): Promise<void> {
 			app.getPath("userData"),
 			"move-to-applications-declined",
 		);
-		if (existsSync(asked)) return;
+		if (existsSync(asked) || !canMoveToApplications()) return;
 		const { response, checkboxChecked } = await dialog.showMessageBox({
 			type: "question",
 			buttons: ["Move to Applications", "Not Now"],

@@ -265,3 +265,15 @@ case "$out" in *"Desktop app skipped:"*"it was left as it is"*) ;; *) echo "$out
 run_installer "$app_base" --uninstall >/dev/null 2>&1 || fail "uninstall beside the user's own launcher"
 [ "$(cat "$mine")" = "$before" ] || fail "install or uninstall changed $mine"
 pass "the user's own $mine: left byte for byte through install and uninstall"
+
+# 9. The app's own download marks its entry like the installer does; the installer still leaves it.
+if [ "$(uname -s)" != Darwin ]; then
+	rm -rf "$work/home" && mkdir -p "$work/home" "$(dirname "$entry")"
+	printf '[Desktop Entry]\nType=Application\nName=PrismaLens\nExec="/opt/zip copy/prismalens"\nX-PrismaLens-Installer=true\n' >"$entry"
+	before=$(cat "$entry")
+	out=$(run_app_installer 2>&1) || { echo "$out"; fail "install beside the download's entry"; }
+	case "$out" in *"Desktop app skipped: $entry opens another copy of PrismaLens"*) ;; *) echo "$out"; fail "the download's entry wasn't detected" ;; esac
+	run_installer "$app_base" --uninstall >/dev/null 2>&1 || fail "uninstall beside the download's entry"
+	[ "$(cat "$entry")" = "$before" ] || fail "install or uninstall changed the download's entry"
+	pass "the download's own marked entry: left byte for byte through install and uninstall"
+fi

@@ -236,17 +236,32 @@ fetch_verified() {
 
 sum_of() { grep -E "(^|[[:space:]]|\*)$1\$" "$staging/SHA256SUMS" | cut -d' ' -f1 | head -n 1; }
 
+# The entry is the installer's only when it opens the installer's app: the app's own download
+# writes the same marker for its copy, which can live anywhere.
+entry_ours() {
+	[ -f "$desktop_file" ] && [ ! -L "$desktop_file" ] && grep -qxF "Exec=$(desktop_exec "$data_root/desktop/app/prismalens")" "$desktop_file"
+}
+
+# Homebrew's prismalens-app, whichever folder its --appdir put PrismaLens.app in.
+cask_app() {
+	for c in /opt/homebrew/Caskroom /usr/local/Caskroom; do [ ! -d "$c/prismalens-app" ] || return 0; done
+	return 1
+}
+
 # Why the desktop app is skipped here, or nothing to install it. The receipt's desktop=0 keeps an earlier opt-out.
 desktop_skip() {
 	[ "$want_desktop" != 0 ] || { echo "you asked for the CLI only"; return 0; }
-	if [ "$platform" = darwin ] && [ -d "$mac_app" ] && [ "$(receipt_get desktop_app)" != "$mac_app" ]; then
+	if [ "$platform" = darwin ] && cask_app; then
+		echo "Homebrew's prismalens-app is installed; it upgrades with brew upgrade"
+		return 0
+	elif [ "$platform" = darwin ] && [ -d "$mac_app" ] && [ "$(receipt_get desktop_app)" != "$mac_app" ]; then
 		echo "$mac_app is already there and this installer didn't put it there; it was left as it is"
 		return 0
 	elif [ "$platform" = darwin ] && [ -d /Applications/PrismaLens.app ]; then
 		echo "/Applications/PrismaLens.app is already there (Homebrew's prismalens-app or a download); upgrade it the way you installed it"
 		return 0
-	elif [ "$platform" = linux ] && { [ -L "$desktop_file" ] || { [ -e "$desktop_file" ] && ! grep -q "^$desktop_marker\$" "$desktop_file"; }; }; then
-		echo "$desktop_file is yours, not the installer's; it was left as it is"
+	elif [ "$platform" = linux ] && { [ -e "$desktop_file" ] || [ -L "$desktop_file" ]; } && ! entry_ours; then
+		echo "$desktop_file opens another copy of PrismaLens, not the installer's; it was left as it is"
 		return 0
 	fi
 	[ "$want_desktop" != 1 ] || return 0
@@ -288,11 +303,14 @@ desktop_exec() {
 # Removes the app and launcher this installer recorded in its receipt, and nothing else.
 remove_desktop() {
 	r_app=$(receipt_get desktop_app)
+	if [ "$platform" = darwin ] && cask_app; then
+		r_app=
+	fi
 	if [ -n "$r_app" ] && [ -d "$r_app" ]; then
 		rm -rf "$r_app"
 		done_ "Removed the desktop app $r_app"
 	fi
-	if [ -f "$desktop_file" ] && [ ! -L "$desktop_file" ] && grep -q "^$desktop_marker\$" "$desktop_file"; then
+	if entry_ours; then
 		rm -f "$desktop_file"
 		done_ "Removed the app menu entry $desktop_file"
 	fi
@@ -339,17 +357,13 @@ install_desktop() {
 		return 0
 	fi
 	mkdir -p "$(dirname "$desktop_file")"
+	# printf, not echo: some shells' echo rewrites the backslashes Exec escapes with.
 	if ! {
-		echo "[Desktop Entry]"
-		echo "Type=Application"
-		echo "Name=PrismaLens"
-		echo "Comment=Investigate alerts with the coding agent you already use"
-		echo "Exec=$(desktop_exec "$d_dest/prismalens")"
-		[ ! -f "$d_dest/resources/icon.png" ] || echo "Icon=$(printf '%s' "$d_dest/resources/icon.png" | sed -e 's/\\/\\\\/g')"
-		echo "Terminal=false"
-		echo "Categories=Development;"
-		echo "StartupWMClass=PrismaLens"
-		echo "$desktop_marker"
+		printf '%s\n' "[Desktop Entry]" "Type=Application" "Name=PrismaLens" \
+			"Comment=Investigate alerts with the coding agent you already use" \
+			"Exec=$(desktop_exec "$d_dest/prismalens")"
+		[ ! -f "$d_dest/resources/icon.png" ] || printf 'Icon=%s\n' "$(printf '%s' "$d_dest/resources/icon.png" | sed -e 's/\\/\\\\/g')"
+		printf '%s\n' "Terminal=false" "Categories=Development;" "StartupWMClass=PrismaLens" "$desktop_marker"
 	} >"$desktop_file"; then
 		why="the app is in $d_dest, but $desktop_file couldn't be written"
 		return 1
@@ -460,6 +474,10 @@ if [ -n "$installed" ] && older "$version" "$installed"; then
 	[ "${PRISMALENS_ALLOW_DOWNGRADE:-}" = 1 ] || fail "Set PRISMALENS_ALLOW_DOWNGRADE=1 to install ${version} anyway."
 fi
 
+if [ "$want_desktop" = 0 ] && [ -n "$(receipt_get desktop_app)" ] && desktop_running "$(receipt_get desktop_app)"; then
+	fail "The PrismaLens app is running; quit it and run the installer again to leave it out. Nothing was changed."
+fi
+
 archive="prismalens-${version}-${target}.tar.gz"
 # The checksum is the release's own; the archive may come from any base and is verified against it.
 expected=$(sum_of "$archive")
@@ -523,7 +541,6 @@ sandbox_note=
 if [ "$want_desktop" = 0 ]; then
 	desktop=0
 	if [ -n "$owned" ]; then
-		desktop_running "$owned" && fail "The PrismaLens app is running; quit it and run the installer again."
 		remove_desktop
 		owned=
 	fi

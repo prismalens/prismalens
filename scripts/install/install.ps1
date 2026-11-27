@@ -27,7 +27,8 @@ $marker = "rem Added by the PrismaLens installer"
 $desktopRoot = Join-Path $dataRoot "desktop"
 $desktopAsset = "PrismaLens-Windows-X64-unsigned.zip"
 $shortcutDir = if ($env:PRISMALENS_SHORTCUT_DIR) { $env:PRISMALENS_SHORTCUT_DIR } else { [Environment]::GetFolderPath("Programs") }
-$shortcut = Join-Path $shortcutDir "PrismaLens.lnk"
+# GetFolderPath returns "" for an account without a Start menu, and Join-Path refuses "".
+$shortcut = if ($shortcutDir) { Join-Path $shortcutDir "PrismaLens.lnk" } else { "" }
 if ($env:PRISMALENS_NO_MODIFY_PATH -eq "1") { $NoModifyPath = $true }
 if ($Version) { $Version = $Version -replace '^v', '' }
 
@@ -51,7 +52,6 @@ Options:
 Environment:
   PRISMALENS_VERSION, PRISMALENS_NO_MODIFY_PATH=1   Same as the options.
   PRISMALENS_DESKTOP=0           Same as -NoDesktop; =1 installs the app even where it would be skipped.
-  PRISMALENS_SHORTCUT_DIR        Where the shortcut goes (default: your Start menu's Programs folder).
   PRISMALENS_ALLOW_DOWNGRADE=1   Allow an older version than the one installed.
   PRISMALENS_HOME                Where the runtime and receipt go (default %LOCALAPPDATA%\prismalens).
   PRISMALENS_INSTALL_BIN_DIR     Where pl goes (default %PRISMALENS_HOME%\bin).
@@ -199,18 +199,28 @@ function Fetch-Verified([string]$Name, [string]$Expected, [string]$OutFile, [str
 
 # The target of the shortcut at $Path, or "" when there is none.
 function Get-ShortcutTarget([string]$Path) {
-	if (-not (Test-Path -LiteralPath $Path)) { return "" }
+	if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return "" }
 	try { return [string](New-Object -ComObject WScript.Shell).CreateShortcut($Path).TargetPath } catch { return "" }
 }
 
 # Whether $Path is inside this installer's desktop folder; the separator keeps desktop-other\ out.
+# Get-Item expands 8.3 names (C:\Users\RUNNER~1), so both sides compare in long form.
+function Get-LongPath([string]$Path) {
+	$item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+	if ($item) { return $item.FullName.TrimEnd("\") }
+	$parent = Split-Path -Parent $Path
+	if (-not $parent -or $parent -eq $Path) { return $Path }
+	Join-Path (Get-LongPath $parent) (Split-Path -Leaf $Path)
+}
+
 function Test-Ours([string]$Path) {
-	$Path -and $Path.StartsWith("$desktopRoot\", [StringComparison]::OrdinalIgnoreCase)
+	$Path -and (Get-LongPath $Path).StartsWith("$(Get-LongPath $desktopRoot)\", [StringComparison]::OrdinalIgnoreCase)
 }
 
 # Why the desktop app is skipped on this machine, or "" to install it. The receipt's desktop=0 keeps an earlier opt-out.
 function Get-DesktopSkip($Rec) {
 	if ($NoDesktop -or $env:PRISMALENS_DESKTOP -eq "0") { return "you asked for the CLI only" }
+	if (-not $shortcutDir) { return "this account has no Start menu" }
 	$other = Get-ShortcutTarget $shortcut
 	if ($other -and -not (Test-Ours $other) -and (Test-Path -LiteralPath $other)) {
 		return "the Start menu's PrismaLens shortcut opens $other, which isn't this installer's; it was left as it is"
@@ -243,14 +253,13 @@ function Remove-Unused([string]$Dir) {
 # Removes the shortcut and the app this installer made, and nothing else.
 function Remove-Desktop {
 	if (Get-DesktopProcesses) { Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run this again. Nothing was removed." }
+	$hadApp = Test-Path $desktopRoot
+	if ($hadApp -and -not (Remove-Unused $desktopRoot)) { Fail "Couldn't remove the desktop app in ${desktopRoot}: a file in it is open. Nothing was removed." }
 	if (Test-Ours (Get-ShortcutTarget $shortcut)) {
 		Remove-Item -LiteralPath $shortcut -Force
 		Done "Removed the Start menu shortcut $shortcut"
 	}
-	if (Test-Path $desktopRoot) {
-		try { Remove-Item $desktopRoot -Recurse -Force } catch { Fail "Couldn't remove the desktop app in ${desktopRoot}: $($_.Exception.Message)" }
-		Done "Removed the desktop app"
-	}
+	if ($hadApp) { Done "Removed the desktop app" }
 }
 
 # Unpacks the verified app zip to desktop\<version> and points the Start menu shortcut at it. Returns the shortcut path.
@@ -360,6 +369,10 @@ try {
 		if ($env:PRISMALENS_ALLOW_DOWNGRADE -ne "1") { Fail "Set PRISMALENS_ALLOW_DOWNGRADE=1 to install $Version anyway." }
 	}
 
+	if (($NoDesktop -or $env:PRISMALENS_DESKTOP -eq "0") -and (Get-DesktopProcesses)) {
+		Fail "The PrismaLens app is running; quit it (tray icon, then Quit) and run this again to leave it out. Nothing was changed."
+	}
+
 	$archive = "prismalens-$Version-$target.zip"
 	$archiveFile = Join-Path $staging $archive
 	$expected = Get-Sum $sums $archive
@@ -440,7 +453,7 @@ try {
 			$why = Fetch-Verified $desktopAsset $appSum $appZip "the PrismaLens $Version desktop app"
 			try {
 				if ($why) { throw "couldn't download it from $(Hosts-Tried): $why" }
-				$running = Get-DesktopProcesses | Where-Object { -not $_.Path.StartsWith((Join-Path $desktopRoot "$Version\"), [StringComparison]::OrdinalIgnoreCase) }
+				$running = Get-DesktopProcesses | Where-Object { -not (Get-LongPath $_.Path).StartsWith("$(Get-LongPath (Join-Path $desktopRoot $Version))\", [StringComparison]::OrdinalIgnoreCase) }
 				$launcher = Install-Desktop $appZip
 				$desktop = "1"
 				Done "Desktop app installed to $(Join-Path $desktopRoot $Version)"

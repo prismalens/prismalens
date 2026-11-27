@@ -146,6 +146,7 @@ export function appCask({ version, baseUrl, sums }) {
   caveats <<~EOS
     PrismaLens isn't notarized yet, so macOS blocks its first open.
     Open System Settings > Privacy & Security and click Open Anyway.
+    A Mac whose administrator turned that override off can't open it; use pl up in a browser.
     The pl command is a separate formula: brew install prismalens/tap/prismalens
   EOS
 end
@@ -164,7 +165,7 @@ export function scoopAppManifest({ version, baseUrl, sums }) {
 			homepage: "https://prismalens.io",
 			license: "Apache-2.0",
 			notes:
-				"PrismaLens isn't code-signed yet. If Windows SmartScreen stops it, choose More info, then Run anyway. The pl command is a separate manifest: scoop install prismalens/prismalens",
+				"PrismaLens isn't code-signed yet. If Windows SmartScreen stops it, choose More info, then Run anyway. Smart App Control, where it is on, blocks unsigned apps with no override; use pl up in a browser there. The pl command is a separate manifest: scoop install prismalens/prismalens",
 			architecture: {
 				"64bit": {
 					url: `${baseUrl}/${WINDOWS_APP_ZIP}`,

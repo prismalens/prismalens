@@ -126,7 +126,8 @@ export function planLauncher(
 ): LauncherPlan {
 	if (env.platform === "win32") {
 		const path = shortcutPath(env.appData);
-		if (/[\\/]scoop[\\/]apps[\\/]/i.test(env.execPath))
+		// Scoop keeps an app in <root>\apps\<name>\, and its root can be any folder.
+		if (/[\\/]apps[\\/]prismalens-app[\\/]/i.test(env.execPath))
 			return { kind: "none", reason: "Scoop's shortcut opens this copy" };
 		const options = {
 			target: env.execPath,

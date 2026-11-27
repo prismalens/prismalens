@@ -263,6 +263,36 @@ Describe "install.ps1 and the desktop app" {
 		Get-Receipt | Should -Contain "desktop=1"
 	}
 
+	It "keeps its own shortcut when PRISMALENS_HOME is given as an 8.3 short path" {
+		$short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($work).ShortPath
+		if ($short -eq $work) { Set-ItResult -Skipped -Because "8.3 names are off on this volume, so $work has no short form" }
+		$null = Invoke-Installer $work $base $want
+		$run = Invoke-Installer $work $base "$want`n`$env:PRISMALENS_HOME = '$short\data'"
+
+		$run.ExitCode | Should -Be 0 -Because $run.Stderr
+		$run.Stderr | Should -Not -Match "Desktop app skipped"
+		$run.Stderr | Should -Match ([regex]::Escape("Open the desktop app from the Start menu: PrismaLens   ($lnk)"))
+		Get-Target $lnk | Should -BeExactly $app
+	}
+
+	It "-NoDesktop while the app runs refuses before changing anything" {
+		$null = Invoke-Installer $work $base $want
+		Copy-Item (Join-Path $system32 "PING.EXE") $app -Force
+		$running = Start-Process -FilePath $app -ArgumentList "-n", "60", "127.0.0.1" -WindowStyle Hidden -PassThru
+		try {
+			$receiptBefore = Get-Content (Join-Path $work "data\receipt") -Raw
+			$run = Invoke-Installer $work $base "" "-NoDesktop"
+
+			$run.ExitCode | Should -Not -Be 0
+			$run.Stderr | Should -Match "The PrismaLens app is running; quit it \(tray icon, then Quit\) and run this again to leave it out. Nothing was changed."
+			$run.Stderr | Should -Not -Match "Downloading"
+			Get-Content (Join-Path $work "data\receipt") -Raw | Should -BeExactly $receiptBefore
+			Get-Target $lnk | Should -BeExactly $app
+		} finally {
+			Stop-Process -Id $running.Id -Force -ErrorAction SilentlyContinue
+		}
+	}
+
 	It "skips the app by itself in CI, and installs the CLI" {
 		$run = Invoke-Installer $work $base
 

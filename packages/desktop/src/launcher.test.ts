@@ -152,9 +152,14 @@ describe("planLauncher on macOS", () => {
 });
 
 describe("planLauncher beside a package manager or a launcher it can't read", () => {
-	it("adds no shortcut for Scoop's copy, and leaves a shortcut it can't read", () => {
+	it("adds no shortcut for Scoop's copy at any Scoop root, and leaves a shortcut it can't read", () => {
 		const scoopExe = String.raw`C:\Users\ada\scoop\apps\prismalens-app\current\PrismaLens.exe`;
 		expect(planLauncher(env("win32", {}, { execPath: scoopExe }), noShortcut)).toEqual({
+			kind: "none",
+			reason: "Scoop's shortcut opens this copy",
+		});
+		const customRoot = String.raw`D:\Tools\Store\apps\prismalens-app\0.5.6\PrismaLens.exe`;
+		expect(planLauncher(env("win32", {}, { execPath: customRoot }), noShortcut)).toEqual({
 			kind: "none",
 			reason: "Scoop's shortcut opens this copy",
 		});
