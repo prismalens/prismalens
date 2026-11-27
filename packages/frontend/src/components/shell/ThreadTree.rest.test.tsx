@@ -150,6 +150,10 @@ describe("resting on a row (#1020)", () => {
 			card("row-rest-card")?.querySelector('[data-testid="peek-counts"]')
 				?.textContent,
 		).toBe("3 commits");
+		expect(
+			card("row-rest-card")?.querySelector('[data-testid="row-place"]')
+				?.textContent,
+		).toBe("checkout-api");
 		// The row's lazy menu wrapper redraws it once on load, so it is found again.
 		const row = wrapOf("r");
 		// React reads a move between its own nodes from the out event of the node left.
@@ -167,8 +171,63 @@ describe("resting on a row (#1020)", () => {
 				(li) => li.textContent,
 			),
 		).toEqual(["#412fix: retry the payment", "#410test: cover rounding"]);
+		// Leaving the badge for the row closes the PR list.
+		await hover(
+			row.querySelector('[data-testid="row-badge-pr"]'),
+			"pointerout",
+			row.querySelector('[data-testid="thread-row"]'),
+		);
+		expect(card("row-pr-list")).toBeNull();
 		await hover(row, "pointerout");
 		expect(card("row-pr-list")).toBeNull();
+		expect(card("row-rest-card")).toBeNull();
+	});
+
+	it("opens no card while the list scrolls under a resting pointer, closes an open one, and ignores other scrolls", async () => {
+		await render([thread({ id: "s" })]);
+		const other = document.createElement("div");
+		document.body.appendChild(other);
+		await hover(wrapOf("s"), "pointerover");
+		await act(async () => {
+			container.dispatchEvent(new Event("scroll"));
+			await new Promise((r) => setTimeout(r, 600));
+		});
+		expect(card("row-rest-card")).toBeNull();
+		await hover(wrapOf("s"), "pointerover");
+		await vi.waitFor(() => expect(card("row-rest-card")).not.toBeNull(), {
+			timeout: 3000,
+		});
+		await act(async () => {
+			other.dispatchEvent(new Event("scroll"));
+		});
+		expect(card("row-rest-card")).not.toBeNull();
+		await act(async () => {
+			container.dispatchEvent(new Event("scroll"));
+		});
+		expect(card("row-rest-card")).toBeNull();
+		other.remove();
+	});
+
+	it("closes the rest card when Space opens the row's own card, and Escape leaves no card", async () => {
+		await render([thread({ id: "k" })]);
+		await hover(wrapOf("k"), "pointerover");
+		await vi.waitFor(() => expect(card("row-rest-card")).not.toBeNull(), {
+			timeout: 3000,
+		});
+		const key = (k: string) =>
+			act(async () => {
+				wrapOf("k")
+					.querySelector('[data-testid="thread-row"]')
+					?.dispatchEvent(
+						new KeyboardEvent("keydown", { key: k, bubbles: true }),
+					);
+			});
+		await key(" ");
+		await vi.waitFor(() => expect(card("row-peek")).not.toBeNull(), {
+			timeout: 3000,
+		});
+		await key("Escape");
+		expect(card("row-peek")).toBeNull();
 		expect(card("row-rest-card")).toBeNull();
 	});
 

@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Sumit Patel
 
-import type { ThreadRow, ThreadUnit } from "@prismalens/contracts";
+import type { PendingAsk, ThreadRow, ThreadUnit } from "@prismalens/contracts";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { threadList } from "@/lib/thread-list";
+import type { RowAskEntry } from "./RowAsk";
 import { ThreadTreeView } from "./ThreadTree";
 
 (
@@ -111,12 +112,12 @@ const needsRows = () =>
 		),
 	).map((r) => r.getAttribute("data-id"));
 
-const render = () =>
+const render = (asks: ReadonlyMap<string, RowAskEntry[]> = new Map()) =>
 	act(async () =>
 		root.render(
 			createElement(ThreadTreeView, {
 				model: threadList(units),
-				asks: new Map(),
+				asks,
 				now: NOW,
 				currentId: null,
 			}),
@@ -154,10 +155,39 @@ describe("Needs you lists each thread that waits, flat (#1101 cat 1)", () => {
 
 describe("an ask row's wait (#1020)", () => {
 	it("reserves no line under an approval or question row: its wait lives in the row's card", async () => {
-		await render();
+		const ask = {
+			askId: "00000000-0000-4000-8000-000000000001",
+			threadId: "a",
+			kind: "permission",
+			requiresHost: false,
+			source: { kind: "agent" },
+			title: "Run the migration",
+			openedAt: "2026-11-12T11:58:00.000Z",
+		} as PendingAsk;
+		await render(new Map([["a", [{ ask, ended: false, accessLevel: null }]]]));
 		expect(needsRows()).toEqual(["a", "b"]);
 		expect(
 			container.querySelectorAll('[data-testid="row-ask-more"]'),
 		).toHaveLength(0);
+		const wrap = container
+			.querySelector('[data-testid="thread-row"][data-id="a"]')
+			?.closest('[data-testid="thread-row-wrap"]');
+		await act(async () => {
+			wrap?.dispatchEvent(
+				new PointerEvent("pointerover", {
+					bubbles: true,
+					pointerType: "mouse",
+				}),
+			);
+		});
+		await vi.waitFor(
+			() =>
+				expect(
+					document.body.querySelector(
+						'[data-testid="row-rest-card"] [data-testid="peek-ask-more"]',
+					)?.textContent,
+				).toBe("Waiting 2m · Asked because the agent's own mode asks first."),
+			{ timeout: 3000 },
+		);
 	});
 });

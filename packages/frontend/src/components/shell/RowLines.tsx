@@ -113,14 +113,22 @@ export function RowLines({
 export function useRest(ms: number) {
 	const [at, setAt] = useState<HTMLElement | null>(null);
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const unlisten = useRef<(() => void) | null>(null);
 	const stop = () => {
 		if (timer.current) clearTimeout(timer.current);
 		timer.current = null;
+		unlisten.current?.();
+		unlisten.current = null;
+	};
+	const leave = () => {
+		stop();
+		setAt(null);
 	};
 	// A row that unmounts mid-wait never opens its card.
 	useEffect(
 		() => () => {
 			if (timer.current) clearTimeout(timer.current);
+			unlisten.current?.();
 		},
 		[],
 	);
@@ -129,10 +137,17 @@ export function useRest(ms: number) {
 		enter: (el: HTMLElement) => {
 			stop();
 			timer.current = setTimeout(() => setAt(el), ms);
+			// A scroll of the list under the pointer is not a rest: it cancels or closes the card.
+			const onScroll = (e: Event) => {
+				if (e.target instanceof Node && e.target.contains(el)) leave();
+			};
+			document.addEventListener("scroll", onScroll, {
+				capture: true,
+				passive: true,
+			});
+			unlisten.current = () =>
+				document.removeEventListener("scroll", onScroll, { capture: true });
 		},
-		leave: () => {
-			stop();
-			setAt(null);
-		},
+		leave,
 	};
 }

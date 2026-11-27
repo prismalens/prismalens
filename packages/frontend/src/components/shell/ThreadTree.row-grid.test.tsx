@@ -276,8 +276,9 @@ describe("a row's reason is an icon and a token, its sentence in its name (#1101
 				state: { status: "failed" },
 			} as Partial<ThreadRow>),
 		]);
-		expect(testIds(lead("stopped"))).toEqual([]);
-		expect(testIds(lead("failed"))).toEqual([]);
+		// A missing lead reads undefined, so each must exist and be empty.
+		expect(lead("stopped")?.textContent).toBe("");
+		expect(lead("failed")?.textContent).toBe("");
 	});
 });
 

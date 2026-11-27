@@ -46,6 +46,7 @@ import {
 import { startedByUser } from "@/components/run/trigger-types";
 import { Hint } from "@/components/shared/Hint";
 import { Ring } from "@/components/shared/Ring";
+import { Problem } from "@/components/shared/State";
 import {
 	type RowAskEntry,
 	useAnswerNote,
@@ -58,6 +59,7 @@ import {
 	RowPlace,
 	useRest,
 } from "@/components/shell/RowLines";
+import { Button } from "@/components/ui/button";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { askSubject, whyAsked } from "@/lib/ask-lines";
 import { lazyPart, useAfterFirstContent } from "@/lib/lazy";
@@ -130,7 +132,20 @@ const RowPeek = lazyPart(() => import("./RowPeek").then((m) => m.Peek), null, {
 const RowAsk = lazyPart(
 	() => import("./RowAskCard").then((m) => m.RowAsk),
 	null,
-	{ now: true },
+	{
+		now: true,
+		failed: (retry, p) => (
+			<Problem
+				text="The ask did not load."
+				onRetry={retry}
+				back={
+					<Button variant="text" size="sm" onClick={p.openHref}>
+						Open to answer
+					</Button>
+				}
+			/>
+		),
+	},
 );
 const preloadCard = () => {
 	void RowCard.preload(true);
@@ -647,12 +662,12 @@ function ListRowView({
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
 		if (e.key === " ") {
 			e.preventDefault();
+			closeRest();
 			if (asking) setAskOpen((o) => !o);
 			else setPeek((p) => !p);
 		} else if (e.key === "Escape" && (peek || askOpen)) {
 			e.preventDefault();
-			setPeek(false);
-			setAskOpen(false);
+			closeCard();
 		} else if (entry && (e.key === "y" || e.key === "Y")) {
 			e.preventDefault();
 			ask.approve();
@@ -682,6 +697,20 @@ function ListRowView({
 	// Resting on the row opens its card; resting on its PR badge, only the PR list (#1020).
 	const rest = useRest(450);
 	const prRest = useRest(150);
+	const closeRest = () => {
+		rest.leave();
+		prRest.leave();
+	};
+	// An explicit card's open and close both end the rest; only a new pointer rest reopens it.
+	const closeCard = () => {
+		closeRest();
+		setPeek(false);
+		setAskOpen(false);
+	};
+	const toggleAsk = () => {
+		closeRest();
+		setAskOpen((o) => !o);
+	};
 	const rowBox = useRef<HTMLDivElement>(null);
 	if (renaming)
 		return (
@@ -763,10 +792,6 @@ function ListRowView({
 			)}
 		</>
 	);
-	const closeRest = () => {
-		rest.leave();
-		prRest.leave();
-	};
 	return (
 		<ThreadContextMenu
 			thread={t}
@@ -807,7 +832,7 @@ function ListRowView({
 								!(e.metaKey || e.ctrlKey || e.shiftKey || e.button)
 							) {
 								e.preventDefault();
-								setAskOpen((o) => !o);
+								toggleAsk();
 							}
 						}}
 						aria-current={on ? "page" : undefined}
@@ -885,10 +910,7 @@ function ListRowView({
 						side={roomy ? "right" : "bottom"}
 						label={asking ? "Waiting ask" : title}
 						testId={asking ? "row-ask-card" : "row-peek"}
-						onClose={() => {
-							setPeek(false);
-							setAskOpen(false);
-						}}
+						onClose={closeCard}
 					>
 						{entry ? (
 							<RowAsk
@@ -938,7 +960,7 @@ function ListRowView({
 								type="button"
 								aria-label="Answer"
 								aria-expanded={askOpen}
-								onClick={() => setAskOpen((o) => !o)}
+								onClick={toggleAsk}
 								className="flex size-6 items-center justify-center rounded-control text-text-2 outline-none hover:bg-surface-3 hover:text-text-1 focus-visible:ring-2 focus-visible:ring-accent"
 								data-testid="row-answer"
 							>
