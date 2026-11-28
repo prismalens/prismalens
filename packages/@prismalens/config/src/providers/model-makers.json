@@ -1,5 +1,5 @@
 {
-	"updatedAt": "2026-11-23T00:00:00Z",
+	"updatedAt": "2026-11-28T00:00:00Z",
 	"source": "https://models.dev/api.json",
 	"makers": {
 		"alibaba": {
@@ -912,6 +912,9 @@
 		},
 		"tencent-token-plan": {
 			"name": "Tencent Token Plan"
+		},
+		"tencent-token-plan-intl": {
+			"name": "Tencent Token Plan (International)"
 		},
 		"tencent-tokenhub": {
 			"name": "Tencent TokenHub"

@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"updatedAt": "2026-11-23T00:00:00Z",
+	"updatedAt": "2026-11-28T00:00:00Z",
 	"source": "https://models.dev/api.json",
 	"harnesses": {
 		"opencode": {
@@ -542,7 +542,7 @@
 				{
 					"id": "opencode/kimi-k2.5",
 					"name": "Kimi K2.5",
-					"status": "current",
+					"status": "legacy",
 					"maker": "moonshotai"
 				},
 				{
@@ -554,7 +554,7 @@
 				{
 					"id": "opencode/kimi-k2.6",
 					"name": "Kimi K2.6",
-					"status": "current",
+					"status": "legacy",
 					"maker": "moonshotai"
 				},
 				{
@@ -566,6 +566,12 @@
 				{
 					"id": "opencode/kimi-k3",
 					"name": "Kimi K3",
+					"status": "current",
+					"maker": "moonshotai"
+				},
+				{
+					"id": "opencode/kimi-k3.1-pro",
+					"name": "Kimi K3.1 Pro",
 					"status": "current",
 					"maker": "moonshotai"
 				},
@@ -824,13 +830,19 @@
 				{
 					"id": "opencode/qwen4-max-free",
 					"name": "Qwen4 Max Free",
-					"status": "training",
+					"status": "legacy",
 					"maker": "alibaba"
 				},
 				{
 					"id": "opencode/ring-2.6-1t-free",
 					"name": "Ring 2.6 1T Free",
 					"status": "legacy",
+					"maker": "opencode"
+				},
+				{
+					"id": "opencode/seaglass-alpha-free",
+					"name": "Seaglass Alpha Free",
+					"status": "training",
 					"maker": "opencode"
 				},
 				{
@@ -906,13 +918,13 @@
 				{
 					"id": "claude-opus-4-5",
 					"name": "Claude Opus 4.5 (latest)",
-					"status": "current",
+					"status": "legacy",
 					"maker": "anthropic"
 				},
 				{
 					"id": "claude-opus-4-5-20251101",
 					"name": "Claude Opus 4.5",
-					"status": "current",
+					"status": "legacy",
 					"maker": "anthropic"
 				},
 				{
@@ -982,31 +994,31 @@
 				{
 					"id": "gpt-5",
 					"name": "GPT-5",
-					"status": "current",
+					"status": "legacy",
 					"maker": "openai"
 				},
 				{
 					"id": "gpt-5-mini",
 					"name": "GPT-5 Mini",
-					"status": "current",
+					"status": "legacy",
 					"maker": "openai"
 				},
 				{
 					"id": "gpt-5-nano",
 					"name": "GPT-5 Nano",
-					"status": "current",
+					"status": "legacy",
 					"maker": "openai"
 				},
 				{
 					"id": "gpt-5-pro",
 					"name": "GPT-5 Pro",
-					"status": "current",
+					"status": "legacy",
 					"maker": "openai"
 				},
 				{
 					"id": "gpt-5.1",
 					"name": "GPT-5.1",
-					"status": "current",
+					"status": "legacy",
 					"maker": "openai"
 				},
 				{
@@ -1024,13 +1036,7 @@
 				{
 					"id": "gpt-5.3-codex",
 					"name": "GPT-5.3 Codex",
-					"status": "current",
-					"maker": "openai"
-				},
-				{
-					"id": "gpt-5.3-codex-spark",
-					"name": "GPT-5.3 Codex Spark",
-					"status": "current",
+					"status": "legacy",
 					"maker": "openai"
 				},
 				{
@@ -1048,7 +1054,7 @@
 				{
 					"id": "gpt-5.4-nano",
 					"name": "GPT-5.4 nano",
-					"status": "current",
+					"status": "legacy",
 					"maker": "openai"
 				},
 				{
@@ -1100,6 +1106,12 @@
 					"maker": "openai"
 				},
 				{
+					"id": "gpt-6-astra-healthcare",
+					"name": "GPT-6 Astra Healthcare",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
 					"id": "gpt-6-luna",
 					"name": "GPT-6 Luna",
 					"status": "current",
@@ -1118,6 +1130,12 @@
 					"maker": "openai"
 				},
 				{
+					"id": "gpt-6.1-sol-healthcare",
+					"name": "GPT-6.1 Sol Healthcare",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
 					"id": "gpt-6.1-terra",
 					"name": "GPT-6.1 Terra",
 					"status": "current",
@@ -1130,8 +1148,20 @@
 					"maker": "openai"
 				},
 				{
+					"id": "gpt-6.2-astra-healthcare",
+					"name": "GPT-6.2 Astra Healthcare",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
 					"id": "gpt-6.2-sol",
 					"name": "GPT-6.2 Sol",
+					"status": "current",
+					"maker": "openai"
+				},
+				{
+					"id": "gpt-6.2-sol-healthcare",
+					"name": "GPT-6.2 Sol Healthcare",
 					"status": "current",
 					"maker": "openai"
 				},
@@ -1148,15 +1178,9 @@
 					"maker": "openai"
 				},
 				{
-					"id": "gpt-realtime-2.1",
-					"name": "GPT-Realtime-2.1",
-					"status": "current",
-					"maker": "openai"
-				},
-				{
 					"id": "o3-pro",
 					"name": "o3-pro",
-					"status": "current",
+					"status": "legacy",
 					"maker": "openai"
 				}
 			]
@@ -1176,15 +1200,9 @@
 					"maker": "google"
 				},
 				{
-					"id": "gemini-2.5-computer-use-preview-10-2025",
-					"name": "Gemini 2.5 Computer Use Preview 10-2025",
-					"status": "current",
-					"maker": "google"
-				},
-				{
 					"id": "gemini-2.5-flash",
 					"name": "Gemini 2.5 Flash",
-					"status": "current",
+					"status": "legacy",
 					"maker": "google"
 				},
 				{
@@ -1196,7 +1214,7 @@
 				{
 					"id": "gemini-2.5-pro",
 					"name": "Gemini 2.5 Pro",
-					"status": "current",
+					"status": "legacy",
 					"maker": "google"
 				},
 				{
@@ -1208,19 +1226,13 @@
 				{
 					"id": "gemini-3.1-flash-lite",
 					"name": "Gemini 3.1 Flash Lite",
-					"status": "current",
+					"status": "legacy",
 					"maker": "google"
 				},
 				{
 					"id": "gemini-3.1-flash-lite-image",
 					"name": "Nano Banana 2 Lite",
 					"status": "current",
-					"maker": "google"
-				},
-				{
-					"id": "gemini-3.1-flash-lite-preview",
-					"name": "Gemini 3.1 Flash Lite Preview",
-					"status": "legacy",
 					"maker": "google"
 				},
 				{
@@ -1244,7 +1256,7 @@
 				{
 					"id": "gemini-3.5-flash",
 					"name": "Gemini 3.5 Flash",
-					"status": "current",
+					"status": "legacy",
 					"maker": "google"
 				},
 				{
@@ -1262,7 +1274,7 @@
 				{
 					"id": "gemini-3.7-flash",
 					"name": "Gemini 3.7 Flash",
-					"status": "current",
+					"status": "legacy",
 					"maker": "google"
 				},
 				{
